@@ -862,6 +862,106 @@ input[type="range"]::-moz-range-track {
   display: none;
 }
 
+.site-map-footprints {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 450;
+  width: fit-content;
+  max-width: calc(100% - 20px);
+  padding: 10px;
+  border: 1px solid rgba(70, 81, 93, 0.85);
+  border-radius: 10px;
+  background: rgba(10, 14, 23, 0.78);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+
+.site-map-footprints[hidden] {
+  display: none;
+}
+
+.site-map-schematic {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.site-map-schematic-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.site-map-schematic-canvas {
+  position: relative;
+  overflow: hidden;
+}
+
+.site-map-schematic-total {
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid var(--footprint-color, rgba(255, 255, 255, 0.45));
+  border-radius: 6px;
+  background:
+    linear-gradient(var(--footprint-fill, rgba(255, 255, 255, 0.12)), var(--footprint-fill, rgba(255, 255, 255, 0.12))),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.02) 0 9px, rgba(255, 255, 255, 0.07) 9px 10px),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.02) 0 17px, rgba(255, 255, 255, 0.06) 17px 18px);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.site-map-schematic-plant-pad {
+  position: absolute;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(11, 15, 23, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.site-map-schematic-module {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--footprint-color, rgba(255, 255, 255, 0.45));
+  border-radius: 4px;
+  background: var(--footprint-fill, rgba(255, 255, 255, 0.18));
+  color: #f8fafc;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 4px 10px rgba(0, 0, 0, 0.18);
+}
+
+.site-map-schematic-solar-label {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(10, 14, 23, 0.58);
+  color: rgba(238, 242, 246, 0.82);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.site-map-schematic-meta {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
 .site-map-shell .leaflet-container {
   background: #0f1215;
   font: inherit;

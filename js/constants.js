@@ -160,7 +160,7 @@ const POLICY_OPTIONS = {
     label: 'No policy credits',
     applicability: 'None selected',
     basis: 'Pure market revenue only',
-    note: 'Older Terraform materials discuss a US electricity-side credit using 45E language. Post-2024 that framing is generally 45Y / 48E and is not directly modeled here because it depends on solar asset ownership and tax structure.',
+    note: 'No federal production credits are applied. US 45V and 45Q presets are available under Policy Mode when you want to explore those cases.',
     stackingRule: 'No policy credit selected',
     useCustomH2: false,
     useCustomCo2: false,

@@ -23,6 +23,7 @@ class App {
     this.createSliderTooltip();
     this.initSliderMarkers();
     this.bindSectionToggles();
+    this.bindMobilePaneControls();
     this.initSiteMap();
     this.syncStateToControls();
     this.syncDynamicVisibility();
@@ -399,6 +400,80 @@ class App {
         window.requestAnimationFrame(() => this.positionSliderMarkers());
       });
     });
+  }
+
+  bindMobilePaneControls() {
+    this.mobileLayoutQuery = window.matchMedia('(max-width: 900px)');
+    this.mobilePaneButtons = Array.from(document.querySelectorAll('.mobile-pane-toggle'));
+    this.mobilePanels = Array.from(document.querySelectorAll('.config-panel, .results-panel'));
+    this.mobileBackdrop = document.getElementById('mobilePanelBackdrop');
+
+    this.mobilePaneButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        const panelId = button.dataset.panelTarget;
+        if (!panelId) return;
+        this.setMobilePanel(this.activeMobilePanelId === panelId ? null : panelId);
+      });
+    });
+
+    document.querySelectorAll('.mobile-panel-close').forEach(button => {
+      button.addEventListener('click', () => this.setMobilePanel(null));
+    });
+
+    if (this.mobileBackdrop) {
+      this.mobileBackdrop.addEventListener('click', () => this.setMobilePanel(null));
+    }
+
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        this.setMobilePanel(null);
+      }
+    });
+
+    const handleLayoutChange = () => {
+      if (!this.isMobileViewport()) {
+        this.activeMobilePanelId = null;
+      }
+      this.syncMobilePaneState();
+    };
+
+    if (this.mobileLayoutQuery?.addEventListener) {
+      this.mobileLayoutQuery.addEventListener('change', handleLayoutChange);
+    } else if (this.mobileLayoutQuery?.addListener) {
+      this.mobileLayoutQuery.addListener(handleLayoutChange);
+    }
+
+    this.syncMobilePaneState();
+  }
+
+  isMobileViewport() {
+    return window.innerWidth <= 900;
+  }
+
+  setMobilePanel(panelId) {
+    this.activeMobilePanelId = this.isMobileViewport() ? panelId : null;
+    this.syncMobilePaneState();
+  }
+
+  syncMobilePaneState() {
+    const activeId = this.isMobileViewport() ? this.activeMobilePanelId : null;
+    const hasActivePanel = Boolean(activeId);
+
+    this.mobilePanels.forEach(panel => {
+      const isActive = panel.id === activeId;
+      panel.classList.toggle('mobile-open', isActive);
+      panel.setAttribute('aria-hidden', this.isMobileViewport() ? String(!isActive) : 'false');
+    });
+
+    this.mobilePaneButtons.forEach(button => {
+      const isActive = button.dataset.panelTarget === activeId;
+      button.classList.toggle('active', isActive);
+      button.setAttribute('aria-expanded', String(isActive));
+    });
+
+    if (this.mobileBackdrop) {
+      this.mobileBackdrop.hidden = !hasActivePanel;
+    }
   }
 
   createSliderTooltip() {

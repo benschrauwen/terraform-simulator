@@ -39,9 +39,28 @@
     </div>
   </header>
 
+  <div class="mobile-pane-bar" id="mobilePaneBar">
+    <div class="mobile-pane-tabs" role="toolbar" aria-label="Panel navigation">
+      <button type="button" class="mobile-pane-toggle" data-panel-target="configPanel" aria-controls="configPanel" aria-expanded="false">
+        Inputs
+      </button>
+      <button type="button" class="mobile-pane-toggle" data-panel-target="resultsPanel" aria-controls="resultsPanel" aria-expanded="false">
+        Results
+      </button>
+    </div>
+  </div>
+
   <main class="app-main">
+    <div class="mobile-panel-backdrop" id="mobilePanelBackdrop" hidden></div>
+
     <!-- LEFT: Configuration Panel -->
     <aside class="panel config-panel" id="configPanel">
+      <div class="mobile-panel-header">
+        <span class="mobile-panel-title">Inputs</span>
+        <button type="button" class="mobile-panel-close" data-close-panel="configPanel" aria-controls="configPanel">
+          Close
+        </button>
+      </div>
 
       <!-- Day Selector -->
       <section class="config-section open day-selector-section" data-section="day">
@@ -430,6 +449,12 @@
 
     <!-- RIGHT: Results Panel -->
     <aside class="panel results-panel" id="resultsPanel">
+      <div class="mobile-panel-header">
+        <span class="mobile-panel-title">Results</span>
+        <button type="button" class="mobile-panel-close" data-close-panel="resultsPanel" aria-controls="resultsPanel">
+          Close
+        </button>
+      </div>
 
       <!-- Plant Score -->
       <div class="plant-score-card" id="plantScoreCard">

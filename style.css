@@ -35,6 +35,7 @@
   --transition: 0.18s ease;
 
   --panel-width: 330px;
+  --footer-height: 40px;
 }
 
 * {
@@ -50,6 +51,12 @@ html, body {
   color: var(--text-primary);
   font-size: 13px;
   line-height: 1.5;
+}
+
+body {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
@@ -80,6 +87,8 @@ html, body {
   border-bottom: 1px solid var(--border);
   height: 72px;
   flex-shrink: 0;
+  position: relative;
+  z-index: 20;
 }
 
 .header-left {
@@ -110,6 +119,7 @@ html, body {
   gap: 8px;
   align-items: stretch;
   flex-wrap: nowrap;
+  min-width: 0;
 }
 
 .metric {
@@ -173,11 +183,80 @@ html, body {
 
 /* ============ MAIN LAYOUT ============ */
 
+.mobile-pane-bar,
+.mobile-panel-header,
+.mobile-panel-backdrop {
+  display: none;
+}
+
 .app-main {
   display: flex;
-  height: calc(100vh - 72px - 40px);
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
   background: var(--bg-primary);
+  position: relative;
+  isolation: isolate;
+}
+
+.mobile-pane-bar {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.mobile-pane-tabs {
+  display: flex;
+  width: 100%;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #14181d;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.mobile-pane-toggle,
+.mobile-panel-close {
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color var(--transition), border-color var(--transition), color var(--transition), box-shadow var(--transition);
+}
+
+.mobile-pane-toggle {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: transparent;
+  text-align: center;
+}
+
+.mobile-panel-close {
+  border-radius: 999px;
+}
+
+.mobile-pane-toggle.active {
+  color: var(--text-primary);
+  border-color: rgba(95, 127, 184, 0.28);
+  background: linear-gradient(180deg, rgba(95, 127, 184, 0.28), rgba(95, 127, 184, 0.16));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.mobile-pane-toggle:not(.active) {
+  color: var(--text-muted);
+}
+
+.mobile-pane-toggle:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 /* ============ DAY SELECTOR ============ */
@@ -269,6 +348,9 @@ html, body {
   background: var(--bg-secondary);
   border-right: 1px solid var(--border);
   padding: 12px;
+  min-height: 0;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .results-panel {
@@ -762,6 +844,8 @@ input[type="range"]::-moz-range-track {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .diagram-area > .diagram-container,
@@ -1293,7 +1377,7 @@ input[type="range"]::-moz-range-track {
 /* ============ FOOTER ============ */
 
 .app-footer {
-  height: 40px;
+  height: var(--footer-height);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1336,21 +1420,150 @@ input[type="range"]::-moz-range-track {
 }
 
 @media (max-width: 900px) {
-  .app-main {
-    flex-direction: column;
+  .app-header {
     height: auto;
-    overflow-y: auto;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px 12px 8px;
   }
 
-  .panel {
-    width: 100%;
-    min-width: unset;
-    border-right: none;
-    border-left: none;
-    border-bottom: 1px solid var(--border);
+  .header-left h1 {
+    font-size: 15px;
+  }
+
+  .header-left .subtitle {
+    font-size: 9px;
   }
 
   .header-metrics {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(88px, 1fr);
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scroll-snap-type: x proximity;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .header-metrics::-webkit-scrollbar {
     display: none;
+  }
+
+  .metric {
+    min-width: 88px;
+    padding: 7px 8px;
+    scroll-snap-align: start;
+  }
+
+  .metric.viability {
+    min-width: 110px;
+  }
+
+  .mobile-pane-bar {
+    display: block;
+  }
+
+  .app-main {
+    display: block;
+  }
+
+  .panel {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 1200;
+    width: min(88vw, 360px);
+    min-width: 0;
+    max-width: calc(100% - 20px);
+    padding: 0 12px 12px;
+    background: rgba(24, 28, 32, 0.98);
+    box-shadow: var(--shadow);
+    visibility: hidden;
+    transition: transform 0.22s ease, visibility 0.22s ease;
+  }
+
+  .config-panel {
+    left: 0;
+    border-right: 1px solid var(--border);
+    transform: translateX(-100%);
+  }
+
+  .results-panel {
+    right: 0;
+    left: auto;
+    border-left: 1px solid var(--border);
+    transform: translateX(100%);
+  }
+
+  .panel.mobile-open {
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  .mobile-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    position: sticky;
+    top: 0;
+    margin: 0 -12px 12px;
+    padding: 12px;
+    background: rgba(24, 28, 32, 0.96);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+    z-index: 1;
+  }
+
+  .mobile-panel-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .mobile-panel-close {
+    padding: 7px 12px;
+    border-color: var(--border);
+    background: #13171b;
+  }
+
+  .mobile-panel-close:hover,
+  .mobile-pane-toggle:hover {
+    border-color: var(--border-light);
+    color: var(--text-primary);
+  }
+
+  .mobile-panel-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 1150;
+    display: block;
+    background: rgba(7, 10, 14, 0.56);
+    backdrop-filter: blur(2px);
+  }
+
+  .mobile-panel-backdrop[hidden] {
+    display: none;
+  }
+
+  .diagram-area {
+    height: 100%;
+    padding: 12px;
+    padding-bottom: 16px;
+  }
+
+  .diagram-container {
+    min-height: 280px;
+  }
+
+  .site-map-shell,
+  .site-map {
+    min-height: 240px;
+    height: 240px;
   }
 }

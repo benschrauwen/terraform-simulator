@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solar Chemical Plant Builder — Terraform Industries Calculator</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="js/solar-geometry.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-left">
+      <h1>Solar Chemical Plant Builder</h1>
+      <span class="subtitle">Terraform Industries process model</span>
+    </div>
+    <div class="header-metrics" id="headerMetrics">
+      <div class="metric">
+        <span class="metric-label">CAPEX</span>
+        <span class="metric-value" id="metricCapex">$0</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Annual Revenue</span>
+        <span class="metric-value" id="metricRevenue">$0</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Payback</span>
+        <span class="metric-value" id="metricPayback">—</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">IRR</span>
+        <span class="metric-value" id="metricIRR">—</span>
+      </div>
+      <div class="metric viability" id="metricViability">
+        <span class="metric-label">Status</span>
+        <span class="metric-value" id="metricViabilityValue">Awaiting input</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <!-- LEFT: Configuration Panel -->
+    <aside class="panel config-panel" id="configPanel">
+
+      <!-- Day Selector -->
+      <section class="config-section open day-selector-section" data-section="day">
+        <h2 class="section-header" data-toggle="day">
+          <span class="icon">📅</span> Analysis Cycle
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body">
+          <div class="day-mode-tabs" id="dayModeTabs">
+            <button class="day-tab active" data-mode="average">Annual Average</button>
+            <button class="day-tab" data-mode="specific">Specific Day</button>
+          </div>
+          <div class="field-note compact-note" id="dayModeNote"></div>
+          <div class="day-specific-controls" id="daySpecificControls" style="display:none;">
+            <label>Day of Year
+              <input type="range" id="dayOfYear" min="1" max="365" step="1" value="172">
+              <span class="range-value" id="dayOfYearValue">Jun 21 (Summer Solstice)</span>
+            </label>
+            <div class="day-presets">
+              <button class="day-preset" data-day="80">Mar 21</button>
+              <button class="day-preset" data-day="172">Jun 21</button>
+              <button class="day-preset" data-day="266">Sep 23</button>
+              <button class="day-preset" data-day="355">Dec 21</button>
+            </div>
+            <div class="day-info">
+              <span>Sunrise: <strong id="sunriseTime">—</strong></span>
+              <span>Sunset: <strong id="sunsetTime">—</strong></span>
+              <span>Day length: <strong id="dayLength">—</strong></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Location -->
+      <section class="config-section open" data-section="location">
+        <h2 class="section-header" data-toggle="location">
+          <span class="icon">🌍</span> Site
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body">
+          <label>Preset Site
+            <select id="locationPreset">
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <div class="input-row">
+            <label>Latitude
+              <input type="number" id="latitude" value="34.05" min="-90" max="90" step="0.1">
+            </label>
+            <label>Longitude
+              <input type="number" id="longitude" value="-118.24" min="-180" max="180" step="0.1">
+            </label>
+          </div>
+          <label>Annual Yield (MWh / MWdc / year)
+            <input type="number" id="siteYield" value="2050" min="500" max="3500" step="10">
+          </label>
+          <div class="field-note" id="siteYieldNote">
+            This is the long-run annual PV output per MWdc. For a more accurate site-specific number, use a
+            cloud/weather-adjusted source such as
+            <a href="https://joint-research-centre.ec.europa.eu/pvgis-online-tool_en" target="_blank" rel="noopener noreferrer">PVGIS</a>
+            or
+            <a href="https://globalsolaratlas.info/" target="_blank" rel="noopener noreferrer">Global Solar Atlas PVOUT</a>.
+          </div>
+          <div class="info-row">
+            <span id="irradianceLabel">GHI:</span>
+            <span id="ghiValue" class="highlight">— kWh/m²/yr</span>
+          </div>
+          <div class="info-row">
+            <span id="sunHoursLabel">Avg Sun Hours:</span>
+            <span id="sunHoursValue" class="highlight">— hrs/day</span>
+          </div>
+          <div class="info-row">
+            <span>Yield Source:</span>
+            <span id="yieldSourceValue" class="highlight">—</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Solar Array -->
+      <section class="config-section open" data-section="solar">
+        <h2 class="section-header" data-toggle="solar">
+          <span class="icon">☀️</span> Solar Array
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body">
+          <label>System Size (MW)
+            <input type="range" id="systemSize" min="0.1" max="1000" step="0.1" value="1.0">
+            <span class="range-value" id="systemSizeValue">1.0 MW</span>
+          </label>
+          <label>Panel Efficiency (%)
+            <input type="range" id="panelEfficiency" min="15" max="30" step="0.5" value="20">
+            <span class="range-value" id="panelEfficiencyValue">20.0%</span>
+          </label>
+          <label>Panel Cost ($/W)
+            <input type="range" id="panelCost" min="0.05" max="0.50" step="0.01" value="0.20">
+            <span class="range-value" id="panelCostValue">$0.20/W</span>
+          </label>
+          <label>Annual Panel Degradation (%/yr)
+            <input type="range" id="panelDegradationAnnual" min="0.5" max="0.8" step="0.05" value="0.65">
+            <span class="range-value" id="panelDegradationAnnualValue">0.65%/yr</span>
+          </label>
+          <div class="field-note compact-note">
+            Multi-year economics fade solar-linked output by the selected annual PV degradation rate.
+          </div>
+          <label>Mounting Type
+            <select id="mountingType">
+              <option value="fixed">Fixed Tilt (baseline)</option>
+              <option value="ew" selected>East-West Fixed (2.5x density)</option>
+              <option value="single">Single-Axis Tracker (+25%)</option>
+              <option value="dual">Dual-Axis Tracker (+35%)</option>
+            </select>
+          </label>
+          <label>Structure + Installation BOS ($/W)
+            <input type="range" id="bosCost" min="0.05" max="1.00" step="0.01" value="0.20">
+            <span class="range-value" id="bosCostValue">$0.20/W</span>
+          </label>
+          <label>Land Cost ($/acre)
+            <input type="range" id="landCost" min="0" max="50000" step="500" value="5000">
+            <span class="range-value" id="landCostValue">$5,000/acre</span>
+          </label>
+          <label>Site Prep ($/acre)
+            <input type="range" id="sitePrepCost" min="0" max="80000" step="1000" value="15000">
+            <span class="range-value" id="sitePrepCostValue">$15,000/acre</span>
+          </label>
+          <div class="field-note">
+            Solar installation now includes modules, structure/BOS, land, and site prep. Use site prep to capture clearing,
+            grading, and access-road style work.
+          </div>
+          <div class="info-row">
+            <span>Base Yield:</span>
+            <span id="baseYieldValue" class="highlight">— MWh/MWdc-yr</span>
+          </div>
+          <div class="info-row">
+            <span>Annual Production:</span>
+            <span id="annualProduction" class="highlight">— MWh</span>
+          </div>
+          <div class="info-row">
+            <span>Capacity Factor:</span>
+            <span id="capacityFactor" class="highlight">— %</span>
+          </div>
+          <div class="info-row">
+            <span>LCOE:</span>
+            <span id="lcoe" class="highlight">— $/MWh</span>
+          </div>
+          <div class="info-row">
+            <span>Solar Install CAPEX:</span>
+            <span id="solarInstallCapex" class="highlight">—</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Battery Storage -->
+      <section class="config-section" data-section="battery">
+        <h2 class="section-header" data-toggle="battery">
+          <span class="icon">🔋</span> Battery Comparison
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body">
+          <label class="toggle-label">
+            <input type="checkbox" id="batteryEnabled">
+            <span>Enable battery smoothing comparison</span>
+          </label>
+          <div id="batteryConfig" class="disabled-group">
+            <label>Capacity (MWh)
+              <input type="range" id="batteryCapacity" min="0.5" max="1000" step="0.5" value="4">
+              <span class="range-value" id="batteryCapacityValue">4.0 MWh</span>
+            </label>
+            <label>Cost ($/kWh)
+              <input type="range" id="batteryCost" min="50" max="400" step="10" value="150">
+              <span class="range-value" id="batteryCostValue">$150/kWh</span>
+            </label>
+            <label>Round-trip Efficiency (%)
+              <input type="range" id="batteryEfficiency" min="80" max="98" step="1" value="90">
+              <span class="range-value" id="batteryEfficiencyValue">90%</span>
+            </label>
+            <label>Cycle Life
+              <input type="range" id="batteryCycles" min="1000" max="10000" step="500" value="4000">
+              <span class="range-value" id="batteryCyclesValue">4,000</span>
+            </label>
+            <div class="info-row">
+              <span>Effective CF:</span>
+              <span id="effectiveCF" class="highlight">— %</span>
+            </div>
+            <div class="info-row">
+              <span id="dailyOpHoursLabel">Daily Op Hours:</span>
+              <span id="dailyOpHours" class="highlight">— hrs</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Processes -->
+      <section class="config-section open" data-section="processes">
+        <h2 class="section-header" data-toggle="processes">
+          <span class="icon">⚗️</span> Chemical Processes
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body">
+          <div class="field-note compact-note">
+            Each modeled process has its own asset-life slider inside its card.
+          </div>
+          <div class="module-group">
+            <div class="module-group-title">Supported modules</div>
+            <div class="module-group-subtitle">These drive the modeled product economics. When both are enabled, the shared H2/CO2 feedstock split is configurable below.</div>
+            <div id="productMixControl" class="process-card product-mix-card" style="display:none;">
+              <div class="module-note-title">Shared feedstock split</div>
+              <label>Methane share of downstream feedstock demand
+                <input type="range" id="methaneFeedstockSplit" min="0" max="100" step="1" value="50">
+                <span class="range-value" id="methaneFeedstockSplitValue">50% methane / 50% methanol</span>
+              </label>
+              <div class="field-note" id="productMixNote">
+                Shared H2 and CO2 production auto-balance from the combined methane and methanol demand.
+              </div>
+            </div>
+            <div id="supportedModuleList"></div>
+          </div>
+          <div class="module-group">
+            <div class="module-group-title">Exploratory industrial modules</div>
+            <div class="module-group-subtitle">Publicly signaled by Terraform, but excluded from ROI until route-specific assumptions are added.</div>
+            <div id="exploratoryModuleGroups"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Market Prices -->
+      <section class="config-section" data-section="market">
+        <h2 class="section-header" data-toggle="market">
+          <span class="icon">💰</span> Market & Incentives
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body">
+          <label>Methane Market Preset
+            <select id="methaneMarketPreset">
+              <option value="terraform_commodity">Commodity gas / whitepaper-style case</option>
+              <option value="premium_green_methane">Premium synthetic / green methane</option>
+              <optgroup label="Country-Specific Europe">
+                <option value="germany_biomethane_eeg">Germany biomethane auction / EEG</option>
+                <option value="netherlands_sdepp">Netherlands renewable gas / SDE++</option>
+                <option value="denmark_green_gas_tender">Denmark green gas tender</option>
+              </optgroup>
+            </select>
+          </label>
+          <div class="info-row">
+            <span>Methane market applies in:</span>
+            <span id="methaneMarketApplicabilityValue" class="highlight">Generic / multi-country</span>
+          </div>
+          <div class="info-row">
+            <span>Methane market modeled as:</span>
+            <span id="methaneMarketBasisValue" class="highlight">Simple sale-price assumption for commodity methane</span>
+          </div>
+          <div class="field-note compact-note" id="methaneMarketNote">
+            Use this to label the market structure behind the methane price. Europe support is country-specific and often tender- or CfD-like, so the methane price remains a manual assumption.
+          </div>
+          <label>Methane Sale Price ($/MCF)
+            <input type="range" id="methanePrice" min="1" max="40" step="0.5" value="20">
+            <span class="range-value" id="methanePriceValue">$20.00/MCF</span>
+          </label>
+          <div class="field-note compact-note">
+            This is a market / offtake assumption, not a country-specific subsidy. Use lower values for commodity gas cases and higher values for premium synthetic methane or biomethane contracts.
+          </div>
+          <label>Methanol Price ($/ton)
+            <input type="range" id="methanolPrice" min="100" max="1200" step="10" value="600">
+            <span class="range-value" id="methanolPriceValue">$600/ton</span>
+          </label>
+          <label>Policy Mode
+            <select id="policyMode">
+              <option value="none">No credits</option>
+              <optgroup label="United States">
+                <option value="us_45v_tier4">45V clean H2 - Tier 4 ($3.00/kg)</option>
+                <option value="us_45v_tier3">45V clean H2 - Tier 3 ($1.00/kg)</option>
+                <option value="us_45v_tier2">45V clean H2 - Tier 2 ($0.75/kg)</option>
+                <option value="us_45v_tier1">45V clean H2 - Tier 1 ($0.60/kg)</option>
+                <option value="us_45q_utilization">45Q DAC utilization ($130/t-CO2)</option>
+                <option value="us_45q_sequestration">45Q DAC sequestration ($180/t-CO2)</option>
+              </optgroup>
+              <optgroup label="European Union">
+                <option value="eu_hydrogen_bank">Hydrogen Bank / Innovation Fund premium (bid-based)</option>
+              </optgroup>
+              <option value="custom">Custom / country-specific</option>
+            </select>
+          </label>
+          <label id="customH2CreditWrap">
+            <span id="customH2CreditLabel">Custom H₂ Credit ($/kg)</span>
+            <input type="range" id="customH2Credit" min="0" max="5" step="0.25" value="0">
+            <span class="range-value" id="customH2CreditValue">$0.00/kg</span>
+          </label>
+          <label id="customCo2CreditWrap">
+            <span id="customCo2CreditLabel">Custom CO₂ Credit ($/ton)</span>
+            <input type="range" id="customCo2Credit" min="0" max="250" step="5" value="0">
+            <span class="range-value" id="customCo2CreditValue">$0/ton</span>
+          </label>
+          <div class="info-row">
+            <span>Applies in:</span>
+            <span id="policyApplicabilityValue" class="highlight">United States</span>
+          </div>
+          <div class="info-row">
+            <span>Modeled as:</span>
+            <span id="policyBasisValue" class="highlight">Top-tier hydrogen production credit on H₂ output</span>
+          </div>
+          <div class="info-row">
+            <span>Stacking rule:</span>
+            <span id="stackingRuleValue" class="highlight">US 45V and 45Q are mutually exclusive here</span>
+          </div>
+          <div class="field-note compact-note" id="policyNote">
+            Older Terraform references to a US electricity credit use pre-2025 language. The current power-side US framework is generally 45Y / 48E and is not directly modeled here.
+          </div>
+          <div class="field-note compact-note">
+            This panel forces one named policy mode at a time. In real US projects, some power-side incentives may coexist with product-side incentives depending on structure, but 45V and 45Q should not both be claimed for the same facility.
+          </div>
+          <label>Solar Asset Life (years)
+            <input type="range" id="solarAssetLife" min="10" max="40" step="1" value="30">
+            <span class="range-value" id="solarAssetLifeValue">30 years</span>
+          </label>
+          <label>Analysis Horizon (years)
+            <input type="range" id="analysisHorizonYears" min="3" max="30" step="1" value="30">
+            <span class="range-value" id="analysisHorizonYearsValue">30 years</span>
+          </label>
+          <label>Discount Rate (%)
+            <input type="range" id="discountRate" min="0" max="20" step="0.5" value="8">
+            <span class="range-value" id="discountRateValue">8%</span>
+          </label>
+        </div>
+      </section>
+
+      <!-- M&O -->
+      <section class="config-section" data-section="maintenance">
+        <h2 class="section-header" data-toggle="maintenance">
+          <span class="icon">🔧</span> Maintenance &amp; Operations (M&amp;O)
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body">
+          <div class="field-note compact-note">
+            Annual fixed O&amp;M modeled as a percentage of installed CAPEX in each category (not land or site prep).
+          </div>
+          <label>Solar M&amp;O (% of module + BOS / year)
+            <input type="range" id="solarOmPercent" min="0.3" max="5" step="0.1" value="1.5">
+            <span class="range-value" id="solarOmPercentValue">1.5%/yr</span>
+          </label>
+          <label>Process M&amp;O (% of electrolyzer, DAC, and product equipment / year)
+            <input type="range" id="processOmPercent" min="0.5" max="8" step="0.1" value="3">
+            <span class="range-value" id="processOmPercentValue">3.0%/yr</span>
+          </label>
+          <label>Battery M&amp;O (% of battery CAPEX / year)
+            <input type="range" id="batteryOmPercent" min="0.3" max="5" step="0.1" value="1.5">
+            <span class="range-value" id="batteryOmPercentValue">1.5%/yr</span>
+          </label>
+        </div>
+      </section>
+    </aside>
+
+    <!-- CENTER: System Diagram -->
+    <section class="diagram-area" id="diagramArea">
+      <div class="diagram-container" id="diagramContainer">
+        <!-- SVG diagram is rendered here by JS -->
+      </div>
+
+      <div class="chart-section site-map-section">
+        <div class="site-map-header">
+          <h3>Site Footprint</h3>
+          <div class="site-map-metrics">
+            <span id="siteMapArea">—</span>
+            <span id="siteMapSquare">—</span>
+          </div>
+        </div>
+        <div class="field-note compact-note" id="siteMapNote">
+          Satellite view for Earth locations. The highlighted square is a scale proxy for the modeled installation footprint.
+        </div>
+        <div class="site-map-shell">
+          <div class="site-map" id="siteMap"></div>
+          <div class="site-map-empty" id="siteMapEmpty" hidden></div>
+        </div>
+      </div>
+
+      <!-- Power Distribution Chart -->
+      <div class="chart-section">
+        <h3>Power Profile <span id="powerChartDayLabel" style="color:var(--text-muted);font-weight:400;font-size:11px;"></span></h3>
+        <div class="field-note compact-note" id="powerChartNote"></div>
+        <div class="chart-wrapper">
+          <canvas id="powerChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT: Results Panel -->
+    <aside class="panel results-panel" id="resultsPanel">
+
+      <!-- Plant Score -->
+      <div class="plant-score-card" id="plantScoreCard">
+        <div class="score-ring-wrap">
+          <svg class="score-ring" viewBox="0 0 80 80">
+            <circle cx="40" cy="40" r="34" fill="none" stroke="#2d343d" stroke-width="6"/>
+            <circle id="scoreArc" cx="40" cy="40" r="34" fill="none" stroke="#7ea96d" stroke-width="6"
+              stroke-linecap="round" stroke-dasharray="213.6" stroke-dashoffset="213.6"
+              transform="rotate(-90 40 40)"/>
+          </svg>
+          <span class="score-number" id="scoreNumber">0</span>
+        </div>
+        <div class="score-details">
+          <div class="score-title">Project Score</div>
+          <div class="score-badges" id="scoreBadges"></div>
+        </div>
+      </div>
+
+      <!-- Production Summary -->
+      <section class="results-section open" data-section="production">
+        <h2 class="section-header" data-toggle="production">
+          <span class="icon">📊</span> Production
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body">
+          <div class="production-grid" id="productionGrid">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- Economics -->
+      <section class="results-section open" data-section="economics">
+        <h2 class="section-header" data-toggle="economics">
+          <span class="icon">💵</span> Economics
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body">
+          <div class="econ-breakdown" id="econBreakdown">
+            <!-- Filled by JS -->
+          </div>
+          <div class="chart-wrapper" style="margin-top: 12px;">
+            <canvas id="econChart"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sensitivity -->
+      <section class="results-section" data-section="sensitivity">
+        <h2 class="section-header" data-toggle="sensitivity">
+          <span class="icon">📈</span> Sensitivity
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body">
+          <div class="chart-wrapper">
+            <canvas id="sensitivityChart"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- Environmental Impact -->
+      <section class="results-section" data-section="impact">
+        <h2 class="section-header" data-toggle="impact">
+          <span class="icon">🌱</span> Environmental Impact
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body">
+          <div id="impactGrid" class="production-grid">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- Exploratory Modules -->
+      <section class="results-section" data-section="coverage">
+        <h2 class="section-header" data-toggle="coverage">
+          <span class="icon">🧭</span> Exploratory Coverage
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body">
+          <div id="exploratoryCoverageList" class="production-grid">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="app-footer">
+    <p>Based on <a href="https://terraformindustries.com/" target="_blank">Terraform Industries</a> technology.
+    Data from public sources. This is an independent educational tool — not affiliated with Terraform Industries.</p>
+  </footer>
+
+  <script src="js/constants.js"></script>
+  <script src="js/calculations.js"></script>
+  <script src="js/diagram.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

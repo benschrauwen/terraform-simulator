@@ -184,7 +184,6 @@ body {
 /* ============ MAIN LAYOUT ============ */
 
 .mobile-pane-bar,
-.mobile-panel-header,
 .mobile-panel-backdrop {
   display: none;
 }
@@ -217,8 +216,7 @@ body {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
-.mobile-pane-toggle,
-.mobile-panel-close {
+.mobile-pane-toggle {
   border: 1px solid transparent;
   font: inherit;
   font-size: 12px;
@@ -227,9 +225,6 @@ body {
   color: var(--text-secondary);
   cursor: pointer;
   transition: background-color var(--transition), border-color var(--transition), color var(--transition), box-shadow var(--transition);
-}
-
-.mobile-pane-toggle {
   flex: 1 1 0;
   min-width: 0;
   min-height: 36px;
@@ -237,10 +232,6 @@ body {
   border-radius: 10px;
   background: transparent;
   text-align: center;
-}
-
-.mobile-panel-close {
-  border-radius: 999px;
 }
 
 .mobile-pane-toggle.active {
@@ -1466,8 +1457,24 @@ input[type="range"]::-moz-range-track {
     display: block;
   }
 
+  /* Scroll the page to reach the footer; don’t pin it to the viewport */
+  html {
+    height: auto;
+    min-height: 100%;
+  }
+
+  body {
+    min-height: 100dvh;
+    height: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .app-main {
     display: block;
+    flex: 0 1 auto;
+    min-height: calc(100dvh - 172px);
   }
 
   .panel {
@@ -1478,7 +1485,7 @@ input[type="range"]::-moz-range-track {
     width: min(88vw, 360px);
     min-width: 0;
     max-width: calc(100% - 20px);
-    padding: 0 12px 12px;
+    padding: 10px 12px 12px;
     background: rgba(24, 28, 32, 0.98);
     box-shadow: var(--shadow);
     visibility: hidden;
@@ -1503,36 +1510,6 @@ input[type="range"]::-moz-range-track {
     visibility: visible;
   }
 
-  .mobile-panel-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    position: sticky;
-    top: 0;
-    margin: 0 -12px 12px;
-    padding: 12px;
-    background: rgba(24, 28, 32, 0.96);
-    border-bottom: 1px solid var(--border);
-    backdrop-filter: blur(10px);
-    z-index: 1;
-  }
-
-  .mobile-panel-title {
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--text-primary);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-
-  .mobile-panel-close {
-    padding: 7px 12px;
-    border-color: var(--border);
-    background: #13171b;
-  }
-
-  .mobile-panel-close:hover,
   .mobile-pane-toggle:hover {
     border-color: var(--border-light);
     color: var(--text-primary);
@@ -1552,7 +1529,8 @@ input[type="range"]::-moz-range-track {
   }
 
   .diagram-area {
-    height: 100%;
+    min-height: calc(100dvh - 196px);
+    height: auto;
     padding: 12px;
     padding-bottom: 16px;
   }
@@ -1565,5 +1543,11 @@ input[type="range"]::-moz-range-track {
   .site-map {
     min-height: 240px;
     height: 240px;
+  }
+
+  .app-footer {
+    height: auto;
+    padding: 14px 18px calc(20px + env(safe-area-inset-bottom, 0px));
+    line-height: 1.55;
   }
 }

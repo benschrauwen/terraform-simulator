@@ -416,10 +416,6 @@ class App {
       });
     });
 
-    document.querySelectorAll('.mobile-panel-close').forEach(button => {
-      button.addEventListener('click', () => this.setMobilePanel(null));
-    });
-
     if (this.mobileBackdrop) {
       this.mobileBackdrop.addEventListener('click', () => this.setMobilePanel(null));
     }

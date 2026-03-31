@@ -45,17 +45,6 @@ Object.assign(Calc, {
     return Math.round(ghi * MODEL_ASSUMPTIONS.fallbackYieldFromGhi);
   },
 
-  getResourceSource(state, preset) {
-    if (state.siteYieldSource === 'manual') return 'Manual annual yield';
-    if (state.siteYieldSource === 'planetary-custom') return 'Carry-over annual yield (planetary custom site; no latitude heuristic)';
-    if (preset) {
-      return (state.body || 'earth') === 'earth'
-        ? 'Preset annual yield (cloud/weather-adjusted benchmark)'
-        : 'Preset annual yield (planetary benchmark)';
-    }
-    return 'Estimated annual yield (latitude/GHI heuristic, not a cloud dataset)';
-  },
-
   getSolarGeometry(state, body, mountingKey) {
     const profileModel = state.solarProfileModel || state.body || 'earth';
     if ((state.body || 'earth') === 'earth') {
@@ -196,7 +185,6 @@ Object.assign(Calc, {
       yieldMult,
       siteYield,
       panelDegradationAnnual: state.panelDegradationAnnual,
-      yieldSource: this.getResourceSource(state, preset),
       sunHours: parseFloat(solarGeo.dayLengthHours.toFixed(1)),
       capacityFactor: annualMWh / (state.systemSizeMW * 8760),
       annualMWh,

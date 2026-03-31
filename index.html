@@ -126,10 +126,6 @@
             <span id="sunHoursLabel">Avg Sun Hours:</span>
             <span id="sunHoursValue" class="highlight">— hrs/day</span>
           </div>
-          <div class="info-row">
-            <span>Yield Source:</span>
-            <span id="yieldSourceValue" class="highlight">—</span>
-          </div>
         </div>
       </section>
 
@@ -484,23 +480,42 @@
           <span class="icon">🏦</span> Financing
           <span class="chevron">▾</span>
         </h2>
-        <div class="section-body">
-          <div class="process-card">
+        <div class="section-body financing-section-body">
+          <div class="sidebar-card">
+            <div class="sidebar-card-header">
+              <div class="sidebar-card-title">Debt structure</div>
+              <div class="sidebar-card-subtitle">Switch between unlevered project returns and an equity-style view funded with upfront debt.</div>
+            </div>
             <div class="process-header">
               <label class="toggle-label">
                 <input type="checkbox" id="financingEnabled">
                 <span>Enable debt financing for equity IRR</span>
               </label>
             </div>
-            <div class="process-config disabled-group" id="financingConfig">
-              <div class="field-note compact-note">
-                When enabled, the headline IRR switches to sponsor equity IRR. Project NPV and project payback remain unlevered; debt here only funds upfront CAPEX, not future replacement CAPEX.
+            <div class="sidebar-summary">
+              <div class="sidebar-summary-row">
+                <span class="sidebar-summary-label">Headline return</span>
+                <span id="financingHeadlineValue" class="sidebar-summary-value highlight">Project IRR (unlevered)</span>
               </div>
+              <div class="sidebar-summary-row">
+                <span class="sidebar-summary-label">Debt scope</span>
+                <span id="financingScopeValue" class="sidebar-summary-value highlight">Debt disabled; project cash flows stay unlevered</span>
+              </div>
+              <div class="sidebar-summary-row">
+                <span class="sidebar-summary-label">Term cap</span>
+                <span id="financingTermCapValue" class="sidebar-summary-value highlight">Max 30 years from the analysis horizon</span>
+              </div>
+            </div>
+            <div class="field-note compact-note sidebar-callout">
+              When enabled, the headline IRR switches to sponsor equity IRR. Project NPV and payback remain unlevered, and debt only funds upfront CAPEX.
+            </div>
+            <div class="sidebar-subcard disabled-group" id="financingConfig">
+              <div class="sidebar-subcard-title">Debt assumptions</div>
               <label>Debt Share (% of upfront CAPEX)
                 <input type="range" id="debtShare" min="0" max="90" step="1" value="70">
                 <span class="range-value" id="debtShareValue">70%</span>
               </label>
-              <label>Debt Interest Rate (%)
+              <label>Interest Rate (%)
                 <input type="range" id="debtInterestRate" min="0" max="15" step="0.25" value="6.5">
                 <span class="range-value" id="debtInterestRateValue">6.50%</span>
               </label>
@@ -508,9 +523,6 @@
                 <input type="range" id="debtTermYears" min="1" max="30" step="1" value="15">
                 <span class="range-value" id="debtTermYearsValue">15 years</span>
               </label>
-              <div class="field-note compact-note" id="financingTermNote">
-                Debt term is capped by the selected analysis horizon.
-              </div>
               <label>Upfront Fee (% of debt)
                 <input type="range" id="debtFeePercent" min="0" max="5" step="0.25" value="1.5">
                 <span class="range-value" id="debtFeePercentValue">1.50%</span>
@@ -526,22 +538,47 @@
           <span class="icon">🔧</span> Maintenance &amp; Operations (M&amp;O)
           <span class="chevron">▾</span>
         </h2>
-        <div class="section-body">
-          <div class="field-note compact-note">
-            Annual fixed O&amp;M modeled as a percentage of installed CAPEX in each category (not land or site prep).
+        <div class="section-body maintenance-section-body">
+          <div class="sidebar-card">
+            <div class="sidebar-card-header">
+              <div class="sidebar-card-title">Fixed annual O&amp;M</div>
+              <div class="sidebar-card-subtitle">Apply simple operating cost rates by equipment category instead of modeling route-specific labor or utility overhead.</div>
+            </div>
+            <div class="sidebar-summary">
+              <div class="sidebar-summary-row">
+                <span class="sidebar-summary-label">Basis</span>
+                <span class="sidebar-summary-value highlight">Annual percent of installed CAPEX by category</span>
+              </div>
+              <div class="sidebar-summary-row">
+                <span class="sidebar-summary-label">Excluded</span>
+                <span class="sidebar-summary-value highlight">Land acquisition and site prep</span>
+              </div>
+            </div>
+            <div class="sidebar-subcard">
+              <div class="sidebar-subcard-title">Annual rates</div>
+              <label>Solar O&amp;M (%/year)
+                <input type="range" id="solarOmPercent" min="0.3" max="5" step="0.1" value="1.5">
+                <span class="range-value" id="solarOmPercentValue">1.5%/yr</span>
+              </label>
+              <div class="field-note compact-note">
+                Applies to solar modules and BOS only; excludes land and site prep.
+              </div>
+              <label>Process O&amp;M (%/year)
+                <input type="range" id="processOmPercent" min="0.5" max="8" step="0.1" value="3">
+                <span class="range-value" id="processOmPercentValue">3.0%/yr</span>
+              </label>
+              <div class="field-note compact-note">
+                Applies to electrolyzer, DAC, and downstream product equipment.
+              </div>
+              <label>Battery O&amp;M (%/year)
+                <input type="range" id="batteryOmPercent" min="0.3" max="5" step="0.1" value="1.5">
+                <span class="range-value" id="batteryOmPercentValue">1.5%/yr</span>
+              </label>
+              <div class="field-note compact-note">
+                Applies to battery CAPEX only.
+              </div>
+            </div>
           </div>
-          <label>Solar M&amp;O (% of module + BOS / year)
-            <input type="range" id="solarOmPercent" min="0.3" max="5" step="0.1" value="1.5">
-            <span class="range-value" id="solarOmPercentValue">1.5%/yr</span>
-          </label>
-          <label>Process M&amp;O (% of electrolyzer, DAC, and product equipment / year)
-            <input type="range" id="processOmPercent" min="0.5" max="8" step="0.1" value="3">
-            <span class="range-value" id="processOmPercentValue">3.0%/yr</span>
-          </label>
-          <label>Battery M&amp;O (% of battery CAPEX / year)
-            <input type="range" id="batteryOmPercent" min="0.3" max="5" step="0.1" value="1.5">
-            <span class="range-value" id="batteryOmPercentValue">1.5%/yr</span>
-          </label>
         </div>
       </section>
     </aside>

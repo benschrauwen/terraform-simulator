@@ -93,7 +93,8 @@ Object.assign(Calc, {
   simulateAnnualDispatchWithConstantAiLoad(state, annualSolar, loadKW) {
     const source = Array.isArray(annualSolar?.hourlyKW) ? annualSolar.hourlyKW : [];
     const hours = source.length;
-    const battCapKWh = state.batteryEnabled ? Math.max(0, (state.batteryCapacityMWh || 0) * 1000) : 0;
+    const batteryEnabled = this.hasBatteryStorage(state);
+    const battCapKWh = batteryEnabled ? Math.max(0, (state.batteryCapacityMWh || 0) * 1000) : 0;
     const rtEff = battCapKWh > 0 ? Math.max(0, Math.min(1, (state.batteryEfficiency || 0) / 100)) : 1;
     const chargeEff = battCapKWh > 0 ? Math.sqrt(Math.max(rtEff, 1e-9)) : 1;
     const dischargeEff = battCapKWh > 0 ? Math.sqrt(Math.max(rtEff, 1e-9)) : 1;
@@ -195,18 +196,19 @@ Object.assign(Calc, {
     const cyclesPerYear = this.getBodyConfig(state.body || 'earth').cyclesPerEarthYear;
     const hours = Array.isArray(annualSolar?.hourlyKW) ? annualSolar.hourlyKW.length : 0;
     const targetUtilization = Math.max(0.5, Math.min(0.99999, (state.aiReliabilityTarget || 99.9) / 100));
-    const batteryCapex = state.batteryEnabled ? Math.max(0, (state.batteryCapacityMWh || 0) * 1000 * (state.batteryCostPerKWh || 0)) : 0;
-    const batteryLifeYears = state.batteryEnabled
+    const batteryEnabled = this.hasBatteryStorage(state);
+    const batteryCapex = batteryEnabled ? Math.max(0, (state.batteryCapacityMWh || 0) * 1000 * (state.batteryCostPerKWh || 0)) : 0;
+    const batteryLifeYears = batteryEnabled
       ? Math.max(1, Math.min(MODEL_ASSUMPTIONS.batteryNominalLifeYears, (state.batteryCycles || 0) / Math.max(1, cyclesPerYear)))
       : 0;
     const disabledDispatch = this.simulateAnnualDispatchWithConstantAiLoad(state, annualSolar, 0);
 
     const makeBatterySummary = dispatch => ({
-      enabled: Boolean(state.batteryEnabled),
+      enabled: batteryEnabled,
       effectiveCF: dispatch.chemicalPeakKW > 0 ? dispatch.chemicalKWh / (dispatch.chemicalPeakKW * Math.max(hours, 1)) : 0,
       dailyOpHours: (dispatch.chemicalOpHours / Math.max(cyclesPerYear, 1)).toFixed(1),
       capex: batteryCapex,
-      battCapKWh: state.batteryEnabled ? (state.batteryCapacityMWh || 0) * 1000 : 0,
+      battCapKWh: batteryEnabled ? (state.batteryCapacityMWh || 0) * 1000 : 0,
       dailyAvailableKWh: dispatch.chemicalKWh / Math.max(cyclesPerYear, 1),
       hourlyProfile: dispatch.averageDayChemicalKW.reduce((sum, value) => sum + value, 0) > 0
         ? dispatch.averageDayChemicalKW.map(value => value / dispatch.averageDayChemicalKW.reduce((sum, current) => sum + current, 0))
@@ -215,9 +217,9 @@ Object.assign(Calc, {
       processPowerKW: dispatch.chemicalPeakKW,
       baseloadKW: dispatch.loadKW,
       clipKW: 0,
-      utilizedCapacityKWh: state.batteryEnabled ? (state.batteryCapacityMWh || 0) * 1000 : 0,
-      startBatteryKWh: state.batteryEnabled ? ((state.batteryCapacityMWh || 0) * 1000) * 0.5 : 0,
-      annualizedCapex: state.batteryEnabled ? batteryCapex * this.crf(state.discountRate / 100, batteryLifeYears) : 0,
+      utilizedCapacityKWh: batteryEnabled ? (state.batteryCapacityMWh || 0) * 1000 : 0,
+      startBatteryKWh: batteryEnabled ? ((state.batteryCapacityMWh || 0) * 1000) * 0.5 : 0,
+      annualizedCapex: batteryEnabled ? batteryCapex * this.crf(state.discountRate / 100, batteryLifeYears) : 0,
       lifetimeYears: batteryLifeYears,
       chargeThroughputKWh: dispatch.chargeThroughputKWh,
       dischargeThroughputKWh: dispatch.dischargeThroughputKWh,

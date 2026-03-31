@@ -57,6 +57,43 @@ Object.assign(Calc, {
     };
   },
 
+  buildFinancingModel(state, totalCapex) {
+    const enabled = Boolean(state.financingEnabled);
+    const debtSharePercent = enabled ? Math.max(0, Math.min(90, state.debtSharePercent || 0)) : 0;
+    const debtInterestRate = enabled ? Math.max(0, state.debtInterestRate || 0) : 0;
+    const debtTermYears = enabled
+      ? Math.max(1, Math.min(Math.round(state.analysisHorizonYears || 1), Math.round(state.debtTermYears || 1)))
+      : 0;
+    const upfrontFeePercent = enabled ? Math.max(0, state.debtFeePercent || 0) : 0;
+    const debtAmount = totalCapex * (debtSharePercent / 100);
+    const equityCapex = Math.max(0, totalCapex - debtAmount);
+    const upfrontFee = debtAmount * (upfrontFeePercent / 100);
+    const debtSchedule = this.buildDebtSchedule(
+      debtAmount,
+      debtInterestRate / 100,
+      debtTermYears,
+      state.analysisHorizonYears
+    );
+
+    return {
+      enabled,
+      debtSharePercent,
+      debtInterestRate,
+      debtTermYears,
+      upfrontFeePercent,
+      debtAmount,
+      equityCapex,
+      upfrontFee,
+      equityUpfront: equityCapex + upfrontFee,
+      annualDebtService: debtSchedule.annualDebtService,
+      totalInterest: debtSchedule.totalInterest,
+      totalPrincipal: debtSchedule.totalPrincipal,
+      totalDebtService: debtSchedule.totalDebtService,
+      byYear: debtSchedule.byYear,
+      schedule: debtSchedule.schedule,
+    };
+  },
+
   calculateEconomics(state, context) {
     const {
       solar, battery, ai, electrolyzer, dac, sabatier, methanol,
@@ -82,6 +119,7 @@ Object.assign(Calc, {
       solarSitePrep: solar.sitePrepCapex,
     };
     const totalCapex = Object.values(capex).reduce((sum, value) => sum + value, 0);
+    const financing = this.buildFinancingModel(state, totalCapex);
     const replacementSchedule = this.buildReplacementSchedule(state.analysisHorizonYears, [
       { key: 'solar', label: 'Solar', cost: capex.solar, lifeYears: state.solarAssetLife },
       { key: 'battery', label: 'Battery', cost: capex.battery, lifeYears: batteryLifeYears },
@@ -126,6 +164,7 @@ Object.assign(Calc, {
     const annualOperatingCashFlow = totalAnnualRevenue - annualOM;
     const yearlyCashFlows = [];
     let npv = -totalCapex;
+    let equityNpv = -financing.equityUpfront;
     for (let year = 1; year <= state.analysisHorizonYears; year++) {
       const degradationFactor = this.getSolarDegradationFactor(state.panelDegradationAnnual, year);
       const policyDurationFactor = this.getPolicyDurationFactor(policy, year);
@@ -141,6 +180,14 @@ Object.assign(Calc, {
       const replacementEvent = replacementSchedule.byYear[year];
       const replacementOutflow = replacementEvent ? replacementEvent.total : 0;
       const netCashFlow = operatingCashFlow - replacementOutflow;
+      const debtEntry = financing.byYear[year] || {
+        startingBalance: 0,
+        endingBalance: 0,
+        interest: 0,
+        principalPaid: 0,
+        debtService: 0,
+      };
+      const equityCashFlow = netCashFlow - debtEntry.debtService;
       const yearProfit = totalYearRevenue - annualCost;
       const cumulativeOperatingBefore = year === 1
         ? -totalCapex
@@ -150,6 +197,10 @@ Object.assign(Calc, {
         ? -totalCapex
         : yearlyCashFlows[yearlyCashFlows.length - 1].cumulativeNetCash;
       const cumulativeNetAfter = cumulativeNetBefore + netCashFlow;
+      const cumulativeEquityBefore = year === 1
+        ? -financing.equityUpfront
+        : yearlyCashFlows[yearlyCashFlows.length - 1].cumulativeEquityCash;
+      const cumulativeEquityAfter = cumulativeEquityBefore + equityCashFlow;
 
       yearlyCashFlows.push({
         year,
@@ -164,14 +215,23 @@ Object.assign(Calc, {
         netCashFlow,
         cumulativeOperatingCash: cumulativeOperatingAfter,
         cumulativeNetCash: cumulativeNetAfter,
+        debtStartingBalance: debtEntry.startingBalance,
+        debtEndingBalance: debtEntry.endingBalance,
+        debtInterest: debtEntry.interest,
+        debtPrincipal: debtEntry.principalPaid,
+        debtService: debtEntry.debtService,
+        equityCashFlow,
+        cumulativeEquityCash: cumulativeEquityAfter,
       });
 
       npv += netCashFlow / Math.pow(1 + rate, year);
+      equityNpv += equityCashFlow / Math.pow(1 + rate, year);
     }
 
     const cumulativeProfit = yearlyCashFlows.reduce((sum, entry) => sum + entry.annualProfit, 0);
     const cumulativeOperatingCashFlow = yearlyCashFlows.reduce((sum, entry) => sum + entry.operatingCashFlow, 0);
     const cumulativeNetCashFlow = yearlyCashFlows.reduce((sum, entry) => sum + entry.netCashFlow, 0);
+    const cumulativeEquityCashFlow = yearlyCashFlows.reduce((sum, entry) => sum + entry.equityCashFlow, 0);
     const averageAnnualRevenue = yearlyCashFlows.length > 0
       ? yearlyCashFlows.reduce((sum, entry) => sum + entry.totalRevenue, 0) / yearlyCashFlows.length
       : 0;
@@ -185,24 +245,30 @@ Object.assign(Calc, {
     const finalCumulativeNetCash = yearlyCashFlows.length > 0
       ? yearlyCashFlows[yearlyCashFlows.length - 1].cumulativeNetCash
       : -totalCapex;
-    let paybackYears = totalCapex <= 0 ? 0 : Infinity;
-    if (totalCapex > 0 && finalCumulativeNetCash >= 0) {
-      for (let i = 0; i < yearlyCashFlows.length; i++) {
-        const entry = yearlyCashFlows[i];
-        const cumulativeBefore = i === 0 ? -totalCapex : yearlyCashFlows[i - 1].cumulativeNetCash;
-        const staysPaidBack = yearlyCashFlows.slice(i).every(flow => flow.cumulativeNetCash >= -1e-6);
-        if (staysPaidBack && entry.netCashFlow > 0 && cumulativeBefore < 0 && entry.cumulativeNetCash >= 0) {
-          paybackYears = (entry.year - 1) + ((-cumulativeBefore) / entry.netCashFlow);
-          break;
-        }
-      }
-    }
+    const finalCumulativeEquityCash = yearlyCashFlows.length > 0
+      ? yearlyCashFlows[yearlyCashFlows.length - 1].cumulativeEquityCash
+      : -financing.equityUpfront;
+    const paybackYears = this.calculatePaybackYears(
+      totalCapex,
+      yearlyCashFlows.map(entry => entry.netCashFlow)
+    );
+    const equityPaybackYears = this.calculatePaybackYears(
+      financing.equityUpfront,
+      yearlyCashFlows.map(entry => entry.equityCashFlow)
+    );
     const roi = totalCapex > 0 ? (finalCumulativeNetCash / totalCapex) * 100 : 0;
 
-    const irr = this.approximateIRR([
+    const projectIrr = this.approximateIRR([
       -totalCapex,
       ...yearlyCashFlows.map(entry => entry.netCashFlow),
     ]);
+    const equityIrr = financing.enabled
+      ? this.approximateIRR([
+        -financing.equityUpfront,
+        ...yearlyCashFlows.map(entry => entry.equityCashFlow),
+      ])
+      : projectIrr;
+    const irr = financing.enabled ? equityIrr : projectIrr;
 
     const aiCoreAnnualCost = ai.enabled
       ? annualizedCapex.solar + annualizedCapex.battery + annualizedCapex.ai + solar.annualSolarOm + (battery.capex * batteryOmFrac) + (ai.annualOM || 0)
@@ -228,12 +294,19 @@ Object.assign(Calc, {
       finalYearAnnualProfit,
       cumulativeOperatingCashFlow,
       cumulativeNetCashFlow,
+      cumulativeEquityCashFlow,
       finalCumulativeNetCash,
+      finalCumulativeEquityCash,
       methaneSalePrice,
       policy,
+      financing,
       paybackYears,
+      equityPaybackYears,
       npv,
+      equityNpv,
       roi,
+      projectIrr,
+      equityIrr,
       irr,
       yearlyCashFlows,
       aiCoreAnnualCost,
@@ -276,13 +349,13 @@ Object.assign(Calc, {
     const cyclesPerYear = this.getBodyConfig(state.body || 'earth').cyclesPerEarthYear;
     const effectiveDailyKWh = ai.enabled
       ? ai.chemicalAnnualKWh / Math.max(cyclesPerYear, 1)
-      : (battery.enabled ? battery.dailyAvailableKWh : solar.dailyKWh);
+      : battery.dailyAvailableKWh;
     const effectivePeakKW = ai.enabled
       ? ai.chemicalPeakKW
-      : (battery.enabled ? Math.max(...battery.hourlyKW, 0) : solar.peakPowerKW);
+      : battery.processPowerKW;
     const opHours = ai.enabled
       ? ai.chemicalDailyOpHours
-      : parseFloat(battery.enabled ? battery.dailyOpHours : solar.sunHours);
+      : parseFloat(battery.dailyOpHours);
     const allocation = this.getBalancedAllocation(state);
     const reactorSizingPeakKW = effectivePeakKW;
 

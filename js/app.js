@@ -2,6 +2,33 @@
    App — Main controller, UI binding, charts
    ============================================ */
 
+/** Merge CAPEX segments under 2% of total into "Other" when there are many categories (reduces unreadable slivers). */
+function compactCapexChartData(labels, values, colors) {
+  const n = labels.length;
+  if (n <= 1) return { labels, values, colors };
+  const total = values.reduce((a, b) => a + b, 0);
+  if (total <= 0) return { labels, values, colors };
+  const minVal = total * 0.02;
+  const kept = [];
+  let other = 0;
+  for (let i = 0; i < n; i++) {
+    const v = values[i];
+    if (v < minVal && n >= 5) {
+      other += v;
+    } else {
+      kept.push({ label: labels[i], value: v, color: colors[i] });
+    }
+  }
+  if (other > 0) {
+    kept.push({ label: 'Other', value: other, color: '#64748b' });
+  }
+  return {
+    labels: kept.map(x => x.label),
+    values: kept.map(x => x.value),
+    colors: kept.map(x => x.color),
+  };
+}
+
 class App {
   constructor() {
     this.state = { ...DEFAULT_STATE };
@@ -25,6 +52,7 @@ class App {
     this.bindSectionToggles();
     this.bindMobilePaneControls();
     this.initSiteMap();
+    this.syncBatteryEnabledState();
     this.syncStateToControls();
     this.syncDynamicVisibility();
     this.syncDerivedFeedControls();
@@ -50,7 +78,7 @@ class App {
   getPowerChartLabels(r) {
     const count = r.solar.hourlyProfile.length;
     if (r.solar.chartLabelMode === 'days') {
-      return Array.from({ length: count }, (_, i) => `${((i * r.solar.cycleHours) / count / 24).toFixed(1)}d`);
+      return Array.from({ length: count }, (_, i) => `${FormatNumbers.fixed((i * r.solar.cycleHours) / count / 24, 1)}d`);
     }
 
     return Array.from({ length: count }, (_, i) => {
@@ -122,7 +150,7 @@ class App {
     LOCATION_PRESETS.forEach((loc, i) => {
       const opt = document.createElement('option');
       opt.value = i;
-      opt.textContent = `${loc.name} (${loc.baseYield} MWh/MWdc-yr)`;
+      opt.textContent = `${loc.name} (${FormatNumbers.fixed(loc.baseYield, 0)} MWh/MWdc-yr)`;
       sel.appendChild(opt);
     });
 
@@ -179,7 +207,7 @@ class App {
     const assetLifeControl = assetLifeKey ? `
       <label>Asset Life (years)
         <input type="range" id="${assetLifeKey}" min="3" max="20" step="1" value="${this.state[assetLifeKey]}">
-        <span class="range-value" id="${assetLifeKey}Value">${parseInt(this.state[assetLifeKey], 10)} years</span>
+        <span class="range-value" id="${assetLifeKey}Value">${FormatNumbers.fixed(parseInt(this.state[assetLifeKey], 10), 0)} years</span>
       </label>
     ` : '';
 
@@ -283,25 +311,23 @@ class App {
     });
 
     this.bindRange('systemSize', 'systemSizeMW', v => this.formatSystemSizeMW(v));
-    this.bindRange('panelEfficiency', 'panelEfficiency', v => `${parseFloat(v).toFixed(1)}%`);
-    this.bindRange('panelCost', 'panelCostPerW', v => `$${parseFloat(v).toFixed(2)}/W`);
-    this.bindRange('panelDegradationAnnual', 'panelDegradationAnnual', v => `${parseFloat(v).toFixed(2)}%/yr`);
+    this.bindRange('panelEfficiency', 'panelEfficiency', v => `${FormatNumbers.fixed(parseFloat(v), 1)}%`);
+    this.bindRange('panelCost', 'panelCostPerW', v => `$${FormatNumbers.fixed(parseFloat(v), 2)}/W`);
+    this.bindRange('panelDegradationAnnual', 'panelDegradationAnnual', v => `${FormatNumbers.fixed(parseFloat(v), 2)}%/yr`);
     this.on('mountingType', 'change', val => {
       this.state.mountingType = val;
       this.state.bosCostPerW = MOUNTING_TYPES[val].typicalBOS;
       this.syncStateToControls();
     });
-    this.bindRange('bosCost', 'bosCostPerW', v => `$${parseFloat(v).toFixed(2)}/W`);
+    this.bindRange('bosCost', 'bosCostPerW', v => `$${FormatNumbers.fixed(parseFloat(v), 2)}/W`);
     this.bindRange('landCost', 'landCostPerAcre', v => `$${Math.round(parseFloat(v)).toLocaleString()}/acre`);
     this.bindRange('sitePrepCost', 'sitePrepCostPerAcre', v => `$${Math.round(parseFloat(v)).toLocaleString()}/acre`);
 
-    this.on('batteryEnabled', 'change', (_, el) => {
-      this.state.batteryEnabled = el.checked;
-      document.getElementById('batteryConfig').classList.toggle('active', el.checked);
+    this.bindRange('batteryCapacity', 'batteryCapacityMWh', v => `${FormatNumbers.fixed(parseFloat(v), 1)} MWh`, () => {
+      this.syncBatteryEnabledState();
     });
-    this.bindRange('batteryCapacity', 'batteryCapacityMWh', v => `${parseFloat(v).toFixed(1)} MWh`);
-    this.bindRange('batteryCost', 'batteryCostPerKWh', v => `$${parseInt(v, 10)}/kWh`);
-    this.bindRange('batteryEfficiency', 'batteryEfficiency', v => `${parseInt(v, 10)}%`);
+    this.bindRange('batteryCost', 'batteryCostPerKWh', v => `$${FormatNumbers.fixed(parseInt(v, 10), 0)}/kWh`);
+    this.bindRange('batteryEfficiency', 'batteryEfficiency', v => `${FormatNumbers.fixed(parseInt(v, 10), 0)}%`);
     this.bindRange('batteryCycles', 'batteryCycles', v => parseInt(v, 10).toLocaleString());
 
     this.on('aiComputeEnabled', 'change', (_, el) => {
@@ -312,9 +338,9 @@ class App {
       this.state.aiReliabilityTarget = parseFloat(val);
     });
     this.bindRange('aiGpuCapexPerKW', 'aiGpuCapexPerKW', v => `$${Math.round(parseFloat(v)).toLocaleString()}/kW`);
-    this.bindRange('aiTokenPrice', 'aiTokenPricePerM', v => `$${parseFloat(v).toFixed(2)} / 1M tokens`);
+    this.bindRange('aiTokenPrice', 'aiTokenPricePerM', v => `$${FormatNumbers.fixed(parseFloat(v), 2)} / 1M tokens`);
     this.bindRange('aiTokensPerMWh', 'aiMillionTokensPerMWh', v => `${Math.round(parseFloat(v)).toLocaleString()} M tokens/MWh`);
-    this.bindRange('aiAssetLifeYears', 'aiAssetLifeYears', v => `${parseInt(v, 10)} years`);
+    this.bindRange('aiAssetLifeYears', 'aiAssetLifeYears', v => `${FormatNumbers.fixed(parseInt(v, 10), 0)} years`);
 
     this.bindModuleControls();
 
@@ -323,22 +349,31 @@ class App {
       this.state.methaneMarketPreset = val;
       this.syncDynamicVisibility();
     });
-    this.bindRange('methanePrice', 'methanePrice', v => `$${parseFloat(v).toFixed(2)}/MCF`);
-    this.bindRange('methanolPrice', 'methanolPrice', v => `$${parseInt(v, 10)}/ton`);
+    this.bindRange('methanePrice', 'methanePrice', v => `$${FormatNumbers.fixed(parseFloat(v), 2)}/MCF`);
+    this.bindRange('methanolPrice', 'methanolPrice', v => `$${FormatNumbers.fixed(parseInt(v, 10), 0)}/ton`);
 
     this.on('policyMode', 'change', val => {
       this.state.policyMode = val;
       this.syncDynamicVisibility();
     });
-    this.bindRange('customH2Credit', 'customH2Credit', v => `$${parseFloat(v).toFixed(2)}/kg`);
-    this.bindRange('customCo2Credit', 'customCo2Credit', v => `$${parseInt(v, 10)}/ton`);
-    this.bindRange('solarAssetLife', 'solarAssetLife', v => `${parseInt(v, 10)} years`);
-    this.bindRange('analysisHorizonYears', 'analysisHorizonYears', v => `${parseInt(v, 10)} years`);
-    this.bindRange('discountRate', 'discountRate', v => `${parseFloat(v).toFixed(1)}%`);
+    this.bindRange('customH2Credit', 'customH2Credit', v => `$${FormatNumbers.fixed(parseFloat(v), 2)}/kg`);
+    this.bindRange('customCo2Credit', 'customCo2Credit', v => `$${FormatNumbers.fixed(parseInt(v, 10), 0)}/ton`);
+    this.bindRange('solarAssetLife', 'solarAssetLife', v => `${FormatNumbers.fixed(parseInt(v, 10), 0)} years`);
+    this.bindRange('analysisHorizonYears', 'analysisHorizonYears', v => `${FormatNumbers.fixed(parseInt(v, 10), 0)} years`);
+    this.bindRange('discountRate', 'discountRate', v => `${FormatNumbers.fixed(parseFloat(v), 1)}%`);
+    this.on('financingEnabled', 'change', (_, el) => {
+      this.state.financingEnabled = el.checked;
+      document.getElementById('financingConfig').classList.toggle('active', el.checked);
+    });
+    this.bindRange('debtShare', 'debtSharePercent', v => `${FormatNumbers.fixed(parseInt(v, 10), 0)}%`);
+    this.bindRange('debtInterestRate', 'debtInterestRate', v => `${FormatNumbers.fixed(parseFloat(v), 2)}%`);
+    this.bindRange('debtTermYears', 'debtTermYears', v => `${FormatNumbers.fixed(parseInt(v, 10), 0)} years`);
+    this.bindRange('debtFeePercent', 'debtFeePercent', v => `${FormatNumbers.fixed(parseFloat(v), 2)}%`);
 
-    this.bindRange('solarOmPercent', 'solarOmPercent', v => `${parseFloat(v).toFixed(1)}%/yr`);
-    this.bindRange('processOmPercent', 'processOmPercent', v => `${parseFloat(v).toFixed(1)}%/yr`);
-    this.bindRange('batteryOmPercent', 'batteryOmPercent', v => `${parseFloat(v).toFixed(1)}%/yr`);
+    this.bindRange('solarOmPercent', 'solarOmPercent', v => `${FormatNumbers.fixed(parseFloat(v), 1)}%/yr`);
+    this.bindRange('processOmPercent', 'processOmPercent', v => `${FormatNumbers.fixed(parseFloat(v), 1)}%/yr`);
+    this.bindRange('batteryOmPercent', 'batteryOmPercent', v => `${FormatNumbers.fixed(parseFloat(v), 1)}%/yr`);
+    this.bindOptimizeButtons();
   }
 
   bindLoadConfigTabs() {
@@ -377,7 +412,7 @@ class App {
           this.bindRange(config.key, config.key, v => this.formatConfigValue(config.unit, v));
         });
         if (module.assetLifeKey) {
-          this.bindRange(module.assetLifeKey, module.assetLifeKey, v => `${parseInt(v, 10)} years`);
+          this.bindRange(module.assetLifeKey, module.assetLifeKey, v => `${FormatNumbers.fixed(parseInt(v, 10), 0)} years`);
         }
       } else {
         this.on(`${module.id}Route`, 'change', val => {
@@ -423,6 +458,183 @@ class App {
       this.syncDynamicVisibility();
       this.recalculate();
     });
+  }
+
+  bindOptimizeButtons() {
+    this.bindIrrOptimizerButton('optimizeBatteryCapacity', {
+      inputId: 'batteryCapacity',
+      stateKey: 'batteryCapacityMWh',
+      maxCoarseSamples: 257,
+      maxTopRegions: 5,
+    });
+    this.bindIrrOptimizerButton('optimizeMethaneFeedstockSplit', {
+      inputId: 'methaneFeedstockSplit',
+      stateKey: 'methaneFeedstockSplit',
+      maxCoarseSamples: 101,
+      maxTopRegions: 5,
+    });
+  }
+
+  bindIrrOptimizerButton(buttonId, options) {
+    const button = document.getElementById(buttonId);
+    if (!button) return;
+
+    button.addEventListener('click', async event => {
+      event.preventDefault();
+      if (button.disabled) return;
+
+      button.disabled = true;
+      try {
+        await new Promise(resolve => window.requestAnimationFrame(resolve));
+        const bestValue = this.findBestRangeValueForIrr(options);
+        if (!Number.isFinite(bestValue)) return;
+
+        const input = document.getElementById(options.inputId);
+        if (!input) return;
+
+        input.value = String(bestValue);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.focus();
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+
+  // Search the slider domain with a coarse sweep plus local refinement
+  // so IRR optimization stays responsive on wide ranges like battery capacity.
+  findBestRangeValueForIrr({ inputId, stateKey, maxCoarseSamples = 257, maxTopRegions = 5 }) {
+    const input = document.getElementById(inputId);
+    if (!input) return null;
+
+    const min = parseFloat(input.min);
+    const max = parseFloat(input.max);
+    const step = parseFloat(input.step) || 1;
+    if (![min, max, step].every(Number.isFinite) || step <= 0 || max < min) return null;
+
+    const totalSteps = Math.max(0, Math.round((max - min) / step));
+    const currentValue = this.snapRangeValue(parseFloat(input.value), min, max, step);
+    const currentIndex = Math.round((currentValue - min) / step);
+    const precision = this.getStepPrecision(step);
+    const cache = new Map();
+
+    const evaluate = value => {
+      const snappedValue = this.snapRangeValue(value, min, max, step);
+      const key = snappedValue.toFixed(precision);
+      if (cache.has(key)) return cache.get(key);
+
+      const result = {
+        value: snappedValue,
+        irr: Calc.calculateAll({ ...this.state, [stateKey]: snappedValue }).economics.irr,
+      };
+      result.finite = Number.isFinite(result.irr);
+      cache.set(key, result);
+      return result;
+    };
+
+    const evaluateIndex = index => evaluate(min + (index * step));
+    const currentResult = evaluate(currentValue);
+
+    if ((totalSteps + 1) <= maxCoarseSamples) {
+      for (let index = 0; index <= totalSteps; index++) {
+        evaluateIndex(index);
+      }
+    } else {
+      const coarseIndices = this.buildEvenlySpacedIndices(
+        totalSteps,
+        Math.min(maxCoarseSamples, totalSteps + 1)
+      );
+
+      coarseIndices.forEach(index => evaluateIndex(index));
+
+      const rankedIndices = coarseIndices
+        .map(index => ({ index, ...evaluateIndex(index) }))
+        .filter(entry => entry.finite)
+        .sort((a, b) => b.irr - a.irr);
+
+      const coarseSpacing = coarseIndices.length > 1
+        ? coarseIndices.slice(1).reduce((maxGap, index, i) => Math.max(maxGap, index - coarseIndices[i]), 1)
+        : totalSteps;
+
+      const regionSeeds = new Set([
+        currentIndex,
+        ...rankedIndices.slice(0, maxTopRegions).map(entry => entry.index),
+      ]);
+
+      const mergedRegions = this.mergeIndexRanges(
+        Array.from(regionSeeds).map(index => [
+          Math.max(0, index - coarseSpacing),
+          Math.min(totalSteps, index + coarseSpacing),
+        ])
+      );
+
+      mergedRegions.forEach(([start, end]) => {
+        for (let index = start; index <= end; index++) {
+          evaluateIndex(index);
+        }
+      });
+    }
+
+    const best = Array.from(cache.values())
+      .filter(entry => entry.finite)
+      .sort((a, b) => {
+        const irrDiff = b.irr - a.irr;
+        if (Math.abs(irrDiff) > 1e-9) return irrDiff;
+        return Math.abs(a.value - currentValue) - Math.abs(b.value - currentValue);
+      })[0];
+
+    if (!best) return null;
+    if (Number.isFinite(currentResult.irr) && best.irr <= (currentResult.irr + 1e-6)) return null;
+    return best.value;
+  }
+
+  buildEvenlySpacedIndices(totalSteps, targetCount) {
+    if (totalSteps <= 0) return [0];
+
+    const indices = new Set([0, totalSteps]);
+    const count = Math.max(2, Math.min(targetCount, totalSteps + 1));
+    for (let i = 0; i < count; i++) {
+      indices.add(Math.round((i * totalSteps) / (count - 1)));
+    }
+    return Array.from(indices).sort((a, b) => a - b);
+  }
+
+  mergeIndexRanges(ranges) {
+    if (!Array.isArray(ranges) || !ranges.length) return [];
+
+    const sorted = ranges
+      .map(([start, end]) => [Math.min(start, end), Math.max(start, end)])
+      .sort((a, b) => a[0] - b[0]);
+
+    return sorted.reduce((merged, [start, end]) => {
+      const last = merged[merged.length - 1];
+      if (!last || start > (last[1] + 1)) {
+        merged.push([start, end]);
+      } else {
+        last[1] = Math.max(last[1], end);
+      }
+      return merged;
+    }, []);
+  }
+
+  snapRangeValue(value, min, max, step) {
+    const precision = this.getStepPrecision(step);
+    const boundedValue = Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : min;
+    const snapped = min + (Math.round((boundedValue - min) / step) * step);
+    return Number(Math.max(min, Math.min(max, snapped)).toFixed(precision));
+  }
+
+  getStepPrecision(step) {
+    if (!Number.isFinite(step) || Number.isInteger(step)) return 0;
+    const normalized = step.toString().toLowerCase();
+    if (normalized.includes('e-')) {
+      return parseInt(normalized.split('e-')[1], 10);
+    }
+    return normalized.includes('.') ? normalized.split('.')[1].length : 0;
+  }
+
+  syncBatteryEnabledState() {
+    this.state.batteryEnabled = Number.isFinite(this.state.batteryCapacityMWh) && this.state.batteryCapacityMWh > 1e-9;
   }
 
   bindNumber(id, stateKey, extra) {
@@ -733,14 +945,14 @@ class App {
     if (!Number.isFinite(areaM2) || areaM2 <= 0) return '—';
 
     const acres = areaM2 / 4046.8564224;
-    if (acres >= 0.5) return `${acres.toFixed(1)} acres`;
-    if (areaM2 >= 1e6) return `${(areaM2 / 1e6).toFixed(2)} km2`;
+    if (acres >= 0.5) return `${FormatNumbers.fixed(acres, 1)} acres`;
+    if (areaM2 >= 1e6) return `${FormatNumbers.fixed(areaM2 / 1e6, 2)} km2`;
     return `${Math.round(areaM2).toLocaleString()} m2`;
   }
 
   formatDistance(meters) {
     if (!Number.isFinite(meters) || meters <= 0) return '—';
-    if (meters >= 1000) return `${(meters / 1000).toFixed(2)} km`;
+    if (meters >= 1000) return `${FormatNumbers.fixed(meters / 1000, 2)} km`;
     return `${Math.round(meters).toLocaleString()} m`;
   }
 
@@ -940,12 +1152,12 @@ class App {
   formatSystemSizeMW(v) {
     const mw = parseFloat(v);
     if (!Number.isFinite(mw)) return '—';
-    if (mw >= 1000) return `${(mw / 1000).toFixed(2)} GW`;
-    return `${mw.toFixed(1)} MW`;
+    if (mw >= 1000) return `${FormatNumbers.fixed(mw / 1000, 2)} GW`;
+    return `${FormatNumbers.fixed(mw, 1)} MW`;
   }
 
   syncStateToControls() {
-    const checkboxIds = ['batteryEnabled', 'aiComputeEnabled'];
+    const checkboxIds = ['aiComputeEnabled', 'financingEnabled'];
     checkboxIds.forEach(id => {
       const el = document.getElementById(id);
       if (el) el.checked = Boolean(this.state[id]);
@@ -995,8 +1207,8 @@ class App {
       if (routeEl && this.state[`${module.id}Route`]) routeEl.value = this.state[`${module.id}Route`];
     });
 
-    document.getElementById('batteryConfig').classList.toggle('active', this.state.batteryEnabled);
     document.getElementById('aiComputeConfig').classList.toggle('active', this.state.aiComputeEnabled);
+    document.getElementById('financingConfig').classList.toggle('active', this.state.financingEnabled);
     this.syncLoadConfigTabs();
   }
 
@@ -1009,7 +1221,7 @@ class App {
   formatMethaneFeedstockSplit(value) {
     const methaneShare = Math.max(0, Math.min(100, parseFloat(value)));
     const methanolShare = Math.max(0, 100 - methaneShare);
-    return `${methaneShare.toFixed(0)}% methane / ${methanolShare.toFixed(0)}% methanol`;
+    return `${FormatNumbers.fixed(methaneShare, 0)}% methane / ${FormatNumbers.fixed(methanolShare, 0)}% methanol`;
   }
 
   syncDynamicVisibility() {
@@ -1060,6 +1272,20 @@ class App {
       const isUsPolicy = String(this.state.policyMode || '').startsWith('us_');
       usPolicyFootnotes.style.display = isUsPolicy ? '' : 'none';
     }
+
+    const debtTermInput = document.getElementById('debtTermYears');
+    if (debtTermInput) {
+      const horizonYears = Math.max(1, Math.round(this.state.analysisHorizonYears || 1));
+      this.state.debtTermYears = Math.max(1, Math.min(Math.round(this.state.debtTermYears || 1), horizonYears));
+      debtTermInput.max = String(horizonYears);
+      debtTermInput.value = String(this.state.debtTermYears);
+      this.syncRangeDisplay('debtTermYears', this.state.debtTermYears);
+
+      const financingTermNote = document.getElementById('financingTermNote');
+      if (financingTermNote) {
+        financingTermNote.textContent = `Debt term is capped by the selected ${FormatNumbers.fixed(horizonYears, 0)}-year analysis horizon.`;
+      }
+    }
   }
 
   syncDerivedFeedControls() {
@@ -1091,12 +1317,13 @@ class App {
           : allocation.label === 'default methane case'
             ? 'Default case'
             : allocation.label[0].toUpperCase() + allocation.label.slice(1);
-        el.textContent = `${basis} · ${pct.toFixed(1)}% of power`;
+        el.textContent = `${basis} · ${FormatNumbers.fixed(pct, 1)}% of power`;
       }
     });
   }
 
   recalculate() {
+    this.syncBatteryEnabledState();
     this.syncPlanetaryUI();
     this.syncDerivedFeedControls();
     const r = Calc.calculateAll(this.state);
@@ -1111,18 +1338,18 @@ class App {
     this.updatePowerChart(r);
     this.updateAnnualDispatchChart(r);
     this.updateEconChart(r);
-    this.updateSensitivityChart();
+    this.updateSensitivityChart(r);
     this.updateImpact(r);
   }
 
   updateInfoDisplays(r) {
-    document.getElementById('ghiValue').textContent = `${r.solar.ghi} kWh/m²/yr`;
-    document.getElementById('sunHoursValue').textContent = `${r.solar.sunHours} ${r.solar.hoursPerCycleLabel}`;
+    document.getElementById('ghiValue').textContent = `${FormatNumbers.fixed(r.solar.ghi, 0)} kWh/m²/yr`;
+    document.getElementById('sunHoursValue').textContent = `${FormatNumbers.fixed(r.solar.sunHours, 1)} ${r.solar.hoursPerCycleLabel}`;
     document.getElementById('yieldSourceValue').textContent = r.solar.yieldSource;
-    document.getElementById('baseYieldValue').textContent = `${r.solar.baseYield.toFixed(0)} MWh/MWdc-yr`;
-    document.getElementById('annualProduction').textContent = `${r.solar.annualMWh.toFixed(0)} MWh`;
-    document.getElementById('capacityFactor').textContent = `${(r.solar.capacityFactor * 100).toFixed(1)}%`;
-    document.getElementById('lcoe').textContent = `$${r.solar.lcoe.toFixed(2)}/MWh`;
+    document.getElementById('baseYieldValue').textContent = `${FormatNumbers.fixed(r.solar.baseYield, 0)} MWh/MWdc-yr`;
+    document.getElementById('annualProduction').textContent = `${FormatNumbers.fixed(r.solar.annualMWh, 0)} MWh`;
+    document.getElementById('capacityFactor').textContent = `${FormatNumbers.fixed(r.solar.capacityFactor * 100, 1)}%`;
+    document.getElementById('lcoe').textContent = `$${FormatNumbers.fixed(r.solar.lcoe, 2)}/MWh`;
     const solarInstallCapex = document.getElementById('solarInstallCapex');
     if (solarInstallCapex) {
       solarInstallCapex.textContent = this.formatMoney(r.solar.totalSolarCapex);
@@ -1140,8 +1367,8 @@ class App {
     const displayedHours = r.ai.enabled
       ? r.ai.chemicalDailyOpHours
       : (r.battery.enabled ? r.battery.dailyOpHours : r.solar.sunHours);
-    document.getElementById('effectiveCF').textContent = `${(displayedCf * 100).toFixed(1)}%`;
-    document.getElementById('dailyOpHours').textContent = `${parseFloat(displayedHours).toFixed(1)} hrs`;
+    document.getElementById('effectiveCF').textContent = `${FormatNumbers.fixed(displayedCf * 100, 1)}%`;
+    document.getElementById('dailyOpHours').textContent = `${FormatNumbers.fixed(parseFloat(displayedHours), 1)} hrs`;
 
     const aiDesignLoadValue = document.getElementById('aiDesignLoadValue');
     const aiUtilizationValue = document.getElementById('aiUtilizationValue');
@@ -1151,20 +1378,20 @@ class App {
       aiDesignLoadValue.textContent = r.ai.enabled ? this.formatSystemSizeMW(r.ai.designLoadKW / 1000) : 'Off';
     }
     if (aiUtilizationValue) {
-      aiUtilizationValue.textContent = r.ai.enabled ? `${(r.ai.utilization * 100).toFixed(2)}%` : '—';
+      aiUtilizationValue.textContent = r.ai.enabled ? `${FormatNumbers.fixed(r.ai.utilization * 100, 2)}%` : '—';
     }
     if (aiFullRateValue) {
-      aiFullRateValue.textContent = r.ai.enabled ? `${(r.ai.fullPowerReliability * 100).toFixed(2)}%` : '—';
+      aiFullRateValue.textContent = r.ai.enabled ? `${FormatNumbers.fixed(r.ai.fullPowerReliability * 100, 2)}%` : '—';
     }
     if (aiTokensAnnualValue) {
-      aiTokensAnnualValue.textContent = r.ai.enabled ? `${(r.ai.annualTokensM / 1000).toFixed(2)}B` : '—';
+      aiTokensAnnualValue.textContent = r.ai.enabled ? `${FormatNumbers.fixed(r.ai.annualTokensM / 1000, 2)}B` : '—';
     }
 
     const geo = r.solar.solarGeo;
     if (geo) {
       document.getElementById('sunriseTime').textContent = SolarGeometry.hoursToDisplayString(geo.sunrise, r.solar.cycleHours);
       document.getElementById('sunsetTime').textContent = SolarGeometry.hoursToDisplayString(geo.sunset, r.solar.cycleHours);
-      document.getElementById('dayLength').textContent = `${geo.dayLengthHours.toFixed(1)} hrs`;
+      document.getElementById('dayLength').textContent = `${FormatNumbers.fixed(geo.dayLengthHours, 1)} hrs`;
     }
   }
 
@@ -1172,7 +1399,9 @@ class App {
     const e = r.economics;
     document.getElementById('metricCapex').textContent = this.formatMoney(e.totalCapex);
     document.getElementById('metricRevenue').textContent = `${this.formatMoney(e.totalAnnualRevenue)}/yr`;
-    document.getElementById('metricPayback').textContent = Number.isFinite(e.paybackYears) ? `${e.paybackYears.toFixed(1)} yrs` : 'No payback';
+    document.getElementById('metricPayback').textContent = Number.isFinite(e.paybackYears) ? `${FormatNumbers.fixed(e.paybackYears, 1)} yrs` : 'No payback';
+    const irrLabel = document.getElementById('metricIrrLabel');
+    if (irrLabel) irrLabel.textContent = e.financing.enabled ? 'Equity IRR' : 'IRR';
     document.getElementById('metricIRR').textContent = this.formatIrr(e.irr);
 
     const viability = document.getElementById('metricViability');
@@ -1227,7 +1456,7 @@ class App {
     const arc = document.getElementById('scoreArc');
     arc.setAttribute('stroke-dashoffset', offset);
     arc.setAttribute('stroke', score >= 70 ? '#7ea96d' : score >= 40 ? '#c79a48' : '#c77379');
-    document.getElementById('scoreNumber').textContent = score;
+    document.getElementById('scoreNumber').textContent = FormatNumbers.fixed(score, 0);
     document.getElementById('scoreBadges').innerHTML = badges.slice(0, 4)
       .map(badge => `<span class="badge ${badge.cls}">${badge.text}</span>`)
       .join('');
@@ -1311,28 +1540,28 @@ class App {
       ? (cycleUnit === 'day' ? 'Flexible Chem Energy' : 'Flexible Chem Cycle Energy')
       : (cycleUnit === 'day' ? 'Daily Energy' : 'Cycle Energy');
     const rows = [
-      this.prodItem('solar', '☀️', 'Electricity', `${r.solar.annualMWh.toFixed(0)}`, 'MWh/yr'),
-      this.prodItem('electric', '⚡', cycleEnergyLabel, `${r.effectiveDailyKWh.toFixed(0)}`, `kWh/${cycleUnit}`),
+      this.prodItem('solar', '☀️', 'Electricity', `${FormatNumbers.fixed(r.solar.annualMWh, 0)}`, 'MWh/yr'),
+      this.prodItem('electric', '⚡', cycleEnergyLabel, `${FormatNumbers.fixed(r.effectiveDailyKWh, 0)}`, `kWh/${cycleUnit}`),
     ];
 
     if (r.ai.enabled) {
-      rows.push(this.prodItem('electric', '🖥️', 'AI Load', this.formatSystemSizeMW(r.ai.designLoadKW / 1000), `${r.ai.reliabilityTarget.toFixed(2)}% target`));
-      rows.push(this.prodItem('electric', '🧠', 'AI Tokens', `${(r.ai.annualTokensM / 1000).toFixed(2)}`, 'B/yr'));
-      rows.push(this.prodItem('battery', '⏱️', 'AI Utilization', `${(r.ai.utilization * 100).toFixed(2)}`, '%'));
-      rows.push(this.prodItem('battery', '♻️', 'Residual Chem Energy', `${(r.ai.chemicalAnnualKWh / 1000).toFixed(0)}`, 'MWh/yr'));
+      rows.push(this.prodItem('electric', '🖥️', 'AI Load', this.formatSystemSizeMW(r.ai.designLoadKW / 1000), `${FormatNumbers.fixed(r.ai.reliabilityTarget, 2)}% target`));
+      rows.push(this.prodItem('electric', '🧠', 'AI Tokens', `${FormatNumbers.fixed(r.ai.annualTokensM / 1000, 2)}`, 'B/yr'));
+      rows.push(this.prodItem('battery', '⏱️', 'AI Utilization', `${FormatNumbers.fixed(r.ai.utilization * 100, 2)}`, '%'));
+      rows.push(this.prodItem('battery', '♻️', 'Residual Chem Energy', `${FormatNumbers.fixed(r.ai.chemicalAnnualKWh / 1000, 0)}`, 'MWh/yr'));
     }
 
-    rows.push(this.prodItem('h2', '💧', 'Hydrogen', `${r.electrolyzer.h2DailyKg.toFixed(1)}`, `kg/${cycleUnit}`));
-    rows.push(this.prodItem('co2', '🌬️', 'CO₂ Captured', `${r.dac.co2DailyKg.toFixed(1)}`, `kg/${cycleUnit}`));
+    rows.push(this.prodItem('h2', '💧', 'Hydrogen', `${FormatNumbers.fixed(r.electrolyzer.h2DailyKg, 1)}`, `kg/${cycleUnit}`));
+    rows.push(this.prodItem('co2', '🌬️', 'CO₂ Captured', `${FormatNumbers.fixed(r.dac.co2DailyKg, 1)}`, `kg/${cycleUnit}`));
 
     if (r.sabatier.enabled) {
-      rows.push(this.prodItem('ch4', '🔥', 'Methane', `${r.sabatier.ch4DailyMCF.toFixed(2)}`, `MCF/${cycleUnit}`));
+      rows.push(this.prodItem('ch4', '🔥', 'Methane', `${FormatNumbers.fixed(r.sabatier.ch4DailyMCF, 2)}`, `MCF/${cycleUnit}`));
     }
     if (r.methanol.enabled) {
-      rows.push(this.prodItem('fuel', '🧪', 'Methanol', `${r.methanol.dailyLiters.toFixed(1)}`, `L/${cycleUnit}`));
+      rows.push(this.prodItem('fuel', '🧪', 'Methanol', `${FormatNumbers.fixed(r.methanol.dailyLiters, 1)}`, `L/${cycleUnit}`));
     }
-    if (r.h2Surplus > 0.1) rows.push(this.prodItem('h2', '💨', 'Unused H₂', `${r.h2Surplus.toFixed(1)}`, `kg/${cycleUnit}`));
-    if (r.co2Surplus > 0.1) rows.push(this.prodItem('co2', '☁️', 'CO₂ Surplus', `${r.co2Surplus.toFixed(1)}`, `kg/${cycleUnit}`));
+    if (r.h2Surplus > 0.1) rows.push(this.prodItem('h2', '💨', 'Unused H₂', `${FormatNumbers.fixed(r.h2Surplus, 1)}`, `kg/${cycleUnit}`));
+    if (r.co2Surplus > 0.1) rows.push(this.prodItem('co2', '☁️', 'CO₂ Surplus', `${FormatNumbers.fixed(r.co2Surplus, 1)}`, `kg/${cycleUnit}`));
 
     document.getElementById('productionGrid').innerHTML = rows.join('');
   }
@@ -1364,12 +1593,34 @@ class App {
     if (e.capex.methanol > 0) html += this.econRow('Methanol reactor', this.formatMoney(e.capex.methanol));
     html += this.econRow('Total CAPEX', this.formatMoney(e.totalCapex), 'total');
 
+    if (e.financing.enabled) {
+      html += this.econRow('Financing', '', 'header');
+      html += this.econRow('Debt share', `${FormatNumbers.fixed(e.financing.debtSharePercent, 0)}% of upfront CAPEX`);
+      html += this.econRow('Debt-funded at close', this.formatMoney(e.financing.debtAmount), 'positive');
+      html += this.econRow('Equity-funded CAPEX', this.formatMoney(e.financing.equityCapex), 'negative');
+      if (e.financing.upfrontFee > 0) {
+        html += this.econRow('Upfront financing fee', this.formatMoney(e.financing.upfrontFee), 'negative');
+      }
+      html += this.econRow('Total sponsor cash at close', this.formatMoney(e.financing.equityUpfront), 'negative');
+      html += this.econRow('Debt coupon', `${FormatNumbers.fixed(e.financing.debtInterestRate, 2)}%`);
+      html += this.econRow('Debt term', `${FormatNumbers.fixed(e.financing.debtTermYears, 0)} years`);
+      if (e.financing.totalDebtService > 0) {
+        html += this.econRow(
+          'Annual debt service',
+          this.formatMoney(e.financing.annualDebtService),
+          'negative',
+          'Modeled as a level-payment amortizing loan over the selected debt term.'
+        );
+        html += this.econRow('Total debt interest', this.formatMoney(e.financing.totalInterest), 'negative');
+      }
+    }
+
     html += this.econRow('Levelized annual cost (CRF)', '', 'header');
     html += this.econRow(
       'Capital recovery',
       this.formatMoney(e.annualizedCapexTotal),
       'negative',
-      `Upfront CAPEX x capital recovery factor at ${this.state.discountRate}% and each asset's book life. This is the economic annual capital charge, not straight-line depreciation.`
+      `Upfront CAPEX x capital recovery factor at ${FormatNumbers.fixed(this.state.discountRate, 1)}% and each asset's book life. This is the economic annual capital charge, not straight-line depreciation.`
     );
     if (r.ai.enabled && r.ai.annualOM > 0) {
       html += this.econRow('AI fixed O&M', this.formatMoney(r.ai.annualOM), 'negative');
@@ -1379,22 +1630,22 @@ class App {
 
     html += this.econRow('Revenue', '', 'header');
     if (e.revenue.ai > 0) {
-      html += this.econRow('AI token price', `$${this.state.aiTokenPricePerM.toFixed(2)} / 1M tokens`);
+      html += this.econRow('AI token price', `$${FormatNumbers.fixed(this.state.aiTokenPricePerM, 2)} / 1M tokens`);
       html += this.econRow('AI throughput', `${Math.round(this.state.aiMillionTokensPerMWh).toLocaleString()} M tokens/MWh`);
-      html += this.econRow('AI tokens sold', `${(r.ai.annualTokensM / 1000).toFixed(2)}B /yr`);
+      html += this.econRow('AI tokens sold', `${FormatNumbers.fixed(r.ai.annualTokensM / 1000, 2)}B /yr`);
       html += this.econRow('AI token revenue', this.formatMoney(e.revenue.ai), 'positive');
     }
     if (e.revenue.methane > 0) {
       html += this.econRow('Methane market scope', methaneMarket.applicability);
       html += this.econRow('Methane market basis', methaneMarket.label);
     }
-    if (e.revenue.methane > 0) html += this.econRow(`Methane @ $${e.methaneSalePrice.toFixed(2)}/MCF`, this.formatMoney(e.revenue.methane), 'positive');
+    if (e.revenue.methane > 0) html += this.econRow(`Methane @ $${FormatNumbers.fixed(e.methaneSalePrice, 2)}/MCF`, this.formatMoney(e.revenue.methane), 'positive');
     if (e.revenue.methanol > 0) html += this.econRow('Methanol sales', this.formatMoney(e.revenue.methanol), 'positive');
     if (e.policy.mode !== 'none') {
       html += this.econRow('Policy scope', e.policy.applicability);
       html += this.econRow('Policy basis', e.policy.basis);
       if (Number.isFinite(e.policy.durationYears)) {
-        html += this.econRow('Policy duration', `${e.policy.durationYears} years`);
+        html += this.econRow('Policy duration', `${FormatNumbers.fixed(e.policy.durationYears, 0)} years`);
       }
       if (e.policy.co2Credit > 0) {
         const co2Basis = e.policy.mode === 'us_45q_sequestration'
@@ -1402,7 +1653,7 @@ class App {
           : e.policy.mode === 'us_45q_utilization'
             ? 'Eligible utilized CO₂'
             : 'Eligible CO₂';
-        html += this.econRow(co2Basis, `${e.policy.eligibleCo2Tons.toFixed(1)} tons/yr`);
+        html += this.econRow(co2Basis, `${FormatNumbers.fixed(e.policy.eligibleCo2Tons, 1)} tons/yr`);
       }
     }
     if (e.revenue.policyCredits > 0) html += this.econRow(e.policy.label, this.formatMoney(e.revenue.policyCredits), 'positive');
@@ -1411,14 +1662,17 @@ class App {
     if (r.h2Surplus > 0.1 || r.co2Surplus > 0.1) {
       html += this.econRow('Losses / Unused Output', '', 'header');
       if (r.h2Surplus > 0.1) {
-        html += this.econRow('Unused H₂', `${r.h2Surplus.toFixed(1)} kg/${this.getCycleRateUnit(r)}`);
+        html += this.econRow('Unused H₂', `${FormatNumbers.fixed(r.h2Surplus, 1)} kg/${this.getCycleRateUnit(r)}`);
       }
       if (r.co2Surplus > 0.1) {
-        html += this.econRow('Unused CO₂', `${r.co2Surplus.toFixed(1)} kg/${this.getCycleRateUnit(r)}`);
+        html += this.econRow('Unused CO₂', `${FormatNumbers.fixed(r.co2Surplus, 1)} kg/${this.getCycleRateUnit(r)}`);
       }
     }
 
     html += this.econRow('Key Metrics', '', 'header');
+    const projectNpvLabel = e.financing.enabled ? 'Project NPV' : 'NPV';
+    const projectIrrLabel = e.financing.enabled ? 'Project IRR' : 'IRR';
+    const projectPaybackLabel = e.financing.enabled ? 'Project Payback' : 'Payback';
     html += this.econRow(
       'Annual profit (levelized)',
       this.formatMoney(e.annualProfit),
@@ -1426,23 +1680,39 @@ class App {
       'Revenue minus total levelized annual cost (capital recovery + O&M).'
     );
     html += this.econRow(
-      'NPV',
+      projectNpvLabel,
       this.formatMoney(e.npv),
       e.npv >= 0 ? 'positive' : 'negative',
       'Discounted cash flows: -upfront CAPEX in year 0, then yearly revenue minus O&M and any scheduled replacement CAPEX. CRF capital recovery is not repeated as a cash outflow.'
     );
     html += this.econRow(
-      'IRR',
-      this.formatIrr(e.irr),
-      Number.isFinite(e.irr) ? (e.irr >= 0 ? 'positive' : 'negative') : '',
+      projectIrrLabel,
+      this.formatIrr(e.projectIrr),
+      Number.isFinite(e.projectIrr) ? (e.projectIrr >= 0 ? 'positive' : 'negative') : '',
       'Internal rate of return on the same net-cash path as NPV after O&M and scheduled replacements.'
     );
+    if (e.financing.enabled) {
+      html += this.econRow(
+        'Equity IRR',
+        this.formatIrr(e.equityIrr),
+        Number.isFinite(e.equityIrr) ? (e.equityIrr >= 0 ? 'positive' : 'negative') : '',
+        'IRR on sponsor equity cash flows: upfront equity plus financing fees in year 0, then project net cash after scheduled debt service.'
+      );
+    }
     html += this.econRow(
-      'Payback',
-      Number.isFinite(e.paybackYears) ? `${e.paybackYears.toFixed(1)} years` : 'N/A',
+      projectPaybackLabel,
+      Number.isFinite(e.paybackYears) ? `${FormatNumbers.fixed(e.paybackYears, 1)} years` : 'N/A',
       '',
       'Simple payback on cumulative net cash versus upfront CAPEX. It is only shown if the project stays cash-positive through the selected horizon.'
     );
+    if (e.financing.enabled) {
+      html += this.econRow(
+        'Equity payback',
+        Number.isFinite(e.equityPaybackYears) ? `${FormatNumbers.fixed(e.equityPaybackYears, 1)} years` : 'N/A',
+        '',
+        'Simple payback on cumulative sponsor equity cash after scheduled debt service.'
+      );
+    }
     if (e.totalReplacementOutflows > 0) {
       html += this.econRow(
         'Scheduled replacements',
@@ -1454,14 +1724,14 @@ class App {
 
     if (r.ai.enabled) {
       html += this.econRow('AI load auto-sized', this.formatSystemSizeMW(r.ai.designLoadKW / 1000));
-      html += this.econRow('Delivered AI utilization', `${(r.ai.utilization * 100).toFixed(2)}%`);
-      html += this.econRow('Full-rate reliability', `${(r.ai.fullPowerReliability * 100).toFixed(2)}%`);
-      html += this.econRow('Integrated AI cost', `$${e.costPerMToken.toFixed(2)} / 1M tokens`);
-      html += this.econRow('Token margin', `${e.tokenMarginPerM >= 0 ? '+' : ''}$${e.tokenMarginPerM.toFixed(2)} / 1M`, e.tokenMarginPerM >= 0 ? 'positive' : 'negative');
+      html += this.econRow('Delivered AI utilization', `${FormatNumbers.fixed(r.ai.utilization * 100, 2)}%`);
+      html += this.econRow('Full-rate reliability', `${FormatNumbers.fixed(r.ai.fullPowerReliability * 100, 2)}%`);
+      html += this.econRow('Integrated AI cost', `$${FormatNumbers.fixed(e.costPerMToken, 2)} / 1M tokens`);
+      html += this.econRow('Token margin', `${e.tokenMarginPerM >= 0 ? '+' : ''}$${FormatNumbers.fixed(e.tokenMarginPerM, 2)} / 1M`, e.tokenMarginPerM >= 0 ? 'positive' : 'negative');
     }
-    if (e.costPerKgH2 > 0) html += this.econRow('Integrated H₂ cost', `$${e.costPerKgH2.toFixed(2)}/kg`);
-    if (e.costPerTonCO2 > 0) html += this.econRow('Integrated CO₂ cost', `$${e.costPerTonCO2.toFixed(0)}/ton`);
-    if (e.costPerMCF > 0) html += this.econRow('Integrated CH₄ cost', `$${e.costPerMCF.toFixed(2)}/MCF`);
+    if (e.costPerKgH2 > 0) html += this.econRow('Integrated H₂ cost', `$${FormatNumbers.fixed(e.costPerKgH2, 2)}/kg`);
+    if (e.costPerTonCO2 > 0) html += this.econRow('Integrated CO₂ cost', `$${FormatNumbers.fixed(e.costPerTonCO2, 0)}/ton`);
+    if (e.costPerMCF > 0) html += this.econRow('Integrated CH₄ cost', `$${FormatNumbers.fixed(e.costPerMCF, 2)}/MCF`);
 
     if (e.excludedModules.length) {
       html += this.econRow('Excluded from ROI', '', 'header');
@@ -1485,12 +1755,12 @@ class App {
     const cycleUnit = this.getCycleRateUnit(r);
     const env = r.environmental;
     const html = [
-      this.prodItem('co2', '🌍', 'CO₂ Captured', `${env.co2Captured.toFixed(1)}`, 'tons/yr'),
-      this.prodItem('ch4', '♻️', 'CO₂ Displaced', `${env.co2Displaced.toFixed(1)}`, 'tons/yr'),
-      this.prodItem('solar', '📐', 'Land Use', `${env.landAcres.toFixed(1)}`, 'acres'),
-      this.prodItem('ch4', '🏠', 'Homes Served', `${env.homesServed.toFixed(0)}`, 'homes'),
-      this.prodItem('h2', '♻️', 'Water Recycled', `${env.waterRecycledDaily.toFixed(0)}`, `L/${cycleUnit}`),
-      this.prodItem('h2', '💧', 'Net Water Needed', `${env.netWaterDaily.toFixed(0)}`, `L/${cycleUnit}`),
+      this.prodItem('co2', '🌍', 'CO₂ Captured', `${FormatNumbers.fixed(env.co2Captured, 1)}`, 'tons/yr'),
+      this.prodItem('ch4', '♻️', 'CO₂ Displaced', `${FormatNumbers.fixed(env.co2Displaced, 1)}`, 'tons/yr'),
+      this.prodItem('solar', '📐', 'Land Use', `${FormatNumbers.fixed(env.landAcres, 1)}`, 'acres'),
+      this.prodItem('ch4', '🏠', 'Homes Served', `${FormatNumbers.fixed(env.homesServed, 0)}`, 'homes'),
+      this.prodItem('h2', '♻️', 'Water Recycled', `${FormatNumbers.fixed(env.waterRecycledDaily, 0)}`, `L/${cycleUnit}`),
+      this.prodItem('h2', '💧', 'Net Water Needed', `${FormatNumbers.fixed(env.netWaterDaily, 0)}`, `L/${cycleUnit}`),
     ];
     document.getElementById('impactGrid').innerHTML = html.join('');
   }
@@ -1656,6 +1926,16 @@ class App {
           maintainAspectRatio: false,
           plugins: {
             legend: { labels: { color: '#94a3b8', font: { size: 10 } } },
+            tooltip: {
+              callbacks: {
+                label(ctx) {
+                  const y = ctx.parsed.y;
+                  if (!Number.isFinite(y)) return ctx.dataset.label;
+                  const dec = Math.abs(y) >= 100 ? 0 : 1;
+                  return `${ctx.dataset.label}: ${FormatNumbers.fixed(y, dec)}`;
+                },
+              },
+            },
           },
           scales: {
             x: {
@@ -1668,7 +1948,16 @@ class App {
                 font: { size: 10 },
               },
             },
-            y: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: '#1e293b' }, beginAtZero: true, title: { display: true, text: 'kW', color: '#64748b', font: { size: 10 } } },
+            y: {
+              ticks: {
+                color: '#64748b',
+                font: { size: 9 },
+                callback: v => FormatNumbers.fixed(v, Math.abs(v) >= 1000 ? 0 : 1),
+              },
+              grid: { color: '#1e293b' },
+              beginAtZero: true,
+              title: { display: true, text: 'kW', color: '#64748b', font: { size: 10 } },
+            },
           },
         },
       });
@@ -1683,7 +1972,12 @@ class App {
   }
 
   updateAnnualDispatchChart(r) {
-    const labels = r.annualDispatch?.dayLabels || [];
+    const rawDayLabels = r.annualDispatch?.dayLabels || [];
+    const labels = rawDayLabels.map(label => {
+      const match = /^Day (\d+)$/.exec(String(label));
+      if (match) return `Day ${FormatNumbers.fixed(parseInt(match[1], 10), 0)}`;
+      return label;
+    });
     const aiSeries = (r.annualDispatch?.dailyAiKWh || []).map(value => value / 1000);
     const chemicalSeries = (r.annualDispatch?.dailyChemicalKWh || []).map(value => value / 1000);
     const annualDispatchNote = document.getElementById('annualDispatchNote');
@@ -1733,6 +2027,15 @@ class App {
           maintainAspectRatio: false,
           plugins: {
             legend: { labels: { color: '#94a3b8', font: { size: 10 } } },
+            tooltip: {
+              callbacks: {
+                label(ctx) {
+                  const y = ctx.parsed.y;
+                  if (!Number.isFinite(y)) return ctx.dataset.label;
+                  return `${ctx.dataset.label}: ${FormatNumbers.fixed(y, 2)}`;
+                },
+              },
+            },
           },
           scales: {
             x: {
@@ -1741,7 +2044,11 @@ class App {
               title: { display: true, text: 'Day of year', color: '#64748b', font: { size: 10 } },
             },
             y: {
-              ticks: { color: '#64748b', font: { size: 9 } },
+              ticks: {
+                color: '#64748b',
+                font: { size: 9 },
+                callback: v => FormatNumbers.fixed(v, 2),
+              },
               grid: { color: '#1e293b' },
               beginAtZero: true,
               title: { display: true, text: 'MWh/day', color: '#64748b', font: { size: 10 } },
@@ -1775,99 +2082,195 @@ class App {
     if (e.capex.sabatier > 0) { labels.push('Methane'); values.push(e.capex.sabatier); colors.push('#10b981'); }
     if (e.capex.methanol > 0) { labels.push('Methanol'); values.push(e.capex.methanol); colors.push('#f97316'); }
 
+    const compact = compactCapexChartData(labels, values, colors);
+    const sliceCount = compact.labels.length;
+    const borderW = sliceCount > 7 ? 1 : 2;
+
     if (this.charts.econ) this.charts.econ.destroy();
     this.charts.econ = new Chart(document.getElementById('econChart'), {
       type: 'doughnut',
       data: {
-        labels,
-        datasets: [{ data: values, backgroundColor: colors, borderColor: '#1a2236', borderWidth: 2 }],
+        labels: compact.labels,
+        datasets: [{
+          data: compact.values,
+          backgroundColor: compact.colors,
+          borderColor: '#1a2236',
+          borderWidth: borderW,
+          hoverBorderWidth: borderW,
+        }],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        layout: { padding: { bottom: 2 } },
         plugins: {
-          legend: { position: 'right', labels: { color: '#94a3b8', font: { size: 10 }, padding: 8 } },
-          title: { display: true, text: 'Installed CAPEX Breakdown', color: '#94a3b8', font: { size: 11 } },
+          legend: {
+            position: 'bottom',
+            align: 'center',
+            labels: {
+              color: '#94a3b8',
+              font: { size: 9 },
+              padding: 8,
+              boxWidth: 10,
+              boxHeight: 10,
+            },
+          },
+          title: {
+            display: true,
+            text: 'Installed CAPEX Breakdown',
+            color: '#94a3b8',
+            font: { size: 11 },
+            padding: { bottom: 10 },
+          },
+          tooltip: {
+            callbacks: {
+              label(ctx) {
+                const v = ctx.raw;
+                return `${ctx.label}: ${FormatNumbers.formatMoney(v)}`;
+              },
+            },
+          },
         },
       },
     });
   }
 
-  updateSensitivityChart() {
-    const aiMode = Boolean(this.state.aiComputeEnabled);
-    const prices = aiMode ? [0.5, 1, 2, 3, 5, 8, 12, 16] : [2, 3, 4, 6, 8, 10, 15, 20, 25, 30];
-    const series = Calc.runSensitivity(this.state, aiMode ? 'aiTokenPricePerM' : 'methanePrice', prices);
-    if (this.charts.sensitivity) this.charts.sensitivity.destroy();
-    this.charts.sensitivity = new Chart(document.getElementById('sensitivityChart'), {
-      type: 'line',
-      data: {
-        labels: prices.map(p => `$${p}`),
-        datasets: [
-          {
-            label: aiMode ? 'NPV vs AI token price' : 'NPV vs methane price',
-            data: series.map(point => point.npv),
-            borderColor: aiMode ? '#38bdf8' : '#10b981',
-            tension: 0.3,
-            pointRadius: 3,
-            borderWidth: 2,
-          },
-        ],
+  updateSensitivityChart(r = this.lastResults) {
+    const emptyState = document.getElementById('sensitivityEmptyState');
+    const sensitivityConfigs = [
+      {
+        chartKey: 'sensitivityMethane',
+        wrapperId: 'sensitivityMethaneCard',
+        canvasId: 'sensitivityMethaneChart',
+        paramKey: 'methanePrice',
+        prices: [2, 3, 4, 6, 8, 10, 15, 20, 25, 30],
+        axisLabel: 'Methane price ($/MCF)',
+        lineColor: '#10b981',
+        active: Boolean(r?.sabatier?.enabled) && (r?.sabatier?.ch4AnnualMCF || 0) > 0,
+        formatLabel: value => `$${FormatNumbers.fixed(value, 0)}`,
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { labels: { color: '#94a3b8', font: { size: 10 } } } },
-        scales: {
-          x: {
-            title: {
-              display: true,
-              text: aiMode ? 'AI token price ($ / 1M tokens)' : 'Methane price ($/MCF)',
-              color: '#64748b',
-              font: { size: 10 },
+      {
+        chartKey: 'sensitivityMethanol',
+        wrapperId: 'sensitivityMethanolCard',
+        canvasId: 'sensitivityMethanolChart',
+        paramKey: 'methanolPrice',
+        prices: [100, 200, 300, 400, 600, 800, 1000, 1200],
+        axisLabel: 'Methanol price ($/ton)',
+        lineColor: '#f97316',
+        active: Boolean(r?.methanol?.enabled) && (r?.methanol?.annualTons || 0) > 0,
+        formatLabel: value => `$${FormatNumbers.fixed(value, 0)}`,
+      },
+      {
+        chartKey: 'sensitivityAi',
+        wrapperId: 'sensitivityAiCard',
+        canvasId: 'sensitivityAiChart',
+        paramKey: 'aiTokenPricePerM',
+        prices: [0.5, 1, 2, 3, 5, 8, 12, 16],
+        axisLabel: 'AI token price ($ / 1M tokens)',
+        lineColor: '#38bdf8',
+        active: Boolean(r?.ai?.enabled) && (r?.ai?.annualTokensM || 0) > 0,
+        formatLabel: value => `$${Number.isInteger(value) ? FormatNumbers.fixed(value, 0) : FormatNumbers.fixed(value, 2)}`,
+      },
+    ];
+
+    if (this.charts.sensitivity) {
+      this.charts.sensitivity.destroy();
+      delete this.charts.sensitivity;
+    }
+
+    let visibleChartCount = 0;
+
+    sensitivityConfigs.forEach(config => {
+      const wrapper = document.getElementById(config.wrapperId);
+      const canvas = document.getElementById(config.canvasId);
+
+      if (wrapper) wrapper.hidden = !config.active;
+      if (this.charts[config.chartKey]) {
+        this.charts[config.chartKey].destroy();
+        delete this.charts[config.chartKey];
+      }
+      if (!config.active || !canvas) return;
+
+      visibleChartCount += 1;
+      const series = Calc.runSensitivity(this.state, config.paramKey, config.prices);
+      this.charts[config.chartKey] = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: config.prices.map(config.formatLabel),
+          datasets: [
+            {
+              label: 'NPV',
+              data: series.map(point => point.npv),
+              borderColor: config.lineColor,
+              tension: 0.3,
+              pointRadius: 3,
+              borderWidth: 2,
             },
-            ticks: { color: '#64748b', font: { size: 9 } },
-            grid: { color: '#1e293b' },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label(ctx) {
+                  const y = ctx.parsed.y;
+                  if (!Number.isFinite(y)) return ctx.dataset.label;
+                  return `${ctx.dataset.label}: ${FormatNumbers.formatMoney(y)}`;
+                },
+              },
+            },
           },
-          y: {
-            title: { display: true, text: 'NPV ($)', color: '#64748b', font: { size: 10 } },
-            ticks: {
-              color: '#64748b',
-              font: { size: 9 },
-              callback: value => this.formatMoney(value),
+          scales: {
+            x: {
+              title: {
+                display: true,
+                text: config.axisLabel,
+                color: '#64748b',
+                font: { size: 10 },
+              },
+              ticks: { color: '#64748b', font: { size: 9 } },
+              grid: { color: '#1e293b' },
             },
-            grid: { color: '#1e293b' },
+            y: {
+              title: { display: true, text: 'NPV ($)', color: '#64748b', font: { size: 10 } },
+              ticks: {
+                color: '#64748b',
+                font: { size: 9 },
+                callback: value => FormatNumbers.formatMoney(Number(value)),
+              },
+              grid: { color: '#1e293b' },
+            },
           },
         },
-      },
+      });
     });
+
+    if (emptyState) emptyState.hidden = visibleChartCount > 0;
   }
 
   formatConfigValue(unit, value) {
     const numeric = parseFloat(value);
-    if (unit === '%') return `${numeric.toFixed(numeric % 1 ? 1 : 0)}%`;
-    if (unit === '$') return `$${Math.round(numeric).toLocaleString()}`;
-    if (unit === '$/W') return `$${numeric.toFixed(2)}/W`;
-    if (unit === '$/kW') return `$${Math.round(numeric)}/kW`;
-    if (unit === '$/t-yr') return `$${Math.round(numeric)}/t-yr`;
-    if (unit === '$/kg-feed-hr') return `$${Math.round(numeric)}/(kg/h feed)`;
-    if (unit === 'kWh/kg') return `${Math.round(numeric)} kWh/kg`;
-    if (unit === 'kWh/t') return `${Math.round(numeric).toLocaleString()} kWh/t`;
-    return `${numeric}`;
+    if (unit === '%') return `${FormatNumbers.fixed(numeric, numeric % 1 ? 1 : 0)}%`;
+    if (unit === '$') return `$${FormatNumbers.fixed(Math.round(numeric), 0)}`;
+    if (unit === '$/W') return `$${FormatNumbers.fixed(numeric, 2)}/W`;
+    if (unit === '$/kW') return `$${FormatNumbers.fixed(Math.round(numeric), 0)}/kW`;
+    if (unit === '$/t-yr') return `$${FormatNumbers.fixed(Math.round(numeric), 0)}/t-yr`;
+    if (unit === '$/kg-feed-hr') return `$${FormatNumbers.fixed(Math.round(numeric), 0)}/(kg/h feed)`;
+    if (unit === 'kWh/kg') return `${FormatNumbers.fixed(Math.round(numeric), 0)} kWh/kg`;
+    if (unit === 'kWh/t') return `${FormatNumbers.fixed(Math.round(numeric), 0)} kWh/t`;
+    return `${FormatNumbers.fixed(numeric, Number.isInteger(numeric) ? 0 : 2)}`;
   }
 
   formatMoney(val) {
-    if (val === undefined || val === null || Number.isNaN(val)) return '$0';
-    const abs = Math.abs(val);
-    const sign = val < 0 ? '-' : '';
-    if (abs >= 1e9) return `${sign}$${(abs / 1e9).toFixed(2)}B`;
-    if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(2)}M`;
-    if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(1)}K`;
-    return `${sign}$${abs.toFixed(0)}`;
+    return FormatNumbers.formatMoney(val);
   }
 
   formatIrr(val) {
     if (!Number.isFinite(val) || val <= -99.9) return 'N/A';
-    return `${val.toFixed(1)}%`;
+    return `${FormatNumbers.fixed(val, 1)}%`;
   }
 }
 

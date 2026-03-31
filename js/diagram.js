@@ -203,8 +203,8 @@ const Diagram = {
     placeGrid([{
       id: 'sun',
       title: 'Solar resource',
-      value: `${r.solar.baseYield.toFixed(0)} MWh/MWdc-yr`,
-      subtitle: `${r.solar.ghi} kWh/m²/yr  ·  ${r.solar.sunHours.toFixed(1)} ${r.solar.hoursPerCycleLabel}`,
+      value: `${FormatNumbers.fixed(r.solar.baseYield, 0)} MWh/MWdc-yr`,
+      subtitle: `${FormatNumbers.fixed(r.solar.ghi, 0)} kWh/m²/yr  ·  ${FormatNumbers.fixed(r.solar.sunHours, 1)} ${r.solar.hoursPerCycleLabel}`,
       color: this.colors.solar,
       active: true,
     }], {
@@ -218,8 +218,8 @@ const Diagram = {
     placeGrid([{
       id: 'array',
       title: 'Solar array',
-      value: `${r.solar.annualMWh.toFixed(0)} MWh/yr`,
-      subtitle: `${r.solar.mounting.label} · CF ${(r.solar.capacityFactor * 100).toFixed(1)}%`,
+      value: `${FormatNumbers.fixed(r.solar.annualMWh, 0)} MWh/yr`,
+      subtitle: `${r.solar.mounting.label} · CF ${FormatNumbers.fixed(r.solar.capacityFactor * 100, 1)}%`,
       color: this.colors.solar,
       active: true,
     }], {
@@ -235,7 +235,7 @@ const Diagram = {
         id: 'battery',
         title: 'Battery firming',
         value: `${r.battery.battCapKWh.toLocaleString()} kWh`,
-        subtitle: `${r.battery.processPowerKW.toFixed(0)} kW firmed process cap`,
+        subtitle: `${FormatNumbers.fixed(r.battery.processPowerKW, 0)} kW firmed process cap`,
         color: this.colors.battery,
         active: true,
       }], {
@@ -255,10 +255,10 @@ const Diagram = {
             value: (() => {
               const aiLoadMW = r.ai.designLoadKW / 1000;
               return aiLoadMW >= 1000
-                ? `${(aiLoadMW / 1000).toFixed(2)} GW`
-                : `${aiLoadMW.toFixed(1)} MW`;
+                ? `${FormatNumbers.fixed(aiLoadMW / 1000, 2)} GW`
+                : `${FormatNumbers.fixed(aiLoadMW, 1)} MW`;
             })(),
-            subtitle: `${(r.ai.utilization * 100).toFixed(2)}% delivered · ${(r.ai.fullPowerReliability * 100).toFixed(2)}% full-rate`,
+            subtitle: `${FormatNumbers.fixed(r.ai.utilization * 100, 2)}% delivered · ${FormatNumbers.fixed(r.ai.fullPowerReliability * 100, 2)}% full-rate`,
             color: this.colors.ai,
             active: true,
           }]
@@ -267,8 +267,8 @@ const Diagram = {
         ? [{
             id: 'electrolyzer',
             title: 'Electrolyzer',
-            value: `${r.electrolyzer.h2DailyKg.toFixed(1)} kg H2/${r.solar.cycleUnitCompact}`,
-            subtitle: `${r.electrolyzer.allocPct.toFixed(1)}% of power`,
+            value: `${FormatNumbers.fixed(r.electrolyzer.h2DailyKg, 1)} kg H2/${r.solar.cycleUnitCompact}`,
+            subtitle: `${FormatNumbers.fixed(r.electrolyzer.allocPct, 1)}% of power`,
             color: this.colors.h2,
             active: true,
           }]
@@ -277,8 +277,8 @@ const Diagram = {
         ? [{
             id: 'dac',
             title: 'DAC',
-            value: `${r.dac.co2DailyKg.toFixed(1)} kg CO2/${r.solar.cycleUnitCompact}`,
-            subtitle: `${r.dac.allocPct.toFixed(1)}% of power`,
+            value: `${FormatNumbers.fixed(r.dac.co2DailyKg, 1)} kg CO2/${r.solar.cycleUnitCompact}`,
+            subtitle: `${FormatNumbers.fixed(r.dac.allocPct, 1)}% of power`,
             color: this.colors.co2,
             active: true,
           }]
@@ -297,11 +297,11 @@ const Diagram = {
     const supportedCards = supported.map(module => {
       const color = module.id === 'methanol' ? this.colors.methanol : this.colors.methane;
       const value = module.id === 'methanol'
-        ? `${module.dailyKg.toFixed(1)} kg/${r.solar.cycleUnitCompact}`
-        : `${module.ch4DailyMCF.toFixed(2)} MCF/${r.solar.cycleUnitCompact}`;
+        ? `${FormatNumbers.fixed(module.dailyKg, 1)} kg/${r.solar.cycleUnitCompact}`
+        : `${FormatNumbers.fixed(module.ch4DailyMCF, 2)} MCF/${r.solar.cycleUnitCompact}`;
       const subtitle = module.id === 'methanol'
-        ? `Peak ${module.designHourlyOutputKg.toFixed(1)} kg/hr · ${(module.averageUtilization * 100).toFixed(0)}% avg`
-        : `Peak ${module.designHourlyRate.toFixed(2)} MCF/hr · ${(module.averageUtilization * 100).toFixed(0)}% avg`;
+        ? `Peak ${FormatNumbers.fixed(module.designHourlyOutputKg, 1)} kg/hr · ${FormatNumbers.fixed(module.averageUtilization * 100, 0)}% avg`
+        : `Peak ${FormatNumbers.fixed(module.designHourlyRate, 2)} MCF/hr · ${FormatNumbers.fixed(module.averageUtilization * 100, 0)}% avg`;
       return {
         id: module.id,
         icon: '',
@@ -328,8 +328,8 @@ const Diagram = {
         id: 'out-ai',
         icon: '',
         title: 'AI output',
-        value: `${(r.ai.annualTokensM / 1000).toFixed(2)} B tok/yr`,
-        subtitle: `${this.formatMoney(r.economics.revenue.ai)} /yr`,
+        value: `${FormatNumbers.fixed(r.ai.annualTokensM / 1000, 2)} B tok/yr`,
+        subtitle: `${FormatNumbers.formatMoney(r.economics.revenue.ai)} /yr`,
         color: this.colors.ai,
       });
     }
@@ -338,8 +338,8 @@ const Diagram = {
         id: 'out-methane',
         icon: '',
         title: 'Methane output',
-        value: `${r.sabatier.ch4AnnualMCF.toFixed(0)} MCF/yr`,
-        subtitle: `${this.formatMoney(r.economics.revenue.methane)} /yr`,
+        value: `${FormatNumbers.fixed(r.sabatier.ch4AnnualMCF, 0)} MCF/yr`,
+        subtitle: `${FormatNumbers.formatMoney(r.economics.revenue.methane)} /yr`,
         color: this.colors.methane,
       });
     }
@@ -348,8 +348,8 @@ const Diagram = {
         id: 'out-methanol',
         icon: '',
         title: 'Methanol output',
-        value: `${r.methanol.annualTons.toFixed(1)} t/yr`,
-        subtitle: `${this.formatMoney(r.economics.revenue.methanol)} /yr`,
+        value: `${FormatNumbers.fixed(r.methanol.annualTons, 1)} t/yr`,
+        subtitle: `${FormatNumbers.formatMoney(r.economics.revenue.methanol)} /yr`,
         color: this.colors.methanol,
       });
     }
@@ -431,7 +431,7 @@ const Diagram = {
       }));
     }
     if (array && ai) {
-      connections.push(this.conn(array, ai, this.colors.ai, `${(r.ai.designLoadKW / 1000).toFixed(1)} MW`, true, {
+      connections.push(this.conn(array, ai, this.colors.ai, `${FormatNumbers.fixed(r.ai.designLoadKW / 1000, 1)} MW`, true, {
         width: 2.2,
         route: 'vertical',
         fromOffsetX: branchOffset(array, ai, 46),
@@ -451,7 +451,7 @@ const Diagram = {
         array,
         electrolyzer,
         this.colors.electric,
-        `${(r.electrolyzer.dailyKWh / 1000).toFixed(1)} MWh/d`,
+        `${FormatNumbers.fixed(r.electrolyzer.dailyKWh / 1000, 1)} MWh/d`,
         r.electrolyzer.enabled,
         {
           width: 2,
@@ -467,7 +467,7 @@ const Diagram = {
         array,
         dac,
         this.colors.electric,
-        `${(r.dac.dailyKWh / 1000).toFixed(1)} MWh/d`,
+        `${FormatNumbers.fixed(r.dac.dailyKWh / 1000, 1)} MWh/d`,
         r.dac.enabled,
         {
           width: 2,
@@ -483,7 +483,7 @@ const Diagram = {
       const node = get(module.id);
       if (!node) return;
       if (module.id === 'sabatier') {
-        connections.push(this.conn(electrolyzer, node, this.colors.h2, `${module.h2Consumed.toFixed(0)} kg H2`, true, {
+        connections.push(this.conn(electrolyzer, node, this.colors.h2, `${FormatNumbers.fixed(module.h2Consumed, 0)} kg H2`, true, {
           width: 2,
           route: 'vertical',
           fromOffsetX: branchOffset(electrolyzer, node, 28),
@@ -491,7 +491,7 @@ const Diagram = {
           labelOffsetX: -24,
           labelOffsetY: -8,
         }));
-        connections.push(this.conn(dac, node, this.colors.co2, `${module.co2Consumed.toFixed(0)} kg CO2`, true, {
+        connections.push(this.conn(dac, node, this.colors.co2, `${FormatNumbers.fixed(module.co2Consumed, 0)} kg CO2`, true, {
           width: 2,
           route: 'vertical',
           fromOffsetX: branchOffset(dac, node, 28),
@@ -500,7 +500,7 @@ const Diagram = {
           labelOffsetY: 8,
         }));
       } else if (module.id === 'methanol') {
-        connections.push(this.conn(electrolyzer, node, this.colors.h2, `${module.h2Consumed.toFixed(0)} kg H2`, true, {
+        connections.push(this.conn(electrolyzer, node, this.colors.h2, `${FormatNumbers.fixed(module.h2Consumed, 0)} kg H2`, true, {
           width: 2,
           route: 'vertical',
           fromOffsetX: branchOffset(electrolyzer, node, 28),
@@ -508,7 +508,7 @@ const Diagram = {
           labelOffsetX: -24,
           labelOffsetY: -8,
         }));
-        connections.push(this.conn(dac, node, this.colors.co2, `${module.co2Consumed.toFixed(0)} kg CO2`, true, {
+        connections.push(this.conn(dac, node, this.colors.co2, `${FormatNumbers.fixed(module.co2Consumed, 0)} kg CO2`, true, {
           width: 2,
           route: 'vertical',
           fromOffsetX: branchOffset(dac, node, 28),
@@ -708,12 +708,6 @@ const Diagram = {
   },
 
   formatMoney(val) {
-    if (val === undefined || val === null || Number.isNaN(val)) return '$0';
-    const abs = Math.abs(val);
-    const sign = val < 0 ? '-' : '';
-    if (abs >= 1e9) return `${sign}$${(abs / 1e9).toFixed(2)}B`;
-    if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(2)}M`;
-    if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(1)}K`;
-    return `${sign}$${abs.toFixed(0)}`;
+    return FormatNumbers.formatMoney(val);
   },
 };

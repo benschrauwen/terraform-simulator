@@ -463,7 +463,7 @@ const SolarGeometry = {
 
   hoursToDisplayString(hours, cycleHours = 24) {
     if (!isFinite(hours)) return '—';
-    if (cycleHours > 48) return `${(hours / 24).toFixed(1)} Earth d`;
+    if (cycleHours > 48) return `${FormatNumbers.fixed(hours / 24, 1)} Earth d`;
     return this.hoursToTimeString(hours);
   },
 

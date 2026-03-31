@@ -3,6 +3,11 @@
 const Calc = {};
 
 Object.assign(Calc, {
+  hasBatteryStorage(state) {
+    const batteryCapacityMWh = Number(state?.batteryCapacityMWh);
+    return Number.isFinite(batteryCapacityMWh) && batteryCapacityMWh > 1e-9;
+  },
+
   crf(rate, years) {
     if (!isFinite(rate) || !isFinite(years) || years <= 0) return 0;
     if (rate === 0) return 1 / years;
@@ -81,6 +86,89 @@ Object.assign(Calc, {
       byYear,
       entries,
       total: entries.reduce((sum, entry) => sum + entry.total, 0),
+    };
+  },
+
+  calculatePaybackYears(initialOutflow, yearlyCashFlows) {
+    if (!Number.isFinite(initialOutflow) || initialOutflow <= 0) return 0;
+    if (!Array.isArray(yearlyCashFlows) || !yearlyCashFlows.length) return Infinity;
+
+    let cumulativeCash = -initialOutflow;
+    for (let i = 0; i < yearlyCashFlows.length; i++) {
+      const netCashFlow = Number.isFinite(yearlyCashFlows[i]) ? yearlyCashFlows[i] : 0;
+      const cumulativeAfter = cumulativeCash + netCashFlow;
+      let forwardCumulative = cumulativeAfter;
+      let staysPaidBack = forwardCumulative >= -1e-6;
+
+      for (let j = i + 1; staysPaidBack && j < yearlyCashFlows.length; j++) {
+        forwardCumulative += Number.isFinite(yearlyCashFlows[j]) ? yearlyCashFlows[j] : 0;
+        if (forwardCumulative < -1e-6) staysPaidBack = false;
+      }
+
+      if (staysPaidBack && netCashFlow > 0 && cumulativeCash < 0 && cumulativeAfter >= 0) {
+        return i + ((-cumulativeCash) / netCashFlow);
+      }
+
+      cumulativeCash = cumulativeAfter;
+    }
+
+    return Infinity;
+  },
+
+  buildDebtSchedule(principal, annualRate, termYears, analysisHorizonYears) {
+    const safePrincipal = Number.isFinite(principal) ? Math.max(0, principal) : 0;
+    const safeRate = Number.isFinite(annualRate) ? Math.max(0, annualRate) : 0;
+    const safeTermYears = Number.isFinite(termYears) ? Math.max(0, Math.round(termYears)) : 0;
+    const safeHorizonYears = Number.isFinite(analysisHorizonYears) ? Math.max(0, Math.round(analysisHorizonYears)) : 0;
+    const annualDebtService = (safePrincipal > 0 && safeTermYears > 0)
+      ? (safeRate === 0 ? safePrincipal / safeTermYears : safePrincipal * this.crf(safeRate, safeTermYears))
+      : 0;
+    const schedule = [];
+    const byYear = {};
+    let balance = safePrincipal;
+    let totalInterest = 0;
+    let totalPrincipal = 0;
+    let totalDebtService = 0;
+
+    for (let year = 1; year <= safeHorizonYears; year++) {
+      const startingBalance = balance;
+      let interest = 0;
+      let principalPaid = 0;
+      let debtService = 0;
+
+      if (year <= safeTermYears && startingBalance > 1e-9) {
+        interest = startingBalance * safeRate;
+        principalPaid = Math.max(0, annualDebtService - interest);
+        if (year === safeTermYears || principalPaid > startingBalance) {
+          principalPaid = startingBalance;
+        }
+        debtService = interest + principalPaid;
+        balance = Math.max(0, startingBalance - principalPaid);
+        totalInterest += interest;
+        totalPrincipal += principalPaid;
+        totalDebtService += debtService;
+      }
+
+      const entry = {
+        year,
+        startingBalance,
+        interest,
+        principalPaid,
+        debtService,
+        endingBalance: balance,
+      };
+      schedule.push(entry);
+      byYear[year] = entry;
+    }
+
+    return {
+      annualDebtService,
+      schedule,
+      byYear,
+      totalInterest,
+      totalPrincipal,
+      totalDebtService,
+      endingBalance: balance,
     };
   },
 

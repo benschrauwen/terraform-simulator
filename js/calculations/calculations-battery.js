@@ -5,25 +5,36 @@ Object.assign(Calc, {
     const stepCount = solar.hourlyProfile.length;
     const stepHours = solar.binHours;
     const solarKW = solar.hourlyProfile.map(v => Math.min((v * solar.dailyKWh) / stepHours, solar.peakPowerKW));
-    if (!state.batteryEnabled) {
+    // Keep the zero-storage case on the same basis as the battery-backed case:
+    // size process equipment from the modeled direct-solar peak, not PV nameplate.
+    const directProcessPeakKW = Math.max(...solarKW, 0);
+    const directOpHours = directProcessPeakKW > 0
+      ? solarKW.reduce((sum, value) => sum + (value >= directProcessPeakKW * 0.05 ? stepHours : 0), 0)
+      : 0;
+    const directEffectiveCF = directProcessPeakKW > 0
+      ? solar.dailyKWh / (directProcessPeakKW * solar.cycleHours)
+      : 0;
+    const batteryEnabled = this.hasBatteryStorage(state);
+    if (!batteryEnabled) {
       return {
         enabled: false,
-        effectiveCF: solar.capacityFactor,
-        dailyOpHours: solar.sunHours,
+        effectiveCF: directEffectiveCF,
+        dailyOpHours: directOpHours.toFixed(1),
         capex: 0,
         battCapKWh: 0,
         dailyAvailableKWh: solar.dailyKWh,
         hourlyProfile: solar.hourlyProfile,
         hourlyKW: solarKW,
         batteryChargeHourlyKW: new Array(stepCount).fill(0),
-        processPowerKW: solar.peakPowerKW,
-        baseloadKW: solar.peakPowerKW,
+        processPowerKW: directProcessPeakKW,
+        baseloadKW: directProcessPeakKW,
+        clipKW: directProcessPeakKW,
         annualizedCapex: 0,
         lifetimeYears: 0,
       };
     }
 
-    const battCapKWh = state.batteryCapacityMWh * 1000;
+    const battCapKWh = Math.max(0, (state.batteryCapacityMWh || 0) * 1000);
     const rtEff = Math.max(0, Math.min(1, state.batteryEfficiency / 100));
     const oneWayEff = Math.sqrt(rtEff);
     const chargeEff = Math.max(oneWayEff, 1e-9);

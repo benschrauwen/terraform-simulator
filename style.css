@@ -459,6 +459,15 @@ label {
   font-weight: 600;
 }
 
+.range-control {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.range-control label {
+  margin-bottom: 0;
+}
+
 select,
 input[type="number"] {
   width: 100%;
@@ -634,6 +643,46 @@ input[type="range"]::-moz-range-track {
   color: var(--text-primary);
   margin-top: 2px;
   font-variant-numeric: tabular-nums;
+}
+
+.range-control-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.range-control-footer .range-value {
+  margin-top: 0;
+}
+
+.inline-optimize-button {
+  border: 1px solid rgba(95, 127, 184, 0.32);
+  border-radius: 999px;
+  background: rgba(95, 127, 184, 0.14);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  padding: 5px 8px;
+  cursor: pointer;
+  transition: background-color var(--transition), border-color var(--transition), opacity var(--transition), color var(--transition);
+}
+
+.inline-optimize-button:hover:not(:disabled),
+.inline-optimize-button:focus-visible:not(:disabled) {
+  border-color: rgba(95, 127, 184, 0.5);
+  background: rgba(95, 127, 184, 0.24);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.inline-optimize-button:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .input-row {
@@ -1115,9 +1164,37 @@ input[type="range"]::-moz-range-track {
   height: 220px;
 }
 
+/* Economics doughnut: bottom legend + title need more vertical space than default charts */
+.chart-wrapper-econ {
+  height: 280px;
+}
+
 .chart-wrapper canvas {
   width: 100% !important;
   height: 100% !important;
+}
+
+.sensitivity-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.sensitivity-card {
+  padding: 10px;
+  background: #13171b;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.sensitivity-card-title {
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.sensitivity-card .chart-wrapper {
+  height: 160px;
 }
 
 /* ============ PLANT SCORE ============ */

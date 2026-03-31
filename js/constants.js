@@ -527,7 +527,7 @@ const DEFAULT_STATE = {
   sitePrepCostPerAcre: 15000,
 
   batteryEnabled: false,
-  batteryCapacityMWh: 4.0,
+  batteryCapacityMWh: 0.0,
   batteryCostPerKWh: 150,
   batteryEfficiency: 90,
   batteryCycles: 4000,
@@ -599,6 +599,11 @@ const DEFAULT_STATE = {
   solarAssetLife: 30,
   analysisHorizonYears: 30,
   discountRate: 8,
+  financingEnabled: false,
+  debtSharePercent: 70,
+  debtInterestRate: 6.5,
+  debtTermYears: 15,
+  debtFeePercent: 1.5,
 
   /** Annual M&O as % of applicable CAPEX (module+BOS, process equipment, battery). */
   solarOmPercent: 1.5,

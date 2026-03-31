@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Solar Chemical Plant Builder — Terraform Industries Calculator</title>
+  <title>Solar Chemical/AI Plant Builder — Terraform Industries Calculator</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
@@ -12,7 +12,7 @@
 <body>
   <header class="app-header">
     <div class="header-left">
-      <h1>Solar Chemical Plant Builder</h1>
+      <h1>Solar Chemical/AI Plant Builder</h1>
       <span class="subtitle">Terraform Industries process model</span>
     </div>
     <div class="header-metrics" id="headerMetrics">
@@ -178,10 +178,6 @@
             <input type="range" id="sitePrepCost" min="0" max="80000" step="1000" value="15000">
             <span class="range-value" id="sitePrepCostValue">$15,000/acre</span>
           </label>
-          <div class="field-note">
-            Solar installation now includes modules, structure/BOS, land, and site prep. Use site prep to capture clearing,
-            grading, and access-road style work.
-          </div>
           <div class="info-row">
             <span>Base Yield:</span>
             <span id="baseYieldValue" class="highlight">— MWh/MWdc-yr</span>
@@ -208,17 +204,20 @@
       <!-- Battery Storage -->
       <section class="config-section" data-section="battery">
         <h2 class="section-header" data-toggle="battery">
-          <span class="icon">🔋</span> Battery Comparison
+          <span class="icon">🔋</span> Battery Storage
           <span class="chevron">▾</span>
         </h2>
         <div class="section-body">
+          <div class="field-note compact-note">
+            This storage block powers both the existing firming comparison and the AI reliability simulation when AI Compute is enabled. A fixed 2%/month standing energy leakage is always applied.
+          </div>
           <label class="toggle-label">
             <input type="checkbox" id="batteryEnabled">
-            <span>Enable battery smoothing comparison</span>
+            <span>Enable continuous-output battery comparison</span>
           </label>
           <div id="batteryConfig" class="disabled-group">
             <label>Capacity (MWh)
-              <input type="range" id="batteryCapacity" min="0.5" max="1000" step="0.5" value="4">
+              <input type="range" id="batteryCapacity" min="0.5" max="5000" step="0.5" value="4">
               <span class="range-value" id="batteryCapacityValue">4.0 MWh</span>
             </label>
             <label>Cost ($/kWh)
@@ -234,7 +233,7 @@
               <span class="range-value" id="batteryCyclesValue">4,000</span>
             </label>
             <div class="info-row">
-              <span>Effective CF:</span>
+              <span id="effectiveCFLabel">Effective CF:</span>
               <span id="effectiveCF" class="highlight">— %</span>
             </div>
             <div class="info-row">
@@ -248,32 +247,90 @@
       <!-- Processes -->
       <section class="config-section open" data-section="processes">
         <h2 class="section-header" data-toggle="processes">
-          <span class="icon">⚗️</span> Chemical Processes
+          <span class="icon">⚗️</span> Processes
           <span class="chevron">▾</span>
         </h2>
         <div class="section-body">
-          <div class="field-note compact-note">
-            Each modeled process has its own asset-life slider inside its card.
+          <div class="load-config-tabs" id="loadConfigTabs" role="tablist" aria-label="Site load configuration">
+            <button type="button" class="load-config-tab active" data-load-tab="chemicals" aria-selected="true">Chemical</button>
+            <button type="button" class="load-config-tab" data-load-tab="ai" aria-selected="false">AI Compute</button>
           </div>
-          <div class="module-group">
-            <div class="module-group-title">Supported modules</div>
-            <div class="module-group-subtitle">These drive the modeled product economics. When both are enabled, the shared H2/CO2 feedstock split is configurable below.</div>
-            <div id="productMixControl" class="process-card product-mix-card" style="display:none;">
-              <div class="module-note-title">Shared feedstock split</div>
-              <label>Methane share of downstream feedstock demand
-                <input type="range" id="methaneFeedstockSplit" min="0" max="100" step="1" value="50">
-                <span class="range-value" id="methaneFeedstockSplitValue">50% methane / 50% methanol</span>
-              </label>
-              <div class="field-note" id="productMixNote">
-                Shared H2 and CO2 production auto-balance from the combined methane and methanol demand.
+
+          <div class="load-config-panel active" data-load-panel="chemicals">
+            <div class="module-group">
+              <div class="module-group-title">Supported modules</div>
+              <div id="productMixControl" class="process-card product-mix-card" style="display:none;">
+                <div class="module-note-title">Shared feedstock split</div>
+                <label>Methane share of downstream feedstock demand
+                  <input type="range" id="methaneFeedstockSplit" min="0" max="100" step="1" value="50">
+                  <span class="range-value" id="methaneFeedstockSplitValue">50% methane / 50% methanol</span>
+                </label>
+                <div class="field-note" id="productMixNote">
+                  Shared H2 and CO2 production auto-balance from the combined methane and methanol demand.
+                </div>
+              </div>
+              <div id="supportedModuleList"></div>
+            </div>
+            <div class="module-group">
+              <div class="module-group-title">Exploratory industrial modules</div>
+              <div class="module-group-subtitle">Publicly signaled by Terraform, but excluded from ROI until route-specific assumptions are added.</div>
+              <div id="exploratoryModuleGroups"></div>
+            </div>
+          </div>
+
+          <div class="load-config-panel" data-load-panel="ai">
+            <div class="process-card ai-compute-card">
+              <div class="process-header">
+                <label class="toggle-label">
+                  <input type="checkbox" id="aiComputeEnabled">
+                  <span>Enable on-site AI datacenter</span>
+                </label>
+                <span class="maturity-badge supported">Modeled</span>
+              </div>
+              <div class="process-config disabled-group" id="aiComputeConfig">
+                <label>Reliability target
+                  <select id="aiReliabilityTarget"></select>
+                </label>
+                <div class="field-note">
+                  The AI load is auto-sized from the current solar plus battery system. The chemical plant then ramps up and down only on the residual energy left after AI load and battery charging.
+                </div>
+                <div class="field-note compact-note">
+                  GPU CAPEX is modeled on a direct-current datacenter framing ($/kW installed IT load).
+                </div>
+                <label>GPU CAPEX ($/kW)
+                  <input type="range" id="aiGpuCapexPerKW" min="5000" max="150000" step="1000" value="50000">
+                  <span class="range-value" id="aiGpuCapexPerKWValue">$50,000/kW</span>
+                </label>
+                <label>Token price ($ / 1M tokens)
+                  <input type="range" id="aiTokenPrice" min="0.25" max="20" step="0.25" value="3">
+                  <span class="range-value" id="aiTokenPriceValue">$3.00 / 1M tokens</span>
+                </label>
+                <label>Throughput (1M tokens / MWh)
+                  <input type="range" id="aiTokensPerMWh" min="100" max="3000" step="25" value="1000">
+                  <span class="range-value" id="aiTokensPerMWhValue">1,000 M tokens/MWh</span>
+                </label>
+                <label>GPU Asset Life (years)
+                  <input type="range" id="aiAssetLifeYears" min="3" max="8" step="1" value="5">
+                  <span class="range-value" id="aiAssetLifeYearsValue">5 years</span>
+                </label>
+                <div class="info-row">
+                  <span>Auto-sized AI load:</span>
+                  <span id="aiDesignLoadValue" class="highlight">—</span>
+                </div>
+                <div class="info-row">
+                  <span>Delivered utilization:</span>
+                  <span id="aiUtilizationValue" class="highlight">—</span>
+                </div>
+                <div class="info-row">
+                  <span>Full-rate reliability:</span>
+                  <span id="aiFullRateValue" class="highlight">—</span>
+                </div>
+                <div class="info-row">
+                  <span>Annual tokens:</span>
+                  <span id="aiTokensAnnualValue" class="highlight">—</span>
+                </div>
               </div>
             </div>
-            <div id="supportedModuleList"></div>
-          </div>
-          <div class="module-group">
-            <div class="module-group-title">Exploratory industrial modules</div>
-            <div class="module-group-subtitle">Publicly signaled by Terraform, but excluded from ROI until route-specific assumptions are added.</div>
-            <div id="exploratoryModuleGroups"></div>
           </div>
         </div>
       </section>
@@ -438,6 +495,14 @@
           <canvas id="powerChart"></canvas>
         </div>
       </div>
+
+      <div class="chart-section">
+        <h3>Annual Dispatch</h3>
+        <div class="field-note compact-note" id="annualDispatchNote"></div>
+        <div class="chart-wrapper chart-wrapper-lg">
+          <canvas id="annualDispatchChart"></canvas>
+        </div>
+      </div>
     </section>
 
     <!-- RIGHT: Results Panel -->
@@ -509,19 +574,6 @@
         </h2>
         <div class="section-body">
           <div id="impactGrid" class="production-grid">
-            <!-- Filled by JS -->
-          </div>
-        </div>
-      </section>
-
-      <!-- Exploratory Modules -->
-      <section class="results-section" data-section="coverage">
-        <h2 class="section-header" data-toggle="coverage">
-          <span class="icon">🧭</span> Exploratory Coverage
-          <span class="chevron">▾</span>
-        </h2>
-        <div class="section-body">
-          <div id="exploratoryCoverageList" class="production-grid">
             <!-- Filled by JS -->
           </div>
         </div>

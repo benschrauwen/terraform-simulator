@@ -1,5 +1,5 @@
 /* ============================================
-   Solar Chemical Plant Builder — Styles
+   Solar Chemical/AI Plant Builder — Styles
    ============================================ */
 
 :root {
@@ -289,6 +289,47 @@ body {
 .day-tab:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.load-config-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 10px;
+  background: #13171b;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2px;
+}
+
+.load-config-tab {
+  flex: 1;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.load-config-tab.active {
+  background: rgba(95, 127, 184, 0.18);
+  color: var(--text-primary);
+}
+
+.load-config-tab:hover:not(.active) {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.load-config-panel {
+  display: none;
+}
+
+.load-config-panel.active {
+  display: block;
 }
 
 .day-presets {
@@ -724,6 +765,10 @@ input[type="range"]::-moz-range-track {
   margin-bottom: 0;
 }
 
+.ai-compute-card {
+  margin-bottom: 0;
+}
+
 .module-group {
   margin-bottom: 10px;
 }
@@ -1066,6 +1111,10 @@ input[type="range"]::-moz-range-track {
   height: 180px;
 }
 
+.chart-wrapper-lg {
+  height: 220px;
+}
+
 .chart-wrapper canvas {
   width: 100% !important;
   height: 100% !important;
@@ -1228,6 +1277,7 @@ input[type="range"]::-moz-range-track {
 .production-item.co2 .prod-dot { background: var(--co2); }
 .production-item.ch4 .prod-dot { background: var(--methane); }
 .production-item.electric .prod-dot { background: var(--electric); }
+.production-item.battery .prod-dot { background: var(--battery); }
 .production-item.solar .prod-dot { background: var(--solar); }
 .production-item.fuel .prod-dot { background: var(--fuel); }
 .production-item.ammonia .prod-dot { background: var(--ammonia); }
@@ -1236,6 +1286,7 @@ input[type="range"]::-moz-range-track {
 .production-item.co2 .prod-value { color: var(--co2); }
 .production-item.ch4 .prod-value { color: var(--methane); }
 .production-item.electric .prod-value { color: var(--electric); }
+.production-item.battery .prod-value { color: var(--battery); }
 .production-item.solar .prod-value { color: var(--solar); }
 .production-item.fuel .prod-value { color: var(--fuel); }
 .production-item.ammonia .prod-value { color: var(--ammonia); }

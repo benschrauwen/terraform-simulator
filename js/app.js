@@ -130,6 +130,13 @@ class App {
     mountSel.innerHTML = Object.entries(MOUNTING_TYPES).map(([key, value]) =>
       `<option value="${key}">${value.label}</option>`
     ).join('');
+
+    const aiReliabilitySel = document.getElementById('aiReliabilityTarget');
+    if (aiReliabilitySel) {
+      aiReliabilitySel.innerHTML = AI_RELIABILITY_OPTIONS.map(option =>
+        `<option value="${option.value}">${option.label}</option>`
+      ).join('');
+    }
   }
 
   renderModuleControls() {
@@ -228,6 +235,8 @@ class App {
   }
 
   bindControls() {
+    this.bindLoadConfigTabs();
+
     document.querySelectorAll('.day-tab').forEach(tab => {
       tab.addEventListener('click', () => {
         if (tab.disabled) return;
@@ -295,6 +304,18 @@ class App {
     this.bindRange('batteryEfficiency', 'batteryEfficiency', v => `${parseInt(v, 10)}%`);
     this.bindRange('batteryCycles', 'batteryCycles', v => parseInt(v, 10).toLocaleString());
 
+    this.on('aiComputeEnabled', 'change', (_, el) => {
+      this.state.aiComputeEnabled = el.checked;
+      document.getElementById('aiComputeConfig').classList.toggle('active', el.checked);
+    });
+    this.on('aiReliabilityTarget', 'change', val => {
+      this.state.aiReliabilityTarget = parseFloat(val);
+    });
+    this.bindRange('aiGpuCapexPerKW', 'aiGpuCapexPerKW', v => `$${Math.round(parseFloat(v)).toLocaleString()}/kW`);
+    this.bindRange('aiTokenPrice', 'aiTokenPricePerM', v => `$${parseFloat(v).toFixed(2)} / 1M tokens`);
+    this.bindRange('aiTokensPerMWh', 'aiMillionTokensPerMWh', v => `${Math.round(parseFloat(v)).toLocaleString()} M tokens/MWh`);
+    this.bindRange('aiAssetLifeYears', 'aiAssetLifeYears', v => `${parseInt(v, 10)} years`);
+
     this.bindModuleControls();
 
     this.bindRange('methaneFeedstockSplit', 'methaneFeedstockSplit', v => this.formatMethaneFeedstockSplit(v));
@@ -318,6 +339,28 @@ class App {
     this.bindRange('solarOmPercent', 'solarOmPercent', v => `${parseFloat(v).toFixed(1)}%/yr`);
     this.bindRange('processOmPercent', 'processOmPercent', v => `${parseFloat(v).toFixed(1)}%/yr`);
     this.bindRange('batteryOmPercent', 'batteryOmPercent', v => `${parseFloat(v).toFixed(1)}%/yr`);
+  }
+
+  bindLoadConfigTabs() {
+    document.querySelectorAll('.load-config-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        this.state.loadConfigTab = tab.dataset.loadTab || 'chemicals';
+        this.syncLoadConfigTabs();
+      });
+    });
+    this.syncLoadConfigTabs();
+  }
+
+  syncLoadConfigTabs() {
+    const activeTab = this.state.loadConfigTab || 'chemicals';
+    document.querySelectorAll('.load-config-tab').forEach(tab => {
+      const isActive = tab.dataset.loadTab === activeTab;
+      tab.classList.toggle('active', isActive);
+      tab.setAttribute('aria-selected', String(isActive));
+    });
+    document.querySelectorAll('.load-config-panel').forEach(panel => {
+      panel.classList.toggle('active', panel.dataset.loadPanel === activeTab);
+    });
   }
 
   bindModuleControls() {
@@ -719,6 +762,7 @@ class App {
       total: palette.solar || '#f59e0b',
       solar: palette.solar || '#f59e0b',
       battery: palette.battery || '#6366f1',
+      ai: palette.ai || '#38bdf8',
       electrolyzer: palette.h2 || '#06b6d4',
       dac: palette.co2 || '#8b5cf6',
       sabatier: palette.methane || '#10b981',
@@ -729,6 +773,7 @@ class App {
 
   getSiteFootprintAbbreviation(id) {
     const labelMap = {
+      ai: 'AI',
       electrolyzer: 'ELY',
       dac: 'DAC',
       battery: 'BAT',
@@ -744,6 +789,11 @@ class App {
     // Order-of-magnitude process-building footprints tuned so a 1 MW case
     // still looks solar-dominated, similar to Terraform's cartoon render.
     const rawItems = [
+      {
+        id: 'ai',
+        label: 'AI datacenter',
+        areaM2: r.ai.enabled ? Math.max(48, (r.ai.designLoadKW || 0) * 0.25) : 0,
+      },
       {
         id: 'electrolyzer',
         label: 'Electrolyzer',
@@ -829,6 +879,7 @@ class App {
     if (!total || !Number.isFinite(total.sideMeters) || total.sideMeters <= 0) return;
 
     const layoutOrder = {
+      ai: 0,
       dac: 0,
       sabatier: 1,
       electrolyzer: 2,
@@ -894,7 +945,7 @@ class App {
   }
 
   syncStateToControls() {
-    const checkboxIds = ['batteryEnabled'];
+    const checkboxIds = ['batteryEnabled', 'aiComputeEnabled'];
     checkboxIds.forEach(id => {
       const el = document.getElementById(id);
       if (el) el.checked = Boolean(this.state[id]);
@@ -904,6 +955,7 @@ class App {
       mountingType: this.state.mountingType,
       policyMode: this.state.policyMode,
       methaneMarketPreset: this.state.methaneMarketPreset,
+      aiReliabilityTarget: this.state.aiReliabilityTarget,
     };
     Object.entries(selectMap).forEach(([id, value]) => {
       const el = document.getElementById(id);
@@ -944,6 +996,8 @@ class App {
     });
 
     document.getElementById('batteryConfig').classList.toggle('active', this.state.batteryEnabled);
+    document.getElementById('aiComputeConfig').classList.toggle('active', this.state.aiComputeEnabled);
+    this.syncLoadConfigTabs();
   }
 
   syncRangeDisplay(id, value, formatter) {
@@ -1055,10 +1109,10 @@ class App {
     this.updateHeaderMetrics(r);
     this.updatePlantScore(r);
     this.updatePowerChart(r);
+    this.updateAnnualDispatchChart(r);
     this.updateEconChart(r);
     this.updateSensitivityChart();
     this.updateImpact(r);
-    this.updateCoverage(r);
   }
 
   updateInfoDisplays(r) {
@@ -1074,8 +1128,37 @@ class App {
       solarInstallCapex.textContent = this.formatMoney(r.solar.totalSolarCapex);
     }
 
-    document.getElementById('effectiveCF').textContent = `${((r.battery.enabled ? r.battery.effectiveCF : r.solar.capacityFactor) * 100).toFixed(1)}%`;
-    document.getElementById('dailyOpHours').textContent = `${r.battery.enabled ? r.battery.dailyOpHours : r.solar.sunHours} hrs`;
+    const effectiveCfLabel = document.getElementById('effectiveCFLabel');
+    if (effectiveCfLabel) effectiveCfLabel.textContent = r.ai.enabled ? 'Residual Chem CF:' : 'Effective CF:';
+    const dailyOpHoursLabel = document.getElementById('dailyOpHoursLabel');
+    if (dailyOpHoursLabel && r.ai.enabled) {
+      dailyOpHoursLabel.textContent = r.solar.bodyKey === 'earth' ? 'Residual Chem Hrs/Day:' : 'Residual Chem Hrs/Cycle:';
+    }
+    const displayedCf = r.ai.enabled
+      ? r.battery.effectiveCF
+      : (r.battery.enabled ? r.battery.effectiveCF : r.solar.capacityFactor);
+    const displayedHours = r.ai.enabled
+      ? r.ai.chemicalDailyOpHours
+      : (r.battery.enabled ? r.battery.dailyOpHours : r.solar.sunHours);
+    document.getElementById('effectiveCF').textContent = `${(displayedCf * 100).toFixed(1)}%`;
+    document.getElementById('dailyOpHours').textContent = `${parseFloat(displayedHours).toFixed(1)} hrs`;
+
+    const aiDesignLoadValue = document.getElementById('aiDesignLoadValue');
+    const aiUtilizationValue = document.getElementById('aiUtilizationValue');
+    const aiFullRateValue = document.getElementById('aiFullRateValue');
+    const aiTokensAnnualValue = document.getElementById('aiTokensAnnualValue');
+    if (aiDesignLoadValue) {
+      aiDesignLoadValue.textContent = r.ai.enabled ? this.formatSystemSizeMW(r.ai.designLoadKW / 1000) : 'Off';
+    }
+    if (aiUtilizationValue) {
+      aiUtilizationValue.textContent = r.ai.enabled ? `${(r.ai.utilization * 100).toFixed(2)}%` : '—';
+    }
+    if (aiFullRateValue) {
+      aiFullRateValue.textContent = r.ai.enabled ? `${(r.ai.fullPowerReliability * 100).toFixed(2)}%` : '—';
+    }
+    if (aiTokensAnnualValue) {
+      aiTokensAnnualValue.textContent = r.ai.enabled ? `${(r.ai.annualTokensM / 1000).toFixed(2)}B` : '—';
+    }
 
     const geo = r.solar.solarGeo;
     if (geo) {
@@ -1224,13 +1307,23 @@ class App {
 
   updateProduction(r) {
     const cycleUnit = this.getCycleRateUnit(r);
-    const cycleEnergyLabel = cycleUnit === 'day' ? 'Daily Energy' : 'Cycle Energy';
+    const cycleEnergyLabel = r.ai.enabled
+      ? (cycleUnit === 'day' ? 'Flexible Chem Energy' : 'Flexible Chem Cycle Energy')
+      : (cycleUnit === 'day' ? 'Daily Energy' : 'Cycle Energy');
     const rows = [
       this.prodItem('solar', '☀️', 'Electricity', `${r.solar.annualMWh.toFixed(0)}`, 'MWh/yr'),
       this.prodItem('electric', '⚡', cycleEnergyLabel, `${r.effectiveDailyKWh.toFixed(0)}`, `kWh/${cycleUnit}`),
-      this.prodItem('h2', '💧', 'Hydrogen', `${r.electrolyzer.h2DailyKg.toFixed(1)}`, `kg/${cycleUnit}`),
-      this.prodItem('co2', '🌬️', 'CO₂ Captured', `${r.dac.co2DailyKg.toFixed(1)}`, `kg/${cycleUnit}`),
     ];
+
+    if (r.ai.enabled) {
+      rows.push(this.prodItem('electric', '🖥️', 'AI Load', this.formatSystemSizeMW(r.ai.designLoadKW / 1000), `${r.ai.reliabilityTarget.toFixed(2)}% target`));
+      rows.push(this.prodItem('electric', '🧠', 'AI Tokens', `${(r.ai.annualTokensM / 1000).toFixed(2)}`, 'B/yr'));
+      rows.push(this.prodItem('battery', '⏱️', 'AI Utilization', `${(r.ai.utilization * 100).toFixed(2)}`, '%'));
+      rows.push(this.prodItem('battery', '♻️', 'Residual Chem Energy', `${(r.ai.chemicalAnnualKWh / 1000).toFixed(0)}`, 'MWh/yr'));
+    }
+
+    rows.push(this.prodItem('h2', '💧', 'Hydrogen', `${r.electrolyzer.h2DailyKg.toFixed(1)}`, `kg/${cycleUnit}`));
+    rows.push(this.prodItem('co2', '🌬️', 'CO₂ Captured', `${r.dac.co2DailyKg.toFixed(1)}`, `kg/${cycleUnit}`));
 
     if (r.sabatier.enabled) {
       rows.push(this.prodItem('ch4', '🔥', 'Methane', `${r.sabatier.ch4DailyMCF.toFixed(2)}`, `MCF/${cycleUnit}`));
@@ -1264,6 +1357,7 @@ class App {
     if ((solarBreakdown.solarSitePrep || 0) > 0) html += this.econRow('Site prep', this.formatMoney(solarBreakdown.solarSitePrep));
     html += this.econRow('Total solar installation', this.formatMoney(e.capex.solar));
     if (e.capex.battery > 0) html += this.econRow('Battery', this.formatMoney(e.capex.battery));
+    if (e.capex.ai > 0) html += this.econRow('AI datacenter', this.formatMoney(e.capex.ai));
     if (e.capex.electrolyzer > 0) html += this.econRow('Electrolyzer', this.formatMoney(e.capex.electrolyzer));
     if (e.capex.dac > 0) html += this.econRow('DAC', this.formatMoney(e.capex.dac));
     if (e.capex.sabatier > 0) html += this.econRow('Methane reactor', this.formatMoney(e.capex.sabatier));
@@ -1277,10 +1371,19 @@ class App {
       'negative',
       `Upfront CAPEX x capital recovery factor at ${this.state.discountRate}% and each asset's book life. This is the economic annual capital charge, not straight-line depreciation.`
     );
-    html += this.econRow('O&M', this.formatMoney(e.annualOM), 'negative');
+    if (r.ai.enabled && r.ai.annualOM > 0) {
+      html += this.econRow('AI fixed O&M', this.formatMoney(r.ai.annualOM), 'negative');
+    }
+    html += this.econRow('Total O&M', this.formatMoney(e.annualOM), 'negative');
     html += this.econRow('Total levelized annual cost', this.formatMoney(e.annualCost), 'negative');
 
     html += this.econRow('Revenue', '', 'header');
+    if (e.revenue.ai > 0) {
+      html += this.econRow('AI token price', `$${this.state.aiTokenPricePerM.toFixed(2)} / 1M tokens`);
+      html += this.econRow('AI throughput', `${Math.round(this.state.aiMillionTokensPerMWh).toLocaleString()} M tokens/MWh`);
+      html += this.econRow('AI tokens sold', `${(r.ai.annualTokensM / 1000).toFixed(2)}B /yr`);
+      html += this.econRow('AI token revenue', this.formatMoney(e.revenue.ai), 'positive');
+    }
     if (e.revenue.methane > 0) {
       html += this.econRow('Methane market scope', methaneMarket.applicability);
       html += this.econRow('Methane market basis', methaneMarket.label);
@@ -1349,6 +1452,13 @@ class App {
       );
     }
 
+    if (r.ai.enabled) {
+      html += this.econRow('AI load auto-sized', this.formatSystemSizeMW(r.ai.designLoadKW / 1000));
+      html += this.econRow('Delivered AI utilization', `${(r.ai.utilization * 100).toFixed(2)}%`);
+      html += this.econRow('Full-rate reliability', `${(r.ai.fullPowerReliability * 100).toFixed(2)}%`);
+      html += this.econRow('Integrated AI cost', `$${e.costPerMToken.toFixed(2)} / 1M tokens`);
+      html += this.econRow('Token margin', `${e.tokenMarginPerM >= 0 ? '+' : ''}$${e.tokenMarginPerM.toFixed(2)} / 1M`, e.tokenMarginPerM >= 0 ? 'positive' : 'negative');
+    }
     if (e.costPerKgH2 > 0) html += this.econRow('Integrated H₂ cost', `$${e.costPerKgH2.toFixed(2)}/kg`);
     if (e.costPerTonCO2 > 0) html += this.econRow('Integrated CO₂ cost', `$${e.costPerTonCO2.toFixed(0)}/ton`);
     if (e.costPerMCF > 0) html += this.econRow('Integrated CH₄ cost', `$${e.costPerMCF.toFixed(2)}/MCF`);
@@ -1385,48 +1495,88 @@ class App {
     document.getElementById('impactGrid').innerHTML = html.join('');
   }
 
-  updateCoverage(r) {
-    const enabled = r.exploratoryModules.filter(module => module.enabled);
-    const html = enabled.length
-      ? enabled.map(module => this.prodItem(
-        'co2',
-        '🧪',
-        module.label,
-        module.routeOptions.find(option => option.value === module.route)?.label || module.route,
-        'Route'
-      ) + `<div class="coverage-note">${module.missingInputs.join(' · ')}</div>`).join('')
-      : this.prodItem('solar', '', 'Exploratory modules', 'None enabled', '');
-    document.getElementById('exploratoryCoverageList').innerHTML = html;
-  }
-
   updatePowerChart(r) {
-    const dayLabel = (r.solar.bodyKey === 'earth' && this.state.dayMode === 'specific')
-      ? `— ${SolarGeometry.dayToDateString(this.state.dayOfYear)}${SolarGeometry.notableDay(this.state.dayOfYear)}`
-      : r.solar.bodyKey === 'earth'
-        ? '— Annual Average'
-        : `— Average local ${r.solar.cycleUnit}`;
+    const aiMode = r.ai.enabled;
+    const specificAiDaySelected = aiMode && r.solar.bodyKey === 'earth' && this.state.dayMode === 'specific';
+    const selectedDayIndex = Math.max(0, Math.min(364, (this.state.dayOfYear || 1) - 1));
+    const selectedDayLabel = `${SolarGeometry.dayToDateString(this.state.dayOfYear)}${SolarGeometry.notableDay(this.state.dayOfYear)}`;
+    const sliceSelectedDay = series => {
+      if (!Array.isArray(series) || !series.length) return [];
+      const start = selectedDayIndex * 24;
+      const slice = series.slice(start, start + 24);
+      return slice.length === 24 ? slice : [];
+    };
+    const specificSolarData = sliceSelectedDay(r.annualSolar?.hourlyKW);
+    const specificAiData = sliceSelectedDay(r.ai.dispatch?.aiHourlyKW);
+    const specificBatteryChargeData = sliceSelectedDay(r.ai.dispatch?.batteryChargeHourlyKW);
+    const specificChemicalData = sliceSelectedDay(r.ai.dispatch?.chemicalHourlyKW);
+    const showSpecificAiDay = specificAiDaySelected &&
+      specificSolarData.length === 24 &&
+      specificAiData.length === 24 &&
+      specificChemicalData.length === 24;
+    const dayLabel = aiMode
+      ? (showSpecificAiDay ? `— ${selectedDayLabel}` : '— Yearly Dispatch Average')
+      : (r.solar.bodyKey === 'earth' && this.state.dayMode === 'specific')
+        ? `— ${selectedDayLabel}`
+        : r.solar.bodyKey === 'earth'
+          ? '— Annual Average'
+          : `— Average local ${r.solar.cycleUnit}`;
     document.getElementById('powerChartDayLabel').textContent = dayLabel;
     const powerChartNote = document.getElementById('powerChartNote');
     if (powerChartNote) {
       const noteParts = [];
-      if (r.solar.chartNote) noteParts.push(r.solar.chartNote);
-      if (r.solar.bodyKey === 'earth') {
+      if (aiMode) {
+        noteParts.push(r.battery.enabled
+          ? (showSpecificAiDay
+              ? 'Hourly dispatch for the selected day using the annual AI load sizing. AI is served first, battery charging is shown separately, and chemistry only runs on residual solar left after charging.'
+              : 'Average hour-of-day dispatch across the modeled year. AI is served first, battery charging is shown separately, and chemicals only consume residual energy left after charging.')
+          : (showSpecificAiDay
+              ? 'Hourly dispatch for the selected day using the annual AI load sizing. AI is served first, and chemistry only runs on residual solar left after AI demand.'
+              : 'Average hour-of-day dispatch across the modeled year. AI is served first; chemicals only consume residual energy.'));
+      } else if (r.battery.enabled) {
+        noteParts.push(r.solar.bodyKey === 'earth' && this.state.dayMode === 'specific'
+          ? 'Battery-backed dispatch for the selected day. The chemical plant is sized to the lowest peak load that still absorbs the modeled solar energy; excess solar charges the battery and stored energy extends operation later in the day.'
+          : 'Representative battery-backed dispatch for the modeled cycle. The chemical plant is sized to the lowest peak load that still absorbs the modeled solar energy; excess solar charges the battery and stored energy extends operation later in the cycle.');
+        if (r.solar.chartNote) noteParts.push(r.solar.chartNote);
+      } else {
+        noteParts.push(r.solar.bodyKey === 'earth' && this.state.dayMode === 'specific'
+          ? 'Chemical load for the selected day with no battery shifting. The process follows the solar profile directly.'
+          : 'Representative chemical load with no battery shifting. The process follows the solar profile directly.');
+        if (r.solar.chartNote) noteParts.push(r.solar.chartNote);
+      }
+      if (!aiMode && r.solar.bodyKey === 'earth') {
         noteParts.push('Daily chart shape varies by mounting type; annual economics still follow the annual yield input.');
       }
       powerChartNote.textContent = noteParts.join(' ');
     }
 
-    const labels = this.getPowerChartLabels(r);
-    const solarData = r.solar.hourlyProfile.map(v => Math.min((v * r.solar.dailyKWh) / r.solar.binHours, r.solar.peakPowerKW));
-    const effectiveData = r.battery.enabled
-      ? r.battery.hourlyKW
-      : solarData;
+    const solarData = aiMode
+      ? (showSpecificAiDay ? specificSolarData : (r.annualSolar.averageDayKW || []))
+      : r.solar.hourlyProfile.map(v => Math.min((v * r.solar.dailyKWh) / r.solar.binHours, r.solar.peakPowerKW));
+    const labels = aiMode
+      ? Array.from({ length: solarData.length }, (_, i) => `${i}:00`)
+      : this.getPowerChartLabels(r);
+    const aiData = aiMode
+      ? (showSpecificAiDay ? specificAiData : (r.ai.dispatch.averageDayAiKW || []))
+      : [];
+    const batteryChargeData = aiMode
+      ? (showSpecificAiDay ? specificBatteryChargeData : (r.ai.dispatch.averageDayBatteryChargeKW || []))
+      : (r.battery.batteryChargeHourlyKW || []);
+    const chemicalData = aiMode
+      ? (showSpecificAiDay ? specificChemicalData : (r.ai.dispatch.averageDayChemicalKW || []))
+      : (r.battery.enabled ? (r.battery.hourlyKW || []) : solarData);
+    const showBatteryChargeSeries = r.battery.enabled &&
+      batteryChargeData.length === labels.length &&
+      batteryChargeData.some(value => value > 1e-6);
     const chartKey = JSON.stringify({
       dayLabel,
       labels,
+      aiMode,
       batteryEnabled: r.battery.enabled,
       solarData,
-      effectiveData,
+      aiData,
+      batteryChargeData: showBatteryChargeSeries ? batteryChargeData : [],
+      chemicalData,
     });
 
     if (this.chartKeys.power === chartKey && this.charts.power) return;
@@ -1442,17 +1592,59 @@ class App {
         pointRadius: 0,
         borderWidth: 2,
       },
-      ...(r.battery.enabled ? [{
-        label: 'Peak-shaved + night battery (kW)',
-        data: effectiveData,
-        borderColor: '#6366f1',
-        backgroundColor: 'rgba(99, 102, 241, 0.1)',
-        fill: true,
-        tension: 0.4,
-        pointRadius: 0,
-        borderWidth: 2,
-        borderDash: [4, 3],
-      }] : []),
+      ...(aiMode ? [
+        {
+          label: 'AI served (kW)',
+          data: aiData,
+          borderColor: '#38bdf8',
+          backgroundColor: 'rgba(56, 189, 248, 0.08)',
+          fill: false,
+          tension: 0.35,
+          pointRadius: 0,
+          borderWidth: 2,
+        },
+        ...(showBatteryChargeSeries ? [{
+          label: 'Battery charging (kW)',
+          data: batteryChargeData,
+          borderColor: '#6366f1',
+          backgroundColor: 'rgba(99, 102, 241, 0.1)',
+          fill: false,
+          tension: 0.35,
+          pointRadius: 0,
+          borderWidth: 2,
+        }] : []),
+        {
+          label: 'Residual chemical load (kW)',
+          data: chemicalData,
+          borderColor: '#10b981',
+          backgroundColor: 'rgba(16, 185, 129, 0.16)',
+          fill: true,
+          tension: 0.35,
+          pointRadius: 0,
+          borderWidth: 2,
+        },
+      ] : [
+        ...(showBatteryChargeSeries ? [{
+          label: 'Battery charging (kW)',
+          data: batteryChargeData,
+          borderColor: '#6366f1',
+          backgroundColor: 'rgba(99, 102, 241, 0.1)',
+          fill: false,
+          tension: 0.35,
+          pointRadius: 0,
+          borderWidth: 2,
+        }] : []),
+        {
+          label: 'Chemical load (kW)',
+          data: chemicalData,
+          borderColor: '#10b981',
+          backgroundColor: 'rgba(16, 185, 129, 0.16)',
+          fill: true,
+          tension: 0.35,
+          pointRadius: 0,
+          borderWidth: 2,
+        },
+      ]),
     ];
 
     if (!this.charts.power) {
@@ -1471,7 +1663,7 @@ class App {
               grid: { color: '#1e293b' },
               title: {
                 display: true,
-                text: r.solar.chartLabelMode === 'days' ? 'Earth days into local cycle' : 'Local solar time',
+                text: aiMode ? 'Hour of day' : (r.solar.chartLabelMode === 'days' ? 'Earth days into local cycle' : 'Local solar time'),
                 color: '#64748b',
                 font: { size: 10 },
               },
@@ -1483,11 +1675,87 @@ class App {
     } else {
       this.charts.power.data.labels = labels;
       this.charts.power.data.datasets = datasets;
-      this.charts.power.options.scales.x.title.text = r.solar.chartLabelMode === 'days' ? 'Earth days into local cycle' : 'Local solar time';
+      this.charts.power.options.scales.x.title.text = aiMode ? 'Hour of day' : (r.solar.chartLabelMode === 'days' ? 'Earth days into local cycle' : 'Local solar time');
       this.charts.power.update();
     }
 
     this.chartKeys.power = chartKey;
+  }
+
+  updateAnnualDispatchChart(r) {
+    const labels = r.annualDispatch?.dayLabels || [];
+    const aiSeries = (r.annualDispatch?.dailyAiKWh || []).map(value => value / 1000);
+    const chemicalSeries = (r.annualDispatch?.dailyChemicalKWh || []).map(value => value / 1000);
+    const annualDispatchNote = document.getElementById('annualDispatchNote');
+    if (annualDispatchNote) {
+      annualDispatchNote.textContent = r.ai.enabled
+        ? 'Daily delivered energy over the modeled year. AI gets first call on solar and battery support; chemistry only runs on the residual energy left over.'
+        : 'Daily seasonal solar energy over the modeled year. Enable AI Compute to see how the datacenter carves out a high-reliability constant load before chemistry absorbs the residual.';
+    }
+
+    const chartKey = JSON.stringify({
+      labels,
+      aiEnabled: r.ai.enabled,
+      aiSeries,
+      chemicalSeries,
+    });
+    if (this.chartKeys.annualDispatch === chartKey && this.charts.annualDispatch) return;
+
+    const datasets = [
+      {
+        label: 'AI energy (MWh/day)',
+        data: aiSeries,
+        borderColor: '#38bdf8',
+        backgroundColor: 'rgba(56, 189, 248, 0.2)',
+        fill: true,
+        tension: 0.25,
+        pointRadius: 0,
+        borderWidth: 2,
+      },
+      {
+        label: 'Chemical energy (MWh/day)',
+        data: chemicalSeries,
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16, 185, 129, 0.18)',
+        fill: true,
+        tension: 0.25,
+        pointRadius: 0,
+        borderWidth: 2,
+      },
+    ];
+
+    if (!this.charts.annualDispatch) {
+      this.charts.annualDispatch = new Chart(document.getElementById('annualDispatchChart'), {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#94a3b8', font: { size: 10 } } },
+          },
+          scales: {
+            x: {
+              ticks: { color: '#64748b', font: { size: 9 }, maxTicksLimit: 12 },
+              grid: { color: '#1e293b' },
+              title: { display: true, text: 'Day of year', color: '#64748b', font: { size: 10 } },
+            },
+            y: {
+              ticks: { color: '#64748b', font: { size: 9 } },
+              grid: { color: '#1e293b' },
+              beginAtZero: true,
+              title: { display: true, text: 'MWh/day', color: '#64748b', font: { size: 10 } },
+            },
+          },
+        },
+      });
+    } else {
+      this.charts.annualDispatch.data.labels = labels;
+      this.charts.annualDispatch.data.datasets = datasets;
+      this.charts.annualDispatch.update();
+    }
+
+    this.chartKeys.annualDispatch = chartKey;
   }
 
   updateEconChart(r) {
@@ -1501,6 +1769,7 @@ class App {
     if ((solarBreakdown.solarLand || 0) > 0) { labels.push('Land'); values.push(solarBreakdown.solarLand); colors.push('#84cc16'); }
     if ((solarBreakdown.solarSitePrep || 0) > 0) { labels.push('Site prep'); values.push(solarBreakdown.solarSitePrep); colors.push('#22c55e'); }
     if (e.capex.battery > 0) { labels.push('Battery'); values.push(e.capex.battery); colors.push('#6366f1'); }
+    if (e.capex.ai > 0) { labels.push('AI datacenter'); values.push(e.capex.ai); colors.push('#38bdf8'); }
     if (e.capex.electrolyzer > 0) { labels.push('Electrolyzer'); values.push(e.capex.electrolyzer); colors.push('#06b6d4'); }
     if (e.capex.dac > 0) { labels.push('DAC'); values.push(e.capex.dac); colors.push('#8b5cf6'); }
     if (e.capex.sabatier > 0) { labels.push('Methane'); values.push(e.capex.sabatier); colors.push('#10b981'); }
@@ -1525,8 +1794,9 @@ class App {
   }
 
   updateSensitivityChart() {
-    const prices = [2, 3, 4, 6, 8, 10, 15, 20, 25, 30];
-    const gasData = Calc.runSensitivity(this.state, 'methanePrice', prices);
+    const aiMode = Boolean(this.state.aiComputeEnabled);
+    const prices = aiMode ? [0.5, 1, 2, 3, 5, 8, 12, 16] : [2, 3, 4, 6, 8, 10, 15, 20, 25, 30];
+    const series = Calc.runSensitivity(this.state, aiMode ? 'aiTokenPricePerM' : 'methanePrice', prices);
     if (this.charts.sensitivity) this.charts.sensitivity.destroy();
     this.charts.sensitivity = new Chart(document.getElementById('sensitivityChart'), {
       type: 'line',
@@ -1534,9 +1804,9 @@ class App {
         labels: prices.map(p => `$${p}`),
         datasets: [
           {
-            label: 'NPV vs methane price',
-            data: gasData.map(point => point.npv),
-            borderColor: '#10b981',
+            label: aiMode ? 'NPV vs AI token price' : 'NPV vs methane price',
+            data: series.map(point => point.npv),
+            borderColor: aiMode ? '#38bdf8' : '#10b981',
             tension: 0.3,
             pointRadius: 3,
             borderWidth: 2,
@@ -1549,7 +1819,12 @@ class App {
         plugins: { legend: { labels: { color: '#94a3b8', font: { size: 10 } } } },
         scales: {
           x: {
-            title: { display: true, text: 'Methane price ($/MCF)', color: '#64748b', font: { size: 10 } },
+            title: {
+              display: true,
+              text: aiMode ? 'AI token price ($ / 1M tokens)' : 'Methane price ($/MCF)',
+              color: '#64748b',
+              font: { size: 10 },
+            },
             ticks: { color: '#64748b', font: { size: 9 } },
             grid: { color: '#1e293b' },
           },
@@ -1584,6 +1859,7 @@ class App {
     if (val === undefined || val === null || Number.isNaN(val)) return '$0';
     const abs = Math.abs(val);
     const sign = val < 0 ? '-' : '';
+    if (abs >= 1e9) return `${sign}$${(abs / 1e9).toFixed(2)}B`;
     if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(2)}M`;
     if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(1)}K`;
     return `${sign}$${abs.toFixed(0)}`;

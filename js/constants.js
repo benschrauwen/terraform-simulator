@@ -289,8 +289,25 @@ const METHANE_MARKET_PRESETS = {
 const MODEL_ASSUMPTIONS = {
   fallbackYieldFromGhi: 0.82,
   batteryNominalLifeYears: 12,
+  batteryMonthlyLeakage: 0.02,
   fossilGasEmissionsPerMCF: 0.053,
 };
+
+const AI_COMPUTE_DEFAULTS = {
+  capexPerKW: 50000,
+  assetLifeYears: 5,
+  omPercent: 4,
+};
+
+const AI_RELIABILITY_OPTIONS = [
+  { value: 90, label: '90.0%' },
+  { value: 95, label: '95.0%' },
+  { value: 99, label: '99.0%' },
+  { value: 99.5, label: '99.5%' },
+  { value: 99.9, label: '99.9%' },
+  { value: 99.95, label: '99.95%' },
+  { value: 99.99, label: '99.99%' },
+];
 
 const MODULE_REGISTRY = [
   {
@@ -488,6 +505,8 @@ const MODULE_REGISTRY = [
 ];
 
 const DEFAULT_STATE = {
+  loadConfigTab: 'chemicals',
+
   dayMode: 'average',
   dayOfYear: 172,
 
@@ -512,6 +531,13 @@ const DEFAULT_STATE = {
   batteryCostPerKWh: 150,
   batteryEfficiency: 90,
   batteryCycles: 4000,
+
+  aiComputeEnabled: false,
+  aiReliabilityTarget: 99.9,
+  aiTokenPricePerM: 3.0,
+  aiMillionTokensPerMWh: 1000,
+  aiGpuCapexPerKW: AI_COMPUTE_DEFAULTS.capexPerKW,
+  aiAssetLifeYears: AI_COMPUTE_DEFAULTS.assetLifeYears,
 
   electrolyzerEnabled: true,
   electrolyzerEfficiency: 79,
@@ -581,6 +607,16 @@ const DEFAULT_STATE = {
 };
 
 const SLIDER_MARKERS = {
+  aiTokenPrice: [
+    { value: 1, label: 'Low-value internal workload' },
+    { value: 3, label: 'Balanced default case' },
+    { value: 5, label: 'Higher-value inference mix' },
+  ],
+  aiTokensPerMWh: [
+    { value: 400, label: 'Heavier models / lower throughput' },
+    { value: 1000, label: 'Balanced default case' },
+    { value: 1600, label: 'Lighter models / higher throughput' },
+  ],
   methanePrice: [
     { value: 3, label: 'Low US spot gas' },
     { value: 10, label: 'Whitepaper commodity case' },

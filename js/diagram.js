@@ -7,6 +7,7 @@ const Diagram = {
     solar: '#f59e0b',
     electric: '#3b82f6',
     battery: '#6366f1',
+    ai: '#38bdf8',
     h2: '#06b6d4',
     co2: '#8b5cf6',
     methane: '#10b981',
@@ -115,6 +116,73 @@ const Diagram = {
       }
     };
 
+    const placeAnchoredRow = (items, centers, {
+      cardHeight = smallHeight,
+      cardWidth = Math.max(138, Math.min(178, singleWidth)),
+      fallbackMaxColumns = 3,
+    } = {}) => {
+      if (!items.length) return;
+
+      const resolvedCenters = centers.filter(center => Number.isFinite(center));
+      if (resolvedCenters.length < items.length) {
+        placeGrid(items, {
+          cardHeight,
+          singleCardWidth: cardWidth,
+          wideMinWidth: Math.min(cardWidth, 138),
+          wideMaxWidth: cardWidth,
+          maxColumns: fallbackMaxColumns,
+        });
+        return;
+      }
+
+      const minCenter = marginX + cardWidth / 2;
+      const maxCenter = width - marginX - cardWidth / 2;
+      const minCenterGap = cardWidth + pairGap;
+      const anchored = items.map((item, index) => ({
+        item,
+        center: Math.max(minCenter, Math.min(maxCenter, resolvedCenters[index])),
+      }));
+
+      for (let index = 1; index < anchored.length; index += 1) {
+        anchored[index].center = Math.max(anchored[index].center, anchored[index - 1].center + minCenterGap);
+      }
+
+      const overflow = anchored[anchored.length - 1].center - maxCenter;
+      if (overflow > 0) {
+        anchored.forEach(entry => {
+          entry.center -= overflow;
+        });
+      }
+
+      for (let index = anchored.length - 2; index >= 0; index -= 1) {
+        anchored[index].center = Math.min(anchored[index].center, anchored[index + 1].center - minCenterGap);
+      }
+
+      if (anchored[0].center < minCenter) {
+        const shift = minCenter - anchored[0].center;
+        anchored.forEach(entry => {
+          entry.center += shift;
+        });
+      }
+
+      const top = reserveRow(cardHeight);
+      anchored.forEach(({ item, center }) => {
+        addNode(
+          item.id,
+          center,
+          top,
+          cardWidth,
+          cardHeight,
+          item.icon || '',
+          item.title,
+          item.value,
+          item.subtitle,
+          item.color,
+          item.active !== false
+        );
+      });
+    };
+
     const exploratoryCards = r.exploratoryModules
       .filter(module => module.enabled)
       .map(module => ({
@@ -165,9 +233,9 @@ const Diagram = {
     if (r.battery.enabled) {
       placeGrid([{
         id: 'battery',
-        title: 'Battery support',
+        title: 'Battery firming',
         value: `${r.battery.battCapKWh.toLocaleString()} kWh`,
-        subtitle: `${r.battery.baseloadKW.toFixed(0)} kW night floor`,
+        subtitle: `${r.battery.processPowerKW.toFixed(0)} kW firmed process cap`,
         color: this.colors.battery,
         active: true,
       }], {
@@ -179,27 +247,48 @@ const Diagram = {
       });
     }
 
-    placeGrid([
-      {
-        id: 'electrolyzer',
-        title: 'Electrolyzer',
-        value: r.electrolyzer.enabled ? `${r.electrolyzer.h2DailyKg.toFixed(1)} kg H2/${r.solar.cycleUnitCompact}` : 'Off',
-        subtitle: r.electrolyzer.enabled ? `${r.electrolyzer.allocPct.toFixed(1)}% of power` : '',
-        color: this.colors.h2,
-        active: r.electrolyzer.enabled,
-      },
-      {
-        id: 'dac',
-        title: 'DAC',
-        value: r.dac.enabled ? `${r.dac.co2DailyKg.toFixed(1)} kg CO2/${r.solar.cycleUnitCompact}` : 'Off',
-        subtitle: r.dac.enabled ? `${r.dac.allocPct.toFixed(1)}% of power` : '',
-        color: this.colors.co2,
-        active: r.dac.enabled,
-      },
+    const coreProcessCards = [
+      ...(r.ai.enabled
+        ? [{
+            id: 'ai',
+            title: 'AI datacenter',
+            value: (() => {
+              const aiLoadMW = r.ai.designLoadKW / 1000;
+              return aiLoadMW >= 1000
+                ? `${(aiLoadMW / 1000).toFixed(2)} GW`
+                : `${aiLoadMW.toFixed(1)} MW`;
+            })(),
+            subtitle: `${(r.ai.utilization * 100).toFixed(2)}% delivered · ${(r.ai.fullPowerReliability * 100).toFixed(2)}% full-rate`,
+            color: this.colors.ai,
+            active: true,
+          }]
+        : []),
+      ...(r.electrolyzer.enabled
+        ? [{
+            id: 'electrolyzer',
+            title: 'Electrolyzer',
+            value: `${r.electrolyzer.h2DailyKg.toFixed(1)} kg H2/${r.solar.cycleUnitCompact}`,
+            subtitle: `${r.electrolyzer.allocPct.toFixed(1)}% of power`,
+            color: this.colors.h2,
+            active: true,
+          }]
+        : []),
+      ...(r.dac.enabled
+        ? [{
+            id: 'dac',
+            title: 'DAC',
+            value: `${r.dac.co2DailyKg.toFixed(1)} kg CO2/${r.solar.cycleUnitCompact}`,
+            subtitle: `${r.dac.allocPct.toFixed(1)}% of power`,
+            color: this.colors.co2,
+            active: true,
+          }]
+        : []),
       ...exploratoryCards
         .filter(module => !module.diagramInputs.h2 && !module.diagramInputs.co2)
         .map(makeExploratoryCard),
-    ], {
+    ];
+
+    placeGrid(coreProcessCards, {
       cardHeight: largeHeight,
       maxColumns: 4,
     });
@@ -226,17 +315,7 @@ const Diagram = {
     const feedstockExploratoryCards = exploratoryCards
       .filter(module => module.diagramInputs.h2 || module.diagramInputs.co2)
       .map(makeExploratoryCard);
-    const downstreamCards = supportedCards.length || feedstockExploratoryCards.length
-      ? [...supportedCards, ...feedstockExploratoryCards]
-      : [{
-          id: 'placeholder-supported',
-          title: 'No supported product',
-          value: 'Enable methane or methanol',
-          subtitle: '',
-          color: this.colors.inactive,
-          icon: '',
-          active: false,
-        }];
+    const downstreamCards = [...supportedCards, ...feedstockExploratoryCards];
 
     placeGrid(downstreamCards, {
       cardHeight: smallHeight,
@@ -244,6 +323,16 @@ const Diagram = {
     });
 
     const outputs = [];
+    if (r.ai.enabled) {
+      outputs.push({
+        id: 'out-ai',
+        icon: '',
+        title: 'AI output',
+        value: `${(r.ai.annualTokensM / 1000).toFixed(2)} B tok/yr`,
+        subtitle: `${this.formatMoney(r.economics.revenue.ai)} /yr`,
+        color: this.colors.ai,
+      });
+    }
     if (r.sabatier.enabled) {
       outputs.push({
         id: 'out-methane',
@@ -264,10 +353,42 @@ const Diagram = {
         color: this.colors.methanol,
       });
     }
-    placeGrid(outputs, {
-      cardHeight: smallHeight,
-      maxColumns: 3,
-    });
+    const aiOutput = outputs.find(output => output.id === 'out-ai');
+    const productOutputs = outputs.filter(output => output.id !== 'out-ai');
+    const getNodeById = id => nodes.find(node => node.id === id);
+
+    if (aiOutput) {
+      const outputCards = [aiOutput];
+      const outputCenters = [getNodeById('ai')?.cx];
+
+      if (productOutputs.length === 1) {
+        outputCards.push(productOutputs[0]);
+        outputCenters.push(getNodeById('dac')?.cx ?? getNodeById('electrolyzer')?.cx);
+      } else if (productOutputs.length === 2) {
+        outputCards.push(productOutputs[0], productOutputs[1]);
+        outputCenters.push(getNodeById('electrolyzer')?.cx, getNodeById('dac')?.cx);
+      } else if (productOutputs.length > 2) {
+        placeGrid(outputs, {
+          cardHeight: smallHeight,
+          maxColumns: 3,
+        });
+        return {
+          nodes,
+          height: Math.max(360, cursorTop - rowGap + marginY),
+        };
+      }
+
+      placeAnchoredRow(outputCards, outputCenters, {
+        cardHeight: smallHeight,
+        cardWidth: Math.min(singleWidth, 178),
+        fallbackMaxColumns: 3,
+      });
+    } else {
+      placeGrid(outputs, {
+        cardHeight: smallHeight,
+        maxColumns: 3,
+      });
+    }
 
     return {
       nodes,
@@ -281,6 +402,7 @@ const Diagram = {
     const sun = get('sun');
     const array = get('array');
     const battery = get('battery');
+    const ai = get('ai');
     const electrolyzer = get('electrolyzer');
     const dac = get('dac');
     const branchOffset = (from, to, amount = 42) => {
@@ -306,6 +428,22 @@ const Diagram = {
       connections.push(this.conn(array, battery, this.colors.battery, '', true, {
         width: 1.5,
         route: 'vertical',
+      }));
+    }
+    if (array && ai) {
+      connections.push(this.conn(array, ai, this.colors.ai, `${(r.ai.designLoadKW / 1000).toFixed(1)} MW`, true, {
+        width: 2.2,
+        route: 'vertical',
+        fromOffsetX: branchOffset(array, ai, 46),
+        labelOffsetX: branchLabelOffset(array, ai, 38),
+        labelOffsetY: ai.cx === array.cx ? -10 : -2,
+      }));
+    }
+    if (battery && ai) {
+      connections.push(this.conn(battery, ai, this.colors.battery, '', true, {
+        width: 1.2,
+        route: 'vertical',
+        fromOffsetX: branchOffset(battery, ai, 18),
       }));
     }
     if (array && electrolyzer) {
@@ -388,6 +526,14 @@ const Diagram = {
         }));
       }
     });
+
+    const aiOutput = get('out-ai');
+    if (ai && aiOutput) {
+      connections.push(this.conn(ai, aiOutput, this.colors.ai, '', true, {
+        width: 2.5,
+        route: 'vertical',
+      }));
+    }
 
     r.exploratoryModules.filter(module => module.enabled).forEach(module => {
       const node = get(`exp-${module.id}`);
@@ -565,6 +711,7 @@ const Diagram = {
     if (val === undefined || val === null || Number.isNaN(val)) return '$0';
     const abs = Math.abs(val);
     const sign = val < 0 ? '-' : '';
+    if (abs >= 1e9) return `${sign}$${(abs / 1e9).toFixed(2)}B`;
     if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(2)}M`;
     if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(1)}K`;
     return `${sign}$${abs.toFixed(0)}`;

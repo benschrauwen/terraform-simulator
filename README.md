@@ -1,6 +1,6 @@
-# Solar Chemical Plant Builder
+# Solar Chemical/AI Plant Builder
 
-An unofficial, MIT-licensed browser app for exploring a Terraform Industries-style solar-to-chemical plant. The current simulator is best understood as an educational techno-economic model for a direct-coupled solar + electrolysis + DAC + methane/methanol system, not as a bankable engineering model.
+An unofficial, MIT-licensed browser app for exploring a Terraform Industries-style solar-to-chemical plant. The current simulator is best understood as an educational techno-economic model for a direct-coupled solar + electrolysis + DAC + methane/methanol system, with an optional colocated **AI compute** load that competes for the same solar and battery resources. It is not a bankable engineering model.
 
 The app is intentionally centered on the idea that very cheap local solar DC, low-capex intermittent hardware, and colocated conversion can matter more than chasing maximum utilization or maximum electrical efficiency.
 
@@ -11,11 +11,14 @@ The app is already a real working prototype, not just a UI mockup. Today it supp
 - Annual-yield-driven solar modeling with preset sites and manual `MWh / MWdc / year` input.
 - Solar mounting comparisons across fixed tilt, East-West fixed, single-axis tracking, and dual-axis tracking.
 - Earth, Mars, and Moon resource presets, with planetary modes clearly treated as stylized scenarios.
-- A direct-coupled feed allocation model that auto-balances electrolyzer and DAC power shares from active downstream stoichiometry.
+- A direct-coupled feed allocation model that auto-balances electrolyzer and DAC power shares from active downstream stoichiometry (chemistry runs on **residual** power after AI when AI compute is enabled).
 - Fully modeled methane and methanol product paths, including mass balance, CAPEX, revenue, and finance outputs.
 - Policy modes for `45V`, `45Q`, EU Hydrogen Bank style premiums, and custom credits.
 - NPV, IRR, ROI, payback, annualized CAPEX, and replacement-aware discounted cash flow outputs.
-- Battery smoothing as a comparison feature that reshapes process peak demand and operating hours.
+- Battery firming as a comparison feature that solves for the highest continuous chemical-plant power the solar + storage pair can sustain while absorbing the modeled solar energy, with a fixed **2%/month** standing energy loss on stored energy.
+- Optional **on-site AI datacenter** mode: a reliability-targeted constant IT load auto-sized from annual solar (+ optional battery), with token-based revenue, GPU CAPEX ($/kW IT), throughput (million tokens per MWh), and economics integrated into NPV and sensitivity analysis.
+- **Chemical** vs **AI Compute** tabs under Processes to configure chemical modules separately from AI settings.
+- Charts for daily power (solar, optional battery charge, chemical or residual chemical load, and AI when enabled) plus an **Annual Dispatch** view of daily AI vs chemical energy over the modeled year (Earth uses a full-year hourly solar shape scaled to your annual yield).
 - Environmental outputs such as CO2 captured, CO2 displaced, water recycled, net water needed, and land use.
 - Exploratory industrial modules that are visible in the UI but intentionally excluded from ROI until route-specific assumptions are added.
 
@@ -23,8 +26,8 @@ The app is still a static front-end project with no build step. The main files a
 
 - `index.html`: app layout and controls
 - `style.css`: visual styling
-- `js/app.js`: UI state, charts, map rendering, and panel updates
-- `js/calculations.js`: solar, process, economics, policy, and environmental calculations
+- `js/app.js`: UI state, charts (power, annual dispatch, sensitivity vs methane or token price), map rendering, and panel updates
+- `js/calculations.js`: solar, annual series, battery firming, AI dispatch, process, economics, policy, and environmental calculations
 - `js/constants.js`: presets, chemistry constants, policy presets, and module registry
 - `js/solar-geometry.js`: daily and planetary solar-profile shaping
 - `js/diagram.js`: process diagram rendering
@@ -33,10 +36,11 @@ The app is still a static front-end project with no build step. The main files a
 
 These are the parts of the app that are currently modeled with enough internal structure to be useful for scenario exploration:
 
-- A methane-first plant architecture: solar -> electrolyzer -> DAC -> Sabatier methane
+- A methane-first plant architecture: solar -> electrolyzer -> DAC -> Sabatier methane (with optional **AI datacenter** on the same solar and battery when enabled)
 - Methanol as a second modeled product family
 - Yield-driven annual solar production rather than pure latitude-based annual output
-- Distinct CAPEX buckets for solar modules, BOS, land, site prep, battery, electrolyzer, DAC, and reactors
+- Optional **AI compute** economics: constant IT load sized to hit a chosen annual **delivered utilization** target against full-year hourly solar, plus token price and throughput, GPU CAPEX, fixed AI O&M, revenue in NPV, and sensitivity on token price when AI mode is on
+- Distinct CAPEX buckets for solar modules, BOS, land, site prep, battery, electrolyzer, DAC, reactors, and (when enabled) AI IT
 - Separate asset lives for solar, battery, and process hardware
 - Replacement CAPEX events inside the discounted cash flow horizon
 - Policy duration limits for support mechanisms like `45V` and EU Hydrogen Bank style premiums
@@ -53,7 +57,8 @@ The simulator is useful, but it still has important limitations:
 - O&M is still represented as simple percentages of CAPEX rather than a detailed fixed-and-variable cost model.
 - Debt, taxes, inflation, salvage value, working capital, and ownership structure are not modeled.
 - Policy eligibility is not legally validated against full lifecycle, jurisdictional, or contractual requirements.
-- The battery model is a comparison layer, not a full storage engineering model.
+- The battery model is a simplified continuous-output firming heuristic, not a full storage engineering model or year-round governor.
+- **AI compute** is a stylized constant-load and token-pricing layer, not a GPU/network/datacenter engineering model; “integrated” $/M token metrics allocate solar + battery + AI capital to tokens for intuition, not as a contractual PPA structure.
 - Planetary modes are exploratory and use literature-inspired benchmarks rather than bankable resource datasets.
 
 ## Key Assumptions
@@ -61,6 +66,7 @@ The simulator is useful, but it still has important limitations:
 The current implementation makes several deliberate assumptions that should stay visible:
 
 - Annual economics are driven by `siteYieldMwhPerMwdcYear`; the daily solar profile is mainly used for shaping charts and dispatch.
+- With **AI compute** enabled, the model builds a **full-year hourly solar series** (Earth: day-by-day geometry scaled to annual yield) and dispatches **AI first**; the chemical plant and battery charging use **residual** solar after the AI load, with the same **2%/month** storage leakage as the battery-only path.
 - Panel efficiency affects panel area and land use, not annual energy yield, because the model is framed around fixed MWdc nameplate.
 - Default methane volume conversion assumes `19.25 kg CH4 / MCF`.
 - Default fossil gas displacement uses `0.053 tCO2 / MCF`.
@@ -181,6 +187,18 @@ Core formulas:
 meoh_kg = min(h2_kg / 0.189, co2_kg / 1.374) * methanol_conversion
 ```
 
+### AI compute (optional)
+
+When enabled, a constant `load_kw` is chosen so simulated **delivered utilization** (energy served to the AI load divided by demand) meets the selected reliability target. Tokens and revenue follow throughput and price inputs:
+
+```text
+annual_tokens_m = ai_served_mwh * million_tokens_per_mwh
+
+annual_ai_revenue = annual_tokens_m * price_per_million_tokens
+```
+
+GPU CAPEX uses `$ / kW` of installed IT load at the solved `load_kw`. The UI also reports **full-rate reliability** (hours at full AI power), **integrated $/M token** (solar + battery + AI annualized cost divided by tokens), and **token margin** vs the token price.
+
 ### Finance
 
 The app uses capital recovery factor annualization plus a separate discounted cash flow path with explicit replacement years.
@@ -204,7 +222,7 @@ npv =
 
 Important implementation detail:
 
-- Solar-linked revenue degrades with panel degradation over time.
+- Solar-linked revenue degrades with panel degradation over time (including **AI token revenue** when AI compute is enabled).
 - Time-limited policy modes only apply for their modeled support duration.
 - Replacement CAPEX appears as discrete outflows when asset life rolls over within the analysis horizon.
 

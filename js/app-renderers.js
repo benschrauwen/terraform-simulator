@@ -62,6 +62,30 @@ window.AppRendererMethods = {
     if (irrLabel) irrLabel.textContent = e.financing.enabled ? 'Equity IRR' : 'IRR';
     document.getElementById('metricIRR').textContent = this.formatIrr(e.irr);
 
+    const financingHeadlineValue = document.getElementById('financingHeadlineValue');
+    if (financingHeadlineValue) {
+      financingHeadlineValue.textContent = e.financing.enabled
+        ? 'Sponsor equity IRR (levered)'
+        : 'Project IRR (unlevered)';
+    }
+
+    const financingScopeValue = document.getElementById('financingScopeValue');
+    if (financingScopeValue) {
+      financingScopeValue.textContent = e.financing.enabled
+        ? e.financing.debtAmount > 0
+          ? `${FormatNumbers.fixed(e.financing.debtSharePercent, 0)}% of upfront CAPEX debt-funded at close`
+          : '0% debt share; equivalent to unlevered project funding'
+        : 'Debt disabled; project cash flows stay unlevered';
+    }
+
+    const financingTermCapValue = document.getElementById('financingTermCapValue');
+    if (financingTermCapValue) {
+      const analysisHorizonYears = Math.max(1, Math.round(this.state.analysisHorizonYears || 1));
+      financingTermCapValue.textContent = e.financing.enabled
+        ? `${FormatNumbers.fixed(e.financing.debtTermYears, 0)}-year debt term within ${FormatNumbers.fixed(analysisHorizonYears, 0)}-year analysis`
+        : `Max ${FormatNumbers.fixed(analysisHorizonYears, 0)} years from the analysis horizon`;
+    }
+
     const viability = document.getElementById('metricViability');
     const label = document.getElementById('metricViabilityValue');
     viability.classList.remove('viable', 'marginal', 'not-viable');

@@ -56,18 +56,21 @@ Object.assign(Calc, {
 
     let solarGeo;
     if (profileModel === 'lunar-pel') {
-      solarGeo = SolarGeometry.lunarPolarIlluminationProfile({
+      return SolarGeometry.lunarPolarIlluminationProfile({
         cycleHours: body.cycleHours,
         illuminatedFraction: 0.85,
+        mountingKey,
       });
     } else if ((state.body || 'earth') === 'mars' || profileModel === 'mars-average') {
       solarGeo = SolarGeometry.planetaryAnnualAverageProfile({
         latitude: state.latitude,
         orbitalDays: 668.6,
-        axialTiltDeg: 25.19,
+        axialTiltDeg: 24.936,
         cycleHours: body.cycleHours,
         solarConstant: 590,
-        diffuseFraction: 0.05,
+        diffuseFraction: 0,
+        eccentricity: 0.093377,
+        perihelionLsDeg: 248,
       });
     } else if ((state.body || 'earth') === 'moon') {
       solarGeo = SolarGeometry.planetaryAnnualAverageProfile({

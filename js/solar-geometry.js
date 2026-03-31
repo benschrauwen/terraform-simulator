@@ -10,6 +10,8 @@ const SolarGeometry = {
 
   DEG: Math.PI / 180,
 
+  TAU: 2 * Math.PI,
+
   clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
   },
@@ -28,6 +30,72 @@ const SolarGeometry = {
       north: vec.north / magnitude,
       up: vec.up / magnitude,
     };
+  },
+
+  wrapRadians(angle) {
+    const wrapped = angle % this.TAU;
+    return wrapped < 0 ? wrapped + this.TAU : wrapped;
+  },
+
+  wrapDegrees(angle) {
+    const wrapped = angle % 360;
+    return wrapped < 0 ? wrapped + 360 : wrapped;
+  },
+
+  wrappedPhaseOffset(phase, center) {
+    return ((((phase - center) % 1) + 1.5) % 1) - 0.5;
+  },
+
+  gaussianWrappedPhase(phase, center, width) {
+    const safeWidth = Math.max(1e-6, width || 0);
+    const delta = this.wrappedPhaseOffset(phase, center);
+    return Math.exp(-0.5 * Math.pow(delta / safeWidth, 2));
+  },
+
+  getCyclicSegments(values, isActive) {
+    if (!Array.isArray(values) || !values.length || typeof isActive !== 'function') return [];
+
+    const segments = [];
+    let start = -1;
+    for (let i = 0; i < values.length; i++) {
+      const active = Boolean(isActive(values[i], i, values));
+      if (active) {
+        if (start < 0) start = i;
+      } else if (start >= 0) {
+        segments.push({ start, endExclusive: i, lengthBins: i - start, wraps: false });
+        start = -1;
+      }
+    }
+
+    if (start >= 0) {
+      segments.push({
+        start,
+        endExclusive: values.length,
+        lengthBins: values.length - start,
+        wraps: false,
+      });
+    }
+
+    if (segments.length > 1 && segments[0].start === 0 && segments[segments.length - 1].endExclusive === values.length) {
+      const first = segments[0];
+      const last = segments.pop();
+      segments[0] = {
+        start: last.start,
+        endExclusive: first.endExclusive,
+        lengthBins: first.lengthBins + last.lengthBins,
+        wraps: true,
+      };
+    }
+
+    return segments;
+  },
+
+  rotateProfile(rawProfile, startIndex = 0) {
+    if (!Array.isArray(rawProfile) || rawProfile.length === 0) return [];
+    const n = rawProfile.length;
+    const offset = ((Math.round(startIndex) % n) + n) % n;
+    if (offset === 0) return [...rawProfile];
+    return rawProfile.slice(offset).concat(rawProfile.slice(0, offset));
   },
 
   sunVectorLocal(latRad, declRad, hourAngleRad) {
@@ -294,12 +362,14 @@ const SolarGeometry = {
     const normalized = sum > 0 ? rawProfile.map(v => v / sum) : rawProfile.map(() => 0);
     const peak = Math.max(...rawProfile, 0);
     const litThreshold = peak * 0.02;
-    const firstLit = rawProfile.findIndex(v => v > litThreshold);
-    const lastLit = rawProfile.length - 1 - [...rawProfile].reverse().findIndex(v => v > litThreshold);
+    const litSegments = this.getCyclicSegments(rawProfile, value => value > litThreshold);
+    const primaryLitSegment = litSegments.reduce((best, segment) =>
+      (!best || segment.lengthBins > best.lengthBins ? segment : best), null);
+    const totalLitBins = litSegments.reduce((sumBins, segment) => sumBins + segment.lengthBins, 0);
     const stepHours = cycleHours / rawProfile.length;
-    const sunrise = firstLit >= 0 ? firstLit * stepHours : 0;
-    const sunset = firstLit >= 0 ? (lastLit + 1) * stepHours : 0;
-    const dayLengthHours = firstLit >= 0 ? (lastLit - firstLit + 1) * stepHours : 0;
+    const sunrise = primaryLitSegment ? primaryLitSegment.start * stepHours : 0;
+    const sunset = primaryLitSegment ? primaryLitSegment.endExclusive * stepHours : 0;
+    const dayLengthHours = totalLitBins * stepHours;
 
     return {
       profile: normalized,
@@ -355,6 +425,71 @@ const SolarGeometry = {
     return tilt * Math.sin(phase - (Math.PI / 2));
   },
 
+  eccentricAnomalyFromTrueAnomaly(trueAnomalyRad, eccentricity = 0) {
+    const e = Math.max(0, Math.min(0.999999, eccentricity || 0));
+    if (e <= 1e-9) return this.wrapRadians(trueAnomalyRad);
+    const numerator = Math.sqrt(1 - e) * Math.sin(trueAnomalyRad / 2);
+    const denominator = Math.sqrt(1 + e) * Math.cos(trueAnomalyRad / 2);
+    return this.wrapRadians(2 * Math.atan2(numerator, denominator));
+  },
+
+  eccentricAnomalyFromMeanAnomaly(meanAnomalyRad, eccentricity = 0) {
+    const e = Math.max(0, Math.min(0.999999, eccentricity || 0));
+    const target = this.wrapRadians(meanAnomalyRad);
+    if (e <= 1e-9) return target;
+
+    let estimate = e < 0.8 ? target : Math.PI;
+    for (let i = 0; i < 8; i++) {
+      const f = estimate - (e * Math.sin(estimate)) - target;
+      const fp = 1 - (e * Math.cos(estimate));
+      estimate -= f / Math.max(fp, 1e-9);
+    }
+    return this.wrapRadians(estimate);
+  },
+
+  trueAnomalyFromEccentricAnomaly(eccentricAnomalyRad, eccentricity = 0) {
+    const e = Math.max(0, Math.min(0.999999, eccentricity || 0));
+    if (e <= 1e-9) return this.wrapRadians(eccentricAnomalyRad);
+    const numerator = Math.sqrt(1 + e) * Math.sin(eccentricAnomalyRad / 2);
+    const denominator = Math.sqrt(1 - e) * Math.cos(eccentricAnomalyRad / 2);
+    return this.wrapRadians(2 * Math.atan2(numerator, denominator));
+  },
+
+  planetarySeasonState({
+    seasonalDay,
+    orbitalDays,
+    axialTiltDeg,
+    eccentricity = 0,
+    perihelionLsDeg = 0,
+    solarConstant = 1000,
+  }) {
+    const safeSeasonalDay = Math.max(1, Number(seasonalDay) || 1);
+    const safeOrbitalDays = Math.max(1, Number(orbitalDays) || 1);
+    const perihelionLsRad = (perihelionLsDeg || 0) * this.DEG;
+    const vernalEquinoxTrueAnomaly = this.wrapRadians(-perihelionLsRad);
+    const vernalEquinoxEccentricAnomaly = this.eccentricAnomalyFromTrueAnomaly(vernalEquinoxTrueAnomaly, eccentricity);
+    const vernalEquinoxMeanAnomaly = this.wrapRadians(
+      vernalEquinoxEccentricAnomaly - (eccentricity * Math.sin(vernalEquinoxEccentricAnomaly))
+    );
+    const elapsedMeanAnomaly = ((safeSeasonalDay - 1) / safeOrbitalDays) * this.TAU;
+    const meanAnomaly = this.wrapRadians(vernalEquinoxMeanAnomaly + elapsedMeanAnomaly);
+    const eccentricAnomaly = this.eccentricAnomalyFromMeanAnomaly(meanAnomaly, eccentricity);
+    const trueAnomaly = this.trueAnomalyFromEccentricAnomaly(eccentricAnomaly, eccentricity);
+    const solarLongitudeRad = this.wrapRadians(perihelionLsRad + trueAnomaly);
+    const orbitalDistanceFactor = eccentricity > 1e-9
+      ? ((1 - (eccentricity * eccentricity)) / (1 + (eccentricity * Math.cos(solarLongitudeRad - perihelionLsRad))))
+      : 1;
+    const declinationRad = Math.asin(
+      Math.sin(axialTiltDeg * this.DEG) * Math.sin(solarLongitudeRad)
+    );
+    return {
+      solarLongitudeDeg: this.wrapDegrees(solarLongitudeRad / this.DEG),
+      declinationRad,
+      orbitalDistanceFactor,
+      solarFlux: solarConstant / Math.max(orbitalDistanceFactor * orbitalDistanceFactor, 1e-9),
+    };
+  },
+
   planetaryDailyProfile({
     latitude,
     seasonalDay,
@@ -363,10 +498,20 @@ const SolarGeometry = {
     cycleHours,
     solarConstant = 1000,
     diffuseFraction = 0,
+    eccentricity = 0,
+    perihelionLsDeg = 0,
     bins = 24,
   }) {
     const latRad = latitude * this.DEG;
-    const decl = this.planetaryDeclination(seasonalDay, orbitalDays, axialTiltDeg);
+    const season = this.planetarySeasonState({
+      seasonalDay,
+      orbitalDays,
+      axialTiltDeg,
+      eccentricity,
+      perihelionLsDeg,
+      solarConstant,
+    });
+    const decl = season.declinationRad;
     const profile = [];
     const solarNoon = cycleHours / 2;
     let maxIrr = 0;
@@ -380,8 +525,8 @@ const SolarGeometry = {
         const elevation = this.solarElevation(latRad, decl, hourAngle);
 
         if (elevation > 0) {
-          const beam = solarConstant * Math.sin(elevation);
-          const diffuse = diffuseFraction * solarConstant;
+          const beam = season.solarFlux * Math.sin(elevation);
+          const diffuse = diffuseFraction * season.solarFlux * Math.max(0, Math.sin(elevation));
           totalIrr += Math.max(0, beam + diffuse);
         }
       }
@@ -394,6 +539,9 @@ const SolarGeometry = {
     return {
       ...normalized,
       peakIrradiance: maxIrr,
+      solarLongitudeDeg: season.solarLongitudeDeg,
+      orbitalDistanceFactor: season.orbitalDistanceFactor,
+      solarFlux: season.solarFlux,
     };
   },
 
@@ -404,6 +552,8 @@ const SolarGeometry = {
     cycleHours,
     solarConstant = 1000,
     diffuseFraction = 0,
+    eccentricity = 0,
+    perihelionLsDeg = 0,
     bins = 24,
   }) {
     const sampleDays = Array.from({ length: 12 }, (_, i) =>
@@ -420,6 +570,8 @@ const SolarGeometry = {
         cycleHours,
         solarConstant,
         diffuseFraction,
+        eccentricity,
+        perihelionLsDeg,
         bins,
       });
       for (let i = 0; i < bins; i++) avgProfile[i] += result.rawProfile[i];
@@ -429,17 +581,51 @@ const SolarGeometry = {
     return this.normalizeProfile(rawAvg, cycleHours);
   },
 
-  lunarPolarIlluminationProfile({ cycleHours = 708.7, bins = 24, illuminatedFraction = 0.85 }) {
-    const horizonProxy = 1 - (2 * illuminatedFraction);
+  lunarPolarIlluminationProfile({
+    cycleHours = 708.7,
+    bins = 24,
+    illuminatedFraction = 0.85,
+    mountingKey = 'ew',
+  }) {
+    const targetDarkFraction = this.clamp(1 - illuminatedFraction, 0.05, 0.22);
+    const majorShadowWidth = this.clamp(0.03 + (targetDarkFraction * 0.25), 0.04, 0.085);
+    const mountCapture = phase => {
+      if (mountingKey === 'dual') return 1;
+      if (mountingKey === 'single') {
+        return Math.max(0.72, 0.94 + (0.03 * Math.cos((2 * Math.PI) * (phase - 0.10))));
+      }
+      if (mountingKey === 'ew') {
+        return Math.max(0.65, 0.88 + (0.05 * Math.cos((2 * Math.PI) * (phase - 0.12))));
+      }
+      return Math.max(0.3, 0.62
+        + (0.22 * Math.cos((2 * Math.PI) * (phase - 0.21)))
+        + (0.04 * Math.cos((4 * Math.PI) * (phase - 0.05))));
+    };
+
+    // Approximate a high ridge near the lunar south pole:
+    // mostly illuminated, with repeated shallow terrain dips and one deeper outage.
     const rawProfile = Array.from({ length: bins }, (_, i) => {
-      const phase = i / bins;
-      const elevationProxy = Math.cos((2 * Math.PI * (phase - 0.08)));
-      if (elevationProxy <= horizonProxy) return 0;
-      const normalizedLight = (elevationProxy - horizonProxy) / (1 - horizonProxy);
-      return 220 + (780 * normalizedLight);
+      const phase = (i + 0.5) / bins;
+      const broadIllumination = 0.80 + (0.08 * Math.cos((2 * Math.PI) * (phase - 0.18)));
+      const microVariation = 0.02 * Math.cos((4 * Math.PI) * (phase - 0.05));
+      const terrainLoss = (0.14 * this.gaussianWrappedPhase(phase, 0.19, 0.028))
+        + (0.20 * this.gaussianWrappedPhase(phase, 0.43, 0.028))
+        + (0.34 * this.gaussianWrappedPhase(phase, 0.61, 0.038))
+        + (1.05 * this.gaussianWrappedPhase(phase, 0.83, majorShadowWidth));
+      const visibility = this.clamp(broadIllumination + microVariation - terrainLoss, 0, 1);
+      return 1000 * visibility * mountCapture(phase);
     });
 
-    return this.normalizeProfile(rawProfile, cycleHours);
+    const peak = Math.max(...rawProfile, 0);
+    const darkThreshold = peak * 0.02;
+    const darkSegments = this.getCyclicSegments(rawProfile, value => value <= darkThreshold);
+    const longestDarkSegment = darkSegments.reduce((best, segment) =>
+      (!best || segment.lengthBins > best.lengthBins ? segment : best), null);
+    const alignedProfile = longestDarkSegment
+      ? this.rotateProfile(rawProfile, longestDarkSegment.endExclusive)
+      : rawProfile;
+
+    return this.normalizeProfile(alignedProfile, cycleHours);
   },
 
   /**

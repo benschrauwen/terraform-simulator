@@ -44,9 +44,18 @@ window.AppChartMethods = {
 
   updatePowerChart(r) {
     const aiMode = r.ai.enabled;
+    const useOrbitalMarsAiBasis = aiMode && r.solar.bodyKey === 'mars' && r.ai.dispatch?.dispatchBasisLabel === 'orbital-year';
     const specificAiDaySelected = aiMode && r.solar.bodyKey === 'earth' && this.state.dayMode === 'specific';
     const selectedDayIndex = Math.max(0, Math.min(364, (this.state.dayOfYear || 1) - 1));
     const selectedDayLabel = `${SolarGeometry.dayToDateString(this.state.dayOfYear)}${SolarGeometry.notableDay(this.state.dayOfYear)}`;
+    const averageAiDayLabel = r.solar.bodyKey === 'earth'
+      ? '— Yearly Dispatch Average'
+      : `— Average ${r.solar.cycleUnit}`;
+    const averageAiDispatchLead = r.solar.bodyKey === 'earth'
+      ? 'Average hour-of-day dispatch across the modeled year.'
+      : useOrbitalMarsAiBasis
+        ? `Average dispatch across one modeled Mars year, mapped onto a representative ${r.solar.cycleUnit}.`
+        : `Average dispatch across the modeled Earth year, mapped onto a representative ${r.solar.cycleUnit}.`;
     const sliceSelectedDay = series => {
       if (!Array.isArray(series) || !series.length) return [];
       const start = selectedDayIndex * 24;
@@ -62,7 +71,7 @@ window.AppChartMethods = {
       specificAiData.length === 24 &&
       specificChemicalData.length === 24;
     const dayLabel = aiMode
-      ? (showSpecificAiDay ? `— ${selectedDayLabel}` : '— Yearly Dispatch Average')
+      ? (showSpecificAiDay ? `— ${selectedDayLabel}` : averageAiDayLabel)
       : (r.solar.bodyKey === 'earth' && this.state.dayMode === 'specific')
         ? `— ${selectedDayLabel}`
         : r.solar.bodyKey === 'earth'
@@ -76,10 +85,10 @@ window.AppChartMethods = {
         noteParts.push(r.storage.enabled
           ? (showSpecificAiDay
               ? 'Hourly dispatch for the selected day using the annual AI load sizing. AI is served first, battery charging is shown separately, and chemistry only runs on residual solar left after charging.'
-              : 'Average hour-of-day dispatch across the modeled year. AI is served first, battery charging is shown separately, and chemicals only consume residual energy left after charging.')
+              : `${averageAiDispatchLead} AI is served first, battery charging is shown separately, and chemicals only consume residual energy left after charging.`)
           : (showSpecificAiDay
               ? 'Hourly dispatch for the selected day using the annual AI load sizing. AI is served first, and chemistry only runs on residual solar left after AI demand.'
-              : 'Average hour-of-day dispatch across the modeled year. AI is served first; chemicals only consume residual energy.'));
+              : `${averageAiDispatchLead} AI is served first; chemicals only consume residual energy.`));
       } else if (r.storage.enabled) {
         noteParts.push(r.solar.bodyKey === 'earth' && this.state.dayMode === 'specific'
           ? 'Battery-backed dispatch for the selected day. The chemical plant is sized to the lowest peak load that still absorbs the modeled solar energy; excess solar charges the battery and stored energy extends operation later in the day.'
@@ -97,11 +106,19 @@ window.AppChartMethods = {
       powerChartNote.textContent = noteParts.join(' ');
     }
 
+    const averageAiSolarData = useOrbitalMarsAiBasis &&
+      Array.isArray(r.ai.dispatch?.averageDaySolarKW) &&
+      r.ai.dispatch.averageDaySolarKW.length
+      ? r.ai.dispatch.averageDaySolarKW
+      : (r.annualSolar.averageDayKW || []);
     const solarData = aiMode
-      ? (showSpecificAiDay ? specificSolarData : (r.annualSolar.averageDayKW || []))
+      ? (showSpecificAiDay ? specificSolarData : averageAiSolarData)
       : r.solar.hourlyProfile.map(v => Math.min((v * r.solar.dailyKWh) / r.solar.binHours, r.solar.peakPowerKW));
+    const aiXAxisTitle = showSpecificAiDay
+      ? 'Hour of day'
+      : (r.solar.chartLabelMode === 'days' ? 'Earth days into local cycle' : 'Local solar time');
     const labels = aiMode
-      ? Array.from({ length: solarData.length }, (_, i) => `${i}:00`)
+      ? (showSpecificAiDay ? Array.from({ length: solarData.length }, (_, i) => `${i}:00`) : this.getPowerChartLabels(r))
       : this.getPowerChartLabels(r);
     const aiData = aiMode
       ? (showSpecificAiDay ? specificAiData : (r.ai.dispatch.averageDayAiKW || []))
@@ -220,7 +237,7 @@ window.AppChartMethods = {
               grid: { color: '#1e293b' },
               title: {
                 display: true,
-                text: aiMode ? 'Hour of day' : (r.solar.chartLabelMode === 'days' ? 'Earth days into local cycle' : 'Local solar time'),
+                text: aiMode ? aiXAxisTitle : (r.solar.chartLabelMode === 'days' ? 'Earth days into local cycle' : 'Local solar time'),
                 color: '#64748b',
                 font: { size: 10 },
               },
@@ -241,7 +258,7 @@ window.AppChartMethods = {
     } else {
       this.charts.power.data.labels = labels;
       this.charts.power.data.datasets = datasets;
-      this.charts.power.options.scales.x.title.text = aiMode ? 'Hour of day' : (r.solar.chartLabelMode === 'days' ? 'Earth days into local cycle' : 'Local solar time');
+      this.charts.power.options.scales.x.title.text = aiMode ? aiXAxisTitle : (r.solar.chartLabelMode === 'days' ? 'Earth days into local cycle' : 'Local solar time');
       this.charts.power.update();
     }
 
@@ -249,33 +266,78 @@ window.AppChartMethods = {
   },
 
   updateAnnualDispatchChart(r) {
-    const rawDayLabels = r.annualDispatch?.dayLabels || [];
-    const labels = rawDayLabels.map(label => {
+    const displayDayLabels = r.annualDispatch?.displayDayLabels || [];
+    const displayAiSeriesKWh = r.annualDispatch?.displayDailyAiKWh || [];
+    const displayChemicalSeriesKWh = r.annualDispatch?.displayDailyChemicalKWh || [];
+    const useDisplaySeries = displayDayLabels.length > 0 &&
+      displayDayLabels.length === displayAiSeriesKWh.length &&
+      displayDayLabels.length === displayChemicalSeriesKWh.length;
+    const rawDayLabels = useDisplaySeries ? displayDayLabels : (r.annualDispatch?.dayLabels || []);
+    const rawAiSeries = (useDisplaySeries ? displayAiSeriesKWh : (r.annualDispatch?.dailyAiKWh || [])).map(value => value / 1000);
+    const rawChemicalSeries = (useDisplaySeries ? displayChemicalSeriesKWh : (r.annualDispatch?.dailyChemicalKWh || [])).map(value => value / 1000);
+    const useFullOrbitalMarsSeries = r.solar.bodyKey === 'mars' &&
+      (useDisplaySeries || r.annualDispatch?.dispatchBasisLabel === 'orbital-year');
+    const useRepresentativeCycleSeries = r.solar.bodyKey !== 'earth' && !r.annualSolar?.seasonalVariation;
+    const hideTrailingPartial = !useFullOrbitalMarsSeries &&
+      r.solar.bodyKey !== 'earth' &&
+      rawDayLabels.length > 1 &&
+      /\(partial\)$/.test(String(rawDayLabels[rawDayLabels.length - 1] || ''));
+    const labelUnit = r.solar.bodyKey === 'earth' ? 'day' : r.solar.cycleUnitCompact;
+    const xAxisTitle = useFullOrbitalMarsSeries
+      ? 'Sol of Mars year'
+      : (r.solar.bodyKey === 'earth'
+          ? 'Day of year'
+          : `${String(r.solar.cycleUnitCompact || 'cycle').charAt(0).toUpperCase()}${String(r.solar.cycleUnitCompact || 'cycle').slice(1)} of year`);
+    const labels = (hideTrailingPartial ? rawDayLabels.slice(0, -1) : rawDayLabels).map(label => {
       const match = /^Day (\d+)$/.exec(String(label));
       if (match) return `Day ${FormatNumbers.fixed(parseInt(match[1], 10), 0)}`;
       return label;
     });
-    const aiSeries = (r.annualDispatch?.dailyAiKWh || []).map(value => value / 1000);
-    const chemicalSeries = (r.annualDispatch?.dailyChemicalKWh || []).map(value => value / 1000);
+    const aiSeries = hideTrailingPartial ? rawAiSeries.slice(0, -1) : rawAiSeries;
+    const chemicalSeries = hideTrailingPartial ? rawChemicalSeries.slice(0, -1) : rawChemicalSeries;
+    const representativeSliceStart = useRepresentativeCycleSeries && aiSeries.length > 1 ? 1 : 0;
+    const representativeMean = series => {
+      const source = series.slice(representativeSliceStart);
+      if (!source.length) return 0;
+      return source.reduce((sum, value) => sum + value, 0) / source.length;
+    };
+    const displayedAiSeries = useRepresentativeCycleSeries
+      ? aiSeries.map(() => representativeMean(aiSeries))
+      : aiSeries;
+    const displayedChemicalSeries = useRepresentativeCycleSeries
+      ? chemicalSeries.map(() => representativeMean(chemicalSeries))
+      : chemicalSeries;
     const annualDispatchNote = document.getElementById('annualDispatchNote');
     if (annualDispatchNote) {
       annualDispatchNote.textContent = r.ai.enabled
-        ? 'Daily delivered energy over the modeled year. AI gets first call on solar and battery support; chemistry only runs on the residual energy left over.'
-        : 'Daily seasonal solar energy over the modeled year. Enable AI Compute to see how the datacenter carves out a high-reliability constant load before chemistry absorbs the residual.';
+        ? (r.solar.bodyKey === 'earth'
+            ? 'Daily delivered energy over the modeled year. AI gets first call on solar and battery support; chemistry only runs on the residual energy left over.'
+            : useFullOrbitalMarsSeries
+              ? 'Sol-by-sol delivered energy over one modeled Mars year. AI gets first call on solar and battery support; chemistry only runs on the residual energy left over. Annual economics elsewhere remain normalized to an Earth year.'
+            : useRepresentativeCycleSeries
+              ? 'Representative full-cycle delivered energy over the modeled Earth year. The current off-Earth solar model uses an average local cycle, so the chart repeats the modeled cycle-equivalent energy instead of implying seasonality.'
+              : 'Cycle-by-cycle delivered energy over the modeled Earth year. The off-Earth seasonal shape reflects the modeled orbital geometry before AI claims first call on the power.')
+        : (r.solar.bodyKey === 'earth'
+            ? 'Daily seasonal solar energy over the modeled year. Enable AI Compute to see how the datacenter carves out a high-reliability constant load before chemistry absorbs the residual.'
+            : useFullOrbitalMarsSeries
+              ? 'Sol-by-sol solar energy over one modeled Mars year. Annual economics elsewhere remain normalized to an Earth year.'
+            : useRepresentativeCycleSeries
+              ? 'Representative full-cycle solar energy over the modeled Earth year. The current off-Earth solar model uses an average local cycle, so the chart repeats the modeled cycle-equivalent energy instead of implying seasonality.'
+              : 'Cycle-by-cycle solar energy over the modeled Earth year. The off-Earth seasonal shape reflects the modeled orbital geometry before any AI load is applied.');
     }
 
     const chartKey = JSON.stringify({
       labels,
       aiEnabled: r.ai.enabled,
-      aiSeries,
-      chemicalSeries,
+      aiSeries: displayedAiSeries,
+      chemicalSeries: displayedChemicalSeries,
     });
     if (this.chartKeys.annualDispatch === chartKey && this.charts.annualDispatch) return;
 
     const datasets = [
       {
-        label: 'AI energy (MWh/day)',
-        data: aiSeries,
+        label: `AI energy (MWh/${labelUnit})`,
+        data: displayedAiSeries,
         borderColor: '#38bdf8',
         backgroundColor: 'rgba(56, 189, 248, 0.2)',
         fill: true,
@@ -284,8 +346,8 @@ window.AppChartMethods = {
         borderWidth: 2,
       },
       {
-        label: 'Chemical energy (MWh/day)',
-        data: chemicalSeries,
+        label: `Chemical energy (MWh/${labelUnit})`,
+        data: displayedChemicalSeries,
         borderColor: '#10b981',
         backgroundColor: 'rgba(16, 185, 129, 0.18)',
         fill: true,
@@ -318,7 +380,7 @@ window.AppChartMethods = {
             x: {
               ticks: { color: '#64748b', font: { size: 9 }, maxTicksLimit: 12 },
               grid: { color: '#1e293b' },
-              title: { display: true, text: 'Day of year', color: '#64748b', font: { size: 10 } },
+              title: { display: true, text: xAxisTitle, color: '#64748b', font: { size: 10 } },
             },
             y: {
               ticks: {
@@ -328,7 +390,7 @@ window.AppChartMethods = {
               },
               grid: { color: '#1e293b' },
               beginAtZero: true,
-              title: { display: true, text: 'MWh/day', color: '#64748b', font: { size: 10 } },
+              title: { display: true, text: `MWh/${labelUnit}`, color: '#64748b', font: { size: 10 } },
             },
           },
         },
@@ -336,6 +398,8 @@ window.AppChartMethods = {
     } else {
       this.charts.annualDispatch.data.labels = labels;
       this.charts.annualDispatch.data.datasets = datasets;
+      this.charts.annualDispatch.options.scales.x.title.text = xAxisTitle;
+      this.charts.annualDispatch.options.scales.y.title.text = `MWh/${labelUnit}`;
       this.charts.annualDispatch.update();
     }
 

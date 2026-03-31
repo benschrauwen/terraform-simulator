@@ -24,7 +24,7 @@ const PLANETARY_BODIES = {
     hoursPerCycleLabel: 'hrs/sol',
     chartLabelMode: 'clock',
     supportsSpecificDay: false,
-    chartNote: 'Average local-sol profile. Annual economics remain normalized to an Earth year.',
+    chartNote: 'Representative average local-sol profile; annual dispatch includes modeled Mars orbital seasonality. Annual economics remain normalized to an Earth year.',
     siteYieldNote: 'Mars presets use literature-inspired annual-yield benchmarks; Earth cloud datasets and latitude heuristics are disabled.',
   },
   moon: {
@@ -36,7 +36,7 @@ const PLANETARY_BODIES = {
     hoursPerCycleLabel: 'hrs/cycle',
     chartLabelMode: 'days',
     supportsSpecificDay: false,
-    chartNote: 'Stylized south-polar illumination profile based on near-continuous light at a peak-of-eternal-light style site. Annual economics remain normalized to an Earth year.',
+    chartNote: 'Representative south-polar ridge profile: mostly-on illumination with terrain-shadow dips and brief outages, not a clean two-week day/night cycle. Mounting still matters because the Sun stays low on the horizon. Annual economics remain normalized to an Earth year.',
     siteYieldNote: 'Lunar presets use literature-inspired annual-yield benchmarks; Earth cloud datasets and latitude heuristics are disabled.',
   },
 };

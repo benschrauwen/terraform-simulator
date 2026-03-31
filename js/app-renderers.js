@@ -131,23 +131,20 @@ window.AppRendererMethods = {
 
   updateProduction(r) {
     const cycleUnit = this.getCycleRateUnit(r);
-    const cycleEnergyLabel = r.ai.enabled
-      ? (cycleUnit === 'day' ? 'Flexible Chem Energy' : 'Flexible Chem Cycle Energy')
-      : (cycleUnit === 'day' ? 'Daily Energy' : 'Cycle Energy');
     const rows = [
       this.prodItem('solar', '☀️', 'Electricity', `${FormatNumbers.fixed(r.solar.annualMWh, 0)}`, 'MWh/yr'),
-      this.prodItem('electric', '⚡', cycleEnergyLabel, `${FormatNumbers.fixed(r.effectiveDailyKWh, 0)}`, `kWh/${cycleUnit}`),
     ];
 
     if (r.ai.enabled) {
-      rows.push(this.prodItem('electric', '🖥️', 'AI Load', this.formatSystemSizeMW(r.ai.designLoadKW / 1000), `${FormatNumbers.fixed(r.ai.reliabilityTarget, 2)}% target`));
       rows.push(this.prodItem('electric', '🧠', 'AI Tokens', `${FormatNumbers.fixed(r.ai.annualTokensM / 1000, 2)}`, 'B/yr'));
-      rows.push(this.prodItem('battery', '⏱️', 'AI Utilization', `${FormatNumbers.fixed(r.ai.utilization * 100, 2)}`, '%'));
-      rows.push(this.prodItem('battery', '♻️', 'Residual Chem Energy', `${FormatNumbers.fixed(r.ai.chemicalAnnualKWh / 1000, 0)}`, 'MWh/yr'));
     }
 
-    rows.push(this.prodItem('h2', '💧', 'Hydrogen', `${FormatNumbers.fixed(r.electrolyzer.h2DailyKg, 1)}`, `kg/${cycleUnit}`));
-    rows.push(this.prodItem('co2', '🌬️', 'CO₂ Captured', `${FormatNumbers.fixed(r.dac.co2DailyKg, 1)}`, `kg/${cycleUnit}`));
+    if (r.electrolyzer.enabled) {
+      rows.push(this.prodItem('h2', '💧', 'Hydrogen', `${FormatNumbers.fixed(r.electrolyzer.h2DailyKg, 1)}`, `kg/${cycleUnit}`));
+    }
+    if (r.dac.enabled) {
+      rows.push(this.prodItem('co2', '🌬️', 'CO₂ Captured', `${FormatNumbers.fixed(r.dac.co2DailyKg, 1)}`, `kg/${cycleUnit}`));
+    }
 
     if (r.sabatier.enabled) {
       rows.push(this.prodItem('ch4', '🔥', 'Methane', `${FormatNumbers.fixed(r.sabatier.ch4DailyMCF, 2)}`, `MCF/${cycleUnit}`));

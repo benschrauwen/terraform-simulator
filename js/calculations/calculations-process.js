@@ -160,6 +160,7 @@ Object.assign(Calc, {
         designH2FeedKgPerHour: 0,
         designCO2FeedKgPerHour: 0,
         designFeedKgPerHour: 0,
+        designHourlyOutputKg: 0,
         designHourlyRate: 0,
         averageUtilization: 0,
         operatingUtilization: 0,
@@ -181,7 +182,8 @@ Object.assign(Calc, {
     const designH2FeedKgPerHour = designGrossCh4KgPerHour * c.h2MassPerKgCH4;
     const designCO2FeedKgPerHour = designGrossCh4KgPerHour * c.co2MassPerKgCH4;
     const designFeedKgPerHour = designH2FeedKgPerHour + designCO2FeedKgPerHour;
-    const designHourlyRate = (designGrossCh4KgPerHour * conv) / c.ch4PerMCF;
+    const designHourlyOutputKg = designGrossCh4KgPerHour * conv;
+    const designHourlyRate = designHourlyOutputKg / c.ch4PerMCF;
     const averageGrossFeedKgPerHour = opHours > 0
       ? (grossCh4DailyKg * (c.h2MassPerKgCH4 + c.co2MassPerKgCH4)) / opHours
       : 0;
@@ -208,6 +210,7 @@ Object.assign(Calc, {
       designH2FeedKgPerHour,
       designCO2FeedKgPerHour,
       designFeedKgPerHour,
+      designHourlyOutputKg,
       limitingReagent: ch4FromH2 < ch4FromCO2 ? 'H2' : 'CO2',
       hourlyRate,
       designHourlyRate,

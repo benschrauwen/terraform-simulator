@@ -218,8 +218,8 @@ const Diagram = {
     placeGrid([{
       id: 'array',
       title: 'Solar array',
-      value: `${FormatNumbers.fixed(r.solar.annualMWh, 0)} MWh/yr`,
-      subtitle: `${r.solar.mounting.label} · CF ${FormatNumbers.fixed(r.solar.capacityFactor * 100, 1)}%`,
+      value: this.formatSolarSystemSize(r.solar.peakPowerKW),
+      subtitle: this.formatAnnualEnergy(r.solar.annualMWh),
       color: this.colors.solar,
       active: true,
     }], {
@@ -267,8 +267,8 @@ const Diagram = {
         ? [{
             id: 'electrolyzer',
             title: 'Electrolyzer',
-            value: `${FormatNumbers.fixed(r.electrolyzer.h2DailyKg, 1)} kg H2/${r.solar.cycleUnitCompact}`,
-            subtitle: `${FormatNumbers.fixed(r.electrolyzer.allocPct, 1)}% of power`,
+            value: this.formatInstalledPowerKW(r.electrolyzer.allocKW),
+            subtitle: this.formatAnnualMass(r.electrolyzer.h2AnnualKg, 'H2'),
             color: this.colors.h2,
             active: true,
           }]
@@ -277,8 +277,8 @@ const Diagram = {
         ? [{
             id: 'dac',
             title: 'DAC',
-            value: `${FormatNumbers.fixed(r.dac.co2DailyKg, 1)} kg CO2/${r.solar.cycleUnitCompact}`,
-            subtitle: `${FormatNumbers.fixed(r.dac.allocPct, 1)}% of power`,
+            value: this.formatInstalledPowerKW(r.dac.allocKW),
+            subtitle: this.formatAnnualMass(r.dac.co2AnnualKg, 'CO2'),
             color: this.colors.co2,
             active: true,
           }]
@@ -296,12 +296,10 @@ const Diagram = {
     const supported = r.supportedModules.filter(module => module.enabled && module.modeled);
     const supportedCards = supported.map(module => {
       const color = module.id === 'methanol' ? this.colors.methanol : this.colors.methane;
-      const value = module.id === 'methanol'
-        ? `${FormatNumbers.fixed(module.dailyKg, 1)} kg/${r.solar.cycleUnitCompact}`
-        : `${FormatNumbers.fixed(module.ch4DailyMCF, 2)} MCF/${r.solar.cycleUnitCompact}`;
+      const value = this.formatMassRate(module.designHourlyOutputKg);
       const subtitle = module.id === 'methanol'
-        ? `Peak ${FormatNumbers.fixed(module.designHourlyOutputKg, 1)} kg/hr · ${FormatNumbers.fixed(module.averageUtilization * 100, 0)}% avg`
-        : `Peak ${FormatNumbers.fixed(module.designHourlyRate, 2)} MCF/hr · ${FormatNumbers.fixed(module.averageUtilization * 100, 0)}% avg`;
+        ? this.formatAnnualMass(module.annualKg)
+        : this.formatAnnualMass(module.ch4AnnualKg, 'CH4');
       return {
         id: module.id,
         icon: '',
@@ -588,6 +586,49 @@ const Diagram = {
     }
 
     return inputs;
+  },
+
+  formatSolarSystemSize(peakPowerKW) {
+    if (!Number.isFinite(peakPowerKW) || peakPowerKW <= 0) return '0 kWdc';
+    if (peakPowerKW >= 1000) {
+      const mwdc = peakPowerKW / 1000;
+      const decimals = mwdc >= 100 ? 0 : mwdc >= 10 ? 1 : 2;
+      return `${FormatNumbers.fixed(mwdc, decimals)} MWdc`;
+    }
+    return `${FormatNumbers.fixed(peakPowerKW, peakPowerKW >= 10 ? 0 : 1)} kWdc`;
+  },
+
+  formatInstalledPowerKW(kw) {
+    if (!Number.isFinite(kw) || kw <= 0) return 'Peak 0 kW';
+    return `Peak ${FormatNumbers.fixed(kw, kw >= 10 ? 0 : 1)} kW`;
+  },
+
+  formatMassRate(kgPerHour) {
+    if (!Number.isFinite(kgPerHour) || kgPerHour <= 0) return 'Peak 0 kg/h';
+    return `Peak ${FormatNumbers.fixed(kgPerHour, kgPerHour >= 10 ? 0 : 1)} kg/h`;
+  },
+
+  formatAnnualEnergy(mwh) {
+    if (!Number.isFinite(mwh) || mwh <= 0) return '0 MWh/yr';
+    return `${FormatNumbers.fixed(mwh, mwh >= 100 ? 0 : 1)} MWh/yr`;
+  },
+
+  formatAnnualMass(annualKg, suffix = '') {
+    if (!Number.isFinite(annualKg) || annualKg <= 0) {
+      return suffix ? `0 kg ${suffix}/yr` : '0 kg/yr';
+    }
+
+    if (annualKg >= 1000) {
+      const annualTons = annualKg / 1000;
+      const decimals = annualTons >= 100 ? 0 : 1;
+      return suffix
+        ? `${FormatNumbers.fixed(annualTons, decimals)} t ${suffix}/yr`
+        : `${FormatNumbers.fixed(annualTons, decimals)} t/yr`;
+    }
+
+    return suffix
+      ? `${FormatNumbers.fixed(annualKg, annualKg >= 10 ? 0 : 1)} kg ${suffix}/yr`
+      : `${FormatNumbers.fixed(annualKg, annualKg >= 10 ? 0 : 1)} kg/yr`;
   },
 
   node(id, cx, cy, w, h, icon, title, value, subtitle, color, active) {

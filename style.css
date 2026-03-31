@@ -444,6 +444,125 @@ body {
   padding: 12px 14px 14px;
 }
 
+.market-section-body {
+  display: grid;
+  gap: 10px;
+}
+
+.market-card {
+  background: #13171b;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 11px;
+}
+
+.market-card-header {
+  margin-bottom: 8px;
+}
+
+.market-card-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.market-card-subtitle {
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.market-summary {
+  display: grid;
+  gap: 8px;
+  margin: 6px 0 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(141, 153, 168, 0.18);
+  border-radius: 8px;
+  background: rgba(141, 153, 168, 0.06);
+}
+
+.market-summary-row {
+  display: grid;
+  gap: 2px;
+}
+
+.market-summary-row + .market-summary-row {
+  padding-top: 8px;
+  border-top: 1px solid rgba(141, 153, 168, 0.12);
+}
+
+.market-summary-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.market-summary-value {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.market-callout {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(141, 153, 168, 0.18);
+  border-radius: 8px;
+  background: rgba(95, 127, 184, 0.08);
+}
+
+.market-disclosure {
+  margin-top: 8px;
+  border: 1px solid rgba(141, 153, 168, 0.18);
+  border-radius: 8px;
+  background: rgba(141, 153, 168, 0.06);
+}
+
+.market-disclosure summary {
+  cursor: pointer;
+  padding: 8px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  list-style: none;
+}
+
+.market-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.market-disclosure summary::after {
+  content: '+';
+  float: right;
+  color: var(--text-muted);
+}
+
+.market-disclosure[open] summary {
+  border-bottom: 1px solid rgba(141, 153, 168, 0.12);
+}
+
+.market-disclosure[open] summary::after {
+  content: '−';
+}
+
+.market-disclosure-body {
+  padding: 8px 10px 2px;
+}
+
+.market-disclosure .field-note {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.market-disclosure .field-note:last-child {
+  margin-bottom: 0;
+}
+
 .config-section:not(.open) .section-body,
 .results-section:not(.open) .section-body {
   display: none;

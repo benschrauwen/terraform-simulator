@@ -356,100 +356,125 @@
           <span class="icon">💰</span> Market & Incentives
           <span class="chevron">▾</span>
         </h2>
-        <div class="section-body">
-          <label>Methane Market Preset
-            <select id="methaneMarketPreset">
-              <option value="terraform_commodity">Commodity gas / whitepaper-style case</option>
-              <option value="premium_green_methane">Premium synthetic / green methane</option>
-              <optgroup label="Country-Specific Europe">
-                <option value="germany_biomethane_eeg">Germany biomethane auction / EEG</option>
-                <option value="netherlands_sdepp">Netherlands renewable gas / SDE++</option>
-                <option value="denmark_green_gas_tender">Denmark green gas tender</option>
-              </optgroup>
-            </select>
-          </label>
-          <div class="info-row">
-            <span>Methane market applies in:</span>
-            <span id="methaneMarketApplicabilityValue" class="highlight">Generic / multi-country</span>
-          </div>
-          <div class="info-row">
-            <span>Methane market modeled as:</span>
-            <span id="methaneMarketBasisValue" class="highlight">Simple sale-price assumption for commodity methane</span>
-          </div>
-          <div class="field-note compact-note" id="methaneMarketNote">
-            Use this to label the market structure behind the methane price. Europe support is country-specific and often tender- or CfD-like, so the methane price remains a manual assumption.
-          </div>
-          <label>Methane Sale Price ($/MCF)
-            <input type="range" id="methanePrice" min="1" max="40" step="0.5" value="20">
-            <span class="range-value" id="methanePriceValue">$20.00/MCF</span>
-          </label>
-          <div class="field-note compact-note">
-            This is a market / offtake assumption, not a country-specific subsidy. Use lower values for commodity gas cases and higher values for premium synthetic methane or biomethane contracts.
-          </div>
-          <label>Methanol Price ($/ton)
-            <input type="range" id="methanolPrice" min="100" max="1200" step="10" value="600">
-            <span class="range-value" id="methanolPriceValue">$600/ton</span>
-          </label>
-          <label>Policy Mode
-            <select id="policyMode">
-              <option value="none">No credits</option>
-              <optgroup label="United States">
-                <option value="us_45v_tier4">45V clean H2 - Tier 4 ($3.00/kg)</option>
-                <option value="us_45v_tier3">45V clean H2 - Tier 3 ($1.00/kg)</option>
-                <option value="us_45v_tier2">45V clean H2 - Tier 2 ($0.75/kg)</option>
-                <option value="us_45v_tier1">45V clean H2 - Tier 1 ($0.60/kg)</option>
-                <option value="us_45q_utilization">45Q DAC utilization ($130/t-CO2)</option>
-                <option value="us_45q_sequestration">45Q DAC sequestration ($180/t-CO2)</option>
-              </optgroup>
-              <optgroup label="European Union">
-                <option value="eu_hydrogen_bank">Hydrogen Bank / Innovation Fund premium (bid-based)</option>
-              </optgroup>
-              <option value="custom">Custom / country-specific</option>
-            </select>
-          </label>
-          <label id="customH2CreditWrap">
-            <span id="customH2CreditLabel">Custom H₂ Credit ($/kg)</span>
-            <input type="range" id="customH2Credit" min="0" max="5" step="0.25" value="0">
-            <span class="range-value" id="customH2CreditValue">$0.00/kg</span>
-          </label>
-          <label id="customCo2CreditWrap">
-            <span id="customCo2CreditLabel">Custom CO₂ Credit ($/ton)</span>
-            <input type="range" id="customCo2Credit" min="0" max="250" step="5" value="0">
-            <span class="range-value" id="customCo2CreditValue">$0/ton</span>
-          </label>
-          <div class="info-row">
-            <span>Applies in:</span>
-            <span id="policyApplicabilityValue" class="highlight">United States</span>
-          </div>
-          <div class="info-row">
-            <span>Modeled as:</span>
-            <span id="policyBasisValue" class="highlight">Top-tier hydrogen production credit on H₂ output</span>
-          </div>
-          <div class="info-row">
-            <span>Stacking rule:</span>
-            <span id="stackingRuleValue" class="highlight">US 45V and 45Q are mutually exclusive here</span>
-          </div>
-          <div class="field-note compact-note" id="policyNote"></div>
-          <div id="usPolicyFootnotes" class="us-policy-footnotes">
-            <div class="field-note compact-note">
-              Older Terraform materials discuss a US electricity-side credit using 45E language. Post-2024 that framing is generally 45Y / 48E and is not directly modeled here because it depends on solar asset ownership and tax structure.
+        <div class="section-body market-section-body">
+          <div class="market-card">
+            <div class="market-card-header">
+              <div class="market-card-title">Product markets</div>
+              <div class="market-card-subtitle">Set the methane market framing, then tune methane and methanol sales assumptions.</div>
             </div>
-            <div class="field-note compact-note">
-              This panel forces one named policy mode at a time. In real US projects, some power-side incentives may coexist with product-side incentives depending on structure, but 45V and 45Q should not both be claimed for the same facility.
+            <label>Methane Market Preset
+              <select id="methaneMarketPreset">
+                <option value="terraform_commodity">Commodity gas / whitepaper-style case</option>
+                <option value="premium_green_methane">Premium synthetic / green methane</option>
+                <optgroup label="Country-Specific Europe">
+                  <option value="germany_biomethane_eeg">Germany biomethane auction / EEG</option>
+                  <option value="netherlands_sdepp">Netherlands renewable gas / SDE++</option>
+                  <option value="denmark_green_gas_tender">Denmark green gas tender</option>
+                </optgroup>
+              </select>
+            </label>
+            <div class="market-summary">
+              <div class="market-summary-row">
+                <span class="market-summary-label">Applies in</span>
+                <span id="methaneMarketApplicabilityValue" class="market-summary-value highlight">Generic / multi-country</span>
+              </div>
+              <div class="market-summary-row">
+                <span class="market-summary-label">Modeled as</span>
+                <span id="methaneMarketBasisValue" class="market-summary-value highlight">Simple sale-price assumption for commodity methane</span>
+              </div>
             </div>
+            <div class="field-note compact-note market-callout" id="methaneMarketNote">
+              Use this to label the market structure behind the methane price. Europe support is country-specific and often tender- or CfD-like, so the methane price remains a manual assumption.
+            </div>
+            <label>Methane Sale Price ($/MCF)
+              <input type="range" id="methanePrice" min="1" max="40" step="0.5" value="20">
+              <span class="range-value" id="methanePriceValue">$20.00/MCF</span>
+            </label>
+            <div class="field-note compact-note">
+              This is a market / offtake assumption, not a country-specific subsidy. Use lower values for commodity gas cases and higher values for premium synthetic methane or biomethane contracts.
+            </div>
+            <label>Methanol Price ($/ton)
+              <input type="range" id="methanolPrice" min="100" max="1200" step="10" value="600">
+              <span class="range-value" id="methanolPriceValue">$600/ton</span>
+            </label>
           </div>
-          <label>Solar Asset Life (years)
-            <input type="range" id="solarAssetLife" min="10" max="40" step="1" value="30">
-            <span class="range-value" id="solarAssetLifeValue">30 years</span>
-          </label>
-          <label>Analysis Horizon (years)
-            <input type="range" id="analysisHorizonYears" min="3" max="30" step="1" value="30">
-            <span class="range-value" id="analysisHorizonYearsValue">30 years</span>
-          </label>
-          <label>Discount Rate (%)
-            <input type="range" id="discountRate" min="0" max="20" step="0.5" value="8">
-            <span class="range-value" id="discountRateValue">8%</span>
-          </label>
+          <div class="market-card">
+            <div class="market-card-header">
+              <div class="market-card-title">Policy credits</div>
+              <div class="market-card-subtitle">Model one incentive regime at a time. Custom inputs appear only when the selected mode needs them.</div>
+            </div>
+            <label>Policy Mode
+              <select id="policyMode">
+                <option value="none">No credits</option>
+                <optgroup label="United States">
+                  <option value="us_45v_tier4">45V clean H2 - Tier 4 ($3.00/kg)</option>
+                  <option value="us_45v_tier3">45V clean H2 - Tier 3 ($1.00/kg)</option>
+                  <option value="us_45v_tier2">45V clean H2 - Tier 2 ($0.75/kg)</option>
+                  <option value="us_45v_tier1">45V clean H2 - Tier 1 ($0.60/kg)</option>
+                  <option value="us_45q_utilization">45Q DAC utilization ($130/t-CO2)</option>
+                  <option value="us_45q_sequestration">45Q DAC sequestration ($180/t-CO2)</option>
+                </optgroup>
+                <optgroup label="European Union">
+                  <option value="eu_hydrogen_bank">Hydrogen Bank / Innovation Fund premium (bid-based)</option>
+                </optgroup>
+                <option value="custom">Custom / country-specific</option>
+              </select>
+            </label>
+            <label id="customH2CreditWrap">
+              <span id="customH2CreditLabel">Custom H₂ Credit ($/kg)</span>
+              <input type="range" id="customH2Credit" min="0" max="5" step="0.25" value="0">
+              <span class="range-value" id="customH2CreditValue">$0.00/kg</span>
+            </label>
+            <label id="customCo2CreditWrap">
+              <span id="customCo2CreditLabel">Custom CO₂ Credit ($/ton)</span>
+              <input type="range" id="customCo2Credit" min="0" max="250" step="5" value="0">
+              <span class="range-value" id="customCo2CreditValue">$0/ton</span>
+            </label>
+            <div class="market-summary">
+              <div class="market-summary-row">
+                <span class="market-summary-label">Applies in</span>
+                <span id="policyApplicabilityValue" class="market-summary-value highlight">United States</span>
+              </div>
+              <div class="market-summary-row">
+                <span class="market-summary-label">Modeled as</span>
+                <span id="policyBasisValue" class="market-summary-value highlight">Top-tier hydrogen production credit on H₂ output</span>
+              </div>
+              <div class="market-summary-row">
+                <span class="market-summary-label">Stacking rule</span>
+                <span id="stackingRuleValue" class="market-summary-value highlight">US 45V and 45Q are mutually exclusive here</span>
+              </div>
+            </div>
+            <div class="field-note compact-note market-callout" id="policyNote"></div>
+            <details id="usPolicyFootnotes" class="market-disclosure">
+              <summary>US policy caveats</summary>
+              <div class="market-disclosure-body">
+                <div class="field-note compact-note">
+                  Older Terraform materials discuss a US electricity-side credit using 45E language. Post-2024 that framing is generally 45Y / 48E and is not directly modeled here because it depends on solar asset ownership and tax structure.
+                </div>
+                <div class="field-note compact-note">
+                  This panel forces one named policy mode at a time. In real US projects, some power-side incentives may coexist with product-side incentives depending on structure, but 45V and 45Q should not both be claimed for the same facility.
+                </div>
+              </div>
+            </details>
+          </div>
+          <div class="market-card">
+            <div class="market-card-header">
+              <div class="market-card-title">Project economics</div>
+              <div class="market-card-subtitle">Keep asset life, evaluation window, and discount rate in one place.</div>
+            </div>
+            <label>Solar Asset Life (years)
+              <input type="range" id="solarAssetLife" min="10" max="40" step="1" value="30">
+              <span class="range-value" id="solarAssetLifeValue">30 years</span>
+            </label>
+            <label>Analysis Horizon (years)
+              <input type="range" id="analysisHorizonYears" min="3" max="30" step="1" value="30">
+              <span class="range-value" id="analysisHorizonYearsValue">30 years</span>
+            </label>
+            <label>Discount Rate (%)
+              <input type="range" id="discountRate" min="0" max="20" step="0.5" value="8">
+              <span class="range-value" id="discountRateValue">8%</span>
+            </label>
+          </div>
         </div>
       </section>
 

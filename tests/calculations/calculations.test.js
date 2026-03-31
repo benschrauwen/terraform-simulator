@@ -111,6 +111,30 @@ test('ai reliability target sizes against full-rate uptime', () => {
   );
 });
 
+test('ai mode seeds zero battery from annual solar GWh', () => {
+  const result = runScenario({ aiComputeEnabled: true, batteryCapacityMWh: 0 });
+  const expectedBatteryMWh = result.solar.annualMWh / 1000;
+
+  assert.ok(
+    Math.abs(result.state.batteryCapacityMWh - expectedBatteryMWh) <= 1e-9,
+    [
+      'Expected AI mode to replace a zero battery entry with the annual-solar-GWh heuristic.',
+      `Observed ${result.state.batteryCapacityMWh.toFixed(6)} MWh vs ${expectedBatteryMWh.toFixed(6)} MWh.`,
+    ].join(' ')
+  );
+  assert.equal(result.storage.enabled, expectedBatteryMWh > 1e-9, 'Expected the seeded AI battery heuristic to enable storage.');
+});
+
+test('ai mode preserves explicit non-zero battery sizing', () => {
+  const result = runScenario({ aiComputeEnabled: true, batteryCapacityMWh: 24 });
+
+  assert.equal(
+    result.state.batteryCapacityMWh,
+    24,
+    'Expected an explicit AI battery size to override the zero-battery heuristic.'
+  );
+});
+
 test('ai storage summary reflects the settled annual dispatch state', () => {
   const result = runScenario({ aiComputeEnabled: true, batteryCapacityMWh: 24, aiReliabilityTarget: 95 });
   const settleToleranceKWh = Math.max(1e-3, result.storage.battCapKWh * 1e-6) + 1e-6;

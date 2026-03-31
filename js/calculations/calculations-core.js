@@ -8,6 +8,12 @@ Object.assign(Calc, {
     return Number.isFinite(batteryCapacityMWh) && batteryCapacityMWh > 1e-9;
   },
 
+  getAiBatteryHeuristicMWh(state) {
+    if (!state?.aiComputeEnabled || this.hasBatteryStorage(state)) return 0;
+    const annualSolarMWh = this.calculateSolar(state).annualMWh || 0;
+    return this.clampNumber(annualSolarMWh / 1000, 0, 1e9, 0);
+  },
+
   toFiniteNumber(value, fallback = 0) {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : fallback;
@@ -177,6 +183,11 @@ Object.assign(Calc, {
     ].forEach(key => {
       normalized[key] = Boolean(normalized[key]);
     });
+
+    if (normalized.aiComputeEnabled && normalized.batteryCapacityMWh <= 1e-9) {
+      // Seed AI mode with a simple default: 1 MWh of storage per 1 GWh/year of solar.
+      normalized.batteryCapacityMWh = this.getAiBatteryHeuristicMWh(normalized);
+    }
 
     MODULE_REGISTRY.forEach(module => {
       (module.configs || []).forEach(config => {

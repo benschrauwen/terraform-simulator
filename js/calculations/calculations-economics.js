@@ -96,16 +96,16 @@ Object.assign(Calc, {
 
   calculateEconomics(state, context) {
     const {
-      solar, battery, ai, electrolyzer, dac, sabatier, methanol,
+      solar, storage, ai, electrolyzer, dac, sabatier, methanol,
       h2Surplus, co2Surplus, exploratoryModules,
     } = context;
 
     const rate = state.discountRate / 100;
-    const batteryLifeYears = battery.enabled ? battery.lifetimeYears : 0;
+    const batteryLifeYears = storage.enabled ? storage.lifetimeYears : 0;
 
     const capex = {
       solar: solar.totalSolarCapex,
-      battery: battery.capex,
+      battery: storage.capex,
       ai: ai.capex,
       electrolyzer: electrolyzer.capex,
       dac: dac.capex,
@@ -132,7 +132,7 @@ Object.assign(Calc, {
 
     const annualizedCapex = {
       solar: capex.solar * this.crf(rate, state.solarAssetLife),
-      battery: battery.enabled ? capex.battery * this.crf(rate, batteryLifeYears) : 0,
+      battery: storage.enabled ? capex.battery * this.crf(rate, batteryLifeYears) : 0,
       ai: ai.enabled ? capex.ai * this.crf(rate, ai.assetLifeYears) : 0,
       electrolyzer: capex.electrolyzer * this.crf(rate, state.electrolyzerAssetLife),
       dac: capex.dac * this.crf(rate, state.dacAssetLife),
@@ -143,7 +143,7 @@ Object.assign(Calc, {
     const batteryOmFrac = (state.batteryOmPercent ?? 1.5) / 100;
     const processOmFrac = (state.processOmPercent ?? 3) / 100;
     const annualOM = solar.annualSolarOm +
-      (battery.capex * batteryOmFrac) +
+      (storage.capex * batteryOmFrac) +
       (ai.annualOM || 0) +
       ((electrolyzer.capex + dac.capex + sabatier.capex + methanol.capex) * processOmFrac);
 
@@ -248,11 +248,19 @@ Object.assign(Calc, {
     const finalCumulativeEquityCash = yearlyCashFlows.length > 0
       ? yearlyCashFlows[yearlyCashFlows.length - 1].cumulativeEquityCash
       : -financing.equityUpfront;
-    const paybackYears = this.calculatePaybackYears(
+    const paybackYears = this.calculateSimplePaybackYears(
       totalCapex,
       yearlyCashFlows.map(entry => entry.netCashFlow)
     );
-    const equityPaybackYears = this.calculatePaybackYears(
+    const sustainedPaybackYears = this.calculateSustainedPaybackYears(
+      totalCapex,
+      yearlyCashFlows.map(entry => entry.netCashFlow)
+    );
+    const equityPaybackYears = this.calculateSimplePaybackYears(
+      financing.equityUpfront,
+      yearlyCashFlows.map(entry => entry.equityCashFlow)
+    );
+    const sustainedEquityPaybackYears = this.calculateSustainedPaybackYears(
       financing.equityUpfront,
       yearlyCashFlows.map(entry => entry.equityCashFlow)
     );
@@ -271,7 +279,7 @@ Object.assign(Calc, {
     const irr = financing.enabled ? equityIrr : projectIrr;
 
     const aiCoreAnnualCost = ai.enabled
-      ? annualizedCapex.solar + annualizedCapex.battery + annualizedCapex.ai + solar.annualSolarOm + (battery.capex * batteryOmFrac) + (ai.annualOM || 0)
+      ? annualizedCapex.solar + annualizedCapex.battery + annualizedCapex.ai + solar.annualSolarOm + (storage.capex * batteryOmFrac) + (ai.annualOM || 0)
       : 0;
 
     return {
@@ -301,7 +309,9 @@ Object.assign(Calc, {
       policy,
       financing,
       paybackYears,
+      sustainedPaybackYears,
       equityPaybackYears,
+      sustainedEquityPaybackYears,
       npv,
       equityNpv,
       roi,
@@ -336,54 +346,55 @@ Object.assign(Calc, {
       waterProducedDaily,
       netWaterDaily: Math.max(0, waterConsumedDaily - waterProducedDaily),
       landAcres: solar.acres,
-      homesServed: sabatier.enabled ? sabatier.ch4AnnualMCF / 65 : 0,
       landProductivityVsCorn: sabatier.enabled ? 20 : 0,
     };
   },
 
   calculateAll(state) {
-    const solar = this.calculateSolar(state);
-    const annualSolar = this.buildAnnualSolarSeries(state, solar);
-    const ai = this.calculateAICompute(state, solar, annualSolar);
-    const battery = ai.enabled ? ai.batterySummary : this.calculateBattery(state, solar);
-    const cyclesPerYear = this.getBodyConfig(state.body || 'earth').cyclesPerEarthYear;
+    const normalizedState = this.normalizeState(state);
+    const solar = this.calculateSolar(normalizedState);
+    const annualSolar = this.buildAnnualSolarSeries(normalizedState, solar);
+    const ai = this.calculateAICompute(normalizedState, solar, annualSolar);
+    const batteryResult = ai.enabled ? null : this.calculateBattery(normalizedState, solar);
+    const storage = ai.enabled ? ai.storage : batteryResult.storage;
+    const chemicalSupply = ai.enabled ? ai.chemicalSupply : batteryResult.chemicalSupply;
+    const cyclesPerYear = this.getBodyConfig(normalizedState.body || 'earth').cyclesPerEarthYear;
     const effectiveDailyKWh = ai.enabled
       ? ai.chemicalAnnualKWh / Math.max(cyclesPerYear, 1)
-      : battery.dailyAvailableKWh;
-    const effectivePeakKW = ai.enabled
-      ? ai.chemicalPeakKW
-      : battery.processPowerKW;
+      : chemicalSupply.dailyAvailableKWh;
+    const effectivePeakKW = chemicalSupply.processPowerKW;
     const opHours = ai.enabled
       ? ai.chemicalDailyOpHours
-      : parseFloat(battery.dailyOpHours);
-    const allocation = this.getBalancedAllocation(state);
+      : chemicalSupply.dailyOpHours;
+    const allocation = this.getBalancedAllocation(normalizedState);
     const reactorSizingPeakKW = effectivePeakKW;
 
-    const electrolyzer = this.calculateElectrolyzer(state, effectivePeakKW, effectiveDailyKWh, allocation);
-    const dac = this.calculateDAC(state, effectivePeakKW, effectiveDailyKWh, allocation);
+    const electrolyzer = this.calculateElectrolyzer(normalizedState, effectivePeakKW, effectiveDailyKWh, allocation);
+    const dac = this.calculateDAC(normalizedState, effectivePeakKW, effectiveDailyKWh, allocation);
 
     const productFlow = this.calculateSupportedProducts(
-      state,
+      normalizedState,
       {
         h2DailyKg: electrolyzer.h2DailyKg || 0,
         co2DailyKg: dac.co2DailyKg || 0,
-        h2SizingPeakKgPerHour: state.electrolyzerEnabled
-          ? (reactorSizingPeakKW * allocation.electrolyzer) / state.electrolyzerEfficiency
+        h2SizingPeakKgPerHour: normalizedState.electrolyzerEnabled
+          ? (reactorSizingPeakKW * allocation.electrolyzer) / normalizedState.electrolyzerEfficiency
           : 0,
-        co2SizingPeakKgPerHour: state.dacEnabled
-          ? ((reactorSizingPeakKW * allocation.dac) / state.dacEnergy) * 1000
+        co2SizingPeakKgPerHour: normalizedState.dacEnabled
+          ? ((reactorSizingPeakKW * allocation.dac) / normalizedState.dacEnergy) * 1000
           : 0,
       },
       opHours
     );
 
-    const sabatier = productFlow.outputs.sabatier || this.calculateSabatier({ ...state, sabatierEnabled: false }, 0, 0, opHours);
-    const methanol = productFlow.outputs.methanol || this.calculateMethanol({ ...state, methanolEnabled: false }, 0, 0, opHours);
-    const exploratoryModules = this.calculateExploratoryModules(state);
+    const sabatier = productFlow.outputs.sabatier || this.calculateSabatier({ ...normalizedState, sabatierEnabled: false }, 0, 0, opHours);
+    const methanol = productFlow.outputs.methanol || this.calculateMethanol({ ...normalizedState, methanolEnabled: false }, 0, 0, opHours);
+    const exploratoryModules = this.calculateExploratoryModules(normalizedState);
 
-    const economics = this.calculateEconomics(state, {
+    const economics = this.calculateEconomics(normalizedState, {
       solar,
-      battery,
+      storage,
+      chemicalSupply,
       ai,
       electrolyzer,
       dac,
@@ -396,9 +407,11 @@ Object.assign(Calc, {
     const environmental = this.calculateEnvironmental(solar, dac, sabatier, methanol, electrolyzer);
 
     return {
+      state: normalizedState,
       solar,
       annualSolar,
-      battery,
+      storage,
+      chemicalSupply,
       ai,
       annualDispatch: ai.dispatch,
       allocation,

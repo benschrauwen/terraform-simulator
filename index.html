@@ -303,11 +303,11 @@
                 <span class="maturity-badge supported">Modeled</span>
               </div>
               <div class="process-config disabled-group" id="aiComputeConfig">
-                <label>Reliability target
+                <label>Full-rate reliability target
                   <select id="aiReliabilityTarget"></select>
                 </label>
                 <div class="field-note">
-                  The AI load is auto-sized from the current solar plus battery system. The chemical plant then ramps up and down only on the residual energy left after AI load and battery charging.
+                  The AI load is auto-sized from the current solar plus battery system to satisfy the selected full-rate uptime target. The chemical plant then ramps up and down only on the residual energy left after AI load and battery charging.
                 </div>
                 <div class="field-note compact-note">
                   GPU CAPEX is modeled on a direct-current datacenter framing ($/kW installed IT load).
@@ -333,7 +333,7 @@
                   <span id="aiDesignLoadValue" class="highlight">—</span>
                 </div>
                 <div class="info-row">
-                  <span>Delivered utilization:</span>
+                  <span>Served-energy utilization:</span>
                   <span id="aiUtilizationValue" class="highlight">—</span>
                 </div>
                 <div class="info-row">
@@ -674,5 +674,8 @@
   <script src="js/diagram.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="js/app.js"></script>
+  <script src="js/app-site-map.js"></script>
+  <script src="js/app-renderers.js"></script>
+  <script src="js/app-charts.js"></script>
 </body>
 </html>

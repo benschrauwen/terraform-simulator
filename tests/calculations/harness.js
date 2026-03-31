@@ -4,16 +4,19 @@ const vm = require('node:vm');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 
-const CALCULATION_FILES = [
-  'js/solar-geometry.js',
-  'js/constants.js',
-  'js/calculations/calculations-core.js',
-  'js/calculations/calculations-solar.js',
-  'js/calculations/calculations-battery.js',
-  'js/calculations/calculations-series-ai.js',
-  'js/calculations/calculations-process.js',
-  'js/calculations/calculations-economics.js',
-];
+function getCalculationFilesFromIndex() {
+  const indexHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const matches = Array.from(indexHtml.matchAll(/<script[^>]+src="([^"]+)"[^>]*><\/script>/g));
+  return matches
+    .map(match => match[1])
+    .filter(src =>
+      src === 'js/solar-geometry.js' ||
+      src === 'js/constants.js' ||
+      src.startsWith('js/calculations/')
+    );
+}
+
+const CALCULATION_FILES = getCalculationFilesFromIndex();
 
 function loadRuntime() {
   const context = {
@@ -87,9 +90,9 @@ function summarizeResult(result, extra = {}) {
     npv: result.economics.npv,
     irr: result.economics.irr,
     paybackYears: result.economics.paybackYears,
-    processPowerKW: result.battery.processPowerKW || 0,
-    effectiveCF: result.battery.effectiveCF || 0,
-    batteryDailyAvailableKWh: result.battery.dailyAvailableKWh || 0,
+    processPowerKW: result.chemicalSupply.processPowerKW || 0,
+    effectiveCF: result.chemicalSupply.effectiveCF || 0,
+    batteryDailyAvailableKWh: result.chemicalSupply.dailyAvailableKWh || 0,
   };
 }
 
@@ -123,6 +126,7 @@ function formatPercent(value) {
 module.exports = {
   ROOT,
   CALCULATION_FILES,
+  Calc: runtime.Calc,
   createState,
   runScenario,
   summarizeResult,

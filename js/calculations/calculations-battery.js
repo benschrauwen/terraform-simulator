@@ -15,22 +15,51 @@ Object.assign(Calc, {
       ? solar.dailyKWh / (directProcessPeakKW * solar.cycleHours)
       : 0;
     const batteryEnabled = this.hasBatteryStorage(state);
+
+    const buildStorageSummary = summary => ({
+      enabled: Boolean(summary.enabled),
+      capex: summary.capex || 0,
+      battCapKWh: summary.battCapKWh || 0,
+      annualizedCapex: summary.annualizedCapex || 0,
+      lifetimeYears: summary.lifetimeYears || 0,
+      utilizedCapacityKWh: summary.utilizedCapacityKWh || 0,
+      startBatteryKWh: summary.startBatteryKWh || 0,
+      endBatteryKWh: summary.endBatteryKWh || 0,
+      minBatteryKWh: summary.minBatteryKWh || 0,
+      maxBatteryKWh: summary.maxBatteryKWh || 0,
+      chargeThroughputKWh: summary.chargeThroughputKWh || 0,
+      dischargeThroughputKWh: summary.dischargeThroughputKWh || 0,
+      settleDeltaKWh: summary.settleDeltaKWh || 0,
+    });
+
+    const buildChemicalSupply = summary => ({
+      effectiveCF: summary.effectiveCF || 0,
+      dailyOpHours: summary.dailyOpHours || 0,
+      dailyAvailableKWh: summary.dailyAvailableKWh || 0,
+      hourlyProfile: summary.hourlyProfile || [],
+      hourlyKW: summary.hourlyKW || [],
+      batteryChargeHourlyKW: summary.batteryChargeHourlyKW || [],
+      processPowerKW: summary.processPowerKW || 0,
+      baseloadKW: summary.baseloadKW || 0,
+      clipKW: summary.clipKW || 0,
+    });
+
     if (!batteryEnabled) {
       return {
-        enabled: false,
-        effectiveCF: directEffectiveCF,
-        dailyOpHours: directOpHours.toFixed(1),
-        capex: 0,
-        battCapKWh: 0,
-        dailyAvailableKWh: solar.dailyKWh,
-        hourlyProfile: solar.hourlyProfile,
-        hourlyKW: solarKW,
-        batteryChargeHourlyKW: new Array(stepCount).fill(0),
-        processPowerKW: directProcessPeakKW,
-        baseloadKW: directProcessPeakKW,
-        clipKW: directProcessPeakKW,
-        annualizedCapex: 0,
-        lifetimeYears: 0,
+        storage: buildStorageSummary({
+          enabled: false,
+        }),
+        chemicalSupply: buildChemicalSupply({
+          effectiveCF: directEffectiveCF,
+          dailyOpHours: directOpHours,
+          dailyAvailableKWh: solar.dailyKWh,
+          hourlyProfile: solar.hourlyProfile,
+          hourlyKW: solarKW,
+          batteryChargeHourlyKW: new Array(stepCount).fill(0),
+          processPowerKW: directProcessPeakKW,
+          baseloadKW: directProcessPeakKW,
+          clipKW: directProcessPeakKW,
+        }),
       };
     }
 
@@ -51,6 +80,8 @@ Object.assign(Calc, {
       let maxSocKWh = socKWh;
       let chemicalKWh = 0;
       let curtailedKWh = 0;
+      let chargeThroughputKWh = 0;
+      let dischargeThroughputKWh = 0;
 
       for (let h = 0; h < stepCount; h++) {
         if (socKWh > 1e-9) {
@@ -65,6 +96,7 @@ Object.assign(Calc, {
           const dischargeToLoadKWh = Math.min(processCapKWh - deliveredKWh, socKWh * dischargeEff);
           deliveredKWh += dischargeToLoadKWh;
           socKWh -= dischargeToLoadKWh / dischargeEff;
+          dischargeThroughputKWh += dischargeToLoadKWh;
         }
 
         let solarAvailableKWh = generatedKWh - directToChemicalKWh;
@@ -73,6 +105,7 @@ Object.assign(Calc, {
           const chargeInputKWh = Math.min(solarAvailableKWh, storedKWh / chargeEff);
           socKWh += storedKWh;
           solarAvailableKWh -= chargeInputKWh;
+          chargeThroughputKWh += storedKWh;
           if (captureSeries) batteryChargeKW[h] = chargeInputKWh / stepHours;
         }
 
@@ -93,6 +126,10 @@ Object.assign(Calc, {
         curtailedKWh,
         utilizedCapacityKWh: Math.max(0, maxSocKWh - minSocKWh),
         endSocKWh: socKWh,
+        minSocKWh,
+        maxSocKWh,
+        chargeThroughputKWh,
+        dischargeThroughputKWh,
       };
     };
 
@@ -100,11 +137,13 @@ Object.assign(Calc, {
       const targetKW = Math.max(averageSolarKW, Math.min(processKW, maxSolarKW));
       const settleTolKWh = Math.max(1e-3, battCapKWh * 1e-6);
       let startBatteryKWh = battCapKWh;
+      let settledPreview = null;
 
       // Starting full yields the least spare headroom; once this converges,
       // the last cycle represents the repeatable battery-supported dispatch.
-      for (let i = 0; i < 256; i++) {
+      for (let i = 0; i < 64; i++) {
         const cycle = simulateCycle(targetKW, startBatteryKWh, false);
+        settledPreview = cycle;
         if (Math.abs(cycle.endSocKWh - startBatteryKWh) <= settleTolKWh) {
           startBatteryKWh = cycle.endSocKWh;
           break;
@@ -123,6 +162,12 @@ Object.assign(Calc, {
         utilizedCapacityKWh: settledCycle.utilizedCapacityKWh,
         startBatteryKWh,
         endBatteryKWh: settledCycle.endSocKWh,
+        minBatteryKWh: settledCycle.minSocKWh,
+        maxBatteryKWh: settledCycle.maxSocKWh,
+        chargeThroughputKWh: settledCycle.chargeThroughputKWh,
+        dischargeThroughputKWh: settledCycle.dischargeThroughputKWh,
+        settleDeltaKWh: Math.abs(settledCycle.endSocKWh - startBatteryKWh),
+        settledPreviewEndBatteryKWh: settledPreview ? settledPreview.endSocKWh : startBatteryKWh,
       };
     };
 
@@ -158,22 +203,32 @@ Object.assign(Calc, {
     const annualizedCapex = capex * this.crf(state.discountRate / 100, lifetimeYears);
 
     return {
-      enabled: true,
-      effectiveCF,
-      dailyOpHours: extendedHours.toFixed(1),
-      capex,
-      battCapKWh,
-      dailyAvailableKWh: totalDelivered,
-      hourlyProfile: normalizedProfile,
-      hourlyKW,
-      batteryChargeHourlyKW: bestPlan.batteryChargeKW,
-      processPowerKW,
-      baseloadKW: processPowerKW,
-      clipKW: processPowerKW,
-      utilizedCapacityKWh: bestPlan.utilizedCapacityKWh,
-      startBatteryKWh: bestPlan.startBatteryKWh,
-      annualizedCapex,
-      lifetimeYears,
+      storage: buildStorageSummary({
+        enabled: true,
+        capex,
+        battCapKWh,
+        annualizedCapex,
+        lifetimeYears,
+        utilizedCapacityKWh: bestPlan.utilizedCapacityKWh,
+        startBatteryKWh: bestPlan.startBatteryKWh,
+        endBatteryKWh: bestPlan.endBatteryKWh,
+        minBatteryKWh: bestPlan.minBatteryKWh,
+        maxBatteryKWh: bestPlan.maxBatteryKWh,
+        chargeThroughputKWh: bestPlan.chargeThroughputKWh,
+        dischargeThroughputKWh: bestPlan.dischargeThroughputKWh,
+        settleDeltaKWh: bestPlan.settleDeltaKWh,
+      }),
+      chemicalSupply: buildChemicalSupply({
+        effectiveCF,
+        dailyOpHours: extendedHours,
+        dailyAvailableKWh: totalDelivered,
+        hourlyProfile: normalizedProfile,
+        hourlyKW,
+        batteryChargeHourlyKW: bestPlan.batteryChargeKW,
+        processPowerKW,
+        baseloadKW: processPowerKW,
+        clipKW: processPowerKW,
+      }),
     };
   },
 });

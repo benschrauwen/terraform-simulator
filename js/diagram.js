@@ -230,12 +230,12 @@ const Diagram = {
       maxColumns: 1,
     });
 
-    if (r.battery.enabled) {
+    if (r.storage.enabled) {
       placeGrid([{
         id: 'battery',
-        title: 'Battery firming',
-        value: `${r.battery.battCapKWh.toLocaleString()} kWh`,
-        subtitle: `${FormatNumbers.fixed(r.battery.processPowerKW, 0)} kW firmed process cap`,
+        title: 'Battery',
+        value: `${r.storage.battCapKWh.toLocaleString()} kWh`,
+        subtitle: `${FormatNumbers.fixed(r.chemicalSupply.processPowerKW, 0)} kW firmed chemical cap`,
         color: this.colors.battery,
         active: true,
       }], {

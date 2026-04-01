@@ -256,7 +256,7 @@ const Diagram = {
         id: 'battery',
         title: 'Battery',
         value: `${r.storage.battCapKWh.toLocaleString()} kWh`,
-        subtitle: `${FormatNumbers.fixed(r.chemicalSupply.processPowerKW, 0)} kW firmed chemical cap`,
+        subtitle: `${this.formatPowerMagnitude(r.chemicalSupply.processPowerKW)} firmed chem cap`,
         color: this.colors.battery,
         active: true,
       }], {
@@ -273,12 +273,7 @@ const Diagram = {
         ? [{
             id: 'ai',
             title: 'AI datacenter',
-            value: (() => {
-              const aiLoadMW = r.ai.designLoadKW / 1000;
-              return aiLoadMW >= 1000
-                ? `${FormatNumbers.fixed(aiLoadMW / 1000, 2)} GW`
-                : `${FormatNumbers.fixed(aiLoadMW, 1)} MW`;
-            })(),
+            value: this.formatInstalledPowerKW(r.ai.designLoadKW),
             subtitle: `${FormatNumbers.fixed(r.ai.utilization * 100, 2)}% delivered · ${FormatNumbers.fixed(r.ai.fullPowerReliability * 100, 2)}% full-rate`,
             color: this.colors.ai,
             active: true,
@@ -442,6 +437,9 @@ const Diagram = {
     const ai = get('ai');
     const electrolyzer = get('electrolyzer');
     const dac = get('dac');
+    const cycleHours = Number.isFinite(r?.solar?.cycleHours) && r.solar.cycleHours > 0
+      ? r.solar.cycleHours
+      : 24;
     const branchOffset = (from, to, amount = 42) => {
       if (!from || !to) return 0;
       if (to.cx < from.cx) return -amount;
@@ -468,13 +466,22 @@ const Diagram = {
       }));
     }
     if (array && ai) {
-      connections.push(this.conn(array, ai, this.colors.ai, `${FormatNumbers.fixed(r.ai.designLoadKW / 1000, 1)} MW`, true, {
+      connections.push(this.conn(
+        array,
+        ai,
+        this.colors.ai,
+        this.formatAveragePowerKW(
+          r.ai.designLoadKW * (Number.isFinite(r.ai.utilization) ? r.ai.utilization : 1)
+        ),
+        true,
+        {
         width: 2.2,
         route: 'vertical',
         fromOffsetX: branchOffset(array, ai, 46),
         labelOffsetX: branchLabelOffset(array, ai, 38),
         labelOffsetY: ai.cx === array.cx ? -10 : -2,
-      }));
+        }
+      ));
     }
     if (battery && ai) {
       connections.push(this.conn(battery, ai, this.colors.battery, '', true, {
@@ -488,7 +495,7 @@ const Diagram = {
         array,
         electrolyzer,
         this.colors.electric,
-        `${FormatNumbers.fixed(r.electrolyzer.dailyKWh / 1000, 1)} MWh/d`,
+        this.formatAveragePowerFromCycleKWh(r.electrolyzer.dailyKWh, cycleHours),
         r.electrolyzer.enabled,
         {
           width: 2,
@@ -504,7 +511,7 @@ const Diagram = {
         array,
         dac,
         this.colors.electric,
-        `${FormatNumbers.fixed(r.dac.dailyKWh / 1000, 1)} MWh/d`,
+        this.formatAveragePowerFromCycleKWh(r.dac.dailyKWh, cycleHours),
         r.dac.enabled,
         {
           width: 2,
@@ -520,7 +527,7 @@ const Diagram = {
       const node = get(module.id);
       if (!node) return;
       if (module.id === 'sabatier') {
-        connections.push(this.conn(electrolyzer, node, this.colors.h2, `${FormatNumbers.fixed(module.h2Consumed, 0)} kg H2`, true, {
+        connections.push(this.conn(electrolyzer, node, this.colors.h2, this.formatAverageMassFlow(module.h2Consumed, cycleHours, 'H2'), true, {
           width: 2,
           route: 'vertical',
           fromOffsetX: branchOffset(electrolyzer, node, 28),
@@ -528,7 +535,7 @@ const Diagram = {
           labelOffsetX: -24,
           labelOffsetY: -8,
         }));
-        connections.push(this.conn(dac, node, this.colors.co2, `${FormatNumbers.fixed(module.co2Consumed, 0)} kg CO2`, true, {
+        connections.push(this.conn(dac, node, this.colors.co2, this.formatAverageMassFlow(module.co2Consumed, cycleHours, 'CO2'), true, {
           width: 2,
           route: 'vertical',
           fromOffsetX: branchOffset(dac, node, 28),
@@ -537,7 +544,7 @@ const Diagram = {
           labelOffsetY: 8,
         }));
       } else if (module.id === 'methanol') {
-        connections.push(this.conn(electrolyzer, node, this.colors.h2, `${FormatNumbers.fixed(module.h2Consumed, 0)} kg H2`, true, {
+        connections.push(this.conn(electrolyzer, node, this.colors.h2, this.formatAverageMassFlow(module.h2Consumed, cycleHours, 'H2'), true, {
           width: 2,
           route: 'vertical',
           fromOffsetX: branchOffset(electrolyzer, node, 28),
@@ -545,7 +552,7 @@ const Diagram = {
           labelOffsetX: -24,
           labelOffsetY: -8,
         }));
-        connections.push(this.conn(dac, node, this.colors.co2, `${FormatNumbers.fixed(module.co2Consumed, 0)} kg CO2`, true, {
+        connections.push(this.conn(dac, node, this.colors.co2, this.formatAverageMassFlow(module.co2Consumed, cycleHours, 'CO2'), true, {
           width: 2,
           route: 'vertical',
           fromOffsetX: branchOffset(dac, node, 28),
@@ -578,7 +585,9 @@ const Diagram = {
 
       const diagramInputs = this.getExploratoryDiagramInputs(module);
       if (diagramInputs.electricity && array) {
-        const dailyPowerLabel = module.dailyKWh > 0 ? `${FormatNumbers.fixed(module.dailyKWh / 1000, 1)} MWh/d` : '';
+        const dailyPowerLabel = module.dailyKWh > 0
+          ? this.formatAveragePowerFromCycleKWh(module.dailyKWh, cycleHours)
+          : '';
         connections.push(this.conn(array, node, this.colors.electric, dailyPowerLabel, true, {
           width: 1.2,
           route: 'vertical',
@@ -588,7 +597,7 @@ const Diagram = {
       }
 
       if (diagramInputs.h2 && electrolyzer) {
-        const label = module.h2Consumed > 0 ? `${FormatNumbers.fixed(module.h2Consumed, 0)} kg H2` : '';
+        const label = module.h2Consumed > 0 ? this.formatAverageMassFlow(module.h2Consumed, cycleHours, 'H2') : '';
         connections.push(this.conn(electrolyzer, node, this.colors.h2, label, r.electrolyzer.enabled, {
           width: 1.4,
           route: 'vertical',
@@ -598,7 +607,7 @@ const Diagram = {
       }
 
       if (diagramInputs.co2 && dac) {
-        const label = module.co2Consumed > 0 ? `${FormatNumbers.fixed(module.co2Consumed, 0)} kg CO2` : '';
+        const label = module.co2Consumed > 0 ? this.formatAverageMassFlow(module.co2Consumed, cycleHours, 'CO2') : '';
         connections.push(this.conn(dac, node, this.colors.co2, label, r.dac.enabled, {
           width: 1.4,
           route: 'vertical',
@@ -609,7 +618,7 @@ const Diagram = {
 
       if (diagramInputs.methanol) {
         const methanolSource = get('methanol') || get('out-methanol');
-        const label = module.methanolConsumed > 0 ? `${FormatNumbers.fixed(module.methanolConsumed / 1000, 1)} t MeOH` : '';
+        const label = module.methanolConsumed > 0 ? this.formatAverageMassFlow(module.methanolConsumed, cycleHours, 'MeOH') : '';
         connections.push(this.conn(methanolSource, node, this.colors.methanol, label, Boolean(r.methanol?.enabled), {
           width: 1.4,
           route: 'vertical',
@@ -651,14 +660,65 @@ const Diagram = {
     return `${FormatNumbers.fixed(peakPowerKW, peakPowerKW >= 10 ? 0 : 1)} kWdc`;
   },
 
+  rateDecimals(value) {
+    const magnitude = Math.abs(Number(value) || 0);
+    if (magnitude >= 100) return 0;
+    if (magnitude >= 1) return 1;
+    return 2;
+  },
+
+  formatPowerMagnitude(kw) {
+    if (!Number.isFinite(kw) || kw <= 0) return '0 kW';
+    if (kw >= 1_000_000) {
+      const gw = kw / 1_000_000;
+      return `${FormatNumbers.fixed(gw, this.rateDecimals(gw))} GW`;
+    }
+    if (kw >= 1000) {
+      const mw = kw / 1000;
+      return `${FormatNumbers.fixed(mw, this.rateDecimals(mw))} MW`;
+    }
+    return `${FormatNumbers.fixed(kw, this.rateDecimals(kw))} kW`;
+  },
+
   formatInstalledPowerKW(kw) {
-    if (!Number.isFinite(kw) || kw <= 0) return 'Peak 0 kW';
-    return `Peak ${FormatNumbers.fixed(kw, kw >= 10 ? 0 : 1)} kW`;
+    return `Peak ${this.formatPowerMagnitude(kw)}`;
+  },
+
+  formatAveragePowerKW(kw) {
+    return `Avg ${this.formatPowerMagnitude(kw)}`;
+  },
+
+  formatAveragePowerFromCycleKWh(cycleKWh, cycleHours) {
+    const averageKW = Number.isFinite(cycleKWh) && Number.isFinite(cycleHours) && cycleHours > 0
+      ? cycleKWh / cycleHours
+      : 0;
+    return this.formatAveragePowerKW(averageKW);
   },
 
   formatMassRate(kgPerHour) {
-    if (!Number.isFinite(kgPerHour) || kgPerHour <= 0) return 'Peak 0 kg/h';
-    return `Peak ${FormatNumbers.fixed(kgPerHour, kgPerHour >= 10 ? 0 : 1)} kg/h`;
+    return this.formatLabeledMassRate(kgPerHour, '', 'Peak');
+  },
+
+  formatLabeledMassRate(kgPerHour, material = '', prefix = 'Peak') {
+    const materialSuffix = material ? ` ${material}` : '';
+    if (!Number.isFinite(kgPerHour) || kgPerHour <= 0) return `${prefix} 0 kg${materialSuffix}/h`;
+    if (kgPerHour >= 1000) {
+      const tonsPerHour = kgPerHour / 1000;
+      return `${prefix} ${FormatNumbers.fixed(tonsPerHour, this.rateDecimals(tonsPerHour))} t${materialSuffix}/h`;
+    }
+    return `${prefix} ${FormatNumbers.fixed(kgPerHour, this.rateDecimals(kgPerHour))} kg${materialSuffix}/h`;
+  },
+
+  formatAverageMassFlow(cycleKg, cycleHours, material = '') {
+    const kgPerHour = Number.isFinite(cycleKg) && Number.isFinite(cycleHours) && cycleHours > 0
+      ? cycleKg / cycleHours
+      : 0;
+    return this.formatLabeledMassRate(kgPerHour, material, 'Avg');
+  },
+
+  formatLabeledUnitRate(unitsPerHour, unit, prefix = 'Peak') {
+    if (!Number.isFinite(unitsPerHour) || unitsPerHour <= 0) return `${prefix} 0 ${unit}/h`;
+    return `${prefix} ${FormatNumbers.fixed(unitsPerHour, this.rateDecimals(unitsPerHour))} ${unit}/h`;
   },
 
   formatAnnualEnergy(mwh) {
@@ -689,14 +749,14 @@ const Diagram = {
       return module?.routeLabel || module?.route || 'Exploratory';
     }
 
-    const cycleUnit = results?.solar?.cycleUnitCompact || 'day';
+    const cycleHours = Number.isFinite(results?.solar?.cycleHours) && results.solar.cycleHours > 0
+      ? results.solar.cycleHours
+      : 24;
     const peakOutputDailyUnits = module.peakOutputDailyUnits > 0
       ? module.peakOutputDailyUnits
       : module.outputDailyUnits;
-    if (module.outputUnit === 'm3') {
-      return `Peak ${FormatNumbers.fixed(peakOutputDailyUnits, peakOutputDailyUnits >= 10 ? 0 : 1)} m3/${cycleUnit}`;
-    }
-    return `Peak ${FormatNumbers.fixed(peakOutputDailyUnits, peakOutputDailyUnits >= 10 ? 0 : 1)} t/${cycleUnit}`;
+    const peakUnitsPerHour = peakOutputDailyUnits / cycleHours;
+    return this.formatLabeledUnitRate(peakUnitsPerHour, module.outputUnit === 'm3' ? 'm3' : 't', 'Peak');
   },
 
   formatExploratoryAnnualOutput(module) {

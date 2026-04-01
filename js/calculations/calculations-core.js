@@ -28,6 +28,221 @@ Object.assign(Calc, {
     return Math.round(this.clampNumber(value, min, max, fallback));
   },
 
+  getStepPrecision(step) {
+    if (!Number.isFinite(step) || Number.isInteger(step)) return 0;
+    const normalized = step.toString().toLowerCase();
+    if (normalized.includes('e-')) {
+      return parseInt(normalized.split('e-')[1], 10);
+    }
+    return normalized.includes('.') ? normalized.split('.')[1].length : 0;
+  },
+
+  snapRangeValue(value, min, max, step) {
+    const precision = this.getStepPrecision(step);
+    const boundedValue = Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : min;
+    const snapped = min + (Math.round((boundedValue - min) / step) * step);
+    return Number(Math.max(min, Math.min(max, snapped)).toFixed(precision));
+  },
+
+  buildEvenlySpacedIndices(totalSteps, targetCount) {
+    if (totalSteps <= 0) return [0];
+
+    const indices = new Set([0, totalSteps]);
+    const count = Math.max(2, Math.min(targetCount, totalSteps + 1));
+    for (let i = 0; i < count; i++) {
+      indices.add(Math.round((i * totalSteps) / (count - 1)));
+    }
+    return Array.from(indices).sort((a, b) => a - b);
+  },
+
+  mergeIndexRanges(ranges) {
+    if (!Array.isArray(ranges) || !ranges.length) return [];
+
+    const sorted = ranges
+      .map(([start, end]) => [Math.min(start, end), Math.max(start, end)])
+      .sort((a, b) => a[0] - b[0]);
+
+    return sorted.reduce((merged, [start, end]) => {
+      const last = merged[merged.length - 1];
+      if (!last || start > (last[1] + 1)) {
+        merged.push([start, end]);
+      } else {
+        last[1] = Math.max(last[1], end);
+      }
+      return merged;
+    }, []);
+  },
+
+  findBestRangeValueForIrr(baseState, {
+    stateKey,
+    min,
+    max,
+    step,
+    currentValue,
+    maxCoarseSamples = 257,
+    maxTopRegions = 5,
+  }, options = {}) {
+    if (typeof stateKey !== 'string' || !stateKey) return null;
+    if (![min, max, step].every(Number.isFinite) || step <= 0 || max < min) return null;
+
+    const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+    let lastPercent = -1;
+    const emitProgress = (percent, stage) => {
+      if (!onProgress) return;
+      const boundedPercent = Math.max(0, Math.min(100, Math.round(percent)));
+      if (boundedPercent <= lastPercent && stage !== 'done') return;
+      lastPercent = Math.max(lastPercent, boundedPercent);
+      try {
+        onProgress({ percent: lastPercent, stage });
+      } catch (error) {
+        // Progress reporting should never change optimizer behavior.
+      }
+    };
+
+    const totalSteps = Math.max(0, Math.round((max - min) / step));
+    const snappedCurrentValue = this.snapRangeValue(currentValue, min, max, step);
+    const currentIndex = Math.round((snappedCurrentValue - min) / step);
+    const precision = this.getStepPrecision(step);
+    const cache = new Map();
+
+    const evaluate = value => {
+      const snappedValue = this.snapRangeValue(value, min, max, step);
+      const key = snappedValue.toFixed(precision);
+      if (cache.has(key)) return cache.get(key);
+
+      const result = {
+        value: snappedValue,
+        irr: this.calculateIrr({ ...baseState, [stateKey]: snappedValue }),
+      };
+      result.finite = Number.isFinite(result.irr);
+      cache.set(key, result);
+      return result;
+    };
+
+    const evaluateIndex = index => evaluate(min + (index * step));
+    emitProgress(0, 'start');
+    const currentResult = evaluate(snappedCurrentValue);
+    emitProgress(6, 'seed');
+
+    if ((totalSteps + 1) <= maxCoarseSamples) {
+      for (let index = 0; index <= totalSteps; index++) {
+        evaluateIndex(index);
+        emitProgress(6 + (((index + 1) / Math.max(totalSteps + 1, 1)) * 90), 'sweep');
+      }
+    } else {
+      const coarseIndices = this.buildEvenlySpacedIndices(
+        totalSteps,
+        Math.min(maxCoarseSamples, totalSteps + 1)
+      );
+
+      coarseIndices.forEach((index, coarseIndex) => {
+        evaluateIndex(index);
+        emitProgress(6 + (((coarseIndex + 1) / Math.max(coarseIndices.length, 1)) * 34), 'coarse');
+      });
+
+      const rankedIndices = coarseIndices
+        .map(index => ({ index, ...evaluateIndex(index) }))
+        .filter(entry => entry.finite)
+        .sort((a, b) => b.irr - a.irr);
+
+      const coarseSpacing = coarseIndices.length > 1
+        ? coarseIndices.slice(1).reduce((maxGap, index, i) => Math.max(maxGap, index - coarseIndices[i]), 1)
+        : totalSteps;
+
+      const regionSeeds = new Set([
+        currentIndex,
+        ...rankedIndices.slice(0, maxTopRegions).map(entry => entry.index),
+      ]);
+
+      const mergedRegions = this.mergeIndexRanges(
+        Array.from(regionSeeds).map(index => [
+          Math.max(0, index - coarseSpacing),
+          Math.min(totalSteps, index + coarseSpacing),
+        ])
+      );
+      emitProgress(42, 'rank');
+
+      const refinementCount = mergedRegions.reduce((sum, [start, end]) => sum + (end - start + 1), 0);
+      let refinedSteps = 0;
+
+      mergedRegions.forEach(([start, end]) => {
+        for (let index = start; index <= end; index++) {
+          evaluateIndex(index);
+          refinedSteps += 1;
+          emitProgress(42 + ((refinedSteps / Math.max(refinementCount, 1)) * 54), 'refine');
+        }
+      });
+    }
+
+    const best = Array.from(cache.values())
+      .filter(entry => entry.finite)
+      .sort((a, b) => {
+        const irrDiff = b.irr - a.irr;
+        if (Math.abs(irrDiff) > 1e-9) return irrDiff;
+        return Math.abs(a.value - snappedCurrentValue) - Math.abs(b.value - snappedCurrentValue);
+      })[0];
+
+    if (!best) {
+      emitProgress(100, 'done');
+      return null;
+    }
+    if (Number.isFinite(currentResult.irr) && best.irr <= (currentResult.irr + 1e-6)) {
+      emitProgress(100, 'done');
+      return null;
+    }
+
+    emitProgress(100, 'done');
+
+    return {
+      bestValue: best.value,
+      bestIrr: best.irr,
+      currentValue: snappedCurrentValue,
+      currentIrr: currentResult.irr,
+    };
+  },
+
+  getModuleById(moduleId) {
+    return MODULE_REGISTRY.find(module => module.id === moduleId) || null;
+  },
+
+  getDirectModuleDependencies(moduleId, state = {}) {
+    const module = this.getModuleById(moduleId);
+    if (!module) return [];
+
+    const dependencies = new Set(Array.isArray(module.dependencies) ? module.dependencies : []);
+    const route = state?.[`${module.id}Route`] || module.routeOptions?.[0]?.value;
+    const routeDependencies = module.routeDependencies?.[route];
+    if (Array.isArray(routeDependencies)) {
+      routeDependencies.forEach(dependencyId => dependencies.add(dependencyId));
+    }
+
+    return Array.from(dependencies);
+  },
+
+  enforceModuleDependencies(rawState = {}) {
+    const nextState = rawState && typeof rawState === 'object'
+      ? { ...rawState }
+      : {};
+
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const module of MODULE_REGISTRY) {
+        if (!nextState[`${module.id}Enabled`]) continue;
+
+        for (const dependencyId of this.getDirectModuleDependencies(module.id, nextState)) {
+          if (!this.getModuleById(dependencyId)) continue;
+          const dependencyKey = `${dependencyId}Enabled`;
+          if (nextState[dependencyKey]) continue;
+          nextState[dependencyKey] = true;
+          changed = true;
+        }
+      }
+    }
+
+    return nextState;
+  },
+
   normalizeState(rawState = {}) {
     const input = rawState && typeof rawState === 'object' ? rawState : {};
     const normalized = {
@@ -166,20 +381,8 @@ Object.assign(Calc, {
     [
       'batteryEnabled',
       'aiComputeEnabled',
-      'electrolyzerEnabled',
-      'dacEnabled',
-      'sabatierEnabled',
-      'methanolEnabled',
-      'carbonMonoxideEnabled',
-      'ammoniaEnabled',
-      'cokeEnabled',
-      'cementEnabled',
-      'steelEnabled',
-      'siliconEnabled',
-      'aluminumEnabled',
-      'titaniumEnabled',
-      'desalinationEnabled',
       'financingEnabled',
+      ...MODULE_REGISTRY.map(module => `${module.id}Enabled`),
     ].forEach(key => {
       normalized[key] = Boolean(normalized[key]);
     });
@@ -218,6 +421,7 @@ Object.assign(Calc, {
         );
       }
     });
+    Object.assign(normalized, this.enforceModuleDependencies(normalized));
 
     const bodyConfig = PLANETARY_BODIES[normalized.body] || PLANETARY_BODIES.earth;
     if (!bodyConfig.supportsSpecificDay) {

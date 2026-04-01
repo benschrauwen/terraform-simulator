@@ -34,6 +34,62 @@ test('capex breakdown still adds up to the reported total', () => {
   );
 });
 
+test('lean IRR path matches the full default scenario calculation', () => {
+  const state = createState();
+  const fullResult = Calc.calculateAll(state);
+  const leanIrr = Calc.calculateIrr(state);
+
+  assert.ok(
+    Math.abs(fullResult.economics.irr - leanIrr) <= 1e-9,
+    `Expected lean IRR ${leanIrr} to match full IRR ${fullResult.economics.irr}.`
+  );
+});
+
+test('lean IRR path matches the full AI-enabled scenario calculation', () => {
+  const state = createState({ aiComputeEnabled: true, batteryCapacityMWh: 24, aiReliabilityTarget: 95 });
+  const fullResult = Calc.calculateAll(state);
+  const leanIrr = Calc.calculateIrr(state);
+
+  assert.ok(
+    Math.abs(fullResult.economics.irr - leanIrr) <= 1e-9,
+    `Expected lean AI IRR ${leanIrr} to match full IRR ${fullResult.economics.irr}.`
+  );
+});
+
+test('optimizer progress callback reports monotonic approximate completion', () => {
+  const updates = [];
+  const result = Calc.findBestRangeValueForIrr(
+    createState(),
+    {
+      stateKey: 'methaneFeedstockSplit',
+      min: 0,
+      max: 100,
+      step: 1,
+      currentValue: 50,
+      maxCoarseSamples: 101,
+      maxTopRegions: 5,
+    },
+    {
+      onProgress(progress) {
+        updates.push(progress);
+      },
+    }
+  );
+
+  assert.ok(result === null || Number.isFinite(result.bestValue), 'Expected optimizer search to either improve the value or report no better candidate.');
+  assert.ok(updates.length >= 3, 'Expected optimizer progress to report multiple updates.');
+  assert.equal(updates[0].percent, 0, 'Expected optimizer progress to start at 0%.');
+  assert.equal(updates[updates.length - 1].percent, 100, 'Expected optimizer progress to end at 100%.');
+  assert.ok(
+    updates.some(update => update.percent > 0 && update.percent < 100),
+    'Expected optimizer progress to include at least one intermediate percentage.'
+  );
+  assert.ok(
+    updates.every((update, index) => index === 0 || update.percent >= updates[index - 1].percent),
+    'Expected optimizer progress percentages to be monotonic.'
+  );
+});
+
 test('default 0 to 0.5 MWh battery sweep does not reduce total capex', () => {
   const [withoutBattery, withSmallBattery] = runBatterySweep([0, 0.5]);
   const expectedBatteryCapex = 0.5 * 1000 * createState().batteryCostPerKWh;
@@ -333,6 +389,56 @@ test('invalid inputs are normalized before calculations run', () => {
   assert.equal(result.storage.enabled, false, 'Negative battery capacity should normalize to zero storage.');
   assert.ok(Number.isFinite(result.economics.totalCapex), 'Normalized scenarios should still produce finite CAPEX.');
   assert.ok(Number.isFinite(result.economics.totalAnnualRevenue), 'Normalized scenarios should still produce finite revenue.');
+});
+
+test('enabled downstream modules auto-enable their upstream process dependencies', () => {
+  const mtgState = Calc.normalizeState(createState({
+    mtgEnabled: true,
+    methanolEnabled: false,
+    electrolyzerEnabled: false,
+    dacEnabled: false,
+  }));
+  const rwgsState = Calc.normalizeState(createState({
+    carbonMonoxideEnabled: true,
+    carbonMonoxideRoute: 'rwgs',
+    electrolyzerEnabled: false,
+    dacEnabled: false,
+  }));
+
+  assert.equal(mtgState.mtgEnabled, true, 'Expected MTG to stay enabled.');
+  assert.equal(mtgState.methanolEnabled, true, 'Expected MTG to auto-enable methanol.');
+  assert.equal(mtgState.electrolyzerEnabled, true, 'Expected methanol-dependent MTG to auto-enable the electrolyzer chain.');
+  assert.equal(mtgState.dacEnabled, true, 'Expected methanol-dependent MTG to auto-enable DAC.');
+
+  assert.equal(rwgsState.carbonMonoxideEnabled, true, 'Expected the CO module to stay enabled.');
+  assert.equal(rwgsState.dacEnabled, true, 'Expected CO production to auto-enable DAC.');
+  assert.equal(rwgsState.electrolyzerEnabled, true, 'Expected the RWGS route to auto-enable electrolyzer feed.');
+});
+
+test('mtg exploratory module stays excluded from modeled economics until assumptions are added', () => {
+  const baseline = runScenario({ methanolEnabled: true });
+  const withMtg = runScenario({ methanolEnabled: false, mtgEnabled: true, mtgRoute: 'dme-upgrading' });
+  const mtg = withMtg.exploratoryModules.find(module => module.id === 'mtg');
+
+  assert.ok(mtg, 'Expected the MTG experimental module to be present in exploratory results.');
+  assert.equal(mtg.enabled, true, 'Expected MTG to reflect the enabled toggle.');
+  assert.equal(mtg.route, 'dme-upgrading', 'Expected MTG to preserve the selected exploratory route.');
+  assert.equal(mtg.diagramInputs?.methanol, true, 'Expected MTG to advertise methanol as a required diagram input.');
+  assert.equal(withMtg.state.methanolEnabled, true, 'Expected MTG to auto-enable methanol in the normalized state.');
+  assert.ok(
+    withMtg.economics.excludedModules.includes('MTG (Methanol -> Gasoline)'),
+    'Expected MTG to appear in the exploratory-modules exclusion list.'
+  );
+  assert.equal(
+    withMtg.economics.totalCapex,
+    baseline.economics.totalCapex,
+    'Expected MTG to stay out of modeled CAPEX until route assumptions are added.'
+  );
+  assert.equal(
+    withMtg.economics.totalAnnualRevenue,
+    baseline.economics.totalAnnualRevenue,
+    'Expected MTG to stay out of modeled revenue until route assumptions are added.'
+  );
 });
 
 test('simple payback reports first recovery even if later years dip negative', () => {

@@ -342,6 +342,7 @@ const MODULE_REGISTRY = [
     family: 'air-water-chemistry',
     maturity: 'Supported',
     kind: 'product',
+    dependencies: ['electrolyzer', 'dac'],
     order: 1,
     defaultEnabled: true,
     assetLifeKey: 'sabatierAssetLife',
@@ -356,6 +357,7 @@ const MODULE_REGISTRY = [
     family: 'air-water-chemistry',
     maturity: 'Supported',
     kind: 'product',
+    dependencies: ['electrolyzer', 'dac'],
     order: 2,
     defaultEnabled: false,
     assetLifeKey: 'methanolAssetLife',
@@ -365,10 +367,33 @@ const MODULE_REGISTRY = [
     ],
   },
   {
+    id: 'mtg',
+    label: 'MTG (Methanol -> Gasoline)',
+    family: 'air-water-chemistry',
+    maturity: 'Exploratory',
+    dependencies: ['methanol'],
+    diagramInputs: {
+      methanol: true,
+    },
+    routeOptions: [
+      { value: 'zsm5-loop', label: 'Mobil-style ZSM-5 loop' },
+      { value: 'dme-upgrading', label: 'DME / oligomerization path' },
+    ],
+    missingInputs: [
+      'Methanol feed purity, dehydration/recycle, and water knock-out assumptions',
+      'Gasoline-range yield, carbon selectivity, and final product-slate basis',
+      'Catalyst life/regeneration and reactor CAPEX scaling for intermittent operation',
+    ],
+  },
+  {
     id: 'carbonMonoxide',
     label: 'CO2 -> CO',
     family: 'air-water-chemistry',
     maturity: 'Exploratory',
+    dependencies: ['dac'],
+    routeDependencies: {
+      rwgs: ['electrolyzer'],
+    },
     routeOptions: [
       { value: 'plasma-splitting', label: 'Plasma CO2 splitting' },
       { value: 'solid-oxide-electrolysis', label: 'Solid oxide CO2 electrolysis' },
@@ -385,6 +410,9 @@ const MODULE_REGISTRY = [
     label: 'Ammonia',
     family: 'air-water-chemistry',
     maturity: 'Exploratory',
+    routeDependencies: {
+      'haber-bosch': ['electrolyzer'],
+    },
     routeOptions: [
       { value: 'haber-bosch', label: 'Haber-Bosch style loop' },
       { value: 'electrochemical', label: 'Electrochemical route' },
@@ -400,6 +428,7 @@ const MODULE_REGISTRY = [
     label: 'Coke / Graphite / Graphene',
     family: 'carbon-solids',
     maturity: 'Exploratory',
+    dependencies: ['dac'],
     routeOptions: [
       { value: 'electrochemical-carbon', label: 'Electrochemical carbon deposition' },
       { value: 'thermal-carbon', label: 'Thermal carbon formation' },
@@ -430,6 +459,9 @@ const MODULE_REGISTRY = [
     label: 'Steel',
     family: 'oxide-reduction',
     maturity: 'Exploratory',
+    routeDependencies: {
+      'h2-dri-eaf': ['electrolyzer'],
+    },
     routeOptions: [
       { value: 'h2-dri-eaf', label: 'H2-DRI + EAF' },
       { value: 'flash-ironmaking', label: 'Flash ironmaking' },
@@ -561,6 +593,9 @@ const DEFAULT_STATE = {
   methanolAssetLife: 7,
 
   methaneMarketPreset: 'terraform_commodity',
+
+  mtgEnabled: false,
+  mtgRoute: 'zsm5-loop',
 
   carbonMonoxideEnabled: false,
   carbonMonoxideRoute: 'plasma-splitting',

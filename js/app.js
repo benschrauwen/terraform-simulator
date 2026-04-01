@@ -13,6 +13,14 @@ class App {
     this.siteMapOverlay = null;
     this.siteMapModuleLayer = null;
     this.siteMapMarker = null;
+    this.optimizerWorker = null;
+    this.optimizerRequestId = 0;
+    this.optimizerRequests = new Map();
+    this.pendingRecalculateFrame = null;
+    this.pendingRecalculateOptions = null;
+    this.pendingSensitivityTimer = null;
+    this.pendingSensitivityResults = null;
+    this.sensitivityDebounceMs = 180;
     this.init();
   }
 
@@ -370,7 +378,7 @@ class App {
       const enabledKey = `${module.id}Enabled`;
       this.on(enabledKey, 'change', (_, el) => {
         this.state[enabledKey] = el.checked;
-        document.getElementById(`${module.id}Config`).classList.toggle('active', el.checked);
+        this.enforceModuleDependencies();
         this.syncDerivedFeedControls();
       });
 
@@ -384,9 +392,15 @@ class App {
       } else {
         this.on(`${module.id}Route`, 'change', val => {
           this.state[`${module.id}Route`] = val;
+          this.enforceModuleDependencies();
         });
       }
     });
+  }
+
+  enforceModuleDependencies() {
+    this.state = Calc.enforceModuleDependencies(this.state);
+    this.syncStateToControls();
   }
 
   handleLocationEdited() {
@@ -423,8 +437,45 @@ class App {
       this.syncRangeDisplay(id, el.value, formatter);
       if (extra) extra();
       this.syncDynamicVisibility();
-      this.recalculate();
+      this.requestRecalculate({ includeSensitivity: false });
     });
+  }
+
+  requestRecalculate(options = {}) {
+    const includeSensitivity = options.includeSensitivity !== false;
+
+    if (this.pendingRecalculateOptions) {
+      this.pendingRecalculateOptions.includeSensitivity ||= includeSensitivity;
+    } else {
+      this.pendingRecalculateOptions = { includeSensitivity };
+    }
+
+    if (this.pendingRecalculateFrame !== null) return;
+
+    this.pendingRecalculateFrame = window.requestAnimationFrame(() => {
+      const pendingOptions = this.pendingRecalculateOptions || {};
+      this.pendingRecalculateFrame = null;
+      this.pendingRecalculateOptions = null;
+      this.recalculate(pendingOptions);
+    });
+  }
+
+  scheduleSensitivityUpdate(results = this.lastResults) {
+    this.pendingSensitivityResults = results;
+    clearTimeout(this.pendingSensitivityTimer);
+    this.pendingSensitivityTimer = window.setTimeout(() => {
+      this.pendingSensitivityTimer = null;
+      const pendingResults = this.pendingSensitivityResults || this.lastResults;
+      this.pendingSensitivityResults = null;
+      if (pendingResults) this.updateSensitivityChart(pendingResults);
+    }, this.sensitivityDebounceMs);
+  }
+
+  flushSensitivityUpdate(results = this.lastResults) {
+    clearTimeout(this.pendingSensitivityTimer);
+    this.pendingSensitivityTimer = null;
+    this.pendingSensitivityResults = null;
+    if (results) this.updateSensitivityChart(results);
   }
 
   bindOptimizeButtons() {
@@ -445,15 +496,20 @@ class App {
   bindIrrOptimizerButton(buttonId, options) {
     const button = document.getElementById(buttonId);
     if (!button) return;
+    this.captureOptimizerButtonDefaults(button);
 
     button.addEventListener('click', async event => {
       event.preventDefault();
       if (button.disabled) return;
 
       button.disabled = true;
+      this.setOptimizerButtonProgress(button, { percent: 0, stage: 'start' });
       try {
         await new Promise(resolve => window.requestAnimationFrame(resolve));
-        const bestValue = this.findBestRangeValueForIrr(options);
+        const bestValue = await this.findBestRangeValueForIrr(
+          options,
+          progress => this.setOptimizerButtonProgress(button, progress)
+        );
         if (!Number.isFinite(bestValue)) return;
 
         const input = document.getElementById(options.inputId);
@@ -464,13 +520,57 @@ class App {
         input.focus();
       } finally {
         button.disabled = false;
+        this.resetOptimizerButton(button);
       }
     });
   }
 
+  captureOptimizerButtonDefaults(button) {
+    if (!button) return;
+    if (!button.dataset.defaultLabel) button.dataset.defaultLabel = (button.textContent || '').trim() || 'optimize';
+    if (!button.dataset.defaultTitle) button.dataset.defaultTitle = button.getAttribute('title') || '';
+  }
+
+  setOptimizerButtonProgress(button, progress = {}) {
+    if (!button) return;
+    this.captureOptimizerButtonDefaults(button);
+
+    const defaultLabel = button.dataset.defaultLabel || 'optimize';
+    const boundedPercent = Number.isFinite(progress.percent)
+      ? Math.max(0, Math.min(100, Math.round(progress.percent)))
+      : null;
+
+    button.dataset.optimizing = 'true';
+    if (boundedPercent === null) {
+      button.style.removeProperty('--optimize-progress');
+      button.textContent = '...';
+    } else {
+      button.style.setProperty('--optimize-progress', `${boundedPercent}%`);
+      button.textContent = `${boundedPercent}%`;
+    }
+
+    const progressText = boundedPercent === null ? 'in progress' : `${boundedPercent}% complete`;
+    button.setAttribute('aria-label', `${defaultLabel} ${progressText}`);
+    button.setAttribute('title', `${button.dataset.defaultTitle || defaultLabel} (${progressText})`);
+  }
+
+  resetOptimizerButton(button) {
+    if (!button) return;
+    this.captureOptimizerButtonDefaults(button);
+    button.textContent = button.dataset.defaultLabel || 'optimize';
+    button.removeAttribute('data-optimizing');
+    button.style.removeProperty('--optimize-progress');
+    button.removeAttribute('aria-label');
+    if (button.dataset.defaultTitle) button.setAttribute('title', button.dataset.defaultTitle);
+    else button.removeAttribute('title');
+  }
+
   // Search the slider domain with a coarse sweep plus local refinement
   // so IRR optimization stays responsive on wide ranges like battery capacity.
-  findBestRangeValueForIrr({ inputId, stateKey, maxCoarseSamples = 257, maxTopRegions = 5 }) {
+  async findBestRangeValueForIrr(
+    { inputId, stateKey, maxCoarseSamples = 257, maxTopRegions = 5 },
+    onProgress = null
+  ) {
     const input = document.getElementById(inputId);
     if (!input) return null;
 
@@ -479,9 +579,45 @@ class App {
     const step = parseFloat(input.step) || 1;
     if (![min, max, step].every(Number.isFinite) || step <= 0 || max < min) return null;
 
+    const search = {
+      stateKey,
+      min,
+      max,
+      step,
+      currentValue: parseFloat(input.value),
+      maxCoarseSamples,
+      maxTopRegions,
+    };
+
+    if (typeof Worker === 'function') {
+      try {
+        const workerResult = await this.requestOptimizerWorkerSearch(search, onProgress);
+        return workerResult?.bestValue ?? null;
+      } catch (error) {
+        console.warn('Optimizer worker failed, falling back to main thread.', error);
+      }
+    }
+
+    const fallbackResult = typeof Calc.findBestRangeValueForIrr === 'function'
+      ? Calc.findBestRangeValueForIrr(this.state, search, { onProgress })
+      : this.findBestRangeValueForIrrOnMainThread(search);
+    return fallbackResult?.bestValue ?? null;
+  }
+
+  findBestRangeValueForIrrOnMainThread({
+    stateKey,
+    min,
+    max,
+    step,
+    currentValue,
+    maxCoarseSamples = 257,
+    maxTopRegions = 5,
+  }) {
+    if (![min, max, step].every(Number.isFinite) || step <= 0 || max < min) return null;
+
     const totalSteps = Math.max(0, Math.round((max - min) / step));
-    const currentValue = this.snapRangeValue(parseFloat(input.value), min, max, step);
-    const currentIndex = Math.round((currentValue - min) / step);
+    const snappedCurrentValue = this.snapRangeValue(currentValue, min, max, step);
+    const currentIndex = Math.round((snappedCurrentValue - min) / step);
     const precision = this.getStepPrecision(step);
     const cache = new Map();
 
@@ -492,7 +628,7 @@ class App {
 
       const result = {
         value: snappedValue,
-        irr: Calc.calculateAll({ ...this.state, [stateKey]: snappedValue }).economics.irr,
+        irr: Calc.calculateIrr({ ...this.state, [stateKey]: snappedValue }),
       };
       result.finite = Number.isFinite(result.irr);
       cache.set(key, result);
@@ -500,7 +636,7 @@ class App {
     };
 
     const evaluateIndex = index => evaluate(min + (index * step));
-    const currentResult = evaluate(currentValue);
+    const currentResult = evaluate(snappedCurrentValue);
 
     if ((totalSteps + 1) <= maxCoarseSamples) {
       for (let index = 0; index <= totalSteps; index++) {
@@ -547,12 +683,18 @@ class App {
       .sort((a, b) => {
         const irrDiff = b.irr - a.irr;
         if (Math.abs(irrDiff) > 1e-9) return irrDiff;
-        return Math.abs(a.value - currentValue) - Math.abs(b.value - currentValue);
+        return Math.abs(a.value - snappedCurrentValue) - Math.abs(b.value - snappedCurrentValue);
       })[0];
 
     if (!best) return null;
     if (Number.isFinite(currentResult.irr) && best.irr <= (currentResult.irr + 1e-6)) return null;
-    return best.value;
+
+    return {
+      bestValue: best.value,
+      bestIrr: best.irr,
+      currentValue: snappedCurrentValue,
+      currentIrr: currentResult.irr,
+    };
   }
 
   buildEvenlySpacedIndices(totalSteps, targetCount) {
@@ -598,6 +740,50 @@ class App {
       return parseInt(normalized.split('e-')[1], 10);
     }
     return normalized.includes('.') ? normalized.split('.')[1].length : 0;
+  }
+
+  getOptimizerWorker() {
+    if (this.optimizerWorker) return this.optimizerWorker;
+
+    this.optimizerWorker = new Worker('js/optimizer-worker.js?v=20260401-opt-progress');
+    this.optimizerWorker.addEventListener('message', event => {
+      const { requestId, messageType, progress, result, error } = event.data || {};
+      const pending = this.optimizerRequests.get(requestId);
+      if (!pending) return;
+      if (messageType === 'progress') {
+        pending.onProgress?.(progress || {});
+        return;
+      }
+
+      this.optimizerRequests.delete(requestId);
+      if (error) {
+        pending.reject(new Error(error.message || 'Optimizer worker failed.'));
+      } else {
+        pending.resolve(result || null);
+      }
+    });
+    this.optimizerWorker.addEventListener('error', event => {
+      const workerError = event?.error || new Error(event?.message || 'Optimizer worker crashed.');
+      this.optimizerRequests.forEach(({ reject }) => reject(workerError));
+      this.optimizerRequests.clear();
+      this.optimizerWorker = null;
+    });
+
+    return this.optimizerWorker;
+  }
+
+  requestOptimizerWorkerSearch(search, onProgress = null) {
+    const worker = this.getOptimizerWorker();
+    const requestId = ++this.optimizerRequestId;
+    return new Promise((resolve, reject) => {
+      this.optimizerRequests.set(requestId, { resolve, reject, onProgress });
+      worker.postMessage({
+        requestId,
+        type: 'findBestRangeValueForIrr',
+        state: this.state,
+        search,
+      });
+    });
   }
 
   syncBatteryEnabledState() {
@@ -649,30 +835,30 @@ class App {
   bindMobilePaneControls() {
     this.mobileLayoutQuery = window.matchMedia('(max-width: 900px)');
     this.mobilePaneButtons = Array.from(document.querySelectorAll('.mobile-pane-toggle'));
-    this.mobilePanels = Array.from(document.querySelectorAll('.config-panel, .results-panel'));
-    this.mobileBackdrop = document.getElementById('mobilePanelBackdrop');
+    this.mobilePanels = Array.from(document.querySelectorAll('.config-panel, .diagram-area, .results-panel'));
 
     this.mobilePaneButtons.forEach(button => {
       button.addEventListener('click', () => {
         const panelId = button.dataset.panelTarget;
         if (!panelId) return;
-        this.setMobilePanel(this.activeMobilePanelId === panelId ? null : panelId);
+        const nextPanelId = this.activeMobilePanelId === panelId
+          ? this.getDefaultMobilePanelId()
+          : panelId;
+        this.setMobilePanel(nextPanelId);
       });
     });
 
-    if (this.mobileBackdrop) {
-      this.mobileBackdrop.addEventListener('click', () => this.setMobilePanel(null));
-    }
-
     document.addEventListener('keydown', event => {
       if (event.key === 'Escape') {
-        this.setMobilePanel(null);
+        this.setMobilePanel(this.getDefaultMobilePanelId());
       }
     });
 
     const handleLayoutChange = () => {
       if (!this.isMobileViewport()) {
         this.activeMobilePanelId = null;
+      } else if (!this.mobilePanels.some(panel => panel.id === this.activeMobilePanelId)) {
+        this.activeMobilePanelId = this.getDefaultMobilePanelId();
       }
       this.syncMobilePaneState();
     };
@@ -690,14 +876,26 @@ class App {
     return window.innerWidth <= 900;
   }
 
+  getDefaultMobilePanelId() {
+    return 'diagramArea';
+  }
+
   setMobilePanel(panelId) {
-    this.activeMobilePanelId = this.isMobileViewport() ? panelId : null;
+    const nextPanelId = this.isMobileViewport()
+      ? (panelId || this.getDefaultMobilePanelId())
+      : null;
+    const panelChanged = nextPanelId !== this.activeMobilePanelId;
+    this.activeMobilePanelId = nextPanelId;
     this.syncMobilePaneState();
+    if (panelChanged && this.isMobileViewport()) {
+      document.getElementById('mobilePaneBar')?.scrollIntoView({ block: 'start' });
+    }
   }
 
   syncMobilePaneState() {
-    const activeId = this.isMobileViewport() ? this.activeMobilePanelId : null;
-    const hasActivePanel = Boolean(activeId);
+    const activeId = this.isMobileViewport()
+      ? (this.activeMobilePanelId || this.getDefaultMobilePanelId())
+      : null;
 
     this.mobilePanels.forEach(panel => {
       const isActive = panel.id === activeId;
@@ -711,9 +909,7 @@ class App {
       button.setAttribute('aria-expanded', String(isActive));
     });
 
-    if (this.mobileBackdrop) {
-      this.mobileBackdrop.hidden = !hasActivePanel;
-    }
+    window.requestAnimationFrame(() => this.positionSliderMarkers());
   }
 
   createSliderTooltip() {
@@ -1068,7 +1264,13 @@ class App {
     });
   }
 
-  recalculate() {
+  recalculate(options = {}) {
+    const includeSensitivity = options.includeSensitivity !== false;
+    if (this.pendingRecalculateFrame !== null) {
+      window.cancelAnimationFrame(this.pendingRecalculateFrame);
+      this.pendingRecalculateFrame = null;
+      this.pendingRecalculateOptions = null;
+    }
     this.syncBatteryEnabledState();
     this.syncPlanetaryUI();
     this.syncDerivedFeedControls();
@@ -1086,7 +1288,8 @@ class App {
       this.updatePowerChart(r);
       this.updateAnnualDispatchChart(r);
       this.updateEconChart(r);
-      this.updateSensitivityChart(r);
+      if (includeSensitivity) this.flushSensitivityUpdate(r);
+      else this.scheduleSensitivityUpdate(r);
       this.updateImpact(r);
     } catch (error) {
       this.showCalculationError(error);

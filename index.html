@@ -7,8 +7,8 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <script src="js/format-numbers.js"></script>
-  <script src="js/solar-geometry.js"></script>
+  <script src="js/format-numbers.js?v=20260401-opt-progress"></script>
+  <script src="js/solar-geometry.js?v=20260401-opt-progress"></script>
 </head>
 <body>
   <header class="app-header">
@@ -45,6 +45,9 @@
       <button type="button" class="mobile-pane-toggle" data-panel-target="configPanel" aria-controls="configPanel" aria-expanded="false">
         Inputs
       </button>
+      <button type="button" class="mobile-pane-toggle active" data-panel-target="diagramArea" aria-controls="diagramArea" aria-expanded="true">
+        Overview
+      </button>
       <button type="button" class="mobile-pane-toggle" data-panel-target="resultsPanel" aria-controls="resultsPanel" aria-expanded="false">
         Results
       </button>
@@ -52,8 +55,6 @@
   </div>
 
   <main class="app-main">
-    <div class="mobile-panel-backdrop" id="mobilePanelBackdrop" hidden></div>
-
     <!-- LEFT: Configuration Panel -->
     <aside class="panel config-panel" id="configPanel">
       <!-- Day Selector -->
@@ -206,7 +207,7 @@
         </h2>
         <div class="section-body">
           <div class="field-note compact-note">
-            This storage block powers both the existing firming comparison and the AI reliability simulation when AI Compute is enabled. Set capacity to 0 to disable the battery. A fixed 2%/month standing energy leakage is always applied.
+            Set capacity to 0 to disable the battery. A fixed 2%/month standing energy leakage is always applied.
           </div>
           <div id="batteryConfig">
             <div class="range-control">
@@ -481,53 +482,42 @@
           <span class="chevron">▾</span>
         </h2>
         <div class="section-body financing-section-body">
-          <div class="sidebar-card">
-            <div class="sidebar-card-header">
-              <div class="sidebar-card-title">Debt structure</div>
-              <div class="sidebar-card-subtitle">Switch between unlevered project returns and an equity-style view funded with upfront debt.</div>
-            </div>
-            <div class="process-header">
-              <label class="toggle-label">
-                <input type="checkbox" id="financingEnabled">
-                <span>Enable debt financing for equity IRR</span>
-              </label>
-            </div>
-            <div class="sidebar-summary">
-              <div class="sidebar-summary-row">
-                <span class="sidebar-summary-label">Headline return</span>
-                <span id="financingHeadlineValue" class="sidebar-summary-value highlight">Project IRR (unlevered)</span>
-              </div>
-              <div class="sidebar-summary-row">
-                <span class="sidebar-summary-label">Debt scope</span>
-                <span id="financingScopeValue" class="sidebar-summary-value highlight">Debt disabled; project cash flows stay unlevered</span>
-              </div>
-              <div class="sidebar-summary-row">
-                <span class="sidebar-summary-label">Term cap</span>
-                <span id="financingTermCapValue" class="sidebar-summary-value highlight">Max 30 years from the analysis horizon</span>
-              </div>
-            </div>
-            <div class="field-note compact-note sidebar-callout">
-              When enabled, the headline IRR switches to sponsor equity IRR. Project NPV and payback remain unlevered, and debt only funds upfront CAPEX.
-            </div>
-            <div class="sidebar-subcard disabled-group" id="financingConfig">
-              <div class="sidebar-subcard-title">Debt assumptions</div>
-              <label>Debt Share (% of upfront CAPEX)
-                <input type="range" id="debtShare" min="0" max="90" step="1" value="70">
-                <span class="range-value" id="debtShareValue">70%</span>
-              </label>
-              <label>Interest Rate (%)
-                <input type="range" id="debtInterestRate" min="0" max="15" step="0.25" value="6.5">
-                <span class="range-value" id="debtInterestRateValue">6.50%</span>
-              </label>
-              <label>Debt Term (years)
-                <input type="range" id="debtTermYears" min="1" max="30" step="1" value="15">
-                <span class="range-value" id="debtTermYearsValue">15 years</span>
-              </label>
-              <label>Upfront Fee (% of debt)
-                <input type="range" id="debtFeePercent" min="0" max="5" step="0.25" value="1.5">
-                <span class="range-value" id="debtFeePercentValue">1.50%</span>
-              </label>
-            </div>
+          <div class="module-group-title">Debt structure</div>
+          <div class="module-group-subtitle">
+            Switch between unlevered project returns and an equity-style view funded with upfront debt.
+          </div>
+          <div class="process-header">
+            <label class="toggle-label">
+              <input type="checkbox" id="financingEnabled">
+              <span>Enable debt financing for equity IRR</span>
+            </label>
+          </div>
+          <div class="field-note compact-note">
+            <strong>Headline return:</strong> <span id="financingHeadlineValue" class="highlight">Project IRR (unlevered)</span><br>
+            <strong>Debt scope:</strong> <span id="financingScopeValue" class="highlight">Debt disabled; project cash flows stay unlevered</span><br>
+            <strong>Term cap:</strong> <span id="financingTermCapValue" class="highlight">Max 30 years from the analysis horizon</span>
+          </div>
+          <div class="field-note compact-note">
+            When enabled, the headline IRR switches to sponsor equity IRR. Project NPV and payback remain unlevered, and debt only funds upfront CAPEX.
+          </div>
+          <div class="process-config disabled-group" id="financingConfig">
+            <div class="module-group-title">Debt assumptions</div>
+            <label>Debt Share (% of upfront CAPEX)
+              <input type="range" id="debtShare" min="0" max="90" step="1" value="70">
+              <span class="range-value" id="debtShareValue">70%</span>
+            </label>
+            <label>Interest Rate (%)
+              <input type="range" id="debtInterestRate" min="0" max="15" step="0.25" value="6.5">
+              <span class="range-value" id="debtInterestRateValue">6.50%</span>
+            </label>
+            <label>Debt Term (years)
+              <input type="range" id="debtTermYears" min="1" max="30" step="1" value="15">
+              <span class="range-value" id="debtTermYearsValue">15 years</span>
+            </label>
+            <label>Upfront Fee (% of debt)
+              <input type="range" id="debtFeePercent" min="0" max="5" step="0.25" value="1.5">
+              <span class="range-value" id="debtFeePercentValue">1.50%</span>
+            </label>
           </div>
         </div>
       </section>
@@ -539,52 +529,41 @@
           <span class="chevron">▾</span>
         </h2>
         <div class="section-body maintenance-section-body">
-          <div class="sidebar-card">
-            <div class="sidebar-card-header">
-              <div class="sidebar-card-title">Fixed annual O&amp;M</div>
-              <div class="sidebar-card-subtitle">Apply simple operating cost rates by equipment category instead of modeling route-specific labor or utility overhead.</div>
-            </div>
-            <div class="sidebar-summary">
-              <div class="sidebar-summary-row">
-                <span class="sidebar-summary-label">Basis</span>
-                <span class="sidebar-summary-value highlight">Annual percent of installed CAPEX by category</span>
-              </div>
-              <div class="sidebar-summary-row">
-                <span class="sidebar-summary-label">Excluded</span>
-                <span class="sidebar-summary-value highlight">Land acquisition and site prep</span>
-              </div>
-            </div>
-            <div class="sidebar-subcard">
-              <div class="sidebar-subcard-title">Annual rates</div>
-              <label>Solar O&amp;M (%/year)
-                <input type="range" id="solarOmPercent" min="0.3" max="5" step="0.1" value="1.5">
-                <span class="range-value" id="solarOmPercentValue">1.5%/yr</span>
-              </label>
-              <div class="field-note compact-note">
-                Applies to solar modules and BOS only; excludes land and site prep.
-              </div>
-              <label>Process O&amp;M (%/year)
-                <input type="range" id="processOmPercent" min="0.5" max="8" step="0.1" value="3">
-                <span class="range-value" id="processOmPercentValue">3.0%/yr</span>
-              </label>
-              <div class="field-note compact-note">
-                Applies to electrolyzer, DAC, and downstream product equipment.
-              </div>
-              <label>Battery O&amp;M (%/year)
-                <input type="range" id="batteryOmPercent" min="0.3" max="5" step="0.1" value="1.5">
-                <span class="range-value" id="batteryOmPercentValue">1.5%/yr</span>
-              </label>
-              <div class="field-note compact-note">
-                Applies to battery CAPEX only.
-              </div>
-            </div>
+          <div class="module-group-title">Fixed annual O&amp;M</div>
+          <div class="module-group-subtitle">
+            Apply simple operating cost rates by equipment category instead of modeling route-specific labor or utility overhead.
+          </div>
+          <div class="field-note compact-note">
+            <strong>Basis:</strong> Annual percent of installed CAPEX by category.<br>
+            <strong>Excluded:</strong> Land acquisition and site prep.
+          </div>
+          <label>Solar O&amp;M (%/year)
+            <input type="range" id="solarOmPercent" min="0.3" max="5" step="0.1" value="1.5">
+            <span class="range-value" id="solarOmPercentValue">1.5%/yr</span>
+          </label>
+          <div class="field-note compact-note">
+            Applies to solar modules and BOS only; excludes land and site prep.
+          </div>
+          <label>Process O&amp;M (%/year)
+            <input type="range" id="processOmPercent" min="0.5" max="8" step="0.1" value="3">
+            <span class="range-value" id="processOmPercentValue">3.0%/yr</span>
+          </label>
+          <div class="field-note compact-note">
+            Applies to electrolyzer, DAC, and downstream product equipment.
+          </div>
+          <label>Battery O&amp;M (%/year)
+            <input type="range" id="batteryOmPercent" min="0.3" max="5" step="0.1" value="1.5">
+            <span class="range-value" id="batteryOmPercentValue">1.5%/yr</span>
+          </label>
+          <div class="field-note compact-note">
+            Applies to battery CAPEX only.
           </div>
         </div>
       </section>
     </aside>
 
     <!-- CENTER: System Diagram -->
-    <section class="diagram-area" id="diagramArea">
+    <section class="diagram-area mobile-open" id="diagramArea">
       <div class="diagram-container" id="diagramContainer">
         <!-- SVG diagram is rendered here by JS -->
       </div>
@@ -608,7 +587,7 @@
 
       <!-- Power Distribution Chart -->
       <div class="chart-section">
-        <h3>Power Profile <span id="powerChartDayLabel" style="color:var(--text-muted);font-weight:400;font-size:11px;"></span></h3>
+        <h3>Power Profile <span id="powerChartDayLabel" class="chart-title-meta"></span></h3>
         <div class="field-note compact-note" id="powerChartNote"></div>
         <div class="chart-wrapper">
           <canvas id="powerChart"></canvas>
@@ -666,7 +645,7 @@
           <div class="econ-breakdown" id="econBreakdown">
             <!-- Filled by JS -->
           </div>
-          <div class="chart-wrapper chart-wrapper-econ" style="margin-top: 12px;">
+          <div class="chart-wrapper chart-wrapper-econ chart-wrapper-spaced">
             <canvas id="econChart"></canvas>
           </div>
         </div>
@@ -726,18 +705,18 @@
     View the source on <a href="https://github.com/benschrauwen/terraform-simulator" target="_blank" rel="noreferrer">GitHub</a>.</p>
   </footer>
 
-  <script src="js/constants.js"></script>
-  <script src="js/calculations/calculations-core.js"></script>
-  <script src="js/calculations/calculations-solar.js"></script>
-  <script src="js/calculations/calculations-battery.js"></script>
-  <script src="js/calculations/calculations-series-ai.js"></script>
-  <script src="js/calculations/calculations-process.js"></script>
-  <script src="js/calculations/calculations-economics.js"></script>
-  <script src="js/diagram.js"></script>
+  <script src="js/constants.js?v=20260401-opt-progress"></script>
+  <script src="js/calculations/calculations-core.js?v=20260401-opt-progress"></script>
+  <script src="js/calculations/calculations-solar.js?v=20260401-opt-progress"></script>
+  <script src="js/calculations/calculations-battery.js?v=20260401-opt-progress"></script>
+  <script src="js/calculations/calculations-series-ai.js?v=20260401-opt-progress"></script>
+  <script src="js/calculations/calculations-process.js?v=20260401-opt-progress"></script>
+  <script src="js/calculations/calculations-economics.js?v=20260401-opt-progress"></script>
+  <script src="js/diagram.js?v=20260401-opt-progress"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-  <script src="js/app.js"></script>
-  <script src="js/app-site-map.js"></script>
-  <script src="js/app-renderers.js"></script>
-  <script src="js/app-charts.js"></script>
+  <script src="js/app.js?v=20260401-opt-progress"></script>
+  <script src="js/app-site-map.js?v=20260401-opt-progress"></script>
+  <script src="js/app-renderers.js?v=20260401-opt-progress"></script>
+  <script src="js/app-charts.js?v=20260401-opt-progress"></script>
 </body>
 </html>

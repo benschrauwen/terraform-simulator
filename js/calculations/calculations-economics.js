@@ -350,14 +350,64 @@ Object.assign(Calc, {
     };
   },
 
-  calculateAll(state) {
+  buildDisabledAiSummary(state) {
+    return {
+      enabled: false,
+      reliabilityTarget: Math.max(0.0001, Math.min(0.99999, (state.aiReliabilityTarget || 99.9) / 100)) * 100,
+      designLoadKW: 0,
+      annualTokensM: 0,
+      annualRevenue: 0,
+      tokensPerKWYearM: 0,
+      utilization: 0,
+      fullPowerReliability: 1,
+      fullPowerHours: 0,
+      curtailedHours: 0,
+      averageDailyTokensM: 0,
+      averageDailyChemicalMWh: 0,
+      chemicalAnnualKWh: 0,
+      chemicalPeakKW: 0,
+      chemicalDailyOpHours: 0,
+      capex: 0,
+      annualizedCapex: 0,
+      annualOM: 0,
+      assetLifeYears: state.aiAssetLifeYears || AI_COMPUTE_DEFAULTS.assetLifeYears,
+      dispatch: null,
+      storage: null,
+      chemicalSupply: null,
+    };
+  },
+
+  calculateScenario(state, options = {}) {
+    const fastMode = Boolean(options.fastMode);
     const normalizedState = this.normalizeState(state);
+    const includeAnnualSolar = !fastMode || normalizedState.aiComputeEnabled;
+    const includeAnnualSolarWindowSummaries = !fastMode;
+    const includeDispatchSeries = !fastMode;
+    const includeDisplayDispatchSeries = !fastMode;
+    const includeBatterySeries = !fastMode;
+    const includeSupportedModules = !fastMode;
+    const includeExploratoryModules = !fastMode;
+    const includeEnvironmental = !fastMode;
     const solar = this.calculateSolar(normalizedState);
-    const annualSolar = this.buildAnnualSolarSeries(normalizedState, solar);
-    const ai = this.calculateAICompute(normalizedState, solar, annualSolar);
-    const batteryResult = ai.enabled ? null : this.calculateBattery(normalizedState, solar);
-    const storage = ai.enabled ? ai.storage : batteryResult.storage;
-    const chemicalSupply = ai.enabled ? ai.chemicalSupply : batteryResult.chemicalSupply;
+    const annualSolar = includeAnnualSolar
+      ? this.buildAnnualSolarSeries(normalizedState, solar, {
+          includeWindowSummaries: includeAnnualSolarWindowSummaries,
+        })
+      : null;
+    const shouldRunAiModel = normalizedState.aiComputeEnabled || !fastMode;
+    const ai = shouldRunAiModel
+      ? this.calculateAICompute(normalizedState, solar, annualSolar, {
+          captureDispatchSeries: includeDispatchSeries,
+          includeDisplayDispatchSeries,
+        })
+      : this.buildDisabledAiSummary(normalizedState);
+    const batterySummary = ai.enabled
+      ? null
+      : this.calculateBattery(normalizedState, solar, {
+          includeSeries: includeBatterySeries,
+        });
+    const storage = ai.enabled ? ai.storage : batterySummary.storage;
+    const chemicalSupply = ai.enabled ? ai.chemicalSupply : batterySummary.chemicalSupply;
     const cyclesPerYear = this.getBodyConfig(normalizedState.body || 'earth').cyclesPerEarthYear;
     const effectiveDailyKWh = ai.enabled
       ? ai.chemicalAnnualKWh / Math.max(cyclesPerYear, 1)
@@ -384,12 +434,13 @@ Object.assign(Calc, {
           ? ((reactorSizingPeakKW * allocation.dac) / normalizedState.dacEnergy) * 1000
           : 0,
       },
-      opHours
+      opHours,
+      { includeSupportedModules }
     );
 
     const sabatier = productFlow.outputs.sabatier || this.calculateSabatier({ ...normalizedState, sabatierEnabled: false }, 0, 0, opHours);
     const methanol = productFlow.outputs.methanol || this.calculateMethanol({ ...normalizedState, methanolEnabled: false }, 0, 0, opHours);
-    const exploratoryModules = this.calculateExploratoryModules(normalizedState);
+    const exploratoryModules = includeExploratoryModules ? this.calculateExploratoryModules(normalizedState) : [];
 
     const economics = this.calculateEconomics(normalizedState, {
       solar,
@@ -404,7 +455,9 @@ Object.assign(Calc, {
       co2Surplus: productFlow.co2Remaining,
       exploratoryModules,
     });
-    const environmental = this.calculateEnvironmental(solar, dac, sabatier, methanol, electrolyzer);
+    const environmental = includeEnvironmental
+      ? this.calculateEnvironmental(solar, dac, sabatier, methanol, electrolyzer)
+      : null;
 
     return {
       state: normalizedState,
@@ -413,7 +466,7 @@ Object.assign(Calc, {
       storage,
       chemicalSupply,
       ai,
-      annualDispatch: ai.dispatch,
+      annualDispatch: ai.dispatch || null,
       allocation,
       electrolyzer,
       dac,
@@ -428,6 +481,14 @@ Object.assign(Calc, {
       effectiveDailyKWh,
       opHours,
     };
+  },
+
+  calculateAll(state) {
+    return this.calculateScenario(state);
+  },
+
+  calculateIrr(state) {
+    return this.calculateScenario(state, { fastMode: true }).economics.irr;
   },
 
   runSensitivity(baseState, paramKey, values) {

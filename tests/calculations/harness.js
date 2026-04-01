@@ -8,7 +8,7 @@ function getCalculationFilesFromIndex() {
   const indexHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const matches = Array.from(indexHtml.matchAll(/<script[^>]+src="([^"]+)"[^>]*><\/script>/g));
   return matches
-    .map(match => match[1])
+    .map(match => match[1].split('?')[0])
     .filter(src =>
       src === 'js/solar-geometry.js' ||
       src === 'js/constants.js' ||

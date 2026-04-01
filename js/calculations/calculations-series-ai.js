@@ -123,7 +123,8 @@ Object.assign(Calc, {
     });
   },
 
-  buildMarsSeasonalSolarSeries(state, solar, totalHours, seriesKWhTarget) {
+  buildMarsSeasonalSolarSeries(state, solar, totalHours, seriesKWhTarget, options = {}) {
+    const includeWindowSummaries = options.includeWindowSummaries !== false;
     const bodyKey = 'mars';
     const body = this.getBodyConfig(bodyKey);
     const cycleHours = Math.max(1e-6, body.cycleHours || 24.66);
@@ -149,21 +150,22 @@ Object.assign(Calc, {
     const normalized = this.sampleProfileSequenceByHour(dailyProfiles, cycleHours, safeTotalHours);
     const hourlyKW = this.scaleRawSeriesToAnnualEnergy(normalized, Math.max(0, Number(seriesKWhTarget) || 0), peakKW);
     const windowCount = Math.ceil(hourlyKW.length / cycleHours);
+    const totalKWh = hourlyKW.reduce((sum, value) => sum + value, 0);
 
     return {
       bodyKey,
       hourlyKW,
-      dayLabels: this.buildAnnualWindowLabels(bodyKey, windowCount, cycleHours, hourlyKW.length),
-      dailyKWh: this.aggregateSeriesBySpanHours(hourlyKW, cycleHours),
-      averageDayKW: this.averageSeriesByCyclePhase(hourlyKW, cycleHours, binCount),
-      totalKWh: hourlyKW.reduce((sum, value) => sum + value, 0),
+      dayLabels: includeWindowSummaries ? this.buildAnnualWindowLabels(bodyKey, windowCount, cycleHours, hourlyKW.length) : [],
+      dailyKWh: includeWindowSummaries ? this.aggregateSeriesBySpanHours(hourlyKW, cycleHours) : [],
+      averageDayKW: includeWindowSummaries ? this.averageSeriesByCyclePhase(hourlyKW, cycleHours, binCount) : [],
+      totalKWh,
       windowHours: cycleHours,
       windowBinCount: binCount,
       seasonalVariation: true,
     };
   },
 
-  buildMarsOrbitalDispatchBasis(state, solar) {
+  buildMarsOrbitalDispatchBasis(state, solar, options = {}) {
     const body = this.getBodyConfig('mars');
     const orbitalSols = 668.6;
     const annualizationFactor = Math.max(1e-9, Math.max(body.cyclesPerEarthYear || 0, 1) / orbitalSols);
@@ -172,15 +174,16 @@ Object.assign(Calc, {
         state,
         solar,
         orbitalSols * Math.max(1e-6, body.cycleHours || 24.66),
-        Math.max(0, (solar.annualMWh || 0) * 1000) / annualizationFactor
+        Math.max(0, (solar.annualMWh || 0) * 1000) / annualizationFactor,
+        options
       ),
       annualizationFactor,
       horizonLabel: 'orbital-year',
     };
   },
 
-  getAnnualDispatchBasis(state, solar, annualSolar) {
-    if ((state.body || 'earth') === 'mars') return this.buildMarsOrbitalDispatchBasis(state, solar);
+  getAnnualDispatchBasis(state, solar, annualSolar, options = {}) {
+    if ((state.body || 'earth') === 'mars') return this.buildMarsOrbitalDispatchBasis(state, solar, options);
     return {
       solar: annualSolar,
       annualizationFactor: 1,
@@ -262,7 +265,8 @@ Object.assign(Calc, {
     });
   },
 
-  buildAnnualSolarSeries(state, solar) {
+  buildAnnualSolarSeries(state, solar, options = {}) {
+    const includeWindowSummaries = options.includeWindowSummaries !== false;
     const bodyKey = state.body || 'earth';
     const body = this.getBodyConfig(bodyKey);
     const annualKWhTarget = Math.max(0, (solar.annualMWh || 0) * 1000);
@@ -276,13 +280,14 @@ Object.assign(Calc, {
       }
       const hourlyKW = this.scaleRawSeriesToAnnualEnergy(rawHourly, annualKWhTarget, peakKW);
       const windowHours = 24;
+      const totalKWh = hourlyKW.reduce((sum, value) => sum + value, 0);
       return {
         bodyKey,
         hourlyKW,
-        dayLabels: this.buildAnnualWindowLabels(bodyKey, 365, windowHours, hourlyKW.length),
-        dailyKWh: this.aggregateSeriesByWindow(hourlyKW, windowHours),
-        averageDayKW: this.averageHourlyByWindow(hourlyKW, windowHours),
-        totalKWh: hourlyKW.reduce((sum, value) => sum + value, 0),
+        dayLabels: includeWindowSummaries ? this.buildAnnualWindowLabels(bodyKey, 365, windowHours, hourlyKW.length) : [],
+        dailyKWh: includeWindowSummaries ? this.aggregateSeriesByWindow(hourlyKW, windowHours) : [],
+        averageDayKW: includeWindowSummaries ? this.averageHourlyByWindow(hourlyKW, windowHours) : [],
+        totalKWh,
         windowHours,
         windowBinCount: 24,
         seasonalVariation: true,
@@ -294,26 +299,29 @@ Object.assign(Calc, {
     const totalHours = 24 * 365;
 
     if (bodyKey === 'mars') {
-      return this.buildMarsSeasonalSolarSeries(state, solar, totalHours, annualKWhTarget);
+      return this.buildMarsSeasonalSolarSeries(state, solar, totalHours, annualKWhTarget, options);
     }
 
     const normalized = this.sampleRepeatingProfileByHour(solar.hourlyProfile, cycleHours, totalHours);
     const hourlyKW = this.scaleRawSeriesToAnnualEnergy(normalized, annualKWhTarget, peakKW);
     const windowCount = Math.ceil(hourlyKW.length / cycleHours);
+    const totalKWh = hourlyKW.reduce((sum, value) => sum + value, 0);
     return {
       bodyKey,
       hourlyKW,
-      dayLabels: this.buildAnnualWindowLabels(bodyKey, windowCount, cycleHours, hourlyKW.length),
-      dailyKWh: this.aggregateSeriesBySpanHours(hourlyKW, cycleHours),
-      averageDayKW: this.averageSeriesByCyclePhase(hourlyKW, cycleHours, binCount),
-      totalKWh: hourlyKW.reduce((sum, value) => sum + value, 0),
+      dayLabels: includeWindowSummaries ? this.buildAnnualWindowLabels(bodyKey, windowCount, cycleHours, hourlyKW.length) : [],
+      dailyKWh: includeWindowSummaries ? this.aggregateSeriesBySpanHours(hourlyKW, cycleHours) : [],
+      averageDayKW: includeWindowSummaries ? this.averageSeriesByCyclePhase(hourlyKW, cycleHours, binCount) : [],
+      totalKWh,
       windowHours: cycleHours,
       windowBinCount: binCount,
       seasonalVariation: false,
     };
   },
 
-  simulateAnnualDispatchPass(state, annualSolar, loadKW, startSocKWh, captureSeries = false) {
+  simulateAnnualDispatchPass(state, annualSolar, loadKW, startSocKWh, options = {}) {
+    const captureSeries = Boolean(options.captureSeries);
+    const opThresholdKW = Number.isFinite(options.opThresholdKW) ? Math.max(0, options.opThresholdKW) : null;
     const source = Array.isArray(annualSolar?.hourlyKW) ? annualSolar.hourlyKW : [];
     const hours = source.length;
     const summaryWindowHours = Math.max(1e-6, annualSolar?.windowHours || 24);
@@ -338,6 +346,8 @@ Object.assign(Calc, {
     let curtailedHours = 0;
     let chargeThroughputKWh = 0;
     let dischargeThroughputKWh = 0;
+    let chemicalPeakKW = 0;
+    let chemicalOpHours = 0;
 
     for (let hour = 0; hour < hours; hour++) {
       if (socKWh > 1e-9) {
@@ -371,8 +381,13 @@ Object.assign(Calc, {
       aiServedKWh += aiServed;
       aiShortfallKWh += Math.max(0, loadKW - aiServed);
       chemicalKWh += chemicalKW;
+      chemicalPeakKW = Math.max(chemicalPeakKW, chemicalKW);
       minSocKWh = Math.min(minSocKWh, socKWh);
       maxSocKWh = Math.max(maxSocKWh, socKWh);
+
+      if (opThresholdKW !== null && chemicalKW >= opThresholdKW - 1e-6) {
+        chemicalOpHours += 1;
+      }
 
       if (loadKW <= 1e-9 || aiServed >= loadKW - 1e-6) fullPowerHours += 1;
       else curtailedHours += 1;
@@ -390,12 +405,12 @@ Object.assign(Calc, {
     const averageDayAiKW = captureSeries ? this.averageSeriesByCyclePhase(aiHourlyKW, summaryWindowHours, summaryBinCount) : [];
     const averageDayBatteryChargeKW = captureSeries ? this.averageSeriesByCyclePhase(batteryChargeHourlyKW, summaryWindowHours, summaryBinCount) : [];
     const averageDayChemicalKW = captureSeries ? this.averageSeriesByCyclePhase(chemicalHourlyKW, summaryWindowHours, summaryBinCount) : [];
-    const chemicalPeakKW = captureSeries ? Math.max(...chemicalHourlyKW, 0) : 0;
-    const chemicalOpHours = chemicalPeakKW > 0
+    const resolvedChemicalOpHours = captureSeries && chemicalPeakKW > 0
       ? chemicalHourlyKW.reduce((sum, value) => sum + (value >= chemicalPeakKW * 0.05 ? 1 : 0), 0)
-      : 0;
+      : chemicalOpHours;
 
     return {
+      hours,
       loadKW,
       aiHourlyKW,
       chemicalHourlyKW,
@@ -415,7 +430,7 @@ Object.assign(Calc, {
       averageDayChemicalKW,
       batteryChargeHourlyKW,
       chemicalPeakKW,
-      chemicalOpHours,
+      chemicalOpHours: resolvedChemicalOpHours,
       chargeThroughputKWh,
       dischargeThroughputKWh,
       startSocKWh: Math.max(0, Math.min(battCapKWh, startSocKWh)),
@@ -426,24 +441,37 @@ Object.assign(Calc, {
     };
   },
 
-  simulateAnnualDispatchWithConstantAiLoad(state, annualSolar, loadKW) {
+  simulateAnnualDispatchWithConstantAiLoad(state, annualSolar, loadKW, options = {}) {
+    const captureSeries = options.captureSeries !== false;
     const batteryEnabled = this.hasBatteryStorage(state);
     const battCapKWh = batteryEnabled ? Math.max(0, (state.batteryCapacityMWh || 0) * 1000) : 0;
     const settleTolKWh = Math.max(1e-3, battCapKWh * 1e-6);
 
-    if (!batteryEnabled) {
+    const finalizeDispatch = dispatch => {
+      if (captureSeries || dispatch.chemicalPeakKW <= 0) return dispatch;
+      const summarized = this.simulateAnnualDispatchPass(state, annualSolar, loadKW, dispatch.startSocKWh, {
+        captureSeries: false,
+        opThresholdKW: dispatch.chemicalPeakKW * 0.05,
+      });
       return {
-        ...this.simulateAnnualDispatchPass(state, annualSolar, loadKW, 0, true),
+        ...dispatch,
+        chemicalOpHours: summarized.chemicalOpHours,
+      };
+    };
+
+    if (!batteryEnabled) {
+      return finalizeDispatch({
+        ...this.simulateAnnualDispatchPass(state, annualSolar, loadKW, 0, { captureSeries }),
         settleIterations: 1,
         settleDeltaKWh: 0,
-      };
+      });
     }
 
     let startSocKWh = battCapKWh * 0.5;
     let settleIterations = 0;
 
     for (; settleIterations < 24; settleIterations++) {
-      const preview = this.simulateAnnualDispatchPass(state, annualSolar, loadKW, startSocKWh, false);
+      const preview = this.simulateAnnualDispatchPass(state, annualSolar, loadKW, startSocKWh, { captureSeries: false });
       const settleDeltaKWh = Math.abs(preview.endSocKWh - startSocKWh);
       startSocKWh = preview.endSocKWh;
       if (settleDeltaKWh <= settleTolKWh) {
@@ -451,12 +479,12 @@ Object.assign(Calc, {
       }
     }
 
-    const captured = this.simulateAnnualDispatchPass(state, annualSolar, loadKW, startSocKWh, true);
-    return {
+    const captured = this.simulateAnnualDispatchPass(state, annualSolar, loadKW, startSocKWh, { captureSeries });
+    return finalizeDispatch({
       ...captured,
       settleIterations: settleIterations + 1,
       settleDeltaKWh: Math.abs(captured.endSocKWh - captured.startSocKWh),
-    };
+    });
   },
 
   buildAnnualDispatchDisplaySeries(state, dispatch) {
@@ -473,13 +501,17 @@ Object.assign(Calc, {
     };
   },
 
-  attachAnnualDispatchDisplaySeries(state, dispatchSolar, dispatch, horizonLabel = 'earth-year') {
+  attachAnnualDispatchDisplaySeries(state, dispatchSolar, dispatch, horizonLabel = 'earth-year', options = {}) {
+    const includeDisplaySeries = options.includeDisplaySeries !== false;
+    const includeSolarSummary = options.includeSolarSummary !== false;
     const mergedDispatch = {
       ...dispatch,
-      dayLabels: dispatchSolar.dayLabels || dispatch.dayLabels || [],
-      averageDaySolarKW: dispatchSolar.averageDayKW || [],
+      dayLabels: includeSolarSummary ? (dispatchSolar.dayLabels || dispatch.dayLabels || []) : [],
+      averageDaySolarKW: includeSolarSummary ? (dispatchSolar.averageDayKW || []) : [],
       dispatchBasisLabel: horizonLabel,
     };
+    if (!includeDisplaySeries) return mergedDispatch;
+
     const displaySeries = this.buildAnnualDispatchDisplaySeries(state, mergedDispatch);
     if (!displaySeries) return mergedDispatch;
 
@@ -510,30 +542,37 @@ Object.assign(Calc, {
     };
   },
 
-  buildAnnualChemicalSupplySummary(dispatch, solar, cyclesPerYear, annualizationFactor = 1) {
-    const totalAverageDayKW = (dispatch.averageDayChemicalKW || []).reduce((sum, value) => sum + value, 0);
+  buildAnnualChemicalSupplySummary(dispatch, solar, cyclesPerYear, annualizationFactor = 1, options = {}) {
+    const includeSeries = options.includeSeries !== false;
+    const totalAverageDayKW = includeSeries
+      ? (dispatch.averageDayChemicalKW || []).reduce((sum, value) => sum + value, 0)
+      : 0;
     const annualizedChemicalKWh = (dispatch.chemicalKWh || 0) * annualizationFactor;
     const annualizedChemicalOpHours = (dispatch.chemicalOpHours || 0) * annualizationFactor;
     return {
       effectiveCF: dispatch.chemicalPeakKW > 0
-        ? dispatch.chemicalKWh / (dispatch.chemicalPeakKW * Math.max(dispatch.aiHourlyKW.length, 1))
+        ? dispatch.chemicalKWh / (dispatch.chemicalPeakKW * Math.max(dispatch.hours || dispatch.aiHourlyKW.length, 1))
         : 0,
       dailyOpHours: annualizedChemicalOpHours / Math.max(cyclesPerYear, 1),
       dailyAvailableKWh: annualizedChemicalKWh / Math.max(cyclesPerYear, 1),
-      hourlyProfile: totalAverageDayKW > 0
+      hourlyProfile: includeSeries && totalAverageDayKW > 0
         ? dispatch.averageDayChemicalKW.map(value => value / totalAverageDayKW)
-        : solar.hourlyProfile,
-      hourlyKW: dispatch.averageDayChemicalKW || [],
-      batteryChargeHourlyKW: dispatch.averageDayBatteryChargeKW || [],
+        : [],
+      hourlyKW: includeSeries ? (dispatch.averageDayChemicalKW || []) : [],
+      batteryChargeHourlyKW: includeSeries ? (dispatch.averageDayBatteryChargeKW || []) : [],
       processPowerKW: dispatch.chemicalPeakKW || 0,
       baseloadKW: dispatch.loadKW || 0,
       clipKW: 0,
     };
   },
 
-  calculateAICompute(state, solar, annualSolar) {
+  calculateAICompute(state, solar, annualSolar, options = {}) {
+    const captureDispatchSeries = options.captureDispatchSeries !== false;
+    const includeDisplayDispatchSeries = options.includeDisplayDispatchSeries !== false;
     const cyclesPerYear = this.getBodyConfig(state.body || 'earth').cyclesPerEarthYear;
-    const dispatchBasis = this.getAnnualDispatchBasis(state, solar, annualSolar);
+    const dispatchBasis = this.getAnnualDispatchBasis(state, solar, annualSolar, {
+      includeWindowSummaries: captureDispatchSeries || includeDisplayDispatchSeries,
+    });
     const dispatchSolar = dispatchBasis.solar;
     const annualizationFactor = dispatchBasis.annualizationFactor;
     const dispatchHorizonLabel = dispatchBasis.horizonLabel;
@@ -544,7 +583,9 @@ Object.assign(Calc, {
     const batteryLifeYears = batteryEnabled
       ? Math.max(1, Math.min(MODEL_ASSUMPTIONS.batteryNominalLifeYears, (state.batteryCycles || 0) / Math.max(1, cyclesPerYear)))
       : 0;
-    const disabledDispatch = this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, 0);
+    const disabledDispatch = this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, 0, {
+      captureSeries: captureDispatchSeries,
+    });
 
     if (!state.aiComputeEnabled || hours <= 0) {
       const annualChemicalKWh = disabledDispatch.chemicalKWh * annualizationFactor;
@@ -568,9 +609,14 @@ Object.assign(Calc, {
         annualizedCapex: 0,
         annualOM: 0,
         assetLifeYears: state.aiAssetLifeYears || AI_COMPUTE_DEFAULTS.assetLifeYears,
-        dispatch: this.attachAnnualDispatchDisplaySeries(state, dispatchSolar, disabledDispatch, dispatchHorizonLabel),
+        dispatch: this.attachAnnualDispatchDisplaySeries(state, dispatchSolar, disabledDispatch, dispatchHorizonLabel, {
+          includeDisplaySeries: includeDisplayDispatchSeries,
+          includeSolarSummary: captureDispatchSeries || includeDisplayDispatchSeries,
+        }),
         storage: this.buildAnnualStorageSummary(state, disabledDispatch, batteryCapex, batteryLifeYears),
-        chemicalSupply: this.buildAnnualChemicalSupplySummary(disabledDispatch, solar, cyclesPerYear, annualizationFactor),
+        chemicalSupply: this.buildAnnualChemicalSupplySummary(disabledDispatch, solar, cyclesPerYear, annualizationFactor, {
+          includeSeries: captureDispatchSeries,
+        }),
       };
     }
 
@@ -578,10 +624,10 @@ Object.assign(Calc, {
     const peakSolarKW = Array.isArray(dispatchSolar?.hourlyKW) ? Math.max(...dispatchSolar.hourlyKW, 0) : 0;
     let lo = 0;
     let hi = Math.max(1, averageSolarKW / targetReliability, peakSolarKW);
-    let best = this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, 0);
+    let best = this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, 0, { captureSeries: false });
 
     while (hi < 1e9) {
-      const upperBoundDispatch = this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, hi);
+      const upperBoundDispatch = this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, hi, { captureSeries: false });
       if (upperBoundDispatch.fullPowerReliability < targetReliability) {
         break;
       }
@@ -592,7 +638,7 @@ Object.assign(Calc, {
 
     for (let i = 0; i < 50; i++) {
       const mid = (lo + hi) / 2;
-      const dispatch = this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, mid);
+      const dispatch = this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, mid, { captureSeries: false });
       if (dispatch.fullPowerReliability >= targetReliability) {
         best = dispatch;
         lo = mid;
@@ -601,37 +647,45 @@ Object.assign(Calc, {
       }
     }
 
-    const annualAiServedKWh = best.aiServedKWh * annualizationFactor;
-    const annualChemicalKWh = best.chemicalKWh * annualizationFactor;
+    const finalDispatch = this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, best.loadKW, {
+      captureSeries: captureDispatchSeries,
+    });
+    const annualAiServedKWh = finalDispatch.aiServedKWh * annualizationFactor;
+    const annualChemicalKWh = finalDispatch.chemicalKWh * annualizationFactor;
     const annualTokensM = (annualAiServedKWh / 1000) * (state.aiMillionTokensPerMWh || 0);
     const gpuCapexPerKW = state.aiGpuCapexPerKW ?? AI_COMPUTE_DEFAULTS.capexPerKW;
-    const capex = best.loadKW * gpuCapexPerKW;
+    const capex = finalDispatch.loadKW * gpuCapexPerKW;
     const annualizedCapex = capex * this.crf(state.discountRate / 100, state.aiAssetLifeYears || AI_COMPUTE_DEFAULTS.assetLifeYears);
     const annualOM = capex * ((AI_COMPUTE_DEFAULTS.omPercent || 0) / 100);
 
     return {
       enabled: true,
       reliabilityTarget: targetReliability * 100,
-      designLoadKW: best.loadKW,
+      designLoadKW: finalDispatch.loadKW,
       annualTokensM,
       annualRevenue: annualTokensM * (state.aiTokenPricePerM || 0),
-      tokensPerKWYearM: best.loadKW > 0 ? annualTokensM / best.loadKW : 0,
-      utilization: best.utilization,
-      fullPowerReliability: best.fullPowerReliability,
-      fullPowerHours: best.fullPowerHours * annualizationFactor,
-      curtailedHours: best.curtailedHours * annualizationFactor,
+      tokensPerKWYearM: finalDispatch.loadKW > 0 ? annualTokensM / finalDispatch.loadKW : 0,
+      utilization: finalDispatch.utilization,
+      fullPowerReliability: finalDispatch.fullPowerReliability,
+      fullPowerHours: finalDispatch.fullPowerHours * annualizationFactor,
+      curtailedHours: finalDispatch.curtailedHours * annualizationFactor,
       averageDailyTokensM: annualTokensM / Math.max(cyclesPerYear, 1),
       averageDailyChemicalMWh: annualChemicalKWh / Math.max(cyclesPerYear, 1) / 1000,
       chemicalAnnualKWh: annualChemicalKWh,
-      chemicalPeakKW: best.chemicalPeakKW,
-      chemicalDailyOpHours: (best.chemicalOpHours * annualizationFactor) / Math.max(cyclesPerYear, 1),
+      chemicalPeakKW: finalDispatch.chemicalPeakKW,
+      chemicalDailyOpHours: (finalDispatch.chemicalOpHours * annualizationFactor) / Math.max(cyclesPerYear, 1),
       capex,
       annualizedCapex,
       annualOM,
       assetLifeYears: state.aiAssetLifeYears || AI_COMPUTE_DEFAULTS.assetLifeYears,
-      dispatch: this.attachAnnualDispatchDisplaySeries(state, dispatchSolar, best, dispatchHorizonLabel),
-      storage: this.buildAnnualStorageSummary(state, best, batteryCapex, batteryLifeYears),
-      chemicalSupply: this.buildAnnualChemicalSupplySummary(best, solar, cyclesPerYear, annualizationFactor),
+      dispatch: this.attachAnnualDispatchDisplaySeries(state, dispatchSolar, finalDispatch, dispatchHorizonLabel, {
+        includeDisplaySeries: includeDisplayDispatchSeries,
+        includeSolarSummary: captureDispatchSeries || includeDisplayDispatchSeries,
+      }),
+      storage: this.buildAnnualStorageSummary(state, finalDispatch, batteryCapex, batteryLifeYears),
+      chemicalSupply: this.buildAnnualChemicalSupplySummary(finalDispatch, solar, cyclesPerYear, annualizationFactor, {
+        includeSeries: captureDispatchSeries,
+      }),
     };
   },
 });

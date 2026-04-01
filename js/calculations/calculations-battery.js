@@ -1,7 +1,8 @@
 /* Battery firming */
 
 Object.assign(Calc, {
-  calculateBattery(state, solar) {
+  calculateBattery(state, solar, options = {}) {
+    const includeSeries = options.includeSeries !== false;
     const stepCount = solar.hourlyProfile.length;
     const stepHours = solar.binHours;
     const solarKW = solar.hourlyProfile.map(v => Math.min((v * solar.dailyKWh) / stepHours, solar.peakPowerKW));
@@ -36,9 +37,9 @@ Object.assign(Calc, {
       effectiveCF: summary.effectiveCF || 0,
       dailyOpHours: summary.dailyOpHours || 0,
       dailyAvailableKWh: summary.dailyAvailableKWh || 0,
-      hourlyProfile: summary.hourlyProfile || [],
-      hourlyKW: summary.hourlyKW || [],
-      batteryChargeHourlyKW: summary.batteryChargeHourlyKW || [],
+      hourlyProfile: includeSeries ? (summary.hourlyProfile || []) : [],
+      hourlyKW: includeSeries ? (summary.hourlyKW || []) : [],
+      batteryChargeHourlyKW: includeSeries ? (summary.batteryChargeHourlyKW || []) : [],
       processPowerKW: summary.processPowerKW || 0,
       baseloadKW: summary.baseloadKW || 0,
       clipKW: summary.clipKW || 0,
@@ -53,9 +54,9 @@ Object.assign(Calc, {
           effectiveCF: directEffectiveCF,
           dailyOpHours: directOpHours,
           dailyAvailableKWh: solar.dailyKWh,
-          hourlyProfile: solar.hourlyProfile,
-          hourlyKW: solarKW,
-          batteryChargeHourlyKW: new Array(stepCount).fill(0),
+          hourlyProfile: includeSeries ? solar.hourlyProfile : [],
+          hourlyKW: includeSeries ? solarKW : [],
+          batteryChargeHourlyKW: includeSeries ? new Array(stepCount).fill(0) : [],
           processPowerKW: directProcessPeakKW,
           baseloadKW: directProcessPeakKW,
           clipKW: directProcessPeakKW,
@@ -82,6 +83,7 @@ Object.assign(Calc, {
       let curtailedKWh = 0;
       let chargeThroughputKWh = 0;
       let dischargeThroughputKWh = 0;
+      let activeProcessHours = 0;
 
       for (let h = 0; h < stepCount; h++) {
         if (socKWh > 1e-9) {
@@ -113,6 +115,9 @@ Object.assign(Calc, {
         curtailedKWh += Math.max(0, solarAvailableKWh);
         minSocKWh = Math.min(minSocKWh, socKWh);
         maxSocKWh = Math.max(maxSocKWh, socKWh);
+        if ((deliveredKWh / stepHours) >= (processKW * 0.05)) {
+          activeProcessHours += stepHours;
+        }
 
         if (captureSeries) {
           output[h] = deliveredKWh / stepHours;
@@ -128,6 +133,7 @@ Object.assign(Calc, {
         endSocKWh: socKWh,
         minSocKWh,
         maxSocKWh,
+        activeProcessHours,
         chargeThroughputKWh,
         dischargeThroughputKWh,
       };
@@ -151,7 +157,7 @@ Object.assign(Calc, {
         startBatteryKWh = cycle.endSocKWh;
       }
 
-      const settledCycle = simulateCycle(targetKW, startBatteryKWh, true);
+      const settledCycle = simulateCycle(targetKW, startBatteryKWh, includeSeries);
       return {
         output: settledCycle.output,
         batteryChargeKW: settledCycle.batteryChargeKW,
@@ -166,6 +172,7 @@ Object.assign(Calc, {
         maxBatteryKWh: settledCycle.maxSocKWh,
         chargeThroughputKWh: settledCycle.chargeThroughputKWh,
         dischargeThroughputKWh: settledCycle.dischargeThroughputKWh,
+        activeProcessHours: settledCycle.activeProcessHours,
         settleDeltaKWh: Math.abs(settledCycle.endSocKWh - startBatteryKWh),
         settledPreviewEndBatteryKWh: settledPreview ? settledPreview.endSocKWh : startBatteryKWh,
       };
@@ -189,12 +196,10 @@ Object.assign(Calc, {
     const hourlyKW = bestPlan.output;
     const processPowerKW = bestPlan.processPowerKW;
     const totalDelivered = bestPlan.chemicalKWh;
-    const normalizedProfile = totalDelivered > 0
+    const normalizedProfile = includeSeries && totalDelivered > 0
       ? hourlyKW.map(v => (v * stepHours) / totalDelivered)
-      : solar.hourlyProfile;
-    const extendedHours = processPowerKW > 0
-      ? hourlyKW.reduce((sum, value) => sum + (value >= processPowerKW * 0.05 ? stepHours : 0), 0)
-      : 0;
+      : [];
+    const extendedHours = bestPlan.activeProcessHours || 0;
     const effectiveCF = processPowerKW > 0
       ? totalDelivered / (processPowerKW * solar.cycleHours)
       : 0;
@@ -223,8 +228,8 @@ Object.assign(Calc, {
         dailyOpHours: extendedHours,
         dailyAvailableKWh: totalDelivered,
         hourlyProfile: normalizedProfile,
-        hourlyKW,
-        batteryChargeHourlyKW: bestPlan.batteryChargeKW,
+        hourlyKW: includeSeries ? hourlyKW : [],
+        batteryChargeHourlyKW: includeSeries ? bestPlan.batteryChargeKW : [],
         processPowerKW,
         baseloadKW: processPowerKW,
         clipKW: processPowerKW,

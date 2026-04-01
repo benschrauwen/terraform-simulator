@@ -4,19 +4,38 @@
 
 const Diagram = {
   colors: {
-    solar: '#f59e0b',
-    electric: '#3b82f6',
-    battery: '#6366f1',
-    ai: '#38bdf8',
-    h2: '#06b6d4',
-    co2: '#8b5cf6',
-    methane: '#10b981',
-    methanol: '#f97316',
-    exploratory: '#64748b',
-    inactive: '#334155',
+    solar: '#c6923a',
+    electric: '#5f7fb8',
+    battery: '#6c76a9',
+    ai: '#78a6d8',
+    h2: '#6ba5b5',
+    co2: '#8c84b4',
+    methane: '#6ba177',
+    methanol: '#b47b41',
+    exploratory: '#8d99a8',
+    inactive: '#46515d',
+  },
+
+  syncTheme() {
+    if (typeof window === 'undefined' || typeof getComputedStyle !== 'function') return;
+    const styles = getComputedStyle(document.documentElement);
+    const read = (name, fallback) => styles.getPropertyValue(name).trim() || fallback;
+    this.colors = {
+      solar: read('--solar', this.colors.solar),
+      electric: read('--electric', this.colors.electric),
+      battery: read('--battery', this.colors.battery),
+      ai: read('--ai', this.colors.ai),
+      h2: read('--h2', this.colors.h2),
+      co2: read('--co2', this.colors.co2),
+      methane: read('--methane', this.colors.methane),
+      methanol: read('--fuel', this.colors.methanol),
+      exploratory: read('--text-muted', this.colors.exploratory),
+      inactive: read('--border-light', this.colors.inactive),
+    };
   },
 
   render(container, results) {
+    this.syncTheme();
     const width = container.clientWidth || 900;
     const { nodes, height } = this.buildNodes(results, width);
     const connections = this.buildConnections(nodes, results);
@@ -24,7 +43,7 @@ const Diagram = {
     container.style.height = `${height}px`;
 
     container.innerHTML = [
-      `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:${height}px;font-family:Inter,-apple-system,system-ui,sans-serif;">`,
+      `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:${height}px;font-family:inherit;">`,
       '<defs><filter id="cardShadow"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.35"/></filter></defs>',
       this.drawGrid(width, height),
       ...connections.map(connection => this.drawConn(connection)),
@@ -284,7 +303,7 @@ const Diagram = {
           }]
         : []),
       ...exploratoryCards
-        .filter(module => !module.diagramInputs.h2 && !module.diagramInputs.co2)
+        .filter(module => !module.diagramInputs.h2 && !module.diagramInputs.co2 && !module.diagramInputs.methanol)
         .map(makeExploratoryCard),
     ];
 
@@ -310,10 +329,13 @@ const Diagram = {
         active: module.active !== false,
       };
     });
-    const feedstockExploratoryCards = exploratoryCards
+    const primaryFeedstockExploratoryCards = exploratoryCards
       .filter(module => module.diagramInputs.h2 || module.diagramInputs.co2)
       .map(makeExploratoryCard);
-    const downstreamCards = [...supportedCards, ...feedstockExploratoryCards];
+    const productFeedstockExploratoryCards = exploratoryCards
+      .filter(module => module.diagramInputs.methanol && !module.diagramInputs.h2 && !module.diagramInputs.co2)
+      .map(makeExploratoryCard);
+    const downstreamCards = [...supportedCards, ...primaryFeedstockExploratoryCards];
 
     placeGrid(downstreamCards, {
       cardHeight: smallHeight,
@@ -387,6 +409,11 @@ const Diagram = {
         maxColumns: 3,
       });
     }
+
+    placeGrid(productFeedstockExploratoryCards, {
+      cardHeight: smallHeight,
+      maxColumns: 3,
+    });
 
     return {
       nodes,
@@ -564,6 +591,15 @@ const Diagram = {
           toOffsetX: diagramInputs.h2 ? 18 : 0,
         }));
       }
+
+      if (diagramInputs.methanol) {
+        const methanolSource = get('out-methanol') || get('methanol');
+        connections.push(this.conn(methanolSource, node, this.colors.methanol, '', Boolean(r.methanol?.enabled), {
+          width: 1.4,
+          route: 'vertical',
+          fromOffsetX: branchOffset(methanolSource, node, 28),
+        }));
+      }
     });
 
     return connections;
@@ -571,7 +607,13 @@ const Diagram = {
 
   // Feedstock inputs affect placement; electricity adds a power connection only.
   getExploratoryDiagramInputs(module) {
-    const inputs = { electricity: true, h2: false, co2: false };
+    const inputs = {
+      electricity: true,
+      h2: false,
+      co2: false,
+      methanol: false,
+      ...(module?.diagramInputs || {}),
+    };
     if (!module) return inputs;
 
     if (module.id === 'carbonMonoxide') {

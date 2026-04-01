@@ -294,7 +294,8 @@ Object.assign(Calc, {
     };
   },
 
-  calculateSupportedProducts(state, materialFlows, opHours) {
+  calculateSupportedProducts(state, materialFlows, opHours, options = {}) {
+    const includeSupportedModules = options.includeSupportedModules !== false;
     const pipeline = MODULE_REGISTRY
       .filter(module => module.kind === 'product' && module.maturity === 'Supported' && state[`${module.id}Enabled`])
       .sort((a, b) => (a.order || 999) - (b.order || 999));
@@ -358,7 +359,7 @@ Object.assign(Calc, {
         continue;
       }
 
-      supportedModules.push(result);
+      if (includeSupportedModules) supportedModules.push(result);
       outputs[module.id] = result;
       if (result.enabled) {
         h2Remaining -= result.h2Consumed || 0;

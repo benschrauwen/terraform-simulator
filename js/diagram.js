@@ -213,8 +213,10 @@ const Diagram = {
       id: `exp-${module.id}`,
       icon: '',
       title: module.label,
-      value: module.routeOptions.find(option => option.value === module.route)?.label || module.route,
-      subtitle: 'Exploratory only',
+      value: module.outputDailyUnits > 0
+        ? this.formatExploratoryPeakOutput(module, r)
+        : (module.routeLabel || module.routeOptions.find(option => option.value === module.route)?.label || module.route),
+      subtitle: module.feedstockSummary || 'Needs power',
       color: this.colors.exploratory,
       active: true,
     });
@@ -342,6 +344,11 @@ const Diagram = {
       maxColumns: 3,
     });
 
+    placeGrid(productFeedstockExploratoryCards, {
+      cardHeight: smallHeight,
+      maxColumns: 3,
+    });
+
     const outputs = [];
     if (r.ai.enabled) {
       outputs.push({
@@ -373,6 +380,16 @@ const Diagram = {
         color: this.colors.methanol,
       });
     }
+    (r.economics.exploratoryDetails || []).forEach(module => {
+      outputs.push({
+        id: `out-exp-${module.id}`,
+        icon: '',
+        title: module.outputLabel || module.label,
+        value: this.formatExploratoryAnnualOutput(module),
+        subtitle: `${FormatNumbers.formatMoney(module.annualRevenue)} /yr`,
+        color: this.colors.exploratory,
+      });
+    });
     const aiOutput = outputs.find(output => output.id === 'out-ai');
     const productOutputs = outputs.filter(output => output.id !== 'out-ai');
     const getNodeById = id => nodes.find(node => node.id === id);
@@ -409,11 +426,6 @@ const Diagram = {
         maxColumns: 3,
       });
     }
-
-    placeGrid(productFeedstockExploratoryCards, {
-      cardHeight: smallHeight,
-      maxColumns: 3,
-    });
 
     return {
       nodes,
@@ -566,7 +578,8 @@ const Diagram = {
 
       const diagramInputs = this.getExploratoryDiagramInputs(module);
       if (diagramInputs.electricity && array) {
-        connections.push(this.conn(array, node, this.colors.electric, '', true, {
+        const dailyPowerLabel = module.dailyKWh > 0 ? `${FormatNumbers.fixed(module.dailyKWh / 1000, 1)} MWh/d` : '';
+        connections.push(this.conn(array, node, this.colors.electric, dailyPowerLabel, true, {
           width: 1.2,
           route: 'vertical',
           fromOffsetX: branchOffset(array, node, 50),
@@ -575,7 +588,8 @@ const Diagram = {
       }
 
       if (diagramInputs.h2 && electrolyzer) {
-        connections.push(this.conn(electrolyzer, node, this.colors.h2, '', r.electrolyzer.enabled, {
+        const label = module.h2Consumed > 0 ? `${FormatNumbers.fixed(module.h2Consumed, 0)} kg H2` : '';
+        connections.push(this.conn(electrolyzer, node, this.colors.h2, label, r.electrolyzer.enabled, {
           width: 1.4,
           route: 'vertical',
           fromOffsetX: branchOffset(electrolyzer, node, 28),
@@ -584,7 +598,8 @@ const Diagram = {
       }
 
       if (diagramInputs.co2 && dac) {
-        connections.push(this.conn(dac, node, this.colors.co2, '', r.dac.enabled, {
+        const label = module.co2Consumed > 0 ? `${FormatNumbers.fixed(module.co2Consumed, 0)} kg CO2` : '';
+        connections.push(this.conn(dac, node, this.colors.co2, label, r.dac.enabled, {
           width: 1.4,
           route: 'vertical',
           fromOffsetX: branchOffset(dac, node, 28),
@@ -593,11 +608,21 @@ const Diagram = {
       }
 
       if (diagramInputs.methanol) {
-        const methanolSource = get('out-methanol') || get('methanol');
-        connections.push(this.conn(methanolSource, node, this.colors.methanol, '', Boolean(r.methanol?.enabled), {
+        const methanolSource = get('methanol') || get('out-methanol');
+        const label = module.methanolConsumed > 0 ? `${FormatNumbers.fixed(module.methanolConsumed / 1000, 1)} t MeOH` : '';
+        connections.push(this.conn(methanolSource, node, this.colors.methanol, label, Boolean(r.methanol?.enabled), {
           width: 1.4,
           route: 'vertical',
           fromOffsetX: branchOffset(methanolSource, node, 28),
+        }));
+      }
+
+      const outNode = get(`out-exp-${module.id}`);
+      if (outNode) {
+        connections.push(this.conn(node, outNode, this.colors.exploratory, '', true, {
+          width: 2,
+          route: 'vertical',
+          fromOffsetX: branchOffset(node, outNode, 24),
         }));
       }
     });
@@ -607,27 +632,13 @@ const Diagram = {
 
   // Feedstock inputs affect placement; electricity adds a power connection only.
   getExploratoryDiagramInputs(module) {
-    const inputs = {
+    return {
       electricity: true,
       h2: false,
       co2: false,
       methanol: false,
       ...(module?.diagramInputs || {}),
     };
-    if (!module) return inputs;
-
-    if (module.id === 'carbonMonoxide') {
-      inputs.co2 = true;
-      inputs.h2 = module.route === 'rwgs';
-    } else if (module.id === 'ammonia') {
-      inputs.h2 = module.route === 'haber-bosch';
-    } else if (module.id === 'coke') {
-      inputs.co2 = true;
-    } else if (module.id === 'steel') {
-      inputs.h2 = module.route === 'h2-dri-eaf';
-    }
-
-    return inputs;
   },
 
   formatSolarSystemSize(peakPowerKW) {
@@ -671,6 +682,29 @@ const Diagram = {
     return suffix
       ? `${FormatNumbers.fixed(annualKg, annualKg >= 10 ? 0 : 1)} kg ${suffix}/yr`
       : `${FormatNumbers.fixed(annualKg, annualKg >= 10 ? 0 : 1)} kg/yr`;
+  },
+
+  formatExploratoryPeakOutput(module, results) {
+    if (!module || !(module.outputDailyUnits > 0)) {
+      return module?.routeLabel || module?.route || 'Exploratory';
+    }
+
+    const cycleUnit = results?.solar?.cycleUnitCompact || 'day';
+    const peakOutputDailyUnits = module.peakOutputDailyUnits > 0
+      ? module.peakOutputDailyUnits
+      : module.outputDailyUnits;
+    if (module.outputUnit === 'm3') {
+      return `Peak ${FormatNumbers.fixed(peakOutputDailyUnits, peakOutputDailyUnits >= 10 ? 0 : 1)} m3/${cycleUnit}`;
+    }
+    return `Peak ${FormatNumbers.fixed(peakOutputDailyUnits, peakOutputDailyUnits >= 10 ? 0 : 1)} t/${cycleUnit}`;
+  },
+
+  formatExploratoryAnnualOutput(module) {
+    if (!module || !(module.annualOutputUnits > 0)) return '0 /yr';
+    if (module.outputUnit === 'm3') {
+      return `${FormatNumbers.fixed(module.annualOutputUnits, module.annualOutputUnits >= 100 ? 0 : 1)} m3/yr`;
+    }
+    return `${FormatNumbers.fixed(module.annualOutputUnits, module.annualOutputUnits >= 100 ? 0 : 1)} t/yr`;
   },
 
   node(id, cx, cy, w, h, icon, title, value, subtitle, color, active) {

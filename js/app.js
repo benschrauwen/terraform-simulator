@@ -27,6 +27,8 @@ class App {
   init() {
     this.populatePresets();
     this.renderModuleControls();
+    this.renderExploratoryMarketControls();
+    this.renderExploratoryOmControls();
     this.bindControls();
     this.createSliderTooltip();
     this.initSliderMarkers();
@@ -167,6 +169,49 @@ class App {
     document.getElementById('exploratoryModuleGroups').innerHTML = exploratoryHtml;
   }
 
+  renderExploratoryMarketControls() {
+    const container = document.getElementById('exploratoryMarketControls');
+    if (!container) return;
+
+    const controls = MODULE_REGISTRY
+      .filter(module => module.maturity === 'Exploratory')
+      .map(module => {
+        const marketConfig = EXPLORATORY_MARKET_CONFIG[module.id];
+        if (!marketConfig) return '';
+        const priceKey = `${module.id}Price`;
+        const currentValue = this.state[priceKey] ?? marketConfig.defaultValue;
+        return `
+          <div id="${module.id}MarketWrap" class="market-exploratory-group" style="display:none;">
+            <div class="module-note-title">${module.label}</div>
+            <label>
+              ${marketConfig.label} (${marketConfig.unitLabel})
+              <input type="range" id="${priceKey}" min="${marketConfig.min}" max="${marketConfig.max}" step="${marketConfig.step}" value="${currentValue}">
+              <span class="range-value" id="${priceKey}Value">${this.formatExploratorySalePrice(module.id, currentValue)}</span>
+            </label>
+          </div>
+        `;
+      })
+      .join('');
+
+    container.innerHTML = controls;
+  }
+
+  renderExploratoryOmControls() {
+    const container = document.getElementById('exploratoryOmControls');
+    if (!container) return;
+
+    container.innerHTML = `
+      <div id="exploratoryOmWrap" class="market-exploratory-group" style="display:none;">
+        <div class="module-note-title">Shared exploratory plants</div>
+        <label>
+          Exploratory M&amp;O (% CAPEX / yr)
+          <input type="range" id="exploratoryOmPercent" min="0" max="20" step="0.5" value="${this.state.exploratoryOmPercent ?? 4}">
+          <span class="range-value" id="exploratoryOmPercentValue">${this.formatExploratoryOmPercent(this.state.exploratoryOmPercent ?? 4)}</span>
+        </label>
+      </div>
+    `;
+  }
+
   renderSupportedModule(module) {
     const configs = module.configs.map(config => `
       <label>${config.label}
@@ -208,6 +253,30 @@ class App {
     const routeOptions = module.routeOptions.map(option =>
       `<option value="${option.value}" ${this.state[`${module.id}Route`] === option.value ? 'selected' : ''}>${option.label}</option>`
     ).join('');
+    const priorityKey = `${module.id}PriorityWeight`;
+    const capexKey = `${module.id}CapexBasis`;
+    const capexControl = Calc.getExploratoryCapexControlConfig(module.id, this.state[`${module.id}Route`]);
+    const priorityControl = `
+      <label>Shared Pool Priority
+        <input type="range" id="${priorityKey}" min="0" max="100" step="5" value="${this.state[priorityKey] ?? 100}">
+        <span class="range-value" id="${priorityKey}Value">${this.formatExploratoryPriorityWeight(this.state[priorityKey] ?? 100)}</span>
+      </label>
+    `;
+    const capexBlock = `
+      <label>
+        <span id="${module.id}CapexBasisLabel">Block CAPEX (${capexControl.unitLabel})</span>
+        <input type="range" id="${capexKey}" min="${capexControl.min}" max="${capexControl.max}" step="${capexControl.step}" value="${this.state[capexKey] ?? capexControl.defaultValue}">
+        <span class="range-value" id="${capexKey}Value">${this.formatExploratoryCapexBasis(module.id, this.state[capexKey] ?? capexControl.defaultValue)}</span>
+      </label>
+    `;
+    const extraControls = module.id === 'mtg' ? `
+      <div id="mtgMethanolSplitControl">
+        <label>Methanol Diverted to MTG
+          <input type="range" id="mtgMethanolSplit" min="0" max="100" step="1" value="${this.state.mtgMethanolSplit}">
+          <span class="range-value" id="mtgMethanolSplitValue">${this.formatMtgMethanolSplit(this.state.mtgMethanolSplit)}</span>
+        </label>
+      </div>
+    ` : '';
 
     return `
       <div class="process-card exploratory-card" data-process="${module.id}">
@@ -222,8 +291,14 @@ class App {
           <label>Route Choice
             <select id="${module.id}Route">${routeOptions}</select>
           </label>
+          ${capexBlock}
+          ${priorityControl}
+          ${extraControls}
+          <div class="field-note compact-note">
+            Shared power and modeled feedstock pools normalize from the active exploratory priority sliders. Active exploratory outputs now carry route CAPEX, O&amp;M, and sale-price assumptions into ROI.
+          </div>
           <div class="missing-assumptions">
-            <div class="module-note-title">Missing assumptions</div>
+            <div class="module-note-title">Key missing assumptions</div>
             <ul class="missing-list">
               ${module.missingInputs.map(item => `<li>${item}</li>`).join('')}
             </ul>
@@ -317,12 +392,20 @@ class App {
     this.bindModuleControls();
 
     this.bindRange('methaneFeedstockSplit', 'methaneFeedstockSplit', v => this.formatMethaneFeedstockSplit(v));
+    this.bindRange('mtgMethanolSplit', 'mtgMethanolSplit', v => this.formatMtgMethanolSplit(v));
     this.on('methaneMarketPreset', 'change', val => {
       this.state.methaneMarketPreset = val;
       this.syncDynamicVisibility();
     });
     this.bindRange('methanePrice', 'methanePrice', v => `$${FormatNumbers.fixed(parseFloat(v), 2)}/MCF`);
     this.bindRange('methanolPrice', 'methanolPrice', v => `$${FormatNumbers.fixed(parseInt(v, 10), 0)}/ton`);
+    MODULE_REGISTRY
+      .filter(module => module.maturity === 'Exploratory' && EXPLORATORY_MARKET_CONFIG[module.id])
+      .forEach(module => {
+        const priceKey = `${module.id}Price`;
+        this.bindRange(priceKey, priceKey, v => this.formatExploratorySalePrice(module.id, v));
+      });
+    this.bindRange('exploratoryOmPercent', 'exploratoryOmPercent', v => this.formatExploratoryOmPercent(v));
 
     this.on('policyMode', 'change', val => {
       this.state.policyMode = val;
@@ -392,8 +475,21 @@ class App {
       } else {
         this.on(`${module.id}Route`, 'change', val => {
           this.state[`${module.id}Route`] = val;
+          this.syncExploratoryCapexControl(module.id);
           this.enforceModuleDependencies();
+          this.syncDynamicVisibility();
+          this.syncDerivedFeedControls();
         });
+        this.bindRange(
+          `${module.id}CapexBasis`,
+          `${module.id}CapexBasis`,
+          v => this.formatExploratoryCapexBasis(module.id, v)
+        );
+        this.bindRange(
+          `${module.id}PriorityWeight`,
+          `${module.id}PriorityWeight`,
+          v => this.formatExploratoryPriorityWeight(v)
+        );
       }
     });
   }
@@ -1165,7 +1261,47 @@ class App {
     return `${FormatNumbers.fixed(methaneShare, 0)}% methane / ${FormatNumbers.fixed(methanolShare, 0)}% methanol`;
   }
 
+  formatExploratoryPriorityWeight(value) {
+    return `${FormatNumbers.fixed(parseFloat(value), 0)} weight`;
+  }
+
+  formatExploratoryCapexBasis(moduleId, value) {
+    const capexConfig = Calc.getExploratoryCapexControlConfig(moduleId, this.state[`${moduleId}Route`]);
+    const digits = capexConfig.step < 1 ? 2 : 0;
+    return `$${FormatNumbers.fixed(parseFloat(value), digits)}/${capexConfig.unitLabel.replace('$/', '')}`;
+  }
+
+  formatExploratoryOmPercent(value) {
+    return `${FormatNumbers.fixed(parseFloat(value), 1)}%/yr`;
+  }
+
+  formatMtgMethanolSplit(value) {
+    const mtgShare = Math.max(0, Math.min(100, parseFloat(value)));
+    const exportShare = Math.max(0, 100 - mtgShare);
+    return `${FormatNumbers.fixed(mtgShare, 0)}% MTG / ${FormatNumbers.fixed(exportShare, 0)}% export`;
+  }
+
+  formatExploratorySalePrice(moduleId, value) {
+    const marketConfig = EXPLORATORY_MARKET_CONFIG[moduleId];
+    if (!marketConfig) return `$${FormatNumbers.fixed(parseFloat(value), 2)}`;
+    const digits = marketConfig.step < 1 ? 2 : 0;
+    return `$${FormatNumbers.fixed(parseFloat(value), digits)}/${marketConfig.unitLabel.replace('$/', '')}`;
+  }
+
   syncDynamicVisibility() {
+    const results = this.lastResults;
+    const generatedExploratoryIds = new Set(
+      (results?.exploratoryModules || [])
+        .filter(module => module.enabled && module.outputDailyUnits > 0)
+        .map(module => module.id)
+    );
+    const showMethaneMarket = results
+      ? Boolean(results.sabatier?.enabled && results.sabatier?.ch4AnnualMCF > 0)
+      : Boolean(this.state.sabatierEnabled);
+    const showMethanolMarket = results
+      ? Boolean(results.methanol?.enabled && (results.methanol?.exportAnnualTons || 0) > 0)
+      : Boolean(this.state.methanolEnabled);
+
     const methaneMarket = this.getMethaneMarketConfig();
     const methaneMarketApplicability = document.getElementById('methaneMarketApplicabilityValue');
     if (methaneMarketApplicability) methaneMarketApplicability.textContent = methaneMarket.applicability;
@@ -1227,6 +1363,63 @@ class App {
         financingTermNote.textContent = `Debt term is capped by the selected ${FormatNumbers.fixed(horizonYears, 0)}-year analysis horizon.`;
       }
     }
+
+    const methaneMarketWrap = document.getElementById('methaneMarketWrap');
+    if (methaneMarketWrap) methaneMarketWrap.style.display = showMethaneMarket ? 'block' : 'none';
+
+    const methanolMarketWrap = document.getElementById('methanolMarketWrap');
+    if (methanolMarketWrap) methanolMarketWrap.style.display = showMethanolMarket ? 'block' : 'none';
+
+    MODULE_REGISTRY
+      .filter(module => module.maturity === 'Exploratory' && EXPLORATORY_MARKET_CONFIG[module.id])
+      .forEach(module => {
+        const wrap = document.getElementById(`${module.id}MarketWrap`);
+        const showWrap = results ? generatedExploratoryIds.has(module.id) : Boolean(this.state[`${module.id}Enabled`]);
+        if (wrap) wrap.style.display = showWrap ? 'block' : 'none';
+      });
+
+    const exploratoryOmWrap = document.getElementById('exploratoryOmWrap');
+    if (exploratoryOmWrap) {
+      const showWrap = results
+        ? generatedExploratoryIds.size > 0
+        : MODULE_REGISTRY.some(module => module.maturity === 'Exploratory' && this.state[`${module.id}Enabled`]);
+      exploratoryOmWrap.style.display = showWrap ? 'block' : 'none';
+    }
+
+    const productMarketEmptyState = document.getElementById('productMarketEmptyState');
+    if (productMarketEmptyState) {
+      const hasVisibleMarketControl = showMethaneMarket || showMethanolMarket || generatedExploratoryIds.size > 0;
+      productMarketEmptyState.style.display = hasVisibleMarketControl ? 'none' : 'block';
+    }
+
+    MODULE_REGISTRY
+      .filter(module => module.maturity === 'Exploratory')
+      .forEach(module => {
+        this.syncExploratoryCapexControl(module.id);
+      });
+  }
+
+  syncExploratoryCapexControl(moduleId) {
+    const input = document.getElementById(`${moduleId}CapexBasis`);
+    const label = document.getElementById(`${moduleId}CapexBasisLabel`);
+    if (!input) return;
+    const capexConfig = Calc.getExploratoryCapexControlConfig(moduleId, this.state[`${moduleId}Route`]);
+    input.min = String(capexConfig.min);
+    input.max = String(capexConfig.max);
+    input.step = String(capexConfig.step);
+    this.state[`${moduleId}CapexBasis`] = Calc.clampNumber(
+      this.state[`${moduleId}CapexBasis`],
+      capexConfig.min,
+      capexConfig.max,
+      capexConfig.defaultValue
+    );
+    input.value = String(this.state[`${moduleId}CapexBasis`]);
+    if (label) label.textContent = `Block CAPEX (${capexConfig.unitLabel})`;
+    this.syncRangeDisplay(
+      `${moduleId}CapexBasis`,
+      this.state[`${moduleId}CapexBasis`],
+      v => this.formatExploratoryCapexBasis(moduleId, v)
+    );
   }
 
   syncDerivedFeedControls() {
@@ -1248,6 +1441,16 @@ class App {
       mixNote.textContent = mix.bothEnabled
         ? 'Shared H2 and CO2 production auto-balance from the combined methane and methanol demand.'
         : 'Shared H2 and CO2 production auto-balance from the active downstream product requirements.';
+    }
+
+    const mtgSplitControl = document.getElementById('mtgMethanolSplitControl');
+    if (mtgSplitControl) {
+      mtgSplitControl.style.display = this.state.mtgEnabled && this.state.methanolEnabled ? 'block' : 'none';
+    }
+    const mtgSplitInput = document.getElementById('mtgMethanolSplit');
+    if (mtgSplitInput) {
+      mtgSplitInput.value = this.state.mtgMethanolSplit;
+      this.syncRangeDisplay('mtgMethanolSplit', this.state.mtgMethanolSplit, v => this.formatMtgMethanolSplit(v));
     }
 
     ['electrolyzer', 'dac'].forEach(id => {

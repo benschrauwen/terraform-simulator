@@ -172,9 +172,18 @@ window.AppRendererMethods = {
     if (r.sabatier.enabled) {
       rows.push(this.prodItem('ch4', '🔥', 'Methane', `${FormatNumbers.fixed(r.sabatier.ch4DailyMCF, 2)}`, `MCF/${cycleUnit}`));
     }
-    if (r.methanol.enabled) {
-      rows.push(this.prodItem('fuel', '🧪', 'Methanol', `${FormatNumbers.fixed(r.methanol.dailyLiters, 1)}`, `L/${cycleUnit}`));
+    if (r.methanol.enabled && ((r.methanol.exportDailyKg ?? r.methanol.dailyLiters ?? 0) > 0.1)) {
+      rows.push(this.prodItem('fuel', '🧪', 'Methanol Export', `${FormatNumbers.fixed(r.methanol.dailyLiters, 1)}`, `L/${cycleUnit}`));
     }
+    (r.exploratoryModules || [])
+      .filter(module => module.enabled && module.outputDailyUnits > 0)
+      .forEach(module => {
+        const value = module.outputUnit === 'm3'
+          ? `${FormatNumbers.fixed(module.outputDailyUnits, module.outputDailyUnits >= 10 ? 0 : 1)}`
+          : `${FormatNumbers.fixed(module.outputDailyUnits, module.outputDailyUnits >= 10 ? 0 : 1)}`;
+        const unit = module.outputUnit === 'm3' ? `m3/${cycleUnit}` : `t/${cycleUnit}`;
+        rows.push(this.prodItem('electric', '', module.outputLabel || module.label, value, unit));
+      });
     if (r.h2Surplus > 0.1) rows.push(this.prodItem('h2', '💨', 'Unused H₂', `${FormatNumbers.fixed(r.h2Surplus, 1)}`, `kg/${cycleUnit}`));
     if (r.co2Surplus > 0.1) rows.push(this.prodItem('co2', '☁️', 'CO₂ Surplus', `${FormatNumbers.fixed(r.co2Surplus, 1)}`, `kg/${cycleUnit}`));
 
@@ -340,6 +349,10 @@ window.AppRendererMethods = {
     if (r.ai.enabled && r.ai.annualOM > 0) {
       costRows.push(this.econRow('AI fixed O&M', this.formatMoney(r.ai.annualOM), 'negative'));
     }
+    (e.exploratoryDetails || []).forEach(module => {
+      if (module.annualOM <= 0) return;
+      costRows.push(this.econRow(`${module.label} O&M`, this.formatMoney(module.annualOM), 'negative'));
+    });
     costRows.push(
       this.econRow('Total O&M', this.formatMoney(e.annualOM), 'negative'),
       this.econRow('Total levelized annual cost', this.formatMoney(e.annualCost), 'total')
@@ -359,6 +372,10 @@ window.AppRendererMethods = {
     if (e.capex.dac > 0) costRows.push(this.econRow('DAC', this.formatMoney(e.capex.dac)));
     if (e.capex.sabatier > 0) costRows.push(this.econRow('Methane reactor', this.formatMoney(e.capex.sabatier)));
     if (e.capex.methanol > 0) costRows.push(this.econRow('Methanol reactor', this.formatMoney(e.capex.methanol)));
+    (e.exploratoryDetails || []).forEach(module => {
+      if (module.capex <= 0) return;
+      costRows.push(this.econRow(`${module.label} (${module.routeLabel})`, this.formatMoney(module.capex)));
+    });
     costRows.push(this.econRow('Total CAPEX', this.formatMoney(e.totalCapex), 'total'));
 
     if (e.revenue.ai > 0) revenueRows.push(this.econRow('AI token revenue', this.formatMoney(e.revenue.ai), 'positive'));
@@ -368,6 +385,18 @@ window.AppRendererMethods = {
       );
     }
     if (e.revenue.methanol > 0) revenueRows.push(this.econRow('Methanol sales', this.formatMoney(e.revenue.methanol), 'positive'));
+    (e.exploratoryDetails || []).forEach(module => {
+      if (module.annualRevenue <= 0) return;
+      const priceDigits = module.outputUnit === 'm3' ? 2 : 0;
+      const unitSuffix = module.outputUnit === 'm3' ? 'm3' : 'ton';
+      revenueRows.push(
+        this.econRow(
+          `${module.label} sales @ $${FormatNumbers.fixed(module.unitPrice, priceDigits)}/${unitSuffix}`,
+          this.formatMoney(module.annualRevenue),
+          'positive'
+        )
+      );
+    });
     if (e.revenue.policyCredits > 0) revenueRows.push(this.econRow(e.policy.label, this.formatMoney(e.revenue.policyCredits), 'positive'));
     revenueRows.push(this.econRow('Total revenue', this.formatMoney(e.totalAnnualRevenue), 'total'));
 
@@ -448,8 +477,32 @@ window.AppRendererMethods = {
     if (r.co2Surplus > 0.1) {
       contextRows.push(this.econRow('Unused CO₂', `${FormatNumbers.fixed(r.co2Surplus, 1)} kg/${this.getCycleRateUnit(r)}`));
     }
-    if (e.excludedModules.length) {
-      contextRows.push(this.econRow('Exploratory modules excluded', e.excludedModules.join(', ')));
+    if (e.modeledExploratoryModules.length) {
+      contextRows.push(this.econRow('Exploratory routes modeled', e.modeledExploratoryModules.join(', ')));
+      if (e.exploratoryDetails.length) {
+        contextRows.push(
+          this.econRow(
+            'Exploratory M&O',
+            `${FormatNumbers.fixed(e.exploratoryDetails[0].omPercent, 1)}% CAPEX/yr`
+          )
+        );
+      }
+      e.exploratoryDetails.forEach(module => {
+        const priceDigits = module.outputUnit === 'm3' ? 2 : 0;
+        const unitSuffix = module.outputUnit === 'm3' ? 'm3' : 'ton';
+        const volumeDigits = module.outputUnit === 'm3' ? 0 : 1;
+        contextRows.push(
+          this.econRow(`${module.label} price`, `$${FormatNumbers.fixed(module.unitPrice, priceDigits)}/${unitSuffix}`),
+          this.econRow(
+            `${module.label} CAPEX basis`,
+            `$${FormatNumbers.fixed(module.capexBasis, 0)}/${module.capexBasisUnit === 'm3pd' ? 'm3/day' : 'tpa'}`
+          ),
+          this.econRow(
+            `${module.label} output`,
+            `${FormatNumbers.fixed(module.annualOutputUnits, volumeDigits)} ${module.outputUnit}/yr`
+          )
+        );
+      });
     }
 
     let html = `<div class="econ-summary-grid">${summaryMetrics.join('')}</div>`;
@@ -497,11 +550,11 @@ window.AppRendererMethods = {
       );
     }
     if (contextRows.length) {
-      const contextSummary = e.excludedModules.length
-        ? 'Assumptions + exclusions'
+      const contextSummary = e.modeledExploratoryModules.length
+        ? 'Assumptions + modeled routes'
         : 'Assumptions + losses';
       html += econGroup(
-        'Context & exclusions',
+        'Context & routes',
         contextSummary,
         contextRows.join(''),
         'Supporting assumptions behind the headline numbers'

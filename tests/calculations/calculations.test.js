@@ -56,6 +56,24 @@ test('lean IRR path matches the full AI-enabled scenario calculation', () => {
   );
 });
 
+test('lean IRR path matches the full exploratory-enabled scenario calculation', () => {
+  const state = createState({
+    systemSizeMW: 100,
+    batteryCapacityMWh: 24,
+    limeEnabled: true,
+    limePrice: 1000,
+  });
+  const fullResult = Calc.calculateAll(state);
+  const leanIrr = Calc.calculateIrr(state);
+
+  assert.ok(Number.isFinite(fullResult.economics.irr), 'Expected the full exploratory regression case to produce a finite IRR.');
+  assert.ok(Number.isFinite(leanIrr), 'Expected the lean exploratory regression case to produce a finite IRR.');
+  assert.ok(
+    Math.abs(fullResult.economics.irr - leanIrr) <= 1e-9,
+    `Expected lean exploratory IRR ${leanIrr} to match full IRR ${fullResult.economics.irr}.`
+  );
+});
+
 test('optimizer progress callback reports monotonic approximate completion', () => {
   const updates = [];
   const result = Calc.findBestRangeValueForIrr(
@@ -404,6 +422,14 @@ test('enabled downstream modules auto-enable their upstream process dependencies
     electrolyzerEnabled: false,
     dacEnabled: false,
   }));
+  const lowTempCoState = Calc.normalizeState(createState({
+    carbonMonoxideEnabled: true,
+    carbonMonoxideRoute: 'low-temp-electrolysis',
+    sabatierEnabled: false,
+    methanolEnabled: false,
+    electrolyzerEnabled: false,
+    dacEnabled: false,
+  }));
 
   assert.equal(mtgState.mtgEnabled, true, 'Expected MTG to stay enabled.');
   assert.equal(mtgState.methanolEnabled, true, 'Expected MTG to auto-enable methanol.');
@@ -413,31 +439,127 @@ test('enabled downstream modules auto-enable their upstream process dependencies
   assert.equal(rwgsState.carbonMonoxideEnabled, true, 'Expected the CO module to stay enabled.');
   assert.equal(rwgsState.dacEnabled, true, 'Expected CO production to auto-enable DAC.');
   assert.equal(rwgsState.electrolyzerEnabled, true, 'Expected the RWGS route to auto-enable electrolyzer feed.');
+
+  assert.equal(lowTempCoState.carbonMonoxideEnabled, true, 'Expected the low-temp CO route to stay enabled.');
+  assert.equal(lowTempCoState.dacEnabled, true, 'Expected every CO route to auto-enable DAC.');
+  assert.equal(lowTempCoState.electrolyzerEnabled, false, 'Expected non-RWGS CO routes to avoid forcing the electrolyzer.');
 });
 
-test('mtg exploratory module stays excluded from modeled economics until assumptions are added', () => {
+test('mtg exploratory module preserves its route and reports rough modeled output', () => {
   const baseline = runScenario({ methanolEnabled: true });
-  const withMtg = runScenario({ methanolEnabled: false, mtgEnabled: true, mtgRoute: 'dme-upgrading' });
+  const withMtg = runScenario({ methanolEnabled: false, mtgEnabled: true, mtgRoute: 'fluid-bed' });
   const mtg = withMtg.exploratoryModules.find(module => module.id === 'mtg');
+  const mtgEconomics = withMtg.economics.exploratoryDetails.find(module => module.id === 'mtg');
 
   assert.ok(mtg, 'Expected the MTG experimental module to be present in exploratory results.');
   assert.equal(mtg.enabled, true, 'Expected MTG to reflect the enabled toggle.');
-  assert.equal(mtg.route, 'dme-upgrading', 'Expected MTG to preserve the selected exploratory route.');
+  assert.equal(mtg.route, 'fluid-bed', 'Expected MTG to preserve the selected exploratory route.');
   assert.equal(mtg.diagramInputs?.methanol, true, 'Expected MTG to advertise methanol as a required diagram input.');
   assert.equal(withMtg.state.methanolEnabled, true, 'Expected MTG to auto-enable methanol in the normalized state.');
+  assert.ok(mtg.outputDailyUnits > 0, 'Expected MTG to report a non-zero rough output when methanol is available.');
+  assert.ok(mtg.capex > 0, 'Expected MTG to report a rough block CAPEX estimate.');
+  assert.ok(mtgEconomics, 'Expected MTG to appear in the exploratory economics breakdown.');
+  assert.ok(mtgEconomics.capex > 0, 'Expected MTG CAPEX to flow into project economics.');
+  assert.ok(mtgEconomics.annualRevenue > 0, 'Expected MTG revenue to flow into project economics.');
   assert.ok(
-    withMtg.economics.excludedModules.includes('MTG (Methanol -> Gasoline)'),
-    'Expected MTG to appear in the exploratory-modules exclusion list.'
+    withMtg.economics.modeledExploratoryModules.includes('MTG (Methanol -> Gasoline)'),
+    'Expected MTG to appear in the modeled exploratory route list.'
   );
-  assert.equal(
-    withMtg.economics.totalCapex,
-    baseline.economics.totalCapex,
-    'Expected MTG to stay out of modeled CAPEX until route assumptions are added.'
+  assert.ok(
+    withMtg.economics.capex.exploratory > 0,
+    'Expected exploratory CAPEX to contribute to total project CAPEX.'
   );
-  assert.equal(
-    withMtg.economics.totalAnnualRevenue,
-    baseline.economics.totalAnnualRevenue,
-    'Expected MTG to stay out of modeled revenue until route assumptions are added.'
+  assert.ok(
+    withMtg.methanol.exportAnnualTons < baseline.methanol.annualTons,
+    'Expected MTG to divert part of the gross methanol stream away from export.'
+  );
+});
+
+test('exploratory economics honor custom capex, sale price, and o&m inputs', () => {
+  const lowCase = runScenario({
+    methanolEnabled: false,
+    mtgEnabled: true,
+    mtgRoute: 'fluid-bed',
+    mtgCapexBasis: 200,
+    mtgPrice: 600,
+    exploratoryOmPercent: 1,
+  });
+  const highCase = runScenario({
+    methanolEnabled: false,
+    mtgEnabled: true,
+    mtgRoute: 'fluid-bed',
+    mtgCapexBasis: 1200,
+    mtgPrice: 1200,
+    exploratoryOmPercent: 10,
+  });
+
+  const lowMtg = lowCase.economics.exploratoryDetails.find(module => module.id === 'mtg');
+  const highMtg = highCase.economics.exploratoryDetails.find(module => module.id === 'mtg');
+
+  assert.ok(lowMtg, 'Expected the low-input MTG case to produce exploratory economics details.');
+  assert.ok(highMtg, 'Expected the high-input MTG case to produce exploratory economics details.');
+  assert.equal(lowMtg.unitPrice, 600, 'Expected the exploratory unit price to track the configured sale price.');
+  assert.equal(highMtg.unitPrice, 1200, 'Expected the exploratory unit price to track the configured sale price.');
+  assert.ok(highMtg.capex > lowMtg.capex, 'Expected MTG CAPEX to rise with the configured CAPEX basis.');
+  assert.ok(highMtg.annualRevenue > lowMtg.annualRevenue, 'Expected MTG revenue to rise with the configured sale price.');
+  assert.ok(highMtg.annualOM > lowMtg.annualOM, 'Expected MTG annual O&M to rise with the configured O&M percentage.');
+});
+
+test('multiple exploratory routes no longer collapse to the same output', () => {
+  const result = runScenario({
+    systemSizeMW: 100,
+    sabatierEnabled: false,
+    methanolEnabled: false,
+    limeEnabled: true,
+    titaniumEnabled: true,
+    limePriorityWeight: 100,
+    titaniumPriorityWeight: 100,
+  });
+
+  const lime = result.exploratoryModules.find(module => module.id === 'lime');
+  const titanium = result.exploratoryModules.find(module => module.id === 'titanium');
+
+  assert.ok(lime && titanium, 'Expected both exploratory modules to be present in the modeled results.');
+  assert.ok(lime.outputDailyUnits > 0, 'Expected lime to produce a non-zero exploratory output.');
+  assert.ok(titanium.outputDailyUnits > 0, 'Expected titanium to produce a non-zero exploratory output.');
+  assert.ok(
+    Math.abs(lime.outputDailyUnits - titanium.outputDailyUnits) > 1e-6,
+    'Expected different electricity intensities to produce different exploratory outputs.'
+  );
+  assert.ok(
+    lime.outputDailyUnits > titanium.outputDailyUnits,
+    'Expected the lower-intensity lime route to produce more output than the higher-intensity titanium route at equal priority.'
+  );
+});
+
+test('exploratory modules expose peak-day throughput for diagram cards', () => {
+  const result = runScenario({
+    latitude: 64.15,
+    longitude: -21.94,
+    systemSizeMW: 100,
+    sabatierEnabled: false,
+    methanolEnabled: false,
+    limeEnabled: true,
+  });
+
+  const lime = result.exploratoryModules.find(module => module.id === 'lime');
+  const peakChemicalDailyKWh = Math.max(...(result.ai.dispatch?.dailyChemicalKWh || []), 0);
+  const expectedPeakScale = result.chemicalSupply.dailyAvailableKWh > 0
+    ? Math.max(1, peakChemicalDailyKWh / result.chemicalSupply.dailyAvailableKWh)
+    : 1;
+
+  assert.ok(lime, 'Expected the lime exploratory module to be present in the modeled results.');
+  assert.ok(lime.outputDailyUnits > 0, 'Expected the lime route to produce a non-zero average-cycle output.');
+  assert.ok(
+    lime.peakOutputDailyUnits > lime.outputDailyUnits,
+    'Expected the peak-day throughput to exceed the average-cycle throughput in a seasonal solar case.'
+  );
+  assert.ok(
+    Math.abs(lime.peakOutputDailyUnits - (lime.outputDailyUnits * expectedPeakScale)) <= 1e-6,
+    [
+      'Expected the diagram peak throughput to scale from the modeled most-active chemical day.',
+      `Observed ${lime.peakOutputDailyUnits.toFixed(6)} vs expected ${(lime.outputDailyUnits * expectedPeakScale).toFixed(6)}.`,
+    ].join(' ')
   );
 });
 

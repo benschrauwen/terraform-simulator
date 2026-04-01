@@ -347,8 +347,20 @@ Object.assign(Calc, {
       100,
       DEFAULT_STATE.methaneFeedstockSplit
     );
+    normalized.mtgMethanolSplit = this.clampNumber(
+      input.mtgMethanolSplit,
+      0,
+      100,
+      DEFAULT_STATE.mtgMethanolSplit
+    );
     normalized.methanePrice = this.clampNumber(input.methanePrice, 0, 1e9, DEFAULT_STATE.methanePrice);
     normalized.methanolPrice = this.clampNumber(input.methanolPrice, 0, 1e9, DEFAULT_STATE.methanolPrice);
+    normalized.exploratoryOmPercent = this.clampNumber(
+      input.exploratoryOmPercent,
+      0,
+      20,
+      DEFAULT_STATE.exploratoryOmPercent
+    );
     normalized.customH2Credit = this.clampNumber(input.customH2Credit, 0, 1e6, DEFAULT_STATE.customH2Credit);
     normalized.customCo2Credit = this.clampNumber(input.customCo2Credit, 0, 1e6, DEFAULT_STATE.customCo2Credit);
 
@@ -419,6 +431,34 @@ Object.assign(Calc, {
           routeOptions,
           DEFAULT_STATE[`${module.id}Route`] || fallbackRoute
         );
+      }
+
+      if (module.maturity === 'Exploratory') {
+        normalized[`${module.id}PriorityWeight`] = this.clampNumber(
+          input[`${module.id}PriorityWeight`],
+          0,
+          100,
+          DEFAULT_STATE[`${module.id}PriorityWeight`] ?? 100
+        );
+        const capexControl = this.getExploratoryCapexControlConfig(
+          module.id,
+          normalized[`${module.id}Route`]
+        );
+        normalized[`${module.id}CapexBasis`] = this.clampNumber(
+          input[`${module.id}CapexBasis`],
+          capexControl.min,
+          capexControl.max,
+          DEFAULT_STATE[`${module.id}CapexBasis`] ?? capexControl.defaultValue
+        );
+        const marketConfig = EXPLORATORY_MARKET_CONFIG[module.id];
+        if (marketConfig) {
+          normalized[`${module.id}Price`] = this.clampNumber(
+            input[`${module.id}Price`],
+            marketConfig.min,
+            marketConfig.max,
+            DEFAULT_STATE[`${module.id}Price`] ?? marketConfig.defaultValue
+          );
+        }
       }
     });
     Object.assign(normalized, this.enforceModuleDependencies(normalized));

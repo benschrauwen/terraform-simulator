@@ -102,6 +102,35 @@ Object.assign(Calc, {
 
     const rate = state.discountRate / 100;
     const batteryLifeYears = storage.enabled ? storage.lifetimeYears : 0;
+    const exploratoryDetails = (exploratoryModules || [])
+      .filter(module => module.enabled && module.modeled && (module.capex > 0 || module.annualOutputUnits > 0))
+      .map(module => {
+        const marketConfig = EXPLORATORY_MARKET_CONFIG[module.id] || {};
+        const priceKey = `${module.id}Price`;
+        const unitPrice = state[priceKey] ?? marketConfig.defaultValue ?? 0;
+        const assetLifeYears = module.routeConfig?.assetLifeYears || 10;
+        return {
+          id: module.id,
+          label: module.label,
+          outputLabel: module.outputLabel || module.label,
+          routeLabel: module.routeLabel || module.route,
+          capex: module.capex || 0,
+          capexBasis: module.capexBasis || 0,
+          capexBasisUnit: module.capexBasisUnit || 'tpa',
+          assetLifeYears,
+          annualizedCapex: (module.capex || 0) * this.crf(rate, assetLifeYears),
+          omPercent: module.omPercent || 0,
+          annualOM: (module.capex || 0) * ((module.omPercent || 0) / 100),
+          annualOutputUnits: module.annualOutputUnits || 0,
+          outputUnit: module.outputUnit || 't',
+          unitPrice,
+          annualRevenue: (module.annualOutputUnits || 0) * unitPrice,
+        };
+      });
+    const exploratoryCapex = exploratoryDetails.reduce((sum, module) => sum + module.capex, 0);
+    const exploratoryAnnualizedCapex = exploratoryDetails.reduce((sum, module) => sum + module.annualizedCapex, 0);
+    const exploratoryAnnualOM = exploratoryDetails.reduce((sum, module) => sum + module.annualOM, 0);
+    const exploratoryRevenue = exploratoryDetails.reduce((sum, module) => sum + module.annualRevenue, 0);
 
     const capex = {
       solar: solar.totalSolarCapex,
@@ -111,6 +140,7 @@ Object.assign(Calc, {
       dac: dac.capex,
       sabatier: sabatier.capex,
       methanol: methanol.capex,
+      exploratory: exploratoryCapex,
     };
     const capexBreakdown = {
       solarModules: solar.moduleCapex,
@@ -128,6 +158,12 @@ Object.assign(Calc, {
       { key: 'dac', label: 'DAC', cost: capex.dac, lifeYears: state.dacAssetLife },
       { key: 'sabatier', label: 'Methane reactor', cost: capex.sabatier, lifeYears: state.sabatierAssetLife },
       { key: 'methanol', label: 'Methanol reactor', cost: capex.methanol, lifeYears: state.methanolAssetLife },
+      ...exploratoryDetails.map(module => ({
+        key: `exploratory-${module.id}`,
+        label: `${module.label} block`,
+        cost: module.capex,
+        lifeYears: module.assetLifeYears,
+      })),
     ]);
 
     const annualizedCapex = {
@@ -138,6 +174,7 @@ Object.assign(Calc, {
       dac: capex.dac * this.crf(rate, state.dacAssetLife),
       sabatier: capex.sabatier * this.crf(rate, state.sabatierAssetLife),
       methanol: capex.methanol * this.crf(rate, state.methanolAssetLife),
+      exploratory: exploratoryAnnualizedCapex,
     };
 
     const batteryOmFrac = (state.batteryOmPercent ?? 1.5) / 100;
@@ -145,7 +182,8 @@ Object.assign(Calc, {
     const annualOM = solar.annualSolarOm +
       (storage.capex * batteryOmFrac) +
       (ai.annualOM || 0) +
-      ((electrolyzer.capex + dac.capex + sabatier.capex + methanol.capex) * processOmFrac);
+      ((electrolyzer.capex + dac.capex + sabatier.capex + methanol.capex) * processOmFrac) +
+      exploratoryAnnualOM;
 
     const methaneSalePrice = this.getMethaneSalePrice(state);
     const policy = this.getPolicyCredits(state, { electrolyzer, dac, co2Surplus });
@@ -153,7 +191,8 @@ Object.assign(Calc, {
       ai: ai.enabled ? ai.annualRevenue : 0,
       methane: sabatier.enabled ? sabatier.ch4AnnualMCF * methaneSalePrice : 0,
       hydrogen: 0,
-      methanol: methanol.enabled ? methanol.annualTons * state.methanolPrice : 0,
+      methanol: methanol.enabled ? (methanol.exportAnnualTons ?? methanol.annualTons) * state.methanolPrice : 0,
+      exploratory: exploratoryRevenue,
       policyCredits: policy.total,
     };
 
@@ -173,6 +212,7 @@ Object.assign(Calc, {
         methane: revenue.methane * degradationFactor,
         hydrogen: revenue.hydrogen * degradationFactor,
         methanol: revenue.methanol * degradationFactor,
+        exploratory: revenue.exploratory * degradationFactor,
         policyCredits: revenue.policyCredits * degradationFactor * policyDurationFactor,
       };
       const totalYearRevenue = Object.values(yearlyRevenue).reduce((sum, value) => sum + value, 0);
@@ -325,7 +365,9 @@ Object.assign(Calc, {
       costPerKgH2: electrolyzer.enabled && electrolyzer.h2AnnualKg > 0 ? annualCost / electrolyzer.h2AnnualKg : 0,
       costPerTonCO2: dac.enabled && dac.co2AnnualTons > 0 ? annualCost / dac.co2AnnualTons : 0,
       costPerMCF: sabatier.enabled && sabatier.ch4AnnualMCF > 0 ? annualCost / sabatier.ch4AnnualMCF : 0,
-      excludedModules: exploratoryModules.filter(module => module.enabled).map(module => module.label),
+      exploratoryDetails,
+      modeledExploratoryModules: exploratoryDetails.map(module => module.label),
+      excludedModules: [],
     };
   },
 
@@ -386,7 +428,9 @@ Object.assign(Calc, {
     const includeDisplayDispatchSeries = !fastMode;
     const includeBatterySeries = !fastMode;
     const includeSupportedModules = !fastMode;
-    const includeExploratoryModules = !fastMode;
+    const includeExploratoryModules = !fastMode || MODULE_REGISTRY.some(
+      module => module.maturity === 'Exploratory' && Boolean(normalizedState[`${module.id}Enabled`])
+    );
     const includeEnvironmental = !fastMode;
     const solar = this.calculateSolar(normalizedState);
     const annualSolar = includeAnnualSolar
@@ -412,11 +456,23 @@ Object.assign(Calc, {
     const effectiveDailyKWh = ai.enabled
       ? ai.chemicalAnnualKWh / Math.max(cyclesPerYear, 1)
       : chemicalSupply.dailyAvailableKWh;
+    const peakChemicalDailyKWh = Array.isArray(ai.dispatch?.dailyChemicalKWh) && ai.dispatch.dailyChemicalKWh.length
+      ? Math.max(...ai.dispatch.dailyChemicalKWh, 0)
+      : effectiveDailyKWh;
     const effectivePeakKW = chemicalSupply.processPowerKW;
     const opHours = ai.enabled
       ? ai.chemicalDailyOpHours
       : chemicalSupply.dailyOpHours;
-    const allocation = this.getBalancedAllocation(normalizedState);
+    const allocationPlan = this.buildProcessAllocationPlan(normalizedState);
+    const allocation = {
+      source: 'auto',
+      label: allocationPlan.label,
+      electrolyzer: allocationPlan.powerShares.electrolyzer,
+      dac: allocationPlan.powerShares.dac,
+      exploratory: allocationPlan.powerShares.exploratory,
+      feedShares: allocationPlan.feedShares,
+      supported: allocationPlan.supported,
+    };
     const reactorSizingPeakKW = effectivePeakKW;
 
     const electrolyzer = this.calculateElectrolyzer(normalizedState, effectivePeakKW, effectiveDailyKWh, allocation);
@@ -435,12 +491,41 @@ Object.assign(Calc, {
           : 0,
       },
       opHours,
+      allocationPlan,
       { includeSupportedModules }
     );
 
     const sabatier = productFlow.outputs.sabatier || this.calculateSabatier({ ...normalizedState, sabatierEnabled: false }, 0, 0, opHours);
     const methanol = productFlow.outputs.methanol || this.calculateMethanol({ ...normalizedState, methanolEnabled: false }, 0, 0, opHours);
-    const exploratoryModules = includeExploratoryModules ? this.calculateExploratoryModules(normalizedState) : [];
+    const exploratoryModules = includeExploratoryModules
+      ? this.calculateExploratoryModules(normalizedState, {
+          allocationPlan,
+          materialFlows: {
+            h2DailyKg: electrolyzer.h2DailyKg || 0,
+            co2DailyKg: dac.co2DailyKg || 0,
+          },
+          supportedOutputs: productFlow.outputs,
+          effectivePeakKW: reactorSizingPeakKW,
+          effectiveDailyKWh,
+          peakDailyKWh: peakChemicalDailyKWh,
+          opHours,
+        })
+      : [];
+    const exploratoryH2Consumed = exploratoryModules.reduce((sum, module) => sum + (module.h2Consumed || 0), 0);
+    const exploratoryCo2Consumed = exploratoryModules.reduce((sum, module) => sum + (module.co2Consumed || 0), 0);
+    const exploratoryMethanolConsumed = exploratoryModules.reduce((sum, module) => sum + (module.methanolConsumed || 0), 0);
+    if (methanol.enabled) {
+      const exportedDailyKg = Math.max(0, (methanol.grossDailyKg || methanol.dailyKg || 0) - exploratoryMethanolConsumed);
+      methanol.exportDailyKg = exportedDailyKg;
+      methanol.exportAnnualKg = exportedDailyKg * cyclesPerYear;
+      methanol.exportAnnualTons = methanol.exportAnnualKg / 1000;
+      methanol.dailyKg = exportedDailyKg;
+      methanol.annualKg = methanol.exportAnnualKg;
+      methanol.annualTons = methanol.exportAnnualTons;
+      methanol.dailyLiters = exportedDailyKg / CHEMISTRY.methanol.density;
+    }
+    const h2Surplus = Math.max(0, (electrolyzer.h2DailyKg || 0) - (sabatier.h2Consumed || 0) - (methanol.h2Consumed || 0) - exploratoryH2Consumed);
+    const co2Surplus = Math.max(0, (dac.co2DailyKg || 0) - (sabatier.co2Consumed || 0) - (methanol.co2Consumed || 0) - exploratoryCo2Consumed);
 
     const economics = this.calculateEconomics(normalizedState, {
       solar,
@@ -451,8 +536,8 @@ Object.assign(Calc, {
       dac,
       sabatier,
       methanol,
-      h2Surplus: productFlow.h2Remaining,
-      co2Surplus: productFlow.co2Remaining,
+      h2Surplus,
+      co2Surplus,
       exploratoryModules,
     });
     const environmental = includeEnvironmental
@@ -472,12 +557,12 @@ Object.assign(Calc, {
       dac,
       sabatier,
       methanol,
-      supportedModules: productFlow.supportedModules,
+      supportedModules: includeSupportedModules ? [sabatier, methanol] : [],
       exploratoryModules,
       economics,
       environmental,
-      h2Surplus: productFlow.h2Remaining,
-      co2Surplus: productFlow.co2Remaining,
+      h2Surplus,
+      co2Surplus,
       effectiveDailyKWh,
       opHours,
     };

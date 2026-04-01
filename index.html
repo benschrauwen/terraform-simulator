@@ -285,7 +285,7 @@
             </div>
             <div class="module-group">
               <div class="module-group-title">Exploratory industrial modules</div>
-              <div class="module-group-subtitle">Publicly signaled by Terraform, but excluded from ROI until route-specific assumptions are added.</div>
+              <div class="module-group-subtitle">Roughly modeled with route-specific throughput, feed, CAPEX, and sale-price assumptions that now flow through project economics.</div>
               <div id="exploratoryModuleGroups"></div>
             </div>
           </div>
@@ -357,43 +357,49 @@
           <div class="market-card">
             <div class="market-card-header">
               <div class="market-card-title">Product markets</div>
-              <div class="market-card-subtitle">Set the methane market framing, then tune methane and methanol sales assumptions.</div>
+              <div class="market-card-subtitle">Set sale-price assumptions only for products the current build actually generates.</div>
             </div>
-            <label>Methane Market Preset
-              <select id="methaneMarketPreset">
-                <option value="terraform_commodity">Commodity gas / whitepaper-style case</option>
-                <option value="premium_green_methane">Premium synthetic / green methane</option>
-                <optgroup label="Country-Specific Europe">
-                  <option value="germany_biomethane_eeg">Germany biomethane auction / EEG</option>
-                  <option value="netherlands_sdepp">Netherlands renewable gas / SDE++</option>
-                  <option value="denmark_green_gas_tender">Denmark green gas tender</option>
-                </optgroup>
-              </select>
-            </label>
-            <div class="market-summary">
-              <div class="market-summary-row">
-                <span class="market-summary-label">Applies in</span>
-                <span id="methaneMarketApplicabilityValue" class="market-summary-value highlight">Generic / multi-country</span>
+            <div id="methaneMarketWrap">
+              <label>Methane Market Preset
+                <select id="methaneMarketPreset">
+                  <option value="terraform_commodity">Commodity gas / whitepaper-style case</option>
+                  <option value="premium_green_methane">Premium synthetic / green methane</option>
+                  <optgroup label="Country-Specific Europe">
+                    <option value="germany_biomethane_eeg">Germany biomethane auction / EEG</option>
+                    <option value="netherlands_sdepp">Netherlands renewable gas / SDE++</option>
+                    <option value="denmark_green_gas_tender">Denmark green gas tender</option>
+                  </optgroup>
+                </select>
+              </label>
+              <div class="market-summary">
+                <div class="market-summary-row">
+                  <span class="market-summary-label">Applies in</span>
+                  <span id="methaneMarketApplicabilityValue" class="market-summary-value highlight">Generic / multi-country</span>
+                </div>
+                <div class="market-summary-row">
+                  <span class="market-summary-label">Modeled as</span>
+                  <span id="methaneMarketBasisValue" class="market-summary-value highlight">Simple sale-price assumption for commodity methane</span>
+                </div>
               </div>
-              <div class="market-summary-row">
-                <span class="market-summary-label">Modeled as</span>
-                <span id="methaneMarketBasisValue" class="market-summary-value highlight">Simple sale-price assumption for commodity methane</span>
+              <div class="field-note compact-note market-callout" id="methaneMarketNote">
+                Use this to label the market structure behind the methane price. Europe support is country-specific and often tender- or CfD-like, so the methane price remains a manual assumption.
+              </div>
+              <label>Methane Sale Price ($/MCF)
+                <input type="range" id="methanePrice" min="1" max="40" step="0.5" value="20">
+                <span class="range-value" id="methanePriceValue">$20.00/MCF</span>
+              </label>
+              <div class="field-note compact-note">
+                This is a market / offtake assumption, not a country-specific subsidy. Use lower values for commodity gas cases and higher values for premium synthetic methane or biomethane contracts.
               </div>
             </div>
-            <div class="field-note compact-note market-callout" id="methaneMarketNote">
-              Use this to label the market structure behind the methane price. Europe support is country-specific and often tender- or CfD-like, so the methane price remains a manual assumption.
-            </div>
-            <label>Methane Sale Price ($/MCF)
-              <input type="range" id="methanePrice" min="1" max="40" step="0.5" value="20">
-              <span class="range-value" id="methanePriceValue">$20.00/MCF</span>
-            </label>
-            <div class="field-note compact-note">
-              This is a market / offtake assumption, not a country-specific subsidy. Use lower values for commodity gas cases and higher values for premium synthetic methane or biomethane contracts.
-            </div>
-            <label>Methanol Price ($/ton)
+            <label id="methanolMarketWrap">Methanol Price ($/ton)
               <input type="range" id="methanolPrice" min="100" max="1200" step="10" value="600">
               <span class="range-value" id="methanolPriceValue">$600/ton</span>
             </label>
+            <div id="exploratoryMarketControls"></div>
+            <div id="productMarketEmptyState" class="field-note compact-note" style="display:none;">
+              Enable a product route that actually generates output to expose its market-price control.
+            </div>
           </div>
           <div class="market-card">
             <div class="market-card-header">
@@ -531,7 +537,7 @@
         <div class="section-body maintenance-section-body">
           <div class="module-group-title">Fixed annual O&amp;M</div>
           <div class="module-group-subtitle">
-            Apply simple operating cost rates by equipment category instead of modeling route-specific labor or utility overhead.
+            Apply simple operating cost rates by equipment category. Active exploratory routes share one clearly labeled Exploratory M&amp;O control below.
           </div>
           <div class="field-note compact-note">
             <strong>Basis:</strong> Annual percent of installed CAPEX by category.<br>
@@ -558,6 +564,7 @@
           <div class="field-note compact-note">
             Applies to battery CAPEX only.
           </div>
+          <div id="exploratoryOmControls"></div>
         </div>
       </section>
     </aside>

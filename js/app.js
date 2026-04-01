@@ -264,7 +264,7 @@ class App {
     `;
     const capexBlock = `
       <label>
-        <span id="${module.id}CapexBasisLabel">Block CAPEX (${capexControl.unitLabel})</span>
+        <span id="${module.id}CapexBasisLabel">CAPEX (${capexControl.unitLabel})</span>
         <input type="range" id="${capexKey}" min="${capexControl.min}" max="${capexControl.max}" step="${capexControl.step}" value="${this.state[capexKey] ?? capexControl.defaultValue}">
         <span class="range-value" id="${capexKey}Value">${this.formatExploratoryCapexBasis(module.id, this.state[capexKey] ?? capexControl.defaultValue)}</span>
       </label>
@@ -314,25 +314,22 @@ class App {
     document.querySelectorAll('.day-tab').forEach(tab => {
       tab.addEventListener('click', () => {
         if (tab.disabled) return;
-        document.querySelectorAll('.day-tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
         this.state.dayMode = tab.dataset.mode;
-        document.getElementById('daySpecificControls').style.display = tab.dataset.mode === 'specific' ? 'block' : 'none';
-        this.recalculate();
+        this.refreshDaySpecificViews();
       });
     });
 
     this.bindRange('dayOfYear', 'dayOfYear', v => {
       const day = parseInt(v, 10);
       return `${SolarGeometry.dayToDateString(day)}${SolarGeometry.notableDay(day)}`;
-    });
+    }, { skipRecalculate: true });
 
     document.querySelectorAll('.day-preset').forEach(btn => {
       btn.addEventListener('click', () => {
         const day = parseInt(btn.dataset.day, 10);
         this.state.dayOfYear = day;
         this.syncRangeDisplay('dayOfYear', day);
-        this.recalculate();
+        this.refreshDaySpecificViews();
       });
     });
 
@@ -375,6 +372,7 @@ class App {
     this.bindRange('batteryCost', 'batteryCostPerKWh', v => `$${FormatNumbers.fixed(parseInt(v, 10), 0)}/kWh`);
     this.bindRange('batteryEfficiency', 'batteryEfficiency', v => `${FormatNumbers.fixed(parseInt(v, 10), 0)}%`);
     this.bindRange('batteryCycles', 'batteryCycles', v => parseInt(v, 10).toLocaleString());
+    this.bindRange('chemicalSizingPercent', 'chemicalSizingPercent', v => this.formatChemicalSizingPercent(v));
 
     this.on('aiComputeEnabled', 'change', (_, el) => {
       this.state.aiComputeEnabled = el.checked;
@@ -527,13 +525,18 @@ class App {
   bindRange(id, stateKey, formatter, extra) {
     const el = document.getElementById(id);
     if (!el) return;
+    const extraConfig = typeof extra === 'function' ? { onInput: extra } : (extra || {});
     this.rangeBindings.push({ id, stateKey, formatter });
     el.addEventListener('input', () => {
       this.state[stateKey] = parseFloat(el.value);
       this.syncRangeDisplay(id, el.value, formatter);
-      if (extra) extra();
+      if (extraConfig.onInput) extraConfig.onInput();
       this.syncDynamicVisibility();
-      this.requestRecalculate({ includeSensitivity: false });
+      if (extraConfig.skipRecalculate) {
+        this.refreshDaySpecificViews();
+      } else {
+        this.requestRecalculate({ includeSensitivity: false });
+      }
     });
   }
 
@@ -579,6 +582,12 @@ class App {
       inputId: 'batteryCapacity',
       stateKey: 'batteryCapacityMWh',
       maxCoarseSamples: 257,
+      maxTopRegions: 5,
+    });
+    this.bindIrrOptimizerButton('optimizeChemicalSizing', {
+      inputId: 'chemicalSizingPercent',
+      stateKey: 'chemicalSizingPercent',
+      maxCoarseSamples: 101,
       maxTopRegions: 5,
     });
     this.bindIrrOptimizerButton('optimizeMethaneFeedstockSplit', {
@@ -841,7 +850,7 @@ class App {
   getOptimizerWorker() {
     if (this.optimizerWorker) return this.optimizerWorker;
 
-    this.optimizerWorker = new Worker('js/optimizer-worker.js?v=20260401-opt-progress');
+    this.optimizerWorker = new Worker('js/optimizer-worker.js?v=20260401-chem-clipping');
     this.optimizerWorker.addEventListener('message', event => {
       const { requestId, messageType, progress, result, error } = event.data || {};
       const pending = this.optimizerRequests.get(requestId);
@@ -1261,6 +1270,11 @@ class App {
     return `${FormatNumbers.fixed(methaneShare, 0)}% methane / ${FormatNumbers.fixed(methanolShare, 0)}% methanol`;
   }
 
+  formatChemicalSizingPercent(value) {
+    const percent = Math.max(0, Math.min(100, parseFloat(value)));
+    return `${FormatNumbers.fixed(percent, 0)}% of full-capture peak`;
+  }
+
   formatExploratoryPriorityWeight(value) {
     return `${FormatNumbers.fixed(parseFloat(value), 0)} weight`;
   }
@@ -1273,6 +1287,130 @@ class App {
 
   formatExploratoryOmPercent(value) {
     return `${FormatNumbers.fixed(parseFloat(value), 1)}%/yr`;
+  }
+
+  getSelectedEarthDayIndex() {
+    return Math.max(0, Math.min(364, (this.state.dayOfYear || 1) - 1));
+  }
+
+  getSelectedDayLabel() {
+    return `${SolarGeometry.dayToDateString(this.state.dayOfYear)}${SolarGeometry.notableDay(this.state.dayOfYear)}`;
+  }
+
+  sliceSelectedEarthDaySeries(series) {
+    if (!Array.isArray(series) || !series.length) return [];
+    const start = this.getSelectedEarthDayIndex() * 24;
+    const slice = series.slice(start, start + 24);
+    return slice.length === 24 ? slice : [];
+  }
+
+  getDisplaySolarGeometry(r = this.lastResults) {
+    if (r?.solar?.bodyKey === 'earth' && this.state.dayMode === 'specific') {
+      return SolarGeometry.dailyProfile(this.state.latitude, this.state.dayOfYear, this.state.mountingType);
+    }
+    return r?.solar?.solarGeo || null;
+  }
+
+  getSelectedDayDisplayContext(r = this.lastResults) {
+    if (!r || r.solar.bodyKey !== 'earth' || this.state.dayMode !== 'specific') return null;
+
+    const solarHourlyKW = this.sliceSelectedEarthDaySeries(r.annualSolar?.hourlyKW);
+    if (solarHourlyKW.length !== 24) return null;
+
+    const dispatch = r.ai.enabled ? r.ai.dispatch : r.annualChemicalDisplayDispatch;
+    if (!dispatch) return null;
+
+    const chemicalHourlyKW = this.sliceSelectedEarthDaySeries(dispatch.chemicalHourlyKW);
+    if (chemicalHourlyKW.length !== 24) return null;
+
+    const aiHourlyKW = r.ai.enabled ? this.sliceSelectedEarthDaySeries(dispatch.aiHourlyKW) : [];
+    const batteryChargeHourlyKW = this.sliceSelectedEarthDaySeries(dispatch.batteryChargeHourlyKW);
+    const clippedHourlyKW = this.sliceSelectedEarthDaySeries(dispatch.clippedHourlyKW);
+    const sumSeries = series => series.reduce((sum, value) => sum + (Number(value) || 0), 0);
+
+    return {
+      selectedDayIndex: this.getSelectedEarthDayIndex(),
+      selectedDayLabel: this.getSelectedDayLabel(),
+      solarHourlyKW,
+      aiHourlyKW,
+      batteryChargeHourlyKW: batteryChargeHourlyKW.length === 24 ? batteryChargeHourlyKW : new Array(24).fill(0),
+      chemicalHourlyKW,
+      clippedHourlyKW: clippedHourlyKW.length === 24 ? clippedHourlyKW : new Array(24).fill(0),
+      aiDailyKWh: aiHourlyKW.length === 24 ? sumSeries(aiHourlyKW) : 0,
+      chemicalDailyKWh: sumSeries(chemicalHourlyKW),
+    };
+  }
+
+  buildDiagramDisplayResults(r = this.lastResults) {
+    const displayContext = this.getSelectedDayDisplayContext(r);
+    if (!displayContext) return r;
+
+    const baseDailyKWh = Math.max(0, r.effectiveDailyKWh || 0);
+    const dailyScale = baseDailyKWh > 1e-9 ? displayContext.chemicalDailyKWh / baseDailyKWh : 0;
+    const scaleMetric = value => Number.isFinite(value) ? value * dailyScale : value;
+    const scaleSupportedModule = module => {
+      if (!module) return module;
+      return {
+        ...module,
+        ch4DailyKg: scaleMetric(module.ch4DailyKg),
+        ch4DailyMCF: scaleMetric(module.ch4DailyMCF),
+        h2Consumed: scaleMetric(module.h2Consumed),
+        co2Consumed: scaleMetric(module.co2Consumed),
+        waterProducedDaily: scaleMetric(module.waterProducedDaily),
+        dailyKg: scaleMetric(module.dailyKg),
+        grossDailyKg: scaleMetric(module.grossDailyKg),
+        dailyLiters: scaleMetric(module.dailyLiters),
+        grossDailyLiters: scaleMetric(module.grossDailyLiters),
+        exportDailyKg: scaleMetric(module.exportDailyKg),
+      };
+    };
+    const scaleExploratoryModule = module => {
+      if (!module) return module;
+      return {
+        ...module,
+        dailyKWh: scaleMetric(module.dailyKWh),
+        outputDailyUnits: scaleMetric(module.outputDailyUnits),
+        h2Consumed: scaleMetric(module.h2Consumed),
+        co2Consumed: scaleMetric(module.co2Consumed),
+        methanolConsumed: scaleMetric(module.methanolConsumed),
+      };
+    };
+    const aiUtilization = r.ai.enabled && r.ai.designLoadKW > 0
+      ? Math.max(0, Math.min(1, displayContext.aiDailyKWh / (r.ai.designLoadKW * 24)))
+      : r.ai.utilization;
+
+    return {
+      ...r,
+      ai: r.ai.enabled ? { ...r.ai, utilization: aiUtilization } : r.ai,
+      electrolyzer: r.electrolyzer ? {
+        ...r.electrolyzer,
+        dailyKWh: scaleMetric(r.electrolyzer.dailyKWh),
+        h2DailyKg: scaleMetric(r.electrolyzer.h2DailyKg),
+        waterDailyKg: scaleMetric(r.electrolyzer.waterDailyKg),
+      } : r.electrolyzer,
+      dac: r.dac ? {
+        ...r.dac,
+        dailyKWh: scaleMetric(r.dac.dailyKWh),
+        co2DailyKg: scaleMetric(r.dac.co2DailyKg),
+      } : r.dac,
+      sabatier: scaleSupportedModule(r.sabatier),
+      methanol: scaleSupportedModule(r.methanol),
+      supportedModules: (r.supportedModules || []).map(scaleSupportedModule),
+      exploratoryModules: (r.exploratoryModules || []).map(scaleExploratoryModule),
+      h2Surplus: scaleMetric(r.h2Surplus),
+      co2Surplus: scaleMetric(r.co2Surplus),
+    };
+  }
+
+  refreshDaySpecificViews() {
+    this.syncPlanetaryUI();
+    if (!this.lastResults) {
+      this.recalculate();
+      return;
+    }
+    this.updateInfoDisplays(this.lastResults);
+    this.updateDiagram(this.lastResults);
+    this.updatePowerChart(this.lastResults);
   }
 
   formatMtgMethanolSplit(value) {
@@ -1414,7 +1552,7 @@ class App {
       capexConfig.defaultValue
     );
     input.value = String(this.state[`${moduleId}CapexBasis`]);
-    if (label) label.textContent = `Block CAPEX (${capexConfig.unitLabel})`;
+    if (label) label.textContent = `CAPEX (${capexConfig.unitLabel})`;
     this.syncRangeDisplay(
       `${moduleId}CapexBasis`,
       this.state[`${moduleId}CapexBasis`],

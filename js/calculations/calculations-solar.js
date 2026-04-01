@@ -48,9 +48,6 @@ Object.assign(Calc, {
   getSolarGeometry(state, body, mountingKey) {
     const profileModel = state.solarProfileModel || state.body || 'earth';
     if ((state.body || 'earth') === 'earth') {
-      if (state.dayMode === 'specific') {
-        return SolarGeometry.dailyProfile(state.latitude, state.dayOfYear, mountingKey);
-      }
       return SolarGeometry.annualAverageProfile(state.latitude, mountingKey);
     }
 

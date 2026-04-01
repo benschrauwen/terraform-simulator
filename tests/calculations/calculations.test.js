@@ -34,6 +34,49 @@ test('capex breakdown still adds up to the reported total', () => {
   );
 });
 
+test('dac capex is sized from allocated DAC power', () => {
+  const allocation = { dac: 0.4 };
+  const lessEfficient = Calc.calculateDAC(
+    createState({ dacEnabled: true, dacCapex: 450, dacEnergy: 4000 }),
+    125,
+    3000,
+    allocation
+  );
+  const moreEfficient = Calc.calculateDAC(
+    createState({ dacEnabled: true, dacCapex: 450, dacEnergy: 2000 }),
+    125,
+    3000,
+    allocation
+  );
+
+  assert.ok(Math.abs(lessEfficient.allocKW - 50) <= 1e-9, `Expected 50 kW of DAC allocation, got ${lessEfficient.allocKW}.`);
+  assert.ok(Math.abs(lessEfficient.capex - 22500) <= 1e-9, `Expected DAC CAPEX of $22,500, got ${lessEfficient.capex}.`);
+  assert.ok(
+    moreEfficient.co2AnnualTons > lessEfficient.co2AnnualTons,
+    'Expected a lower DAC energy intensity to increase annual CO2 capture at the same allocated power.'
+  );
+  assert.ok(
+    Math.abs(moreEfficient.capex - lessEfficient.capex) <= 1e-9,
+    'Expected DAC CAPEX to stay tied to allocated kW rather than annual capture.'
+  );
+});
+
+test('exploratory capex controls spell out annual output capacity units', () => {
+  const mtgControl = Calc.getExploratoryCapexControlConfig('mtg', 'fixed-bed');
+  const desalinationControl = Calc.getExploratoryCapexControlConfig('desalination', 'reverse-osmosis');
+
+  assert.equal(
+    mtgControl.unitLabel,
+    '$/ton/yr capacity',
+    'Expected solid exploratory routes to show ton/yr capacity instead of the tpa shorthand.'
+  );
+  assert.equal(
+    desalinationControl.unitLabel,
+    '$/m3/day',
+    'Expected desalination to keep its volumetric capacity basis.'
+  );
+});
+
 test('lean IRR path matches the full default scenario calculation', () => {
   const state = createState();
   const fullResult = Calc.calculateAll(state);
@@ -53,6 +96,17 @@ test('lean IRR path matches the full AI-enabled scenario calculation', () => {
   assert.ok(
     Math.abs(fullResult.economics.irr - leanIrr) <= 1e-9,
     `Expected lean AI IRR ${leanIrr} to match full IRR ${fullResult.economics.irr}.`
+  );
+});
+
+test('lean IRR path matches the full undersized-chemistry scenario calculation', () => {
+  const state = createState({ systemSizeMW: 100, batteryCapacityMWh: 24, chemicalSizingPercent: 70 });
+  const fullResult = Calc.calculateAll(state);
+  const leanIrr = Calc.calculateIrr(state);
+
+  assert.ok(
+    Math.abs(fullResult.economics.irr - leanIrr) <= 1e-9,
+    `Expected lean undersized-chemistry IRR ${leanIrr} to match full IRR ${fullResult.economics.irr}.`
   );
 });
 
@@ -149,6 +203,124 @@ test('no-battery process sizing follows the modeled direct-solar peak', () => {
     [
       'Expected the no-battery process cap to match the modeled direct-solar peak.',
       `Observed ${result.chemicalSupply.processPowerKW.toFixed(3)} kW vs ${modeledDirectSolarPeakKW.toFixed(3)} kW.`,
+    ].join(' ')
+  );
+});
+
+test('undersizing the no-battery chemical plant clips the modeled solar peak', () => {
+  const fullCapture = runScenario({ systemSizeMW: 100, batteryCapacityMWh: 0, chemicalSizingPercent: 100 });
+  const undersized = runScenario({ systemSizeMW: 100, batteryCapacityMWh: 0, chemicalSizingPercent: 70 });
+
+  assert.ok(
+    Math.abs(undersized.chemicalSupply.processPowerKW - (fullCapture.chemicalSupply.processPowerKW * 0.7)) <= 1e-6,
+    [
+      'Expected the no-battery process cap to scale from the full-capture peak.',
+      `Observed ${undersized.chemicalSupply.processPowerKW.toFixed(3)} kW vs expected ${(fullCapture.chemicalSupply.processPowerKW * 0.7).toFixed(3)} kW.`,
+    ].join(' ')
+  );
+  assert.ok(
+    undersized.chemicalSupply.clippedDailyKWh > 0,
+    `Expected undersizing to clip some solar energy, got ${undersized.chemicalSupply.clippedDailyKWh.toFixed(6)} kWh/day.`
+  );
+  assert.ok(
+    undersized.chemicalSupply.dailyAvailableKWh < fullCapture.chemicalSupply.dailyAvailableKWh,
+    [
+      'Expected undersizing to reduce delivered chemical energy when no battery is present.',
+      `Observed ${fullCapture.chemicalSupply.dailyAvailableKWh.toFixed(3)} -> ${undersized.chemicalSupply.dailyAvailableKWh.toFixed(3)} kWh/day.`,
+    ].join(' ')
+  );
+});
+
+test('undersizing the battery-backed chemical plant preserves the full-capture reference and introduces clipping', () => {
+  const fullCapture = runScenario({ systemSizeMW: 100, batteryCapacityMWh: 24, chemicalSizingPercent: 100 });
+  const undersized = runScenario({ systemSizeMW: 100, batteryCapacityMWh: 24, chemicalSizingPercent: 70 });
+
+  assert.ok(
+    Math.abs(undersized.chemicalSupply.fullCapturePowerKW - fullCapture.chemicalSupply.processPowerKW) <= 1e-3,
+    [
+      'Expected the battery-backed full-capture reference to stay available after undersizing.',
+      `Observed ${undersized.chemicalSupply.fullCapturePowerKW.toFixed(3)} kW vs ${fullCapture.chemicalSupply.processPowerKW.toFixed(3)} kW.`,
+    ].join(' ')
+  );
+  assert.ok(
+    undersized.chemicalSupply.processPowerKW < fullCapture.chemicalSupply.processPowerKW,
+    `Expected undersizing to reduce the battery-backed process cap, got ${fullCapture.chemicalSupply.processPowerKW.toFixed(3)} -> ${undersized.chemicalSupply.processPowerKW.toFixed(3)} kW.`
+  );
+  assert.ok(
+    undersized.chemicalSupply.clippedDailyKWh > 0,
+    `Expected battery-backed undersizing to clip some solar energy, got ${undersized.chemicalSupply.clippedDailyKWh.toFixed(6)} kWh/day.`
+  );
+  assert.ok(
+    undersized.chemicalSupply.capturedSolarFraction < 0.999,
+    `Expected captured-solar fraction to fall below 100%, got ${(undersized.chemicalSupply.capturedSolarFraction * 100).toFixed(3)}%.`
+  );
+});
+
+test('specific-day selector no longer changes annual non-ai sizing or economics', () => {
+  const average = runScenario({
+    systemSizeMW: 100,
+    batteryCapacityMWh: 0,
+    chemicalSizingPercent: 72,
+    dayMode: 'average',
+    dayOfYear: 355,
+  });
+  const specific = runScenario({
+    systemSizeMW: 100,
+    batteryCapacityMWh: 0,
+    chemicalSizingPercent: 72,
+    dayMode: 'specific',
+    dayOfYear: 355,
+  });
+
+  assert.ok(
+    Math.abs(specific.chemicalSupply.processPowerKW - average.chemicalSupply.processPowerKW) <= 1e-6,
+    [
+      'Expected the specific-day selector to leave annual process sizing unchanged.',
+      `Observed ${average.chemicalSupply.processPowerKW.toFixed(6)} kW vs ${specific.chemicalSupply.processPowerKW.toFixed(6)} kW.`,
+    ].join(' ')
+  );
+  assert.ok(
+    Math.abs(specific.chemicalSupply.dailyAvailableKWh - average.chemicalSupply.dailyAvailableKWh) <= 1e-6,
+    [
+      'Expected the specific-day selector to leave annual-average chemical energy unchanged.',
+      `Observed ${average.chemicalSupply.dailyAvailableKWh.toFixed(6)} vs ${specific.chemicalSupply.dailyAvailableKWh.toFixed(6)} kWh/day.`,
+    ].join(' ')
+  );
+  assert.ok(
+    Math.abs(specific.economics.irr - average.economics.irr) <= 1e-12,
+    [
+      'Expected the specific-day selector to avoid perturbing annual project returns.',
+      `Observed ${average.economics.irr.toFixed(12)} vs ${specific.economics.irr.toFixed(12)}.`,
+    ].join(' ')
+  );
+});
+
+test('annual chemical day slices show winter no-clipping against a fixed undersized cap', () => {
+  const result = runScenario({
+    systemSizeMW: 100,
+    batteryCapacityMWh: 0,
+    chemicalSizingPercent: 72,
+  });
+  const displayDispatch = result.annualChemicalDisplayDispatch;
+
+  assert.ok(displayDispatch, 'Expected a day-slice chemistry dispatch series for specific-day visualization.');
+  assert.equal(
+    displayDispatch.dailyClippedKWh.length,
+    365,
+    `Expected Earth day-slice clipping series to expose 365 daily buckets, got ${displayDispatch.dailyClippedKWh.length}.`
+  );
+  assert.ok(
+    displayDispatch.dailyClippedKWh[354] <= 1e-6,
+    [
+      'Expected the winter-solstice day to stay below the fixed annual process cap in this undersized case.',
+      `Observed ${displayDispatch.dailyClippedKWh[354].toFixed(6)} kWh/day clipped on Dec 21.`,
+    ].join(' ')
+  );
+  assert.ok(
+    displayDispatch.dailyClippedKWh[171] > 0,
+    [
+      'Expected the same fixed annual process cap to clip a sunnier summer day.',
+      `Observed ${displayDispatch.dailyClippedKWh[171].toFixed(6)} kWh/day clipped on Jun 21.`,
     ].join(' ')
   );
 });
@@ -457,7 +629,7 @@ test('mtg exploratory module preserves its route and reports rough modeled outpu
   assert.equal(mtg.diagramInputs?.methanol, true, 'Expected MTG to advertise methanol as a required diagram input.');
   assert.equal(withMtg.state.methanolEnabled, true, 'Expected MTG to auto-enable methanol in the normalized state.');
   assert.ok(mtg.outputDailyUnits > 0, 'Expected MTG to report a non-zero rough output when methanol is available.');
-  assert.ok(mtg.capex > 0, 'Expected MTG to report a rough block CAPEX estimate.');
+  assert.ok(mtg.capex > 0, 'Expected MTG to report a rough CAPEX estimate.');
   assert.ok(mtgEconomics, 'Expected MTG to appear in the exploratory economics breakdown.');
   assert.ok(mtgEconomics.capex > 0, 'Expected MTG CAPEX to flow into project economics.');
   assert.ok(mtgEconomics.annualRevenue > 0, 'Expected MTG revenue to flow into project economics.');
@@ -560,6 +732,52 @@ test('exploratory modules expose peak-day throughput for diagram cards', () => {
       'Expected the diagram peak throughput to scale from the modeled most-active chemical day.',
       `Observed ${lime.peakOutputDailyUnits.toFixed(6)} vs expected ${(lime.outputDailyUnits * expectedPeakScale).toFixed(6)}.`,
     ].join(' ')
+  );
+});
+
+test('exploratory capex uses annual peak throughput rather than average-day sizing', () => {
+  const result = runScenario({
+    latitude: 64.15,
+    longitude: -21.94,
+    systemSizeMW: 100,
+    sabatierEnabled: false,
+    methanolEnabled: false,
+    limeEnabled: true,
+  });
+
+  const lime = result.exploratoryModules.find(module => module.id === 'lime');
+  const route = Calc.getExploratoryRouteConfig('lime', 'resistive-calciner');
+  const peakSizingKW = Math.max(result.chemicalSupply.processPowerKW, result.ai.dispatch?.chemicalPeakKW || 0);
+  const expectedPeakOutputUnitsPerHour = peakSizingKW / route.electricityKwhPerUnit;
+  const expectedPeakSizedCapex = expectedPeakOutputUnitsPerHour *
+    result.solar.cycleHours *
+    result.solar.cyclesPerYear *
+    lime.capexBasis *
+    route.cyclingPenalty;
+  const averageDaySizedCapex = (result.chemicalSupply.processPowerKW / route.electricityKwhPerUnit) *
+    result.solar.cycleHours *
+    result.solar.cyclesPerYear *
+    lime.capexBasis *
+    route.cyclingPenalty;
+
+  assert.ok(lime, 'Expected the lime exploratory module to be present in the modeled results.');
+  assert.ok(
+    Math.abs(lime.peakOutputUnitsPerHour - expectedPeakOutputUnitsPerHour) <= 1e-9,
+    [
+      'Expected exploratory peak sizing to track the annual peak chemical dispatch rate.',
+      `Observed ${lime.peakOutputUnitsPerHour.toFixed(9)} vs expected ${expectedPeakOutputUnitsPerHour.toFixed(9)} units/hour.`,
+    ].join(' ')
+  );
+  assert.ok(
+    Math.abs(lime.capex - expectedPeakSizedCapex) <= 1e-6,
+    [
+      'Expected exploratory CAPEX to size from the peak hourly throughput implied by annual peak dispatch.',
+      `Observed ${lime.capex.toFixed(6)} vs expected ${expectedPeakSizedCapex.toFixed(6)}.`,
+    ].join(' ')
+  );
+  assert.ok(
+    lime.capex > averageDaySizedCapex,
+    'Expected seasonal peak sizing to produce more CAPEX than the old average-day sizing basis.'
   );
 });
 

@@ -332,8 +332,8 @@ const MODULE_REGISTRY = [
     defaultEnabled: true,
     assetLifeKey: 'dacAssetLife',
     configs: [
-      { key: 'dacEnergy', label: 'Energy (kWh/t-CO2)', type: 'range', min: 1000, max: 5000, step: 100, unit: 'kWh/t' },
-      { key: 'dacCapex', label: 'CAPEX ($/t-yr capacity)', type: 'range', min: 100, max: 2000, step: 50, unit: '$/t-yr' },
+      { key: 'dacEnergy', label: 'Efficiency (kWh/t-CO2)', type: 'range', min: 1000, max: 5000, step: 100, unit: 'kWh/t' },
+      { key: 'dacCapex', label: 'CAPEX ($/kW)', type: 'range', min: 50, max: 5000, step: 50, unit: '$/kW' },
     ],
   },
   {
@@ -348,7 +348,7 @@ const MODULE_REGISTRY = [
     assetLifeKey: 'sabatierAssetLife',
     configs: [
       { key: 'sabatierConversion', label: 'Conversion Rate (%)', type: 'range', min: 80, max: 99.5, step: 0.5, unit: '%' },
-      { key: 'sabatierCapex', label: 'Reactor CAPEX ($ per kg/h feed)', type: 'range', min: 20, max: 500, step: 5, unit: '$/kg-feed-hr' },
+      { key: 'sabatierCapex', label: 'CAPEX ($ per kg/h feed)', type: 'range', min: 20, max: 500, step: 5, unit: '$/kg-feed-hr' },
     ],
   },
   {
@@ -362,8 +362,8 @@ const MODULE_REGISTRY = [
     defaultEnabled: false,
     assetLifeKey: 'methanolAssetLife',
     configs: [
-      { key: 'methanolEfficiency', label: 'Conversion Efficiency (%)', type: 'range', min: 60, max: 95, step: 1, unit: '%' },
-      { key: 'methanolCapex', label: 'Reactor CAPEX ($ per kg/h feed)', type: 'range', min: 50, max: 1000, step: 5, unit: '$/kg-feed-hr' },
+      { key: 'methanolEfficiency', label: 'Conversion Rate (%)', type: 'range', min: 60, max: 95, step: 1, unit: '%' },
+      { key: 'methanolCapex', label: 'CAPEX ($ per kg/h feed)', type: 'range', min: 50, max: 1000, step: 5, unit: '$/kg-feed-hr' },
     ],
   },
   {
@@ -1002,6 +1002,7 @@ const DEFAULT_STATE = {
   batteryCostPerKWh: 150,
   batteryEfficiency: 90,
   batteryCycles: 4000,
+  chemicalSizingPercent: 100,
 
   aiComputeEnabled: false,
   aiReliabilityTarget: 99.9,
@@ -1017,7 +1018,7 @@ const DEFAULT_STATE = {
 
   dacEnabled: true,
   dacEnergy: 3440,
-  dacCapex: 600,
+  dacCapex: 450,
   dacAssetLife: 7,
 
   sabatierEnabled: true,
@@ -1124,6 +1125,11 @@ const DEFAULT_STATE = {
 };
 
 const SLIDER_MARKERS = {
+  chemicalSizingPercent: [
+    { value: 70, label: 'Aggressive peak shaving' },
+    { value: 85, label: 'Moderate peak shaving' },
+    { value: 100, label: 'Full-capture default' },
+  ],
   aiTokenPrice: [
     { value: 1, label: 'Low-value internal workload' },
     { value: 3, label: 'Balanced default case' },

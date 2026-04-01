@@ -1,12 +1,12 @@
 importScripts(
-  'solar-geometry.js?v=20260401-opt-progress',
-  'constants.js?v=20260401-opt-progress',
-  'calculations/calculations-core.js?v=20260401-opt-progress',
-  'calculations/calculations-solar.js?v=20260401-opt-progress',
-  'calculations/calculations-battery.js?v=20260401-opt-progress',
-  'calculations/calculations-series-ai.js?v=20260401-opt-progress',
-  'calculations/calculations-process.js?v=20260401-opt-progress',
-  'calculations/calculations-economics.js?v=20260401-opt-progress'
+  'solar-geometry.js?v=20260401-chem-clipping',
+  'constants.js?v=20260401-chem-clipping',
+  'calculations/calculations-core.js?v=20260401-chem-clipping',
+  'calculations/calculations-solar.js?v=20260401-chem-clipping',
+  'calculations/calculations-battery.js?v=20260401-chem-clipping',
+  'calculations/calculations-series-ai.js?v=20260401-chem-clipping',
+  'calculations/calculations-process.js?v=20260401-chem-clipping',
+  'calculations/calculations-economics.js?v=20260401-chem-clipping'
 );
 
 self.addEventListener('message', event => {

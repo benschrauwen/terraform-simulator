@@ -14,6 +14,10 @@ Object.assign(Calc, {
     return this.clampNumber(annualSolarMWh / 1000, 0, 1e9, 0);
   },
 
+  getChemicalSizingFraction(state) {
+    return this.clampNumber(state?.chemicalSizingPercent, 0, 100, DEFAULT_STATE.chemicalSizingPercent) / 100;
+  },
+
   toFiniteNumber(value, fallback = 0) {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : fallback;
@@ -324,6 +328,12 @@ Object.assign(Calc, {
     );
     normalized.batteryEfficiency = this.clampNumber(input.batteryEfficiency, 0, 100, DEFAULT_STATE.batteryEfficiency);
     normalized.batteryCycles = this.clampNumber(input.batteryCycles, 1, 1e9, DEFAULT_STATE.batteryCycles);
+    normalized.chemicalSizingPercent = this.clampNumber(
+      input.chemicalSizingPercent,
+      0,
+      100,
+      DEFAULT_STATE.chemicalSizingPercent
+    );
 
     normalized.aiReliabilityTarget = this.clampNumber(
       input.aiReliabilityTarget,

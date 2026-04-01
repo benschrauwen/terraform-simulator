@@ -54,7 +54,7 @@ Object.assign(Calc, {
   getExploratoryCapexControlConfig(moduleId, route) {
     const routeConfig = this.getExploratoryRouteConfig(moduleId, route);
     const defaultValue = routeConfig?.capexPerAnnualUnit || 0;
-    const unitLabel = routeConfig?.capexUnit === 'm3pd' ? '$/m3/day' : '$/tpa';
+    const unitLabel = routeConfig?.capexUnit === 'm3pd' ? '$/m3/day' : '$/ton/yr capacity';
     const step = defaultValue >= 5000 ? 100 : defaultValue >= 1000 ? 50 : defaultValue >= 250 ? 10 : 5;
     const min = Math.max(step, Math.floor((defaultValue * 0.25) / step) * step);
     const max = Math.max(min + step, Math.ceil((defaultValue * 4) / step) * step);
@@ -308,7 +308,7 @@ Object.assign(Calc, {
       co2DailyKg,
       co2AnnualKg,
       co2AnnualTons,
-      capex: co2AnnualTons * state.dacCapex,
+      capex: allocKW * state.dacCapex,
     };
   },
 
@@ -529,18 +529,34 @@ Object.assign(Calc, {
     return Math.max(0, Math.min(...limits.filter(Number.isFinite)));
   },
 
-  calculateExploratoryCapex(routeConfig, capexBasis, outputDailyUnits, annualOutputUnits, realizedCapacityFactor) {
-    if (!routeConfig || outputDailyUnits <= 0 || annualOutputUnits <= 0) return 0;
-    const effectiveCf = Math.max(0.05, Math.min(1, realizedCapacityFactor || 0));
+  calculateExploratoryPeakOutputRate(routeConfig, peakAllocKW, peakAllocations = {}) {
+    if (!routeConfig || !Number.isFinite(peakAllocKW) || peakAllocKW <= 0) return 0;
+
+    const limits = [];
+    if (routeConfig.electricityKwhPerUnit > 0) {
+      limits.push(peakAllocKW / routeConfig.electricityKwhPerUnit);
+    }
+
+    const feedstocks = routeConfig.feedstocks || {};
+    if (feedstocks.h2Kg > 0) limits.push((peakAllocations.h2KgPerHour || 0) / feedstocks.h2Kg);
+    if (feedstocks.co2Kg > 0) limits.push((peakAllocations.co2KgPerHour || 0) / feedstocks.co2Kg);
+    if (feedstocks.methanolKg > 0) limits.push((peakAllocations.methanolKgPerHour || 0) / feedstocks.methanolKg);
+
+    if (!limits.length) return 0;
+    return Math.max(0, Math.min(...limits.filter(Number.isFinite)));
+  },
+
+  calculateExploratoryCapex(routeConfig, capexBasis, peakOutputUnitsPerHour, cycleHours, cyclesPerYear) {
+    if (!routeConfig || peakOutputUnitsPerHour <= 0 || cycleHours <= 0 || cyclesPerYear <= 0) return 0;
     const cyclingPenalty = routeConfig.cyclingPenalty || 1;
     const baseCapex = Number.isFinite(capexBasis) ? capexBasis : (routeConfig.capexPerAnnualUnit || 0);
+    const nameplateUnitsPerDay = peakOutputUnitsPerHour * cycleHours;
 
     if (routeConfig.capexUnit === 'm3pd') {
-      const nameplateUnitsPerDay = outputDailyUnits / effectiveCf;
       return nameplateUnitsPerDay * baseCapex * cyclingPenalty;
     }
 
-    const nameplateAnnualUnits = annualOutputUnits / effectiveCf;
+    const nameplateAnnualUnits = nameplateUnitsPerDay * cyclesPerYear;
     return nameplateAnnualUnits * baseCapex * cyclingPenalty;
   },
 
@@ -548,8 +564,10 @@ Object.assign(Calc, {
     const {
       allocationPlan,
       materialFlows = {},
+      peakMaterialFlows = {},
       supportedOutputs = {},
       effectivePeakKW = 0,
+      peakSizingKW = 0,
       effectiveDailyKWh = 0,
       peakDailyKWh = 0,
       opHours = 0,
@@ -575,20 +593,29 @@ Object.assign(Calc, {
         const omPercent = Number(state.exploratoryOmPercent);
         const powerShare = allocationPlan?.powerShares?.exploratory?.[module.id] || 0;
         const allocKW = effectivePeakKW * powerShare;
+        const peakAllocKW = Math.max(effectivePeakKW, peakSizingKW) * powerShare;
         const dailyKWh = effectiveDailyKWh * powerShare;
-        const realizedCapacityFactor = allocKW > 0 && cycleHours > 0
-          ? Math.max(0, Math.min(1, dailyKWh / (allocKW * cycleHours)))
-          : 0;
         const allocations = {
           h2Kg: (materialFlows.h2DailyKg || 0) * (h2Shares[module.id] || 0),
           co2Kg: (materialFlows.co2DailyKg || 0) * (co2Shares[module.id] || 0),
           methanolKg: module.id === 'mtg' ? grossMethanolDailyKg * (methanolShares.mtg || 0) : 0,
         };
+        const peakAllocations = {
+          h2KgPerHour: (peakMaterialFlows.h2KgPerHour || 0) * (h2Shares[module.id] || 0),
+          co2KgPerHour: (peakMaterialFlows.co2KgPerHour || 0) * (co2Shares[module.id] || 0),
+          methanolKgPerHour: module.id === 'mtg' ? (peakMaterialFlows.methanolKgPerHour || 0) * (methanolShares.mtg || 0) : 0,
+        };
         const outputDailyUnits = enabled
           ? this.calculateExploratoryOutputUnits(routeConfig, dailyKWh, allocations)
           : 0;
+        const peakOutputUnitsPerHour = enabled
+          ? this.calculateExploratoryPeakOutputRate(routeConfig, peakAllocKW, peakAllocations)
+          : 0;
         const peakOutputDailyUnits = outputDailyUnits * peakDayScale;
         const annualOutputUnits = outputDailyUnits * cyclesPerYear;
+        const realizedCapacityFactor = peakOutputUnitsPerHour > 0 && cycleHours > 0
+          ? Math.max(0, Math.min(1, outputDailyUnits / (peakOutputUnitsPerHour * cycleHours)))
+          : 0;
         const h2Consumed = outputDailyUnits * (routeConfig?.feedstocks?.h2Kg || 0);
         const co2Consumed = outputDailyUnits * (routeConfig?.feedstocks?.co2Kg || 0);
         const methanolConsumed = outputDailyUnits * (routeConfig?.feedstocks?.methanolKg || 0);
@@ -605,11 +632,18 @@ Object.assign(Calc, {
           dailyKWh,
           realizedCapacityFactor,
           outputDailyUnits,
+          peakOutputUnitsPerHour,
           peakOutputDailyUnits,
           annualOutputUnits,
           outputLabel: routeConfig?.outputLabel || module.label,
           outputUnit: routeConfig?.outputUnit || 't',
-          capex: this.calculateExploratoryCapex(routeConfig, capexBasis, outputDailyUnits, annualOutputUnits, realizedCapacityFactor),
+          capex: this.calculateExploratoryCapex(
+            routeConfig,
+            capexBasis,
+            peakOutputUnitsPerHour,
+            cycleHours,
+            cyclesPerYear
+          ),
           capexBasisUnit: routeConfig?.capexUnit || 'tpa',
           capexBasis: Number.isFinite(capexBasis) ? capexBasis : (routeConfig?.capexPerAnnualUnit || 0),
           omPercent: Number.isFinite(omPercent) ? omPercent : 4,

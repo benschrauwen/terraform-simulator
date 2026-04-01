@@ -19,12 +19,16 @@ window.AppRendererMethods = {
     if (dailyOpHoursLabel && r.ai.enabled) {
       dailyOpHoursLabel.textContent = r.solar.bodyKey === 'earth' ? 'Residual Chem Hrs/Day:' : 'Residual Chem Hrs/Cycle:';
     }
+    const useChemicalUtilizationMetrics = r.ai.enabled ||
+      r.storage.enabled ||
+      (r.chemicalSupply?.sizingPercent ?? 100) < 99.999 ||
+      (r.chemicalSupply?.clippedDailyKWh || 0) > 1e-6;
     const displayedCf = r.ai.enabled
       ? r.chemicalSupply.effectiveCF
-      : (r.storage.enabled ? r.chemicalSupply.effectiveCF : r.solar.capacityFactor);
+      : (useChemicalUtilizationMetrics ? r.chemicalSupply.effectiveCF : r.solar.capacityFactor);
     const displayedHours = r.ai.enabled
       ? r.ai.chemicalDailyOpHours
-      : (r.storage.enabled ? r.chemicalSupply.dailyOpHours : r.solar.sunHours);
+      : (useChemicalUtilizationMetrics ? r.chemicalSupply.dailyOpHours : r.solar.sunHours);
     document.getElementById('effectiveCF').textContent = `${FormatNumbers.fixed(displayedCf * 100, 1)}%`;
     document.getElementById('dailyOpHours').textContent = `${FormatNumbers.fixed(parseFloat(displayedHours), 1)} hrs`;
 
@@ -45,7 +49,7 @@ window.AppRendererMethods = {
       aiTokensAnnualValue.textContent = r.ai.enabled ? `${FormatNumbers.fixed(r.ai.annualTokensM / 1000, 2)}B` : '—';
     }
 
-    const geo = r.solar.solarGeo;
+    const geo = this.getDisplaySolarGeometry(r);
     if (geo) {
       document.getElementById('sunriseTime').textContent = SolarGeometry.hoursToDisplayString(geo.sunrise, r.solar.cycleHours);
       document.getElementById('sunsetTime').textContent = SolarGeometry.hoursToDisplayString(geo.sunset, r.solar.cycleHours);
@@ -117,7 +121,9 @@ window.AppRendererMethods = {
       if (e.paybackYears < 5) badges.push({ text: 'Fast Payback', cls: 'gold' });
     }
 
-    const cf = r.storage.enabled ? r.chemicalSupply.effectiveCF : r.solar.capacityFactor;
+    const cf = (r.storage.enabled || (r.chemicalSupply?.sizingPercent ?? 100) < 99.999 || (r.chemicalSupply?.clippedDailyKWh || 0) > 1e-6)
+      ? r.chemicalSupply.effectiveCF
+      : r.solar.capacityFactor;
     score += cf * 18;
     if (cf > 0.22) badges.push({ text: 'High Utilization', cls: 'blue' });
 
@@ -149,7 +155,7 @@ window.AppRendererMethods = {
   },
 
   updateDiagram(r) {
-    Diagram.render(document.getElementById('diagramContainer'), r);
+    Diagram.render(document.getElementById('diagramContainer'), this.buildDiagramDisplayResults(r));
   },
 
   updateProduction(r) {
@@ -495,7 +501,7 @@ window.AppRendererMethods = {
           this.econRow(`${module.label} price`, `$${FormatNumbers.fixed(module.unitPrice, priceDigits)}/${unitSuffix}`),
           this.econRow(
             `${module.label} CAPEX basis`,
-            `$${FormatNumbers.fixed(module.capexBasis, 0)}/${module.capexBasisUnit === 'm3pd' ? 'm3/day' : 'tpa'}`
+            `$${FormatNumbers.fixed(module.capexBasis, 0)}/${module.capexBasisUnit === 'm3pd' ? 'm3/day' : 'ton/yr capacity'}`
           ),
           this.econRow(
             `${module.label} output`,

@@ -422,15 +422,16 @@ Object.assign(Calc, {
   calculateScenario(state, options = {}) {
     const fastMode = Boolean(options.fastMode);
     const normalizedState = this.normalizeState(state);
-    const includeAnnualSolar = !fastMode || normalizedState.aiComputeEnabled;
+    const exploratoryEnabled = MODULE_REGISTRY.some(
+      module => module.maturity === 'Exploratory' && Boolean(normalizedState[`${module.id}Enabled`])
+    );
+    const includeAnnualSolar = !fastMode || normalizedState.aiComputeEnabled || exploratoryEnabled;
     const includeAnnualSolarWindowSummaries = !fastMode;
     const includeDispatchSeries = !fastMode;
     const includeDisplayDispatchSeries = !fastMode;
     const includeBatterySeries = !fastMode;
     const includeSupportedModules = !fastMode;
-    const includeExploratoryModules = !fastMode || MODULE_REGISTRY.some(
-      module => module.maturity === 'Exploratory' && Boolean(normalizedState[`${module.id}Enabled`])
-    );
+    const includeExploratoryModules = !fastMode || exploratoryEnabled;
     const includeEnvironmental = !fastMode;
     const solar = this.calculateSolar(normalizedState);
     const annualSolar = includeAnnualSolar
@@ -438,7 +439,7 @@ Object.assign(Calc, {
           includeWindowSummaries: includeAnnualSolarWindowSummaries,
         })
       : null;
-    const shouldRunAiModel = normalizedState.aiComputeEnabled || !fastMode;
+    const shouldRunAiModel = normalizedState.aiComputeEnabled || !fastMode || exploratoryEnabled;
     const ai = shouldRunAiModel
       ? this.calculateAICompute(normalizedState, solar, annualSolar, {
           captureDispatchSeries: includeDispatchSeries,
@@ -452,6 +453,22 @@ Object.assign(Calc, {
         });
     const storage = ai.enabled ? ai.storage : batterySummary.storage;
     const chemicalSupply = ai.enabled ? ai.chemicalSupply : batterySummary.chemicalSupply;
+    const annualChemicalDisplayDispatch = (!ai.enabled &&
+      includeDisplayDispatchSeries &&
+      normalizedState.body === 'earth' &&
+      annualSolar &&
+      Array.isArray(annualSolar.hourlyKW) &&
+      annualSolar.hourlyKW.length)
+      ? {
+          ...this.simulateAnnualChemicalDispatch(
+            normalizedState,
+            annualSolar,
+            chemicalSupply.processPowerKW,
+            { captureSeries: true }
+          ),
+          dayLabels: annualSolar.dayLabels || [],
+        }
+      : null;
     const cyclesPerYear = this.getBodyConfig(normalizedState.body || 'earth').cyclesPerEarthYear;
     const effectiveDailyKWh = ai.enabled
       ? ai.chemicalAnnualKWh / Math.max(cyclesPerYear, 1)
@@ -460,6 +477,10 @@ Object.assign(Calc, {
       ? Math.max(...ai.dispatch.dailyChemicalKWh, 0)
       : effectiveDailyKWh;
     const effectivePeakKW = chemicalSupply.processPowerKW;
+    const peakSizingKW = Math.max(
+      effectivePeakKW,
+      Number.isFinite(ai.dispatch?.chemicalPeakKW) ? ai.dispatch.chemicalPeakKW : 0
+    );
     const opHours = ai.enabled
       ? ai.chemicalDailyOpHours
       : chemicalSupply.dailyOpHours;
@@ -504,8 +525,20 @@ Object.assign(Calc, {
             h2DailyKg: electrolyzer.h2DailyKg || 0,
             co2DailyKg: dac.co2DailyKg || 0,
           },
+          peakMaterialFlows: {
+            h2KgPerHour: normalizedState.electrolyzerEnabled
+              ? (peakSizingKW * allocation.electrolyzer) / normalizedState.electrolyzerEfficiency
+              : 0,
+            co2KgPerHour: normalizedState.dacEnabled
+              ? ((peakSizingKW * allocation.dac) / normalizedState.dacEnergy) * 1000
+              : 0,
+            methanolKgPerHour: (productFlow.outputs?.methanol?.designHourlyOutputKg || 0) * (
+              effectivePeakKW > 0 ? peakSizingKW / effectivePeakKW : 1
+            ),
+          },
           supportedOutputs: productFlow.outputs,
           effectivePeakKW: reactorSizingPeakKW,
+          peakSizingKW,
           effectiveDailyKWh,
           peakDailyKWh: peakChemicalDailyKWh,
           opHours,
@@ -552,6 +585,7 @@ Object.assign(Calc, {
       chemicalSupply,
       ai,
       annualDispatch: ai.dispatch || null,
+      annualChemicalDisplayDispatch,
       allocation,
       electrolyzer,
       dac,

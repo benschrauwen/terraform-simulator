@@ -260,6 +260,22 @@
           </div>
 
           <div class="load-config-panel active" data-load-panel="chemicals">
+            <div class="range-control">
+              <label for="chemicalSizingPercent">Chemical peak sizing</label>
+              <input type="range" id="chemicalSizingPercent" min="0" max="100" step="1" value="100">
+              <span class="range-control-footer">
+                <span class="range-value" id="chemicalSizingPercentValue">100% of full-capture peak</span>
+                <button
+                  type="button"
+                  class="inline-optimize-button"
+                  id="optimizeChemicalSizing"
+                  title="Set chemical peak sizing to the best IRR found"
+                >optimize</button>
+              </span>
+            </div>
+            <div class="field-note compact-note">
+              <code>100%</code> keeps today&apos;s full-capture sizing. Lower values build less peak chemical capacity and allow solar clipping on the highest-output hours.
+            </div>
             <div class="module-group">
               <div class="module-group-title">Supported modules</div>
               <div id="productMixControl" class="process-card product-mix-card" style="display:none;">

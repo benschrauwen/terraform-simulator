@@ -425,7 +425,15 @@ Object.assign(Calc, {
     const exploratoryEnabled = MODULE_REGISTRY.some(
       module => module.maturity === 'Exploratory' && Boolean(normalizedState[`${module.id}Enabled`])
     );
-    const includeAnnualSolar = !fastMode || normalizedState.aiComputeEnabled || exploratoryEnabled;
+    const bufferedModuleEnabled = MODULE_REGISTRY.some(module => {
+      if (!normalizedState[`${module.id}Enabled`]) return false;
+      return this.isModuleFeedBufferEnabled(
+        normalizedState,
+        module.id,
+        normalizedState[`${module.id}Route`]
+      );
+    });
+    const includeAnnualSolar = !fastMode || normalizedState.aiComputeEnabled || exploratoryEnabled || bufferedModuleEnabled;
     const includeAnnualSolarWindowSummaries = !fastMode;
     const includeDispatchSeries = !fastMode;
     const includeDisplayDispatchSeries = !fastMode;
@@ -439,10 +447,11 @@ Object.assign(Calc, {
           includeWindowSummaries: includeAnnualSolarWindowSummaries,
         })
       : null;
-    const shouldRunAiModel = normalizedState.aiComputeEnabled || !fastMode || exploratoryEnabled;
+    const shouldRunAiModel = normalizedState.aiComputeEnabled || !fastMode || exploratoryEnabled || bufferedModuleEnabled;
     const ai = shouldRunAiModel
       ? this.calculateAICompute(normalizedState, solar, annualSolar, {
           captureDispatchSeries: includeDispatchSeries,
+          captureDailySummaries: bufferedModuleEnabled,
           includeDisplayDispatchSeries,
         })
       : this.buildDisabledAiSummary(normalizedState);
@@ -476,6 +485,9 @@ Object.assign(Calc, {
     const peakChemicalDailyKWh = Array.isArray(ai.dispatch?.dailyChemicalKWh) && ai.dispatch.dailyChemicalKWh.length
       ? Math.max(...ai.dispatch.dailyChemicalKWh, 0)
       : effectiveDailyKWh;
+    const peakDayScale = effectiveDailyKWh > 0 && peakChemicalDailyKWh > 0
+      ? Math.max(1, peakChemicalDailyKWh / effectiveDailyKWh)
+      : 1;
     const effectivePeakKW = chemicalSupply.processPowerKW;
     const peakSizingKW = Math.max(
       effectivePeakKW,
@@ -504,6 +516,8 @@ Object.assign(Calc, {
       {
         h2DailyKg: electrolyzer.h2DailyKg || 0,
         co2DailyKg: dac.co2DailyKg || 0,
+        peakH2DailyKg: (electrolyzer.h2DailyKg || 0) * peakDayScale,
+        peakCO2DailyKg: (dac.co2DailyKg || 0) * peakDayScale,
         h2SizingPeakKgPerHour: normalizedState.electrolyzerEnabled
           ? (reactorSizingPeakKW * allocation.electrolyzer) / normalizedState.electrolyzerEfficiency
           : 0,
@@ -533,7 +547,9 @@ Object.assign(Calc, {
               ? ((peakSizingKW * allocation.dac) / normalizedState.dacEnergy) * 1000
               : 0,
             methanolKgPerHour: (productFlow.outputs?.methanol?.designHourlyOutputKg || 0) * (
-              effectivePeakKW > 0 ? peakSizingKW / effectivePeakKW : 1
+              productFlow.outputs?.methanol?.bufferEnabled
+                ? 1
+                : (effectivePeakKW > 0 ? peakSizingKW / effectivePeakKW : 1)
             ),
           },
           supportedOutputs: productFlow.outputs,

@@ -312,12 +312,22 @@ Object.assign(Calc, {
     };
   },
 
-  calculateSabatier(state, h2AvailableKg, co2AvailableKg, opHours, peakH2SizingKgPerHour = 0, peakCO2SizingKgPerHour = 0) {
+  calculateSabatier(
+    state,
+    h2AvailableKg,
+    co2AvailableKg,
+    opHours,
+    peakH2SizingKgPerHour = 0,
+    peakCO2SizingKgPerHour = 0,
+    peakH2DailyKg = h2AvailableKg,
+    peakCO2DailyKg = co2AvailableKg
+  ) {
     const body = this.getBodyConfig(state.body || 'earth');
     if (!state.sabatierEnabled || h2AvailableKg <= 0 || co2AvailableKg <= 0) {
       return {
         id: 'sabatier',
         enabled: false,
+        bufferEnabled: false,
         modeled: false,
         title: 'Methane (Sabatier)',
         family: 'air-water-chemistry',
@@ -342,25 +352,39 @@ Object.assign(Calc, {
 
     const c = CHEMISTRY.sabatier;
     const conv = state.sabatierConversion / 100;
+    const bufferEnabled = this.isModuleFeedBufferEnabled(state, 'sabatier');
     const ch4FromH2 = h2AvailableKg / c.h2MassPerKgCH4;
     const ch4FromCO2 = co2AvailableKg / c.co2MassPerKgCH4;
     const grossCh4DailyKg = Math.min(ch4FromH2, ch4FromCO2);
     const ch4DailyKg = grossCh4DailyKg * conv;
-    const ch4DailyMCF = ch4DailyKg / c.ch4PerMCF;
-    const hourlyRate = opHours > 0 ? ch4DailyMCF / opHours : 0;
     const peakCh4FromH2 = peakH2SizingKgPerHour / c.h2MassPerKgCH4;
     const peakCh4FromCO2 = peakCO2SizingKgPerHour / c.co2MassPerKgCH4;
-    const designGrossCh4KgPerHour = Math.min(peakCh4FromH2, peakCh4FromCO2);
+    const sizingPeakH2DailyKg = Math.max(h2AvailableKg, Number.isFinite(peakH2DailyKg) ? peakH2DailyKg : 0);
+    const sizingPeakCO2DailyKg = Math.max(co2AvailableKg, Number.isFinite(peakCO2DailyKg) ? peakCO2DailyKg : 0);
+    const bufferedPeakCh4FromH2 = body.cycleHours > 0
+      ? (sizingPeakH2DailyKg / body.cycleHours) / c.h2MassPerKgCH4
+      : 0;
+    const bufferedPeakCh4FromCO2 = body.cycleHours > 0
+      ? (sizingPeakCO2DailyKg / body.cycleHours) / c.co2MassPerKgCH4
+      : 0;
+    const designGrossCh4KgPerHour = bufferEnabled
+      ? Math.min(bufferedPeakCh4FromH2, bufferedPeakCh4FromCO2)
+      : Math.min(peakCh4FromH2, peakCh4FromCO2);
     const designH2FeedKgPerHour = designGrossCh4KgPerHour * c.h2MassPerKgCH4;
     const designCO2FeedKgPerHour = designGrossCh4KgPerHour * c.co2MassPerKgCH4;
     const designFeedKgPerHour = designH2FeedKgPerHour + designCO2FeedKgPerHour;
     const designHourlyOutputKg = designGrossCh4KgPerHour * conv;
     const designHourlyRate = designHourlyOutputKg / c.ch4PerMCF;
-    const averageGrossFeedKgPerHour = opHours > 0
-      ? (grossCh4DailyKg * (c.h2MassPerKgCH4 + c.co2MassPerKgCH4)) / opHours
+    const ch4DailyMCF = ch4DailyKg / c.ch4PerMCF;
+    const designRunHours = bufferEnabled ? body.cycleHours : opHours;
+    const hourlyRate = designRunHours > 0 ? ch4DailyMCF / designRunHours : 0;
+    const grossFeedMassPerKgCh4 = c.h2MassPerKgCH4 + c.co2MassPerKgCH4;
+    const grossDailyFeedKg = grossCh4DailyKg * grossFeedMassPerKgCh4;
+    const averageGrossFeedKgPerHour = designRunHours > 0
+      ? grossDailyFeedKg / designRunHours
       : 0;
     const averageUtilization = designFeedKgPerHour > 0
-      ? Math.min(1, ((grossCh4DailyKg * (c.h2MassPerKgCH4 + c.co2MassPerKgCH4)) / body.cycleHours) / designFeedKgPerHour)
+      ? Math.min(1, (grossDailyFeedKg / body.cycleHours) / designFeedKgPerHour)
       : 0;
     const operatingUtilization = designFeedKgPerHour > 0
       ? Math.min(1, averageGrossFeedKgPerHour / designFeedKgPerHour)
@@ -368,6 +392,7 @@ Object.assign(Calc, {
     return {
       id: 'sabatier',
       enabled: true,
+      bufferEnabled,
       modeled: true,
       title: 'Methane (Sabatier)',
       family: 'air-water-chemistry',
@@ -392,12 +417,22 @@ Object.assign(Calc, {
     };
   },
 
-  calculateMethanol(state, h2AvailableKg, co2AvailableKg, opHours, peakH2SizingKgPerHour = 0, peakCO2SizingKgPerHour = 0) {
+  calculateMethanol(
+    state,
+    h2AvailableKg,
+    co2AvailableKg,
+    opHours,
+    peakH2SizingKgPerHour = 0,
+    peakCO2SizingKgPerHour = 0,
+    peakH2DailyKg = h2AvailableKg,
+    peakCO2DailyKg = co2AvailableKg
+  ) {
     const body = this.getBodyConfig(state.body || 'earth');
     if (!state.methanolEnabled || h2AvailableKg <= 0 || co2AvailableKg <= 0) {
       return {
         id: 'methanol',
         enabled: false,
+        bufferEnabled: false,
         modeled: false,
         title: 'Methanol',
         family: 'air-water-chemistry',
@@ -428,6 +463,7 @@ Object.assign(Calc, {
 
     const c = CHEMISTRY.methanol;
     const eff = state.methanolEfficiency / 100;
+    const bufferEnabled = this.isModuleFeedBufferEnabled(state, 'methanol');
     const grossDailyKg = Math.min(
       h2AvailableKg / c.h2MassPerKgMeOH,
       co2AvailableKg / c.co2MassPerKgMeOH
@@ -435,16 +471,29 @@ Object.assign(Calc, {
     const dailyKg = grossDailyKg * eff;
     const peakMeohFromH2 = peakH2SizingKgPerHour / c.h2MassPerKgMeOH;
     const peakMeohFromCO2 = peakCO2SizingKgPerHour / c.co2MassPerKgMeOH;
-    const designGrossKgPerHour = Math.min(peakMeohFromH2, peakMeohFromCO2);
+    const sizingPeakH2DailyKg = Math.max(h2AvailableKg, Number.isFinite(peakH2DailyKg) ? peakH2DailyKg : 0);
+    const sizingPeakCO2DailyKg = Math.max(co2AvailableKg, Number.isFinite(peakCO2DailyKg) ? peakCO2DailyKg : 0);
+    const bufferedPeakMeohFromH2 = body.cycleHours > 0
+      ? (sizingPeakH2DailyKg / body.cycleHours) / c.h2MassPerKgMeOH
+      : 0;
+    const bufferedPeakMeohFromCO2 = body.cycleHours > 0
+      ? (sizingPeakCO2DailyKg / body.cycleHours) / c.co2MassPerKgMeOH
+      : 0;
+    const designGrossKgPerHour = bufferEnabled
+      ? Math.min(bufferedPeakMeohFromH2, bufferedPeakMeohFromCO2)
+      : Math.min(peakMeohFromH2, peakMeohFromCO2);
     const designH2FeedKgPerHour = designGrossKgPerHour * c.h2MassPerKgMeOH;
     const designCO2FeedKgPerHour = designGrossKgPerHour * c.co2MassPerKgMeOH;
     const designFeedKgPerHour = designH2FeedKgPerHour + designCO2FeedKgPerHour;
     const designHourlyOutputKg = designGrossKgPerHour * eff;
-    const averageGrossFeedKgPerHour = opHours > 0
-      ? (grossDailyKg * (c.h2MassPerKgMeOH + c.co2MassPerKgMeOH)) / opHours
+    const designRunHours = bufferEnabled ? body.cycleHours : opHours;
+    const grossFeedMassPerKgMeoh = c.h2MassPerKgMeOH + c.co2MassPerKgMeOH;
+    const grossDailyFeedKg = grossDailyKg * grossFeedMassPerKgMeoh;
+    const averageGrossFeedKgPerHour = designRunHours > 0
+      ? grossDailyFeedKg / designRunHours
       : 0;
     const averageUtilization = designFeedKgPerHour > 0
-      ? Math.min(1, ((grossDailyKg * (c.h2MassPerKgMeOH + c.co2MassPerKgMeOH)) / body.cycleHours) / designFeedKgPerHour)
+      ? Math.min(1, (grossDailyFeedKg / body.cycleHours) / designFeedKgPerHour)
       : 0;
     const operatingUtilization = designFeedKgPerHour > 0
       ? Math.min(1, averageGrossFeedKgPerHour / designFeedKgPerHour)
@@ -453,6 +502,7 @@ Object.assign(Calc, {
     return {
       id: 'methanol',
       enabled: true,
+      bufferEnabled,
       modeled: true,
       title: 'Methanol',
       family: 'air-water-chemistry',
@@ -492,7 +542,9 @@ Object.assign(Calc, {
       (materialFlows.co2DailyKg || 0) * (co2Shares.sabatier || 0),
       opHours,
       (materialFlows.h2SizingPeakKgPerHour || 0) * (h2Shares.sabatier || 0),
-      (materialFlows.co2SizingPeakKgPerHour || 0) * (co2Shares.sabatier || 0)
+      (materialFlows.co2SizingPeakKgPerHour || 0) * (co2Shares.sabatier || 0),
+      ((materialFlows.peakH2DailyKg ?? materialFlows.h2DailyKg) || 0) * (h2Shares.sabatier || 0),
+      ((materialFlows.peakCO2DailyKg ?? materialFlows.co2DailyKg) || 0) * (co2Shares.sabatier || 0)
     );
 
     const methanol = this.calculateMethanol(
@@ -501,7 +553,9 @@ Object.assign(Calc, {
       (materialFlows.co2DailyKg || 0) * (co2Shares.methanol || 0),
       opHours,
       (materialFlows.h2SizingPeakKgPerHour || 0) * (h2Shares.methanol || 0),
-      (materialFlows.co2SizingPeakKgPerHour || 0) * (co2Shares.methanol || 0)
+      (materialFlows.co2SizingPeakKgPerHour || 0) * (co2Shares.methanol || 0),
+      ((materialFlows.peakH2DailyKg ?? materialFlows.h2DailyKg) || 0) * (h2Shares.methanol || 0),
+      ((materialFlows.peakCO2DailyKg ?? materialFlows.co2DailyKg) || 0) * (co2Shares.methanol || 0)
     );
 
     return {
@@ -544,6 +598,15 @@ Object.assign(Calc, {
 
     if (!limits.length) return 0;
     return Math.max(0, Math.min(...limits.filter(Number.isFinite)));
+  },
+
+  calculateExploratoryBufferedOutputRate(routeConfig, peakAllocKW, dailyAllocations = {}, cycleHours = 0) {
+    if (!routeConfig || !Number.isFinite(cycleHours) || cycleHours <= 0) return 0;
+    return this.calculateExploratoryPeakOutputRate(routeConfig, peakAllocKW, {
+      h2KgPerHour: (dailyAllocations.h2Kg || 0) / cycleHours,
+      co2KgPerHour: (dailyAllocations.co2Kg || 0) / cycleHours,
+      methanolKgPerHour: (dailyAllocations.methanolKg || 0) / cycleHours,
+    });
   },
 
   calculateExploratoryCapex(routeConfig, capexBasis, peakOutputUnitsPerHour, cycleHours, cyclesPerYear) {
@@ -595,10 +658,17 @@ Object.assign(Calc, {
         const allocKW = effectivePeakKW * powerShare;
         const peakAllocKW = Math.max(effectivePeakKW, peakSizingKW) * powerShare;
         const dailyKWh = effectiveDailyKWh * powerShare;
+        const peakDayKWh = dailyKWh * peakDayScale;
+        const bufferEnabled = this.isModuleFeedBufferEnabled(state, module.id, route);
         const allocations = {
           h2Kg: (materialFlows.h2DailyKg || 0) * (h2Shares[module.id] || 0),
           co2Kg: (materialFlows.co2DailyKg || 0) * (co2Shares[module.id] || 0),
           methanolKg: module.id === 'mtg' ? grossMethanolDailyKg * (methanolShares.mtg || 0) : 0,
+        };
+        const peakDayAllocations = {
+          h2Kg: allocations.h2Kg * peakDayScale,
+          co2Kg: allocations.co2Kg * peakDayScale,
+          methanolKg: allocations.methanolKg * peakDayScale,
         };
         const peakAllocations = {
           h2KgPerHour: (peakMaterialFlows.h2KgPerHour || 0) * (h2Shares[module.id] || 0),
@@ -611,10 +681,19 @@ Object.assign(Calc, {
         const peakOutputUnitsPerHour = enabled
           ? this.calculateExploratoryPeakOutputRate(routeConfig, peakAllocKW, peakAllocations)
           : 0;
-        const peakOutputDailyUnits = outputDailyUnits * peakDayScale;
+        const peakOutputDailyUnits = enabled
+          ? this.calculateExploratoryOutputUnits(routeConfig, peakDayKWh, peakDayAllocations)
+          : 0;
+        const capexSizingOutputUnitsPerHour = enabled
+          ? (
+              bufferEnabled
+                ? this.calculateExploratoryBufferedOutputRate(routeConfig, peakAllocKW, peakDayAllocations, cycleHours)
+                : peakOutputUnitsPerHour
+            )
+          : 0;
         const annualOutputUnits = outputDailyUnits * cyclesPerYear;
-        const realizedCapacityFactor = peakOutputUnitsPerHour > 0 && cycleHours > 0
-          ? Math.max(0, Math.min(1, outputDailyUnits / (peakOutputUnitsPerHour * cycleHours)))
+        const realizedCapacityFactor = capexSizingOutputUnitsPerHour > 0 && cycleHours > 0
+          ? Math.max(0, Math.min(1, outputDailyUnits / (capexSizingOutputUnitsPerHour * cycleHours)))
           : 0;
         const h2Consumed = outputDailyUnits * (routeConfig?.feedstocks?.h2Kg || 0);
         const co2Consumed = outputDailyUnits * (routeConfig?.feedstocks?.co2Kg || 0);
@@ -627,12 +706,14 @@ Object.assign(Calc, {
           routeLabel: module.routeOptions.find(option => option.value === route)?.label || route,
           routeConfig,
           modeled: enabled,
+          bufferEnabled,
           excludedFromEconomics: false,
           allocKW,
           dailyKWh,
           realizedCapacityFactor,
           outputDailyUnits,
           peakOutputUnitsPerHour,
+          capexSizingOutputUnitsPerHour,
           peakOutputDailyUnits,
           annualOutputUnits,
           outputLabel: routeConfig?.outputLabel || module.label,
@@ -640,7 +721,7 @@ Object.assign(Calc, {
           capex: this.calculateExploratoryCapex(
             routeConfig,
             capexBasis,
-            peakOutputUnitsPerHour,
+            capexSizingOutputUnitsPerHour,
             cycleHours,
             cyclesPerYear
           ),

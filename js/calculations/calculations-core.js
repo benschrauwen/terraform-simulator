@@ -209,6 +209,38 @@ Object.assign(Calc, {
     return MODULE_REGISTRY.find(module => module.id === moduleId) || null;
   },
 
+  moduleSupportsFeedBuffer(moduleId, route = null) {
+    const module = this.getModuleById(moduleId);
+    if (!module) return false;
+    if (module.supportsFeedBuffer) return true;
+    if (!module.routeOptions?.length) return false;
+
+    const routeToCheck = route || getModuleDefaultRoute(module);
+    const routeConfig = routeToCheck ? this.getExploratoryRouteConfig(moduleId, routeToCheck) : null;
+    return Boolean(routeConfig?.supportsFeedBuffer);
+  },
+
+  hasModuleFeedBufferSupport(moduleId) {
+    const module = this.getModuleById(moduleId);
+    if (!module) return false;
+    if (module.supportsFeedBuffer) return true;
+    return Boolean(module.routeOptions?.some(option => this.moduleSupportsFeedBuffer(moduleId, option.value)));
+  },
+
+  getModuleFeedBufferLabel(moduleId, route = null) {
+    const module = this.getModuleById(moduleId);
+    if (!module) return 'Feed buffer (cycle-average sizing)';
+    if (module.bufferLabel) return module.bufferLabel;
+
+    const routeToCheck = route || getModuleDefaultRoute(module);
+    const routeConfig = routeToCheck ? this.getExploratoryRouteConfig(moduleId, routeToCheck) : null;
+    return routeConfig?.bufferLabel || 'Feed buffer (cycle-average sizing)';
+  },
+
+  isModuleFeedBufferEnabled(state = {}, moduleId, route = null) {
+    return this.moduleSupportsFeedBuffer(moduleId, route) && Boolean(state?.[`${moduleId}BufferEnabled`]);
+  },
+
   getDirectModuleDependencies(moduleId, state = {}) {
     const module = this.getModuleById(moduleId);
     if (!module) return [];
@@ -267,6 +299,7 @@ Object.assign(Calc, {
     MODULE_REGISTRY.forEach(module => {
       const enabledKey = `${module.id}Enabled`;
       normalized[enabledKey] = Boolean(normalized[enabledKey]);
+      normalized[`${module.id}BufferEnabled`] = Boolean(normalized[`${module.id}BufferEnabled`]);
 
       (module.configs || []).forEach(config => {
         const fallback = Object.prototype.hasOwnProperty.call(config, 'defaultValue')

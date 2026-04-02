@@ -160,6 +160,22 @@ class App {
     `;
   }
 
+  renderModuleBufferControl(module, route = null) {
+    if (!Calc.hasModuleFeedBufferSupport(module.id)) return '';
+
+    const bufferKey = `${module.id}BufferEnabled`;
+    const wrapId = `${module.id}BufferWrap`;
+    const showControl = Calc.moduleSupportsFeedBuffer(module.id, route);
+    return `
+      <div id="${wrapId}"${showControl ? '' : ' style="display:none;"'}>
+        <label class="toggle-label">
+          <input type="checkbox" id="${bufferKey}" ${this.state[bufferKey] ? 'checked' : ''}>
+          <span>${Calc.getModuleFeedBufferLabel(module.id, route)}</span>
+        </label>
+      </div>
+    `;
+  }
+
   renderSupportedModule(module) {
     const configs = module.configs.map(config => `
       <label>${config.label}
@@ -174,6 +190,7 @@ class App {
         <span class="range-value" id="${assetLifeKey}Value">${FormatNumbers.fixed(parseInt(this.state[assetLifeKey], 10), 0)} years</span>
       </label>
     ` : '';
+    const bufferControl = this.renderModuleBufferControl(module);
 
     const allocNote = (module.id === 'electrolyzer' || module.id === 'dac')
       ? `<div class="info-row"><span>Power share:</span><span id="${module.id}AllocMode" class="highlight">Auto-balanced</span></div>`
@@ -191,6 +208,7 @@ class App {
         <div class="process-config disabled-group ${this.state[`${module.id}Enabled`] ? 'active' : ''}" id="${module.id}Config">
           ${configs}
           ${assetLifeControl}
+          ${bufferControl}
           ${allocNote}
         </div>
       </div>
@@ -217,6 +235,7 @@ class App {
         <span class="range-value" id="${capexKey}Value">${this.formatExploratoryCapexBasis(module.id, this.state[capexKey] ?? capexControl.defaultValue)}</span>
       </label>
     `;
+    const bufferControl = this.renderModuleBufferControl(module, this.state[`${module.id}Route`]);
     const extraControls = module.id === 'mtg' ? `
       <div id="mtgMethanolSplitControl">
         <label>Methanol Diverted to MTG
@@ -239,6 +258,7 @@ class App {
           <label>Route Choice
             <select id="${module.id}Route">${routeOptions}</select>
           </label>
+          ${bufferControl}
           ${capexBlock}
           ${priorityControl}
           ${extraControls}

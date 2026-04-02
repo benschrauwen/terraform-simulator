@@ -155,6 +155,9 @@ const AppControlMethods = {
         this.enforceModuleDependencies();
         this.syncDerivedFeedControls();
       });
+      AppControlMethods.on.call(this, `${module.id}BufferEnabled`, 'change', (_, el) => {
+        this.state[`${module.id}BufferEnabled`] = el.checked;
+      });
 
       if (module.maturity === 'Supported') {
         module.configs.forEach(config => {
@@ -279,6 +282,8 @@ const AppControlMethods = {
     MODULE_REGISTRY.forEach(module => {
       const enabledEl = document.getElementById(`${module.id}Enabled`);
       if (enabledEl) enabledEl.checked = Boolean(this.state[`${module.id}Enabled`]);
+      const bufferEl = document.getElementById(`${module.id}BufferEnabled`);
+      if (bufferEl) bufferEl.checked = Boolean(this.state[`${module.id}BufferEnabled`]);
       const configEl = document.getElementById(`${module.id}Config`);
       if (configEl) configEl.classList.toggle('active', Boolean(this.state[`${module.id}Enabled`]));
       const routeEl = document.getElementById(`${module.id}Route`);

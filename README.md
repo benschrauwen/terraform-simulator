@@ -15,6 +15,7 @@ Today it supports:
 - A direct-coupled allocation model that auto-balances electrolyzer, DAC, and exploratory-route power shares from the enabled downstream demand.
 - Fully modeled supported product paths for methane and methanol, including mass balance, CAPEX, revenue, replacement timing, and finance outputs.
 - Methane and methanol co-production with a shared feedstock split when both supported product routes are enabled.
+- Default-on feed buffers for methane, methanol, and selected lower-electricity exploratory routes, so CAPEX sizing can use the peak daily average gas-feed rate of the most active modeled day instead of the instantaneous peak flow.
 - Exploratory industrial routes with selectable pathways, priority weights, rough throughput modeling, CAPEX basis controls, shared exploratory O&M, sale-price inputs, and inclusion in CAPEX, revenue, NPV, and IRR.
 - MTG (`methanol -> gasoline-range hydrocarbons`) as an exploratory downstream route that diverts a configurable share of methanol away from export.
 - Optional on-site AI datacenter mode: a reliability-targeted constant IT load sized against the modeled solar and battery system, with token revenue, GPU CAPEX, AI O&M, and annual dispatch.
@@ -83,6 +84,7 @@ The current implementation makes several deliberate assumptions that should stay
 - `siteYieldMwhPerMwdcYear` is treated as a base annual yield. Mounting effects are applied on top of that base yield rather than asking the user for a fully mounting-adjusted number.
 - With AI compute enabled, the model builds an annual dispatch path and serves AI first; the chemical plant and battery charging use residual solar after the AI load.
 - `chemicalSizingPercent` scales the full-capture chemical peak and allows intentional clipping of the highest-solar hours.
+- Feed buffers, when enabled, are treated as part of the process block and are not costed or modeled as standalone storage assets.
 - Supported products and exploratory routes share H2, CO2, methanol, and power through an auto-balanced weighted allocation rather than a user-entered process-flow sheet.
 - Panel efficiency affects panel area and land use, not annual energy yield, because the model is framed around fixed MWdc nameplate.
 - Stored energy always loses a fixed `2%/month` through standing leakage.
@@ -144,6 +146,14 @@ exploratory_share_i =
 ```
 
 That is a conceptual summary. In the code, the demand proxy also depends on each route's electricity intensity and required feedstocks.
+
+Buffered gas-fed routes can size from the most active modeled day without chasing the single highest intra-day spike:
+
+```text
+buffered_peak_feed_kg_per_hour = peak_day_feed_kg / cycle_hours
+```
+
+For methane, methanol, and the exploratory routes that expose the buffer toggle, this buffered rate replaces the instantaneous peak-feed rate for nameplate CAPEX sizing when the checkbox is on.
 
 ### Electrolysis
 
@@ -264,6 +274,13 @@ route_capex =
 annual_route_revenue = annual_output_units * sale_price
 ```
 
+For buffer-capable exploratory routes, the model can instead size the block from:
+
+```text
+peak_nameplate_units_per_hour =
+  peak_output_daily_units / cycle_hours
+```
+
 Most exploratory routes size CAPEX on `$/ton/yr capacity`; desalination routes use `$/m3/day`.
 
 ### AI compute (optional)
@@ -351,6 +368,7 @@ The current default state is roughly a `1 MW` Mojave-style methane scenario:
 - Electrolyzer: `79 kWh/kg H2`, `$100/kW`
 - DAC: `3440 kWh/t-CO2`, `$450/kW`
 - Sabatier conversion: `99%`
+- Feed buffers: on by default for methane and methanol, and default on for exploratory modules whenever the selected route supports buffered gas-feed sizing
 - Methane market preset: `Commodity gas / whitepaper-style case`
 - Methane price: `$20/MCF`
 - Methanol price: `$600/t`

@@ -37,6 +37,8 @@ const MODULE_REGISTRY = [
     family: 'air-water-chemistry',
     maturity: 'Supported',
     kind: 'product',
+    supportsFeedBuffer: true,
+    defaultBufferEnabled: true,
     dependencies: ['electrolyzer', 'dac'],
     order: 1,
     defaultEnabled: true,
@@ -53,6 +55,8 @@ const MODULE_REGISTRY = [
     family: 'air-water-chemistry',
     maturity: 'Supported',
     kind: 'product',
+    supportsFeedBuffer: true,
+    defaultBufferEnabled: true,
     dependencies: ['electrolyzer', 'dac'],
     order: 2,
     defaultEnabled: false,
@@ -68,6 +72,7 @@ const MODULE_REGISTRY = [
     label: 'MTG (Methanol -> Gasoline)',
     family: 'air-water-chemistry',
     maturity: 'Exploratory',
+    defaultBufferEnabled: true,
     dependencies: ['methanol'],
     diagramInputs: {
       methanol: true,
@@ -87,6 +92,7 @@ const MODULE_REGISTRY = [
     label: 'CO2 -> CO',
     family: 'air-water-chemistry',
     maturity: 'Exploratory',
+    defaultBufferEnabled: true,
     dependencies: ['dac'],
     routeDependencies: {
       rwgs: ['electrolyzer'],
@@ -108,6 +114,7 @@ const MODULE_REGISTRY = [
     label: 'Ammonia',
     family: 'air-water-chemistry',
     maturity: 'Exploratory',
+    defaultBufferEnabled: true,
     routeDependencies: {
       'haber-bosch': ['electrolyzer'],
     },

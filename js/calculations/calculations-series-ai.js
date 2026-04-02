@@ -82,6 +82,34 @@ Object.assign(Calc, {
     return output;
   },
 
+  accumulateSeriesStepBySpanHours(output, spanHours, stepIndex, value) {
+    if (!Array.isArray(output) || !output.length || !Number.isFinite(spanHours) || spanHours <= 0 || !Number.isFinite(stepIndex)) {
+      return;
+    }
+
+    const epsilon = 1e-9;
+    const safeValue = Number(value) || 0;
+    let segmentStart = stepIndex;
+    const segmentEnd = stepIndex + 1;
+    let bucket = Math.max(0, Math.floor(segmentStart / spanHours));
+    let bucketEnd = (bucket + 1) * spanHours;
+
+    while (segmentStart < segmentEnd - epsilon && bucket < output.length) {
+      while (bucket < output.length && bucketEnd <= segmentStart + epsilon) {
+        bucket += 1;
+        bucketEnd = (bucket + 1) * spanHours;
+      }
+      if (bucket >= output.length) break;
+
+      const overlapEnd = Math.min(segmentEnd, bucketEnd);
+      const overlapHours = overlapEnd - segmentStart;
+      if (overlapHours > epsilon) {
+        output[bucket] += safeValue * overlapHours;
+      }
+      segmentStart = overlapEnd;
+    }
+  },
+
   averageSeriesByCyclePhase(series, cycleHours, binCount) {
     if (!Array.isArray(series) || !series.length || !Number.isFinite(cycleHours) || cycleHours <= 0 || !Number.isFinite(binCount) || binCount <= 0) {
       return [];
@@ -321,6 +349,7 @@ Object.assign(Calc, {
 
   simulateAnnualDispatchPass(state, annualSolar, loadKW, startSocKWh, options = {}) {
     const captureSeries = Boolean(options.captureSeries);
+    const captureDailySummaries = captureSeries || Boolean(options.captureDailySummaries);
     const chemicalCapacityKW = Number.isFinite(options.chemicalCapacityKW) ? Math.max(0, options.chemicalCapacityKW) : null;
     const opThresholdKW = Number.isFinite(options.opThresholdKW)
       ? Math.max(0, options.opThresholdKW)
@@ -329,6 +358,9 @@ Object.assign(Calc, {
     const hours = source.length;
     const summaryWindowHours = Math.max(1e-6, annualSolar?.windowHours || 24);
     const summaryBinCount = Math.max(1, Math.round(annualSolar?.windowBinCount || 24));
+    const summaryWindowCount = captureDailySummaries
+      ? Math.max(1, Math.ceil((hours / summaryWindowHours) - 1e-9))
+      : 0;
     const batteryEnabled = this.hasBatteryStorage(state);
     const battCapKWh = batteryEnabled ? Math.max(0, (state.batteryCapacityMWh || 0) * 1000) : 0;
     const rtEff = battCapKWh > 0 ? Math.max(0, Math.min(1, (state.batteryEfficiency || 0) / 100)) : 1;
@@ -339,6 +371,10 @@ Object.assign(Calc, {
     const chemicalHourlyKW = captureSeries ? new Array(hours).fill(0) : [];
     const batteryChargeHourlyKW = captureSeries ? new Array(hours).fill(0) : [];
     const clippedHourlyKW = captureSeries ? new Array(hours).fill(0) : [];
+    const dailyAiSummaryKWh = captureDailySummaries && !captureSeries ? new Array(summaryWindowCount).fill(0) : [];
+    const dailyBatteryChargeSummaryKWh = captureDailySummaries && !captureSeries ? new Array(summaryWindowCount).fill(0) : [];
+    const dailyChemicalSummaryKWh = captureDailySummaries && !captureSeries ? new Array(summaryWindowCount).fill(0) : [];
+    const dailyClippedSummaryKWh = captureDailySummaries && !captureSeries ? new Array(summaryWindowCount).fill(0) : [];
     let socKWh = Math.max(0, Math.min(battCapKWh, startSocKWh));
     let minSocKWh = socKWh;
     let maxSocKWh = socKWh;
@@ -371,9 +407,10 @@ Object.assign(Calc, {
         dischargeThroughputKWh += dischargeToAi;
       }
 
+      let chargeFromSolarKW = 0;
       if (solarKW > 1e-9 && battCapKWh > 0 && socKWh < battCapKWh - 1e-9) {
         const storedKWh = Math.min(battCapKWh - socKWh, solarKW * chargeEff);
-        const chargeFromSolarKW = storedKWh / chargeEff;
+        chargeFromSolarKW = storedKWh / chargeEff;
         socKWh += storedKWh;
         solarKW -= chargeFromSolarKW;
         chargeThroughputKWh += storedKWh;
@@ -406,14 +443,19 @@ Object.assign(Calc, {
         aiHourlyKW[hour] = aiServed;
         chemicalHourlyKW[hour] = chemicalKW;
         clippedHourlyKW[hour] = clippedKW;
+      } else if (captureDailySummaries) {
+        this.accumulateSeriesStepBySpanHours(dailyAiSummaryKWh, summaryWindowHours, hour, aiServed);
+        this.accumulateSeriesStepBySpanHours(dailyBatteryChargeSummaryKWh, summaryWindowHours, hour, chargeFromSolarKW);
+        this.accumulateSeriesStepBySpanHours(dailyChemicalSummaryKWh, summaryWindowHours, hour, chemicalKW);
+        this.accumulateSeriesStepBySpanHours(dailyClippedSummaryKWh, summaryWindowHours, hour, clippedKW);
       }
     }
 
     const demandKWh = loadKW * hours;
-    const dailyAiKWh = captureSeries ? this.aggregateSeriesBySpanHours(aiHourlyKW, summaryWindowHours) : [];
-    const dailyBatteryChargeKWh = captureSeries ? this.aggregateSeriesBySpanHours(batteryChargeHourlyKW, summaryWindowHours) : [];
-    const dailyChemicalKWh = captureSeries ? this.aggregateSeriesBySpanHours(chemicalHourlyKW, summaryWindowHours) : [];
-    const dailyClippedKWh = captureSeries ? this.aggregateSeriesBySpanHours(clippedHourlyKW, summaryWindowHours) : [];
+    const dailyAiKWh = captureSeries ? this.aggregateSeriesBySpanHours(aiHourlyKW, summaryWindowHours) : dailyAiSummaryKWh;
+    const dailyBatteryChargeKWh = captureSeries ? this.aggregateSeriesBySpanHours(batteryChargeHourlyKW, summaryWindowHours) : dailyBatteryChargeSummaryKWh;
+    const dailyChemicalKWh = captureSeries ? this.aggregateSeriesBySpanHours(chemicalHourlyKW, summaryWindowHours) : dailyChemicalSummaryKWh;
+    const dailyClippedKWh = captureSeries ? this.aggregateSeriesBySpanHours(clippedHourlyKW, summaryWindowHours) : dailyClippedSummaryKWh;
     const averageDayAiKW = captureSeries ? this.averageSeriesByCyclePhase(aiHourlyKW, summaryWindowHours, summaryBinCount) : [];
     const averageDayBatteryChargeKW = captureSeries ? this.averageSeriesByCyclePhase(batteryChargeHourlyKW, summaryWindowHours, summaryBinCount) : [];
     const averageDayChemicalKW = captureSeries ? this.averageSeriesByCyclePhase(chemicalHourlyKW, summaryWindowHours, summaryBinCount) : [];
@@ -463,6 +505,7 @@ Object.assign(Calc, {
 
   simulateAnnualDispatchWithConstantAiLoad(state, annualSolar, loadKW, options = {}) {
     const captureSeries = options.captureSeries !== false;
+    const captureDailySummaries = Boolean(options.captureDailySummaries);
     const chemicalCapacityKW = Number.isFinite(options.chemicalCapacityKW) ? Math.max(0, options.chemicalCapacityKW) : null;
     const batteryEnabled = this.hasBatteryStorage(state);
     const battCapKWh = batteryEnabled ? Math.max(0, (state.batteryCapacityMWh || 0) * 1000) : 0;
@@ -496,6 +539,7 @@ Object.assign(Calc, {
       return finalizeDispatch({
         ...this.simulateAnnualDispatchPass(state, annualSolar, loadKW, 0, {
           captureSeries,
+          captureDailySummaries,
           chemicalCapacityKW,
         }),
         settleIterations: 1,
@@ -520,6 +564,7 @@ Object.assign(Calc, {
 
     const captured = this.simulateAnnualDispatchPass(state, annualSolar, loadKW, startSocKWh, {
       captureSeries,
+      captureDailySummaries,
       chemicalCapacityKW,
     });
     return finalizeDispatch({
@@ -627,6 +672,7 @@ Object.assign(Calc, {
   calculateAICompute(state, solar, annualSolar, options = {}) {
     const captureDispatchSeries = options.captureDispatchSeries !== false;
     const includeDisplayDispatchSeries = options.includeDisplayDispatchSeries !== false;
+    const captureDailySummaries = Boolean(options.captureDailySummaries);
     const chemicalSizingFraction = this.getChemicalSizingFraction(state);
     const cyclesPerYear = this.getBodyConfig(state.body || 'earth').cyclesPerEarthYear;
     const dispatchBasis = this.getAnnualDispatchBasis(state, solar, annualSolar, {
@@ -644,6 +690,7 @@ Object.assign(Calc, {
       : 0;
     const disabledDispatch = this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, 0, {
       captureSeries: captureDispatchSeries,
+      captureDailySummaries,
     });
 
     if (!state.aiComputeEnabled || hours <= 0) {
@@ -713,6 +760,7 @@ Object.assign(Calc, {
     const finalDispatch = {
       ...this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, best.loadKW, {
         captureSeries: captureDispatchSeries,
+        captureDailySummaries,
         chemicalCapacityKW,
       }),
       fullCaptureChemicalKW: fullCaptureDispatch.chemicalPeakKW || 0,

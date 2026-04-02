@@ -131,6 +131,7 @@ function buildModuleDefaultState() {
 
   MODULE_REGISTRY.forEach(module => {
     defaults[`${module.id}Enabled`] = Boolean(module.defaultEnabled);
+    defaults[`${module.id}BufferEnabled`] = Boolean(module.defaultBufferEnabled);
 
     (module.configs || []).forEach(config => {
       if (Object.prototype.hasOwnProperty.call(config, 'defaultValue')) {

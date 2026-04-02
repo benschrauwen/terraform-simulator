@@ -171,6 +171,7 @@ const AppUiStateMethods = {
       .filter(module => module.maturity === 'Exploratory')
       .forEach(module => {
         AppUiStateMethods.syncExploratoryCapexControl.call(this, module.id);
+        AppUiStateMethods.syncExploratoryBufferControl.call(this, module.id);
       });
   },
 
@@ -196,6 +197,13 @@ const AppUiStateMethods = {
       this.state[`${moduleId}CapexBasis`],
       value => this.formatExploratoryCapexBasis(moduleId, value)
     );
+  },
+
+  syncExploratoryBufferControl(moduleId) {
+    const wrap = document.getElementById(`${moduleId}BufferWrap`);
+    if (!wrap) return;
+    const route = this.state[`${moduleId}Route`];
+    wrap.style.display = Calc.moduleSupportsFeedBuffer(moduleId, route) ? 'block' : 'none';
   },
 
   syncDerivedFeedControls() {

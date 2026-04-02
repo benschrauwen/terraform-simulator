@@ -748,14 +748,9 @@ const Diagram = {
     if (!module || !(module.outputDailyUnits > 0)) {
       return module?.routeLabel || module?.route || 'Exploratory';
     }
-
-    const cycleHours = Number.isFinite(results?.solar?.cycleHours) && results.solar.cycleHours > 0
-      ? results.solar.cycleHours
-      : 24;
-    const peakOutputDailyUnits = module.peakOutputDailyUnits > 0
-      ? module.peakOutputDailyUnits
-      : module.outputDailyUnits;
-    const peakUnitsPerHour = peakOutputDailyUnits / cycleHours;
+    const peakUnitsPerHour = module.capexSizingOutputUnitsPerHour > 0
+      ? module.capexSizingOutputUnitsPerHour
+      : module.peakOutputUnitsPerHour;
     return this.formatLabeledUnitRate(peakUnitsPerHour, module.outputUnit === 'm3' ? 'm3' : 't', 'Peak');
   },
 

@@ -37,7 +37,14 @@ test('diagram formats process cards and connector labels with peak and average h
   assert.equal(Diagram.formatMassRate(5732), 'Peak 5.7 t/h');
   assert.equal(
     Diagram.formatExploratoryPeakOutput(
-      { outputDailyUnits: 54, peakOutputDailyUnits: 54, outputUnit: 't' },
+      { outputDailyUnits: 54, capexSizingOutputUnitsPerHour: 1.9, peakOutputUnitsPerHour: 2.3, outputUnit: 't' },
+      { solar: { cycleHours: 24 } }
+    ),
+    'Peak 1.9 t/h'
+  );
+  assert.equal(
+    Diagram.formatExploratoryPeakOutput(
+      { outputDailyUnits: 54, peakOutputUnitsPerHour: 2.3, outputUnit: 't' },
       { solar: { cycleHours: 24 } }
     ),
     'Peak 2.3 t/h'

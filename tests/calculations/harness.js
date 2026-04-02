@@ -4,19 +4,18 @@ const vm = require('node:vm');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 
-function getCalculationFilesFromIndex() {
-  const indexHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-  const matches = Array.from(indexHtml.matchAll(/<script[^>]+src="([^"]+)"[^>]*><\/script>/g));
-  return matches
-    .map(match => match[1].split('?')[0])
-    .filter(src =>
-      src === 'js/solar-geometry.js' ||
-      src === 'js/constants.js' ||
-      src.startsWith('js/calculations/')
-    );
+function getCalculationFilesFromManifest() {
+  const context = {};
+  vm.createContext(context);
+
+  const manifestPath = path.join(ROOT, 'js', 'calculation-runtime-paths.js');
+  const manifestSource = fs.readFileSync(manifestPath, 'utf8');
+  vm.runInContext(manifestSource, context, { filename: 'js/calculation-runtime-paths.js' });
+
+  return vm.runInContext('CALCULATION_RUNTIME_SCRIPT_PATHS', context);
 }
 
-const CALCULATION_FILES = getCalculationFilesFromIndex();
+const CALCULATION_FILES = getCalculationFilesFromManifest();
 
 function loadRuntime() {
   const context = {

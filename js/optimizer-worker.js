@@ -1,13 +1,7 @@
-importScripts(
-  'solar-geometry.js?v=20260401-chem-clipping',
-  'constants.js?v=20260401-chem-clipping',
-  'calculations/calculations-core.js?v=20260401-chem-clipping',
-  'calculations/calculations-solar.js?v=20260401-chem-clipping',
-  'calculations/calculations-battery.js?v=20260401-chem-clipping',
-  'calculations/calculations-series-ai.js?v=20260401-chem-clipping',
-  'calculations/calculations-process.js?v=20260401-chem-clipping',
-  'calculations/calculations-economics.js?v=20260401-chem-clipping'
-);
+const OPTIMIZER_WORKER_VERSION = '20260401-maintainability';
+
+importScripts(`calculation-runtime-paths.js?v=${OPTIMIZER_WORKER_VERSION}`);
+importScripts(...getWorkerCalculationRuntimeScriptPaths(`?v=${OPTIMIZER_WORKER_VERSION}`));
 
 self.addEventListener('message', event => {
   const { requestId, type, state, search } = event.data || {};

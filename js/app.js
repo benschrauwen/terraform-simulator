@@ -63,59 +63,7 @@ class App {
   }
 
   syncPlanetaryUI() {
-    const body = this.getBodyConfig();
-    const averageTab = document.querySelector('.day-tab[data-mode="average"]');
-    const specificTab = document.querySelector('.day-tab[data-mode="specific"]');
-    const specificControls = document.getElementById('daySpecificControls');
-    const dayModeNote = document.getElementById('dayModeNote');
-    const irradianceLabel = document.getElementById('irradianceLabel');
-    const sunHoursLabel = document.getElementById('sunHoursLabel');
-    const opHoursLabel = document.getElementById('dailyOpHoursLabel');
-    const siteYieldNote = document.getElementById('siteYieldNote');
-    const powerChartNote = document.getElementById('powerChartNote');
-
-    if (!body.supportsSpecificDay && this.state.dayMode === 'specific') {
-      this.state.dayMode = 'average';
-    }
-
-    document.querySelectorAll('.day-tab').forEach(tab => {
-      tab.classList.toggle('active', tab.dataset.mode === this.state.dayMode);
-    });
-
-    if (averageTab) averageTab.disabled = false;
-    if (specificTab) {
-      specificTab.disabled = !body.supportsSpecificDay;
-      specificTab.classList.toggle('disabled', !body.supportsSpecificDay);
-    }
-    if (specificControls) {
-      specificControls.style.display = body.supportsSpecificDay && this.state.dayMode === 'specific' ? 'block' : 'none';
-    }
-    if (dayModeNote) {
-      dayModeNote.textContent = body.supportsSpecificDay
-        ? ''
-        : `${body.label} uses an average local solar cycle; specific Earth calendar days are disabled.`;
-    }
-    if (irradianceLabel) {
-      irradianceLabel.textContent = body.label === 'Earth' ? 'GHI:' : 'Annual irradiation:';
-    }
-    if (sunHoursLabel) {
-      sunHoursLabel.textContent = body.label === 'Earth' ? 'Avg Sun Hours:' : 'Illumination / cycle:';
-    }
-    if (opHoursLabel) {
-      opHoursLabel.textContent = body.label === 'Earth' ? 'Daily Op Hours:' : 'Op Hours / Cycle:';
-    }
-    if (siteYieldNote) {
-      siteYieldNote.innerHTML = body.label === 'Earth'
-        ? `This is the long-run annual PV output per MWdc. For a more accurate site-specific number, use a
-            cloud/weather-adjusted source such as
-            <a href="https://joint-research-centre.ec.europa.eu/pvgis-online-tool_en" target="_blank" rel="noopener noreferrer">PVGIS</a>
-            or
-            <a href="https://globalsolaratlas.info/" target="_blank" rel="noopener noreferrer">Global Solar Atlas PVOUT</a>.`
-        : body.siteYieldNote;
-    }
-    if (powerChartNote) {
-      powerChartNote.textContent = body.chartNote || '';
-    }
+    return AppUiStateMethods.syncPlanetaryUI.call(this);
   }
 
   populatePresets() {
@@ -309,187 +257,19 @@ class App {
   }
 
   bindControls() {
-    this.bindLoadConfigTabs();
-
-    document.querySelectorAll('.day-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        if (tab.disabled) return;
-        this.state.dayMode = tab.dataset.mode;
-        this.refreshDaySpecificViews();
-      });
-    });
-
-    this.bindRange('dayOfYear', 'dayOfYear', v => {
-      const day = parseInt(v, 10);
-      return `${SolarGeometry.dayToDateString(day)}${SolarGeometry.notableDay(day)}`;
-    }, { skipRecalculate: true });
-
-    document.querySelectorAll('.day-preset').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const day = parseInt(btn.dataset.day, 10);
-        this.state.dayOfYear = day;
-        this.syncRangeDisplay('dayOfYear', day);
-        this.refreshDaySpecificViews();
-      });
-    });
-
-    this.on('locationPreset', 'change', val => {
-      if (val === 'custom') return;
-      const loc = LOCATION_PRESETS[parseInt(val, 10)];
-      if (!loc) return;
-      this.state.body = loc.body || 'earth';
-      this.state.solarProfileModel = loc.profile || this.state.body;
-      this.state.latitude = loc.lat;
-      this.state.longitude = loc.lon;
-      this.state.siteYieldMwhPerMwdcYear = loc.baseYield;
-      this.state.siteYieldSource = 'preset';
-      this.syncStateToControls();
-    });
-
-    this.bindNumber('latitude', 'latitude', () => this.handleLocationEdited());
-    this.bindNumber('longitude', 'longitude', () => this.handleLocationEdited());
-    this.bindNumber('siteYield', 'siteYieldMwhPerMwdcYear', () => {
-      this.state.siteYieldSource = 'manual';
-      document.getElementById('locationPreset').value = 'custom';
-    });
-
-    this.bindRange('systemSize', 'systemSizeMW', v => this.formatSystemSizeMW(v));
-    this.bindRange('panelEfficiency', 'panelEfficiency', v => `${FormatNumbers.fixed(parseFloat(v), 1)}%`);
-    this.bindRange('panelCost', 'panelCostPerW', v => `$${FormatNumbers.fixed(parseFloat(v), 2)}/W`);
-    this.bindRange('panelDegradationAnnual', 'panelDegradationAnnual', v => `${FormatNumbers.fixed(parseFloat(v), 2)}%/yr`);
-    this.on('mountingType', 'change', val => {
-      this.state.mountingType = val;
-      this.state.bosCostPerW = MOUNTING_TYPES[val].typicalBOS;
-      this.syncStateToControls();
-    });
-    this.bindRange('bosCost', 'bosCostPerW', v => `$${FormatNumbers.fixed(parseFloat(v), 2)}/W`);
-    this.bindRange('landCost', 'landCostPerAcre', v => `$${Math.round(parseFloat(v)).toLocaleString()}/acre`);
-    this.bindRange('sitePrepCost', 'sitePrepCostPerAcre', v => `$${Math.round(parseFloat(v)).toLocaleString()}/acre`);
-
-    this.bindRange('batteryCapacity', 'batteryCapacityMWh', v => `${FormatNumbers.fixed(parseFloat(v), 1)} MWh`, () => {
-      this.syncBatteryEnabledState();
-    });
-    this.bindRange('batteryCost', 'batteryCostPerKWh', v => `$${FormatNumbers.fixed(parseInt(v, 10), 0)}/kWh`);
-    this.bindRange('batteryEfficiency', 'batteryEfficiency', v => `${FormatNumbers.fixed(parseInt(v, 10), 0)}%`);
-    this.bindRange('batteryCycles', 'batteryCycles', v => parseInt(v, 10).toLocaleString());
-    this.bindRange('chemicalSizingPercent', 'chemicalSizingPercent', v => this.formatChemicalSizingPercent(v));
-
-    this.on('aiComputeEnabled', 'change', (_, el) => {
-      this.state.aiComputeEnabled = el.checked;
-      document.getElementById('aiComputeConfig').classList.toggle('active', el.checked);
-      window.requestAnimationFrame(() => this.positionSliderMarkers());
-    });
-    this.on('aiReliabilityTarget', 'change', val => {
-      this.state.aiReliabilityTarget = parseFloat(val);
-    });
-    this.bindRange('aiGpuCapexPerKW', 'aiGpuCapexPerKW', v => `$${Math.round(parseFloat(v)).toLocaleString()}/kW`);
-    this.bindRange('aiTokenPrice', 'aiTokenPricePerM', v => `$${FormatNumbers.fixed(parseFloat(v), 2)} / 1M tokens`);
-    this.bindRange('aiTokensPerMWh', 'aiMillionTokensPerMWh', v => `${Math.round(parseFloat(v)).toLocaleString()} M tokens/MWh`);
-    this.bindRange('aiAssetLifeYears', 'aiAssetLifeYears', v => `${FormatNumbers.fixed(parseInt(v, 10), 0)} years`);
-
-    this.bindModuleControls();
-
-    this.bindRange('methaneFeedstockSplit', 'methaneFeedstockSplit', v => this.formatMethaneFeedstockSplit(v));
-    this.bindRange('mtgMethanolSplit', 'mtgMethanolSplit', v => this.formatMtgMethanolSplit(v));
-    this.on('methaneMarketPreset', 'change', val => {
-      this.state.methaneMarketPreset = val;
-      this.syncDynamicVisibility();
-    });
-    this.bindRange('methanePrice', 'methanePrice', v => `$${FormatNumbers.fixed(parseFloat(v), 2)}/MCF`);
-    this.bindRange('methanolPrice', 'methanolPrice', v => `$${FormatNumbers.fixed(parseInt(v, 10), 0)}/ton`);
-    MODULE_REGISTRY
-      .filter(module => module.maturity === 'Exploratory' && EXPLORATORY_MARKET_CONFIG[module.id])
-      .forEach(module => {
-        const priceKey = `${module.id}Price`;
-        this.bindRange(priceKey, priceKey, v => this.formatExploratorySalePrice(module.id, v));
-      });
-    this.bindRange('exploratoryOmPercent', 'exploratoryOmPercent', v => this.formatExploratoryOmPercent(v));
-
-    this.on('policyMode', 'change', val => {
-      this.state.policyMode = val;
-      this.syncDynamicVisibility();
-    });
-    this.bindRange('customH2Credit', 'customH2Credit', v => `$${FormatNumbers.fixed(parseFloat(v), 2)}/kg`);
-    this.bindRange('customCo2Credit', 'customCo2Credit', v => `$${FormatNumbers.fixed(parseInt(v, 10), 0)}/ton`);
-    this.bindRange('solarAssetLife', 'solarAssetLife', v => `${FormatNumbers.fixed(parseInt(v, 10), 0)} years`);
-    this.bindRange('analysisHorizonYears', 'analysisHorizonYears', v => `${FormatNumbers.fixed(parseInt(v, 10), 0)} years`);
-    this.bindRange('discountRate', 'discountRate', v => `${FormatNumbers.fixed(parseFloat(v), 1)}%`);
-    this.on('financingEnabled', 'change', (_, el) => {
-      this.state.financingEnabled = el.checked;
-      document.getElementById('financingConfig').classList.toggle('active', el.checked);
-    });
-    this.bindRange('debtShare', 'debtSharePercent', v => `${FormatNumbers.fixed(parseInt(v, 10), 0)}%`);
-    this.bindRange('debtInterestRate', 'debtInterestRate', v => `${FormatNumbers.fixed(parseFloat(v), 2)}%`);
-    this.bindRange('debtTermYears', 'debtTermYears', v => `${FormatNumbers.fixed(parseInt(v, 10), 0)} years`);
-    this.bindRange('debtFeePercent', 'debtFeePercent', v => `${FormatNumbers.fixed(parseFloat(v), 2)}%`);
-
-    this.bindRange('solarOmPercent', 'solarOmPercent', v => `${FormatNumbers.fixed(parseFloat(v), 1)}%/yr`);
-    this.bindRange('processOmPercent', 'processOmPercent', v => `${FormatNumbers.fixed(parseFloat(v), 1)}%/yr`);
-    this.bindRange('batteryOmPercent', 'batteryOmPercent', v => `${FormatNumbers.fixed(parseFloat(v), 1)}%/yr`);
-    this.bindOptimizeButtons();
+    return AppControlMethods.bindControls.call(this);
   }
 
   bindLoadConfigTabs() {
-    document.querySelectorAll('.load-config-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        this.state.loadConfigTab = tab.dataset.loadTab || 'chemicals';
-        this.syncLoadConfigTabs();
-      });
-    });
-    this.syncLoadConfigTabs();
+    return AppControlMethods.bindLoadConfigTabs.call(this);
   }
 
   syncLoadConfigTabs() {
-    const activeTab = this.state.loadConfigTab || 'chemicals';
-    document.querySelectorAll('.load-config-tab').forEach(tab => {
-      const isActive = tab.dataset.loadTab === activeTab;
-      tab.classList.toggle('active', isActive);
-      tab.setAttribute('aria-selected', String(isActive));
-    });
-    document.querySelectorAll('.load-config-panel').forEach(panel => {
-      panel.classList.toggle('active', panel.dataset.loadPanel === activeTab);
-    });
-    // Sliders are `display:none` when their load tab is inactive; marker positions need width
-    // from layout after the panel becomes visible.
-    window.requestAnimationFrame(() => this.positionSliderMarkers());
+    return AppControlMethods.syncLoadConfigTabs.call(this);
   }
 
   bindModuleControls() {
-    MODULE_REGISTRY.forEach(module => {
-      const enabledKey = `${module.id}Enabled`;
-      this.on(enabledKey, 'change', (_, el) => {
-        this.state[enabledKey] = el.checked;
-        this.enforceModuleDependencies();
-        this.syncDerivedFeedControls();
-      });
-
-      if (module.maturity === 'Supported') {
-        module.configs.forEach(config => {
-          this.bindRange(config.key, config.key, v => this.formatConfigValue(config.unit, v));
-        });
-        if (module.assetLifeKey) {
-          this.bindRange(module.assetLifeKey, module.assetLifeKey, v => `${FormatNumbers.fixed(parseInt(v, 10), 0)} years`);
-        }
-      } else {
-        this.on(`${module.id}Route`, 'change', val => {
-          this.state[`${module.id}Route`] = val;
-          this.syncExploratoryCapexControl(module.id);
-          this.enforceModuleDependencies();
-          this.syncDynamicVisibility();
-          this.syncDerivedFeedControls();
-        });
-        this.bindRange(
-          `${module.id}CapexBasis`,
-          `${module.id}CapexBasis`,
-          v => this.formatExploratoryCapexBasis(module.id, v)
-        );
-        this.bindRange(
-          `${module.id}PriorityWeight`,
-          `${module.id}PriorityWeight`,
-          v => this.formatExploratoryPriorityWeight(v)
-        );
-      }
-    });
+    return AppControlMethods.bindModuleControls.call(this);
   }
 
   enforceModuleDependencies() {
@@ -498,46 +278,15 @@ class App {
   }
 
   handleLocationEdited() {
-    document.getElementById('locationPreset').value = 'custom';
-    if ((this.state.body || 'earth') !== 'earth') {
-      if (this.state.siteYieldSource !== 'manual') {
-        this.state.siteYieldSource = 'planetary-custom';
-      }
-      return;
-    }
-    if (this.state.siteYieldSource !== 'manual') {
-      const ghi = Calc.estimateGHI(this.state.latitude, this.state.longitude, this.state.body || 'earth');
-      this.state.siteYieldMwhPerMwdcYear = Calc.estimateBaseYield(this.state.latitude, this.state.longitude, ghi, this.state.body || 'earth');
-      this.state.siteYieldSource = 'estimated';
-      this.syncStateToControls();
-    }
+    return AppControlMethods.handleLocationEdited.call(this);
   }
 
   on(id, event, handler) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener(event, () => {
-      handler(el.value, el);
-      this.recalculate();
-    });
+    return AppControlMethods.on.call(this, id, event, handler);
   }
 
   bindRange(id, stateKey, formatter, extra) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const extraConfig = typeof extra === 'function' ? { onInput: extra } : (extra || {});
-    this.rangeBindings.push({ id, stateKey, formatter });
-    el.addEventListener('input', () => {
-      this.state[stateKey] = parseFloat(el.value);
-      this.syncRangeDisplay(id, el.value, formatter);
-      if (extraConfig.onInput) extraConfig.onInput();
-      this.syncDynamicVisibility();
-      if (extraConfig.skipRecalculate) {
-        this.refreshDaySpecificViews();
-      } else {
-        this.requestRecalculate({ includeSensitivity: false });
-      }
-    });
+    return AppControlMethods.bindRange.call(this, id, stateKey, formatter, extra);
   }
 
   requestRecalculate(options = {}) {
@@ -578,317 +327,42 @@ class App {
   }
 
   bindOptimizeButtons() {
-    this.bindIrrOptimizerButton('optimizeBatteryCapacity', {
-      inputId: 'batteryCapacity',
-      stateKey: 'batteryCapacityMWh',
-      maxCoarseSamples: 257,
-      maxTopRegions: 5,
-    });
-    this.bindIrrOptimizerButton('optimizeChemicalSizing', {
-      inputId: 'chemicalSizingPercent',
-      stateKey: 'chemicalSizingPercent',
-      maxCoarseSamples: 101,
-      maxTopRegions: 5,
-    });
-    this.bindIrrOptimizerButton('optimizeMethaneFeedstockSplit', {
-      inputId: 'methaneFeedstockSplit',
-      stateKey: 'methaneFeedstockSplit',
-      maxCoarseSamples: 101,
-      maxTopRegions: 5,
-    });
+    return AppOptimizerMethods.bindOptimizeButtons.call(this);
   }
 
   bindIrrOptimizerButton(buttonId, options) {
-    const button = document.getElementById(buttonId);
-    if (!button) return;
-    this.captureOptimizerButtonDefaults(button);
-
-    button.addEventListener('click', async event => {
-      event.preventDefault();
-      if (button.disabled) return;
-
-      button.disabled = true;
-      this.setOptimizerButtonProgress(button, { percent: 0, stage: 'start' });
-      try {
-        await new Promise(resolve => window.requestAnimationFrame(resolve));
-        const bestValue = await this.findBestRangeValueForIrr(
-          options,
-          progress => this.setOptimizerButtonProgress(button, progress)
-        );
-        if (!Number.isFinite(bestValue)) return;
-
-        const input = document.getElementById(options.inputId);
-        if (!input) return;
-
-        input.value = String(bestValue);
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.focus();
-      } finally {
-        button.disabled = false;
-        this.resetOptimizerButton(button);
-      }
-    });
+    return AppOptimizerMethods.bindIrrOptimizerButton.call(this, buttonId, options);
   }
 
   captureOptimizerButtonDefaults(button) {
-    if (!button) return;
-    if (!button.dataset.defaultLabel) button.dataset.defaultLabel = (button.textContent || '').trim() || 'optimize';
-    if (!button.dataset.defaultTitle) button.dataset.defaultTitle = button.getAttribute('title') || '';
+    return AppOptimizerMethods.captureOptimizerButtonDefaults.call(this, button);
   }
 
   setOptimizerButtonProgress(button, progress = {}) {
-    if (!button) return;
-    this.captureOptimizerButtonDefaults(button);
-
-    const defaultLabel = button.dataset.defaultLabel || 'optimize';
-    const boundedPercent = Number.isFinite(progress.percent)
-      ? Math.max(0, Math.min(100, Math.round(progress.percent)))
-      : null;
-
-    button.dataset.optimizing = 'true';
-    if (boundedPercent === null) {
-      button.style.removeProperty('--optimize-progress');
-      button.textContent = '...';
-    } else {
-      button.style.setProperty('--optimize-progress', `${boundedPercent}%`);
-      button.textContent = `${boundedPercent}%`;
-    }
-
-    const progressText = boundedPercent === null ? 'in progress' : `${boundedPercent}% complete`;
-    button.setAttribute('aria-label', `${defaultLabel} ${progressText}`);
-    button.setAttribute('title', `${button.dataset.defaultTitle || defaultLabel} (${progressText})`);
+    return AppOptimizerMethods.setOptimizerButtonProgress.call(this, button, progress);
   }
 
   resetOptimizerButton(button) {
-    if (!button) return;
-    this.captureOptimizerButtonDefaults(button);
-    button.textContent = button.dataset.defaultLabel || 'optimize';
-    button.removeAttribute('data-optimizing');
-    button.style.removeProperty('--optimize-progress');
-    button.removeAttribute('aria-label');
-    if (button.dataset.defaultTitle) button.setAttribute('title', button.dataset.defaultTitle);
-    else button.removeAttribute('title');
+    return AppOptimizerMethods.resetOptimizerButton.call(this, button);
   }
 
-  // Search the slider domain with a coarse sweep plus local refinement
-  // so IRR optimization stays responsive on wide ranges like battery capacity.
   async findBestRangeValueForIrr(
     { inputId, stateKey, maxCoarseSamples = 257, maxTopRegions = 5 },
     onProgress = null
   ) {
-    const input = document.getElementById(inputId);
-    if (!input) return null;
-
-    const min = parseFloat(input.min);
-    const max = parseFloat(input.max);
-    const step = parseFloat(input.step) || 1;
-    if (![min, max, step].every(Number.isFinite) || step <= 0 || max < min) return null;
-
-    const search = {
-      stateKey,
-      min,
-      max,
-      step,
-      currentValue: parseFloat(input.value),
-      maxCoarseSamples,
-      maxTopRegions,
-    };
-
-    if (typeof Worker === 'function') {
-      try {
-        const workerResult = await this.requestOptimizerWorkerSearch(search, onProgress);
-        return workerResult?.bestValue ?? null;
-      } catch (error) {
-        console.warn('Optimizer worker failed, falling back to main thread.', error);
-      }
-    }
-
-    const fallbackResult = typeof Calc.findBestRangeValueForIrr === 'function'
-      ? Calc.findBestRangeValueForIrr(this.state, search, { onProgress })
-      : this.findBestRangeValueForIrrOnMainThread(search);
-    return fallbackResult?.bestValue ?? null;
-  }
-
-  findBestRangeValueForIrrOnMainThread({
-    stateKey,
-    min,
-    max,
-    step,
-    currentValue,
-    maxCoarseSamples = 257,
-    maxTopRegions = 5,
-  }) {
-    if (![min, max, step].every(Number.isFinite) || step <= 0 || max < min) return null;
-
-    const totalSteps = Math.max(0, Math.round((max - min) / step));
-    const snappedCurrentValue = this.snapRangeValue(currentValue, min, max, step);
-    const currentIndex = Math.round((snappedCurrentValue - min) / step);
-    const precision = this.getStepPrecision(step);
-    const cache = new Map();
-
-    const evaluate = value => {
-      const snappedValue = this.snapRangeValue(value, min, max, step);
-      const key = snappedValue.toFixed(precision);
-      if (cache.has(key)) return cache.get(key);
-
-      const result = {
-        value: snappedValue,
-        irr: Calc.calculateIrr({ ...this.state, [stateKey]: snappedValue }),
-      };
-      result.finite = Number.isFinite(result.irr);
-      cache.set(key, result);
-      return result;
-    };
-
-    const evaluateIndex = index => evaluate(min + (index * step));
-    const currentResult = evaluate(snappedCurrentValue);
-
-    if ((totalSteps + 1) <= maxCoarseSamples) {
-      for (let index = 0; index <= totalSteps; index++) {
-        evaluateIndex(index);
-      }
-    } else {
-      const coarseIndices = this.buildEvenlySpacedIndices(
-        totalSteps,
-        Math.min(maxCoarseSamples, totalSteps + 1)
-      );
-
-      coarseIndices.forEach(index => evaluateIndex(index));
-
-      const rankedIndices = coarseIndices
-        .map(index => ({ index, ...evaluateIndex(index) }))
-        .filter(entry => entry.finite)
-        .sort((a, b) => b.irr - a.irr);
-
-      const coarseSpacing = coarseIndices.length > 1
-        ? coarseIndices.slice(1).reduce((maxGap, index, i) => Math.max(maxGap, index - coarseIndices[i]), 1)
-        : totalSteps;
-
-      const regionSeeds = new Set([
-        currentIndex,
-        ...rankedIndices.slice(0, maxTopRegions).map(entry => entry.index),
-      ]);
-
-      const mergedRegions = this.mergeIndexRanges(
-        Array.from(regionSeeds).map(index => [
-          Math.max(0, index - coarseSpacing),
-          Math.min(totalSteps, index + coarseSpacing),
-        ])
-      );
-
-      mergedRegions.forEach(([start, end]) => {
-        for (let index = start; index <= end; index++) {
-          evaluateIndex(index);
-        }
-      });
-    }
-
-    const best = Array.from(cache.values())
-      .filter(entry => entry.finite)
-      .sort((a, b) => {
-        const irrDiff = b.irr - a.irr;
-        if (Math.abs(irrDiff) > 1e-9) return irrDiff;
-        return Math.abs(a.value - snappedCurrentValue) - Math.abs(b.value - snappedCurrentValue);
-      })[0];
-
-    if (!best) return null;
-    if (Number.isFinite(currentResult.irr) && best.irr <= (currentResult.irr + 1e-6)) return null;
-
-    return {
-      bestValue: best.value,
-      bestIrr: best.irr,
-      currentValue: snappedCurrentValue,
-      currentIrr: currentResult.irr,
-    };
-  }
-
-  buildEvenlySpacedIndices(totalSteps, targetCount) {
-    if (totalSteps <= 0) return [0];
-
-    const indices = new Set([0, totalSteps]);
-    const count = Math.max(2, Math.min(targetCount, totalSteps + 1));
-    for (let i = 0; i < count; i++) {
-      indices.add(Math.round((i * totalSteps) / (count - 1)));
-    }
-    return Array.from(indices).sort((a, b) => a - b);
-  }
-
-  mergeIndexRanges(ranges) {
-    if (!Array.isArray(ranges) || !ranges.length) return [];
-
-    const sorted = ranges
-      .map(([start, end]) => [Math.min(start, end), Math.max(start, end)])
-      .sort((a, b) => a[0] - b[0]);
-
-    return sorted.reduce((merged, [start, end]) => {
-      const last = merged[merged.length - 1];
-      if (!last || start > (last[1] + 1)) {
-        merged.push([start, end]);
-      } else {
-        last[1] = Math.max(last[1], end);
-      }
-      return merged;
-    }, []);
-  }
-
-  snapRangeValue(value, min, max, step) {
-    const precision = this.getStepPrecision(step);
-    const boundedValue = Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : min;
-    const snapped = min + (Math.round((boundedValue - min) / step) * step);
-    return Number(Math.max(min, Math.min(max, snapped)).toFixed(precision));
-  }
-
-  getStepPrecision(step) {
-    if (!Number.isFinite(step) || Number.isInteger(step)) return 0;
-    const normalized = step.toString().toLowerCase();
-    if (normalized.includes('e-')) {
-      return parseInt(normalized.split('e-')[1], 10);
-    }
-    return normalized.includes('.') ? normalized.split('.')[1].length : 0;
+    return AppOptimizerMethods.findBestRangeValueForIrr.call(
+      this,
+      { inputId, stateKey, maxCoarseSamples, maxTopRegions },
+      onProgress
+    );
   }
 
   getOptimizerWorker() {
-    if (this.optimizerWorker) return this.optimizerWorker;
-
-    this.optimizerWorker = new Worker('js/optimizer-worker.js?v=20260401-chem-clipping');
-    this.optimizerWorker.addEventListener('message', event => {
-      const { requestId, messageType, progress, result, error } = event.data || {};
-      const pending = this.optimizerRequests.get(requestId);
-      if (!pending) return;
-      if (messageType === 'progress') {
-        pending.onProgress?.(progress || {});
-        return;
-      }
-
-      this.optimizerRequests.delete(requestId);
-      if (error) {
-        pending.reject(new Error(error.message || 'Optimizer worker failed.'));
-      } else {
-        pending.resolve(result || null);
-      }
-    });
-    this.optimizerWorker.addEventListener('error', event => {
-      const workerError = event?.error || new Error(event?.message || 'Optimizer worker crashed.');
-      this.optimizerRequests.forEach(({ reject }) => reject(workerError));
-      this.optimizerRequests.clear();
-      this.optimizerWorker = null;
-    });
-
-    return this.optimizerWorker;
+    return AppOptimizerMethods.getOptimizerWorker.call(this);
   }
 
   requestOptimizerWorkerSearch(search, onProgress = null) {
-    const worker = this.getOptimizerWorker();
-    const requestId = ++this.optimizerRequestId;
-    return new Promise((resolve, reject) => {
-      this.optimizerRequests.set(requestId, { resolve, reject, onProgress });
-      worker.postMessage({
-        requestId,
-        type: 'findBestRangeValueForIrr',
-        state: this.state,
-        search,
-      });
-    });
+    return AppOptimizerMethods.requestOptimizerWorkerSearch.call(this, search, onProgress);
   }
 
   syncBatteryEnabledState() {
@@ -918,13 +392,7 @@ class App {
   }
 
   bindNumber(id, stateKey, extra) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener('change', () => {
-      this.state[stateKey] = parseFloat(el.value);
-      if (extra) extra();
-      this.recalculate();
-    });
+    return AppControlMethods.bindNumber.call(this, id, stateKey, extra);
   }
 
   bindSectionToggles() {
@@ -1203,65 +671,11 @@ class App {
   }
 
   syncStateToControls() {
-    const checkboxIds = ['aiComputeEnabled', 'financingEnabled'];
-    checkboxIds.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.checked = Boolean(this.state[id]);
-    });
-
-    const selectMap = {
-      mountingType: this.state.mountingType,
-      policyMode: this.state.policyMode,
-      methaneMarketPreset: this.state.methaneMarketPreset,
-      aiReliabilityTarget: this.state.aiReliabilityTarget,
-    };
-    Object.entries(selectMap).forEach(([id, value]) => {
-      const el = document.getElementById(id);
-      if (el) el.value = value;
-    });
-
-    const numbers = {
-      latitude: this.state.latitude,
-      longitude: this.state.longitude,
-      siteYield: this.state.siteYieldMwhPerMwdcYear,
-    };
-    Object.entries(numbers).forEach(([id, value]) => {
-      const el = document.getElementById(id);
-      if (el) el.value = value;
-    });
-
-    const presetIndex = LOCATION_PRESETS.findIndex(loc =>
-      (loc.body || 'earth') === (this.state.body || 'earth') &&
-      Math.abs(loc.lat - this.state.latitude) < 0.1 &&
-      Math.abs(loc.lon - this.state.longitude) < 0.1
-    );
-    document.getElementById('locationPreset').value = presetIndex >= 0 ? String(presetIndex) : 'custom';
-
-    this.rangeBindings.forEach(binding => {
-      const el = document.getElementById(binding.id);
-      if (!el) return;
-      el.value = this.state[binding.stateKey];
-      this.syncRangeDisplay(binding.id, this.state[binding.stateKey], binding.formatter);
-    });
-
-    MODULE_REGISTRY.forEach(module => {
-      const enabledEl = document.getElementById(`${module.id}Enabled`);
-      if (enabledEl) enabledEl.checked = Boolean(this.state[`${module.id}Enabled`]);
-      const configEl = document.getElementById(`${module.id}Config`);
-      if (configEl) configEl.classList.toggle('active', Boolean(this.state[`${module.id}Enabled`]));
-      const routeEl = document.getElementById(`${module.id}Route`);
-      if (routeEl && this.state[`${module.id}Route`]) routeEl.value = this.state[`${module.id}Route`];
-    });
-
-    document.getElementById('aiComputeConfig').classList.toggle('active', this.state.aiComputeEnabled);
-    document.getElementById('financingConfig').classList.toggle('active', this.state.financingEnabled);
-    this.syncLoadConfigTabs();
+    return AppControlMethods.syncStateToControls.call(this);
   }
 
   syncRangeDisplay(id, value, formatter) {
-    const display = document.getElementById(`${id}Value`);
-    const binding = formatter || this.rangeBindings.find(item => item.id === id)?.formatter;
-    if (display && binding) display.textContent = binding(value);
+    return AppControlMethods.syncRangeDisplay.call(this, id, value, formatter);
   }
 
   formatMethaneFeedstockSplit(value) {
@@ -1427,182 +841,15 @@ class App {
   }
 
   syncDynamicVisibility() {
-    const results = this.lastResults;
-    const generatedExploratoryIds = new Set(
-      (results?.exploratoryModules || [])
-        .filter(module => module.enabled && module.outputDailyUnits > 0)
-        .map(module => module.id)
-    );
-    const showMethaneMarket = results
-      ? Boolean(results.sabatier?.enabled && results.sabatier?.ch4AnnualMCF > 0)
-      : Boolean(this.state.sabatierEnabled);
-    const showMethanolMarket = results
-      ? Boolean(results.methanol?.enabled && (results.methanol?.exportAnnualTons || 0) > 0)
-      : Boolean(this.state.methanolEnabled);
-
-    const methaneMarket = this.getMethaneMarketConfig();
-    const methaneMarketApplicability = document.getElementById('methaneMarketApplicabilityValue');
-    if (methaneMarketApplicability) methaneMarketApplicability.textContent = methaneMarket.applicability;
-
-    const methaneMarketBasis = document.getElementById('methaneMarketBasisValue');
-    if (methaneMarketBasis) methaneMarketBasis.textContent = methaneMarket.basis;
-
-    const methaneMarketNote = document.getElementById('methaneMarketNote');
-    if (methaneMarketNote) methaneMarketNote.textContent = methaneMarket.note;
-
-    const policy = this.getPolicyConfig();
-    const showCustomH2 = Boolean(policy.useCustomH2);
-    const showCustomCo2 = Boolean(policy.useCustomCo2);
-
-    const customH2Wrap = document.getElementById('customH2CreditWrap');
-    if (customH2Wrap) customH2Wrap.style.display = showCustomH2 ? 'block' : 'none';
-
-    const customCo2Wrap = document.getElementById('customCo2CreditWrap');
-    if (customCo2Wrap) customCo2Wrap.style.display = showCustomCo2 ? 'block' : 'none';
-
-    const customH2Label = document.getElementById('customH2CreditLabel');
-    if (customH2Label) {
-      customH2Label.textContent = policy.h2InputLabel || 'Custom H2 Credit ($/kg)';
-    }
-
-    const customCo2Label = document.getElementById('customCo2CreditLabel');
-    if (customCo2Label) {
-      customCo2Label.textContent = policy.co2InputLabel || 'Custom CO2 Credit ($/ton)';
-    }
-
-    const policyApplicability = document.getElementById('policyApplicabilityValue');
-    if (policyApplicability) policyApplicability.textContent = policy.applicability;
-
-    const policyBasis = document.getElementById('policyBasisValue');
-    if (policyBasis) policyBasis.textContent = policy.basis;
-
-    const stackingRule = document.getElementById('stackingRuleValue');
-    if (stackingRule) stackingRule.textContent = policy.stackingRule;
-
-    const policyNote = document.getElementById('policyNote');
-    if (policyNote) policyNote.textContent = policy.note;
-
-    const usPolicyFootnotes = document.getElementById('usPolicyFootnotes');
-    if (usPolicyFootnotes) {
-      const isUsPolicy = String(this.state.policyMode || '').startsWith('us_');
-      usPolicyFootnotes.style.display = isUsPolicy ? '' : 'none';
-    }
-
-    const debtTermInput = document.getElementById('debtTermYears');
-    if (debtTermInput) {
-      const horizonYears = Math.max(1, Math.round(this.state.analysisHorizonYears || 1));
-      this.state.debtTermYears = Math.max(1, Math.min(Math.round(this.state.debtTermYears || 1), horizonYears));
-      debtTermInput.max = String(horizonYears);
-      debtTermInput.value = String(this.state.debtTermYears);
-      this.syncRangeDisplay('debtTermYears', this.state.debtTermYears);
-
-      const financingTermNote = document.getElementById('financingTermNote');
-      if (financingTermNote) {
-        financingTermNote.textContent = `Debt term is capped by the selected ${FormatNumbers.fixed(horizonYears, 0)}-year analysis horizon.`;
-      }
-    }
-
-    const methaneMarketWrap = document.getElementById('methaneMarketWrap');
-    if (methaneMarketWrap) methaneMarketWrap.style.display = showMethaneMarket ? 'block' : 'none';
-
-    const methanolMarketWrap = document.getElementById('methanolMarketWrap');
-    if (methanolMarketWrap) methanolMarketWrap.style.display = showMethanolMarket ? 'block' : 'none';
-
-    MODULE_REGISTRY
-      .filter(module => module.maturity === 'Exploratory' && EXPLORATORY_MARKET_CONFIG[module.id])
-      .forEach(module => {
-        const wrap = document.getElementById(`${module.id}MarketWrap`);
-        const showWrap = results ? generatedExploratoryIds.has(module.id) : Boolean(this.state[`${module.id}Enabled`]);
-        if (wrap) wrap.style.display = showWrap ? 'block' : 'none';
-      });
-
-    const exploratoryOmWrap = document.getElementById('exploratoryOmWrap');
-    if (exploratoryOmWrap) {
-      const showWrap = results
-        ? generatedExploratoryIds.size > 0
-        : MODULE_REGISTRY.some(module => module.maturity === 'Exploratory' && this.state[`${module.id}Enabled`]);
-      exploratoryOmWrap.style.display = showWrap ? 'block' : 'none';
-    }
-
-    const productMarketEmptyState = document.getElementById('productMarketEmptyState');
-    if (productMarketEmptyState) {
-      const hasVisibleMarketControl = showMethaneMarket || showMethanolMarket || generatedExploratoryIds.size > 0;
-      productMarketEmptyState.style.display = hasVisibleMarketControl ? 'none' : 'block';
-    }
-
-    MODULE_REGISTRY
-      .filter(module => module.maturity === 'Exploratory')
-      .forEach(module => {
-        this.syncExploratoryCapexControl(module.id);
-      });
+    return AppUiStateMethods.syncDynamicVisibility.call(this);
   }
 
   syncExploratoryCapexControl(moduleId) {
-    const input = document.getElementById(`${moduleId}CapexBasis`);
-    const label = document.getElementById(`${moduleId}CapexBasisLabel`);
-    if (!input) return;
-    const capexConfig = Calc.getExploratoryCapexControlConfig(moduleId, this.state[`${moduleId}Route`]);
-    input.min = String(capexConfig.min);
-    input.max = String(capexConfig.max);
-    input.step = String(capexConfig.step);
-    this.state[`${moduleId}CapexBasis`] = Calc.clampNumber(
-      this.state[`${moduleId}CapexBasis`],
-      capexConfig.min,
-      capexConfig.max,
-      capexConfig.defaultValue
-    );
-    input.value = String(this.state[`${moduleId}CapexBasis`]);
-    if (label) label.textContent = `CAPEX (${capexConfig.unitLabel})`;
-    this.syncRangeDisplay(
-      `${moduleId}CapexBasis`,
-      this.state[`${moduleId}CapexBasis`],
-      v => this.formatExploratoryCapexBasis(moduleId, v)
-    );
+    return AppUiStateMethods.syncExploratoryCapexControl.call(this, moduleId);
   }
 
   syncDerivedFeedControls() {
-    const safeState = Calc.normalizeState(this.state);
-    const allocation = Calc.getBalancedAllocation(safeState);
-    const mix = Calc.getProductMix(safeState);
-    const mixControl = document.getElementById('productMixControl');
-    const mixNote = document.getElementById('productMixNote');
-    const mixInput = document.getElementById('methaneFeedstockSplit');
-
-    if (mixControl) {
-      mixControl.style.display = mix.bothEnabled ? 'block' : 'none';
-    }
-    if (mixInput) {
-      mixInput.value = this.state.methaneFeedstockSplit;
-    }
-    this.syncRangeDisplay('methaneFeedstockSplit', this.state.methaneFeedstockSplit, v => this.formatMethaneFeedstockSplit(v));
-    if (mixNote) {
-      mixNote.textContent = mix.bothEnabled
-        ? 'Shared H2 and CO2 production auto-balance from the combined methane and methanol demand.'
-        : 'Shared H2 and CO2 production auto-balance from the active downstream product requirements.';
-    }
-
-    const mtgSplitControl = document.getElementById('mtgMethanolSplitControl');
-    if (mtgSplitControl) {
-      mtgSplitControl.style.display = this.state.mtgEnabled && this.state.methanolEnabled ? 'block' : 'none';
-    }
-    const mtgSplitInput = document.getElementById('mtgMethanolSplit');
-    if (mtgSplitInput) {
-      mtgSplitInput.value = this.state.mtgMethanolSplit;
-      this.syncRangeDisplay('mtgMethanolSplit', this.state.mtgMethanolSplit, v => this.formatMtgMethanolSplit(v));
-    }
-
-    ['electrolyzer', 'dac'].forEach(id => {
-      const el = document.getElementById(`${id}AllocMode`);
-      if (el) {
-        const pct = id === 'electrolyzer' ? allocation.electrolyzer * 100 : allocation.dac * 100;
-        const basis = allocation.label === 'configured product mix'
-          ? 'Product mix'
-          : allocation.label === 'default methane case'
-            ? 'Default case'
-            : allocation.label[0].toUpperCase() + allocation.label.slice(1);
-        el.textContent = `${basis} · ${FormatNumbers.fixed(pct, 1)}% of power`;
-      }
-    });
+    return AppUiStateMethods.syncDerivedFeedControls.call(this);
   }
 
   recalculate(options = {}) {

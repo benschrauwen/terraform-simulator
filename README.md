@@ -28,7 +28,10 @@ The app is still a static front-end project with no build step. The main files a
 - `style.css`: visual styling
 - `js/app.js`: UI state, charts (power, annual dispatch, sensitivity vs methane or token price), map rendering, and panel updates
 - `js/calculations/`: split modules (`calculations-core.js` finance helpers, `calculations-solar.js`, `calculations-battery.js`, `calculations-series-ai.js`, `calculations-process.js`, `calculations-economics.js`) — solar, annual series, battery firming, AI dispatch, process, economics, policy, and environmental calculations
-- `js/constants.js`: presets, chemistry constants, policy presets, and module registry
+- `js/reference-data.js`: presets, chemistry constants, policy presets, and shared reference data
+- `js/module-registry.js` + `js/exploratory-routes.js`: supported/exploratory module metadata and route assumptions
+- `js/state-schema.js`: shared state defaults and normalization schema
+- `js/slider-markers.js`: slider guide markers and benchmark labels
 - `js/solar-geometry.js`: daily and planetary solar-profile shaping
 - `js/diagram.js`: process diagram rendering
 

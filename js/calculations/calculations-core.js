@@ -223,6 +223,110 @@ Object.assign(Calc, {
     return Array.from(dependencies);
   },
 
+  normalizeCoreStateFields(input = {}, normalized = {}) {
+    const enumOrDefault = (value, allowed, fallback) => (allowed.has(value) ? value : fallback);
+
+    CORE_STATE_FIELDS.forEach(field => {
+      if (field.type === 'enum') {
+        normalized[field.key] = enumOrDefault(
+          input[field.key],
+          new Set(getStateFieldOptions(field)),
+          field.defaultValue
+        );
+        return;
+      }
+
+      if (field.type === 'integer') {
+        const max = typeof field.getMax === 'function' ? field.getMax(normalized) : field.max;
+        normalized[field.key] = this.clampInteger(
+          input[field.key],
+          field.min,
+          max,
+          field.defaultValue
+        );
+        return;
+      }
+
+      if (field.type === 'number') {
+        normalized[field.key] = this.clampNumber(
+          input[field.key],
+          field.min,
+          field.max,
+          field.defaultValue
+        );
+        return;
+      }
+
+      if (field.type === 'boolean') {
+        normalized[field.key] = Boolean(normalized[field.key]);
+      }
+    });
+  },
+
+  normalizeModuleStateFields(input = {}, normalized = {}) {
+    MODULE_REGISTRY.forEach(module => {
+      const enabledKey = `${module.id}Enabled`;
+      normalized[enabledKey] = Boolean(normalized[enabledKey]);
+
+      (module.configs || []).forEach(config => {
+        const fallback = Object.prototype.hasOwnProperty.call(config, 'defaultValue')
+          ? config.defaultValue
+          : DEFAULT_STATE[config.key];
+        normalized[config.key] = this.clampNumber(
+          input[config.key],
+          config.min,
+          config.max,
+          fallback
+        );
+      });
+
+      if (module.assetLifeKey) {
+        normalized[module.assetLifeKey] = this.clampInteger(
+          input[module.assetLifeKey],
+          1,
+          100,
+          DEFAULT_STATE[module.assetLifeKey] ?? module.defaultAssetLife ?? 7
+        );
+      }
+
+      if (module.routeOptions?.length) {
+        const fallbackRoute = getModuleDefaultRoute(module);
+        const routeOptions = new Set(module.routeOptions.map(option => option.value));
+        normalized[`${module.id}Route`] = routeOptions.has(input[`${module.id}Route`])
+          ? input[`${module.id}Route`]
+          : fallbackRoute;
+      }
+
+      if (module.maturity === 'Exploratory') {
+        normalized[`${module.id}PriorityWeight`] = this.clampNumber(
+          input[`${module.id}PriorityWeight`],
+          0,
+          100,
+          DEFAULT_STATE[`${module.id}PriorityWeight`] ?? module.defaultPriorityWeight ?? 100
+        );
+        const capexControl = this.getExploratoryCapexControlConfig(
+          module.id,
+          normalized[`${module.id}Route`]
+        );
+        normalized[`${module.id}CapexBasis`] = this.clampNumber(
+          input[`${module.id}CapexBasis`],
+          capexControl.min,
+          capexControl.max,
+          DEFAULT_STATE[`${module.id}CapexBasis`] ?? capexControl.defaultValue
+        );
+        const marketConfig = EXPLORATORY_MARKET_CONFIG[module.id];
+        if (marketConfig) {
+          normalized[`${module.id}Price`] = this.clampNumber(
+            input[`${module.id}Price`],
+            marketConfig.min,
+            marketConfig.max,
+            DEFAULT_STATE[`${module.id}Price`] ?? marketConfig.defaultValue
+          );
+        }
+      }
+    });
+  },
+
   enforceModuleDependencies(rawState = {}) {
     const nextState = rawState && typeof rawState === 'object'
       ? { ...rawState }
@@ -253,224 +357,23 @@ Object.assign(Calc, {
       ...DEFAULT_STATE,
       ...input,
     };
-    const enumOrDefault = (value, allowed, fallback) => (allowed.has(value) ? value : fallback);
-    const solarProfileDefaults = {
-      earth: 'earth',
-      mars: 'mars-average',
-      moon: 'lunar-pel',
-    };
-    const solarProfileOptions = {
-      earth: new Set(['earth']),
-      mars: new Set(['mars', 'mars-average']),
-      moon: new Set(['moon', 'lunar-pel']),
-    };
+    this.normalizeCoreStateFields(input, normalized);
 
-    normalized.loadConfigTab = enumOrDefault(input.loadConfigTab, new Set(['chemicals', 'ai']), DEFAULT_STATE.loadConfigTab);
-    normalized.dayMode = enumOrDefault(input.dayMode, new Set(['average', 'specific']), DEFAULT_STATE.dayMode);
-    normalized.body = enumOrDefault(input.body, new Set(Object.keys(PLANETARY_BODIES)), DEFAULT_STATE.body);
-    normalized.mountingType = enumOrDefault(input.mountingType, new Set(Object.keys(MOUNTING_TYPES)), DEFAULT_STATE.mountingType);
-    normalized.siteYieldSource = enumOrDefault(
-      input.siteYieldSource,
-      new Set(['preset', 'manual', 'estimated', 'planetary-custom']),
-      DEFAULT_STATE.siteYieldSource
+    const solarProfileFallback =
+      SOLAR_PROFILE_DEFAULTS_BY_BODY[normalized.body] || DEFAULT_STATE.solarProfileModel;
+    const allowedProfiles = new Set(
+      SOLAR_PROFILE_OPTIONS_BY_BODY[normalized.body] || [solarProfileFallback]
     );
-    normalized.policyMode = enumOrDefault(input.policyMode, new Set(Object.keys(POLICY_OPTIONS)), DEFAULT_STATE.policyMode);
-    normalized.methaneMarketPreset = enumOrDefault(
-      input.methaneMarketPreset,
-      new Set(Object.keys(METHANE_MARKET_PRESETS)),
-      DEFAULT_STATE.methaneMarketPreset
-    );
-
-    const solarProfileFallback = solarProfileDefaults[normalized.body] || DEFAULT_STATE.solarProfileModel;
-    const allowedProfiles = solarProfileOptions[normalized.body] || new Set([solarProfileFallback]);
     normalized.solarProfileModel = allowedProfiles.has(input.solarProfileModel)
       ? input.solarProfileModel
       : solarProfileFallback;
-
-    normalized.latitude = this.clampNumber(input.latitude, -90, 90, DEFAULT_STATE.latitude);
-    normalized.longitude = this.clampNumber(input.longitude, -180, 180, DEFAULT_STATE.longitude);
-    normalized.dayOfYear = this.clampInteger(input.dayOfYear, 1, 365, DEFAULT_STATE.dayOfYear);
-    normalized.siteYieldMwhPerMwdcYear = this.clampNumber(
-      input.siteYieldMwhPerMwdcYear,
-      0,
-      1e6,
-      DEFAULT_STATE.siteYieldMwhPerMwdcYear
-    );
-    normalized.systemSizeMW = this.clampNumber(input.systemSizeMW, 0, 1e6, DEFAULT_STATE.systemSizeMW);
-    normalized.panelEfficiency = this.clampNumber(input.panelEfficiency, 1, 100, DEFAULT_STATE.panelEfficiency);
-    normalized.panelCostPerW = this.clampNumber(input.panelCostPerW, 0, 1e6, DEFAULT_STATE.panelCostPerW);
-    normalized.panelDegradationAnnual = this.clampNumber(
-      input.panelDegradationAnnual,
-      0,
-      100,
-      DEFAULT_STATE.panelDegradationAnnual
-    );
-    normalized.bosCostPerW = this.clampNumber(input.bosCostPerW, 0, 1e6, DEFAULT_STATE.bosCostPerW);
-    normalized.landCostPerAcre = this.clampNumber(input.landCostPerAcre, 0, 1e9, DEFAULT_STATE.landCostPerAcre);
-    normalized.sitePrepCostPerAcre = this.clampNumber(
-      input.sitePrepCostPerAcre,
-      0,
-      1e9,
-      DEFAULT_STATE.sitePrepCostPerAcre
-    );
-
-    normalized.batteryCapacityMWh = this.clampNumber(
-      input.batteryCapacityMWh,
-      0,
-      1e9,
-      DEFAULT_STATE.batteryCapacityMWh
-    );
-    normalized.batteryCostPerKWh = this.clampNumber(
-      input.batteryCostPerKWh,
-      0,
-      1e6,
-      DEFAULT_STATE.batteryCostPerKWh
-    );
-    normalized.batteryEfficiency = this.clampNumber(input.batteryEfficiency, 0, 100, DEFAULT_STATE.batteryEfficiency);
-    normalized.batteryCycles = this.clampNumber(input.batteryCycles, 1, 1e9, DEFAULT_STATE.batteryCycles);
-    normalized.chemicalSizingPercent = this.clampNumber(
-      input.chemicalSizingPercent,
-      0,
-      100,
-      DEFAULT_STATE.chemicalSizingPercent
-    );
-
-    normalized.aiReliabilityTarget = this.clampNumber(
-      input.aiReliabilityTarget,
-      0,
-      99.9999,
-      DEFAULT_STATE.aiReliabilityTarget
-    );
-    normalized.aiTokenPricePerM = this.clampNumber(input.aiTokenPricePerM, 0, 1e9, DEFAULT_STATE.aiTokenPricePerM);
-    normalized.aiMillionTokensPerMWh = this.clampNumber(
-      input.aiMillionTokensPerMWh,
-      0,
-      1e9,
-      DEFAULT_STATE.aiMillionTokensPerMWh
-    );
-    normalized.aiGpuCapexPerKW = this.clampNumber(input.aiGpuCapexPerKW, 0, 1e9, DEFAULT_STATE.aiGpuCapexPerKW);
-    normalized.aiAssetLifeYears = this.clampInteger(input.aiAssetLifeYears, 1, 100, DEFAULT_STATE.aiAssetLifeYears);
-
-    normalized.methaneFeedstockSplit = this.clampNumber(
-      input.methaneFeedstockSplit,
-      0,
-      100,
-      DEFAULT_STATE.methaneFeedstockSplit
-    );
-    normalized.mtgMethanolSplit = this.clampNumber(
-      input.mtgMethanolSplit,
-      0,
-      100,
-      DEFAULT_STATE.mtgMethanolSplit
-    );
-    normalized.methanePrice = this.clampNumber(input.methanePrice, 0, 1e9, DEFAULT_STATE.methanePrice);
-    normalized.methanolPrice = this.clampNumber(input.methanolPrice, 0, 1e9, DEFAULT_STATE.methanolPrice);
-    normalized.exploratoryOmPercent = this.clampNumber(
-      input.exploratoryOmPercent,
-      0,
-      20,
-      DEFAULT_STATE.exploratoryOmPercent
-    );
-    normalized.customH2Credit = this.clampNumber(input.customH2Credit, 0, 1e6, DEFAULT_STATE.customH2Credit);
-    normalized.customCo2Credit = this.clampNumber(input.customCo2Credit, 0, 1e6, DEFAULT_STATE.customCo2Credit);
-
-    normalized.solarAssetLife = this.clampInteger(input.solarAssetLife, 1, 100, DEFAULT_STATE.solarAssetLife);
-    normalized.analysisHorizonYears = this.clampInteger(
-      input.analysisHorizonYears,
-      1,
-      100,
-      DEFAULT_STATE.analysisHorizonYears
-    );
-    normalized.discountRate = this.clampNumber(input.discountRate, 0, 1000, DEFAULT_STATE.discountRate);
-    normalized.debtSharePercent = this.clampNumber(input.debtSharePercent, 0, 90, DEFAULT_STATE.debtSharePercent);
-    normalized.debtInterestRate = this.clampNumber(
-      input.debtInterestRate,
-      0,
-      1000,
-      DEFAULT_STATE.debtInterestRate
-    );
-    normalized.debtTermYears = this.clampInteger(
-      input.debtTermYears,
-      1,
-      normalized.analysisHorizonYears,
-      DEFAULT_STATE.debtTermYears
-    );
-    normalized.debtFeePercent = this.clampNumber(input.debtFeePercent, 0, 100, DEFAULT_STATE.debtFeePercent);
-    normalized.solarOmPercent = this.clampNumber(input.solarOmPercent, 0, 100, DEFAULT_STATE.solarOmPercent);
-    normalized.processOmPercent = this.clampNumber(input.processOmPercent, 0, 100, DEFAULT_STATE.processOmPercent);
-    normalized.batteryOmPercent = this.clampNumber(input.batteryOmPercent, 0, 100, DEFAULT_STATE.batteryOmPercent);
-
-    [
-      'batteryEnabled',
-      'aiComputeEnabled',
-      'financingEnabled',
-      ...MODULE_REGISTRY.map(module => `${module.id}Enabled`),
-    ].forEach(key => {
-      normalized[key] = Boolean(normalized[key]);
-    });
 
     if (normalized.aiComputeEnabled && normalized.batteryCapacityMWh <= 1e-9) {
       // Seed AI mode with a simple default: 1 MWh of storage per 1 GWh/year of solar.
       normalized.batteryCapacityMWh = this.getAiBatteryHeuristicMWh(normalized);
     }
 
-    MODULE_REGISTRY.forEach(module => {
-      (module.configs || []).forEach(config => {
-        normalized[config.key] = this.clampNumber(
-          input[config.key],
-          config.min,
-          config.max,
-          DEFAULT_STATE[config.key]
-        );
-      });
-
-      if (module.assetLifeKey) {
-        normalized[module.assetLifeKey] = this.clampInteger(
-          input[module.assetLifeKey],
-          1,
-          100,
-          DEFAULT_STATE[module.assetLifeKey]
-        );
-      }
-
-      if (module.routeOptions?.length) {
-        const fallbackRoute = module.routeOptions[0].value;
-        const routeOptions = new Set(module.routeOptions.map(option => option.value));
-        normalized[`${module.id}Route`] = enumOrDefault(
-          input[`${module.id}Route`],
-          routeOptions,
-          DEFAULT_STATE[`${module.id}Route`] || fallbackRoute
-        );
-      }
-
-      if (module.maturity === 'Exploratory') {
-        normalized[`${module.id}PriorityWeight`] = this.clampNumber(
-          input[`${module.id}PriorityWeight`],
-          0,
-          100,
-          DEFAULT_STATE[`${module.id}PriorityWeight`] ?? 100
-        );
-        const capexControl = this.getExploratoryCapexControlConfig(
-          module.id,
-          normalized[`${module.id}Route`]
-        );
-        normalized[`${module.id}CapexBasis`] = this.clampNumber(
-          input[`${module.id}CapexBasis`],
-          capexControl.min,
-          capexControl.max,
-          DEFAULT_STATE[`${module.id}CapexBasis`] ?? capexControl.defaultValue
-        );
-        const marketConfig = EXPLORATORY_MARKET_CONFIG[module.id];
-        if (marketConfig) {
-          normalized[`${module.id}Price`] = this.clampNumber(
-            input[`${module.id}Price`],
-            marketConfig.min,
-            marketConfig.max,
-            DEFAULT_STATE[`${module.id}Price`] ?? marketConfig.defaultValue
-          );
-        }
-      }
-    });
+    this.normalizeModuleStateFields(input, normalized);
     Object.assign(normalized, this.enforceModuleDependencies(normalized));
 
     const bodyConfig = PLANETARY_BODIES[normalized.body] || PLANETARY_BODIES.earth;

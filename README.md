@@ -6,77 +6,91 @@ The app is intentionally centered on the idea that very cheap local solar DC, lo
 
 ## Current State
 
-The app is already a real working prototype, not just a UI mockup. Today it supports:
+Today it supports:
 
-- Annual-yield-driven solar modeling with preset sites and manual `MWh / MWdc / year` input.
+- Yield-driven annual solar modeling with preset Earth sites, stylized Mars and Moon presets, and manual `MWh / MWdc / year` input.
+- Earth `Annual Average` and `Specific Day` views, plus average-cycle Mars and Moon modes with annual dispatch built on local-cycle and orbital-year assumptions.
 - Solar mounting comparisons across fixed tilt, East-West fixed, single-axis tracking, and dual-axis tracking.
-- Earth, Mars, and Moon resource presets, with planetary modes clearly treated as stylized scenarios.
-- A direct-coupled feed allocation model that auto-balances electrolyzer and DAC power shares from active downstream stoichiometry (chemistry runs on **residual** power after AI when AI compute is enabled).
-- Fully modeled methane and methanol product paths, including mass balance, CAPEX, revenue, and finance outputs.
-- Policy modes for `45V`, `45Q`, EU Hydrogen Bank style premiums, and custom credits.
-- NPV, IRR, ROI, payback, annualized CAPEX, and replacement-aware discounted cash flow outputs.
-- Battery firming as a comparison feature that solves for the highest continuous chemical-plant power the solar + storage pair can sustain while absorbing the modeled solar energy, with a fixed **2%/month** standing energy loss on stored energy.
-- Optional **on-site AI datacenter** mode: a reliability-targeted constant IT load auto-sized from annual solar (+ optional battery), with token-based revenue, GPU CAPEX ($/kW IT), throughput (million tokens per MWh), and economics integrated into NPV and sensitivity analysis.
-- **Chemical** vs **AI Compute** tabs under Processes to configure chemical modules separately from AI settings.
-- Charts for daily power (solar, optional battery charge, chemical or residual chemical load, and AI when enabled) plus an **Annual Dispatch** view of daily AI vs chemical energy over the modeled year (Earth uses a full-year hourly solar shape scaled to your annual yield).
-- Environmental outputs such as CO2 captured, CO2 displaced, water recycled, net water needed, and land use.
-- Exploratory industrial modules that are visible in the UI but intentionally excluded from ROI until route-specific assumptions are added.
+- Chemical peak sizing via `chemicalSizingPercent`, so you can compare full-capture sizing against intentional solar clipping.
+- A direct-coupled allocation model that auto-balances electrolyzer, DAC, and exploratory-route power shares from the enabled downstream demand.
+- Fully modeled supported product paths for methane and methanol, including mass balance, CAPEX, revenue, replacement timing, and finance outputs.
+- Methane and methanol co-production with a shared feedstock split when both supported product routes are enabled.
+- Exploratory industrial routes with selectable pathways, priority weights, rough throughput modeling, CAPEX basis controls, shared exploratory O&M, sale-price inputs, and inclusion in CAPEX, revenue, NPV, and IRR.
+- MTG (`methanol -> gasoline-range hydrocarbons`) as an exploratory downstream route that diverts a configurable share of methanol away from export.
+- Optional on-site AI datacenter mode: a reliability-targeted constant IT load sized against the modeled solar and battery system, with token revenue, GPU CAPEX, AI O&M, and annual dispatch.
+- Policy modes for `45V`, `45Q`, EU Hydrogen Bank style premiums, and custom H2 / CO2 credits, plus methane market presets for commodity, premium, and country-context cases.
+- NPV, project IRR, optional equity IRR with debt financing, ROI, payback, replacement-aware discounted cash flow outputs, and price sensitivity charts.
+- Daily power, annual dispatch, economics, sensitivity, environmental, and site-footprint views.
+- Inline IRR optimizers for battery capacity, chemical peak sizing, and methane-vs-methanol feedstock split.
 
-The app is still a static front-end project with no build step. The main files are:
+The app is still a static front-end project with no build step, but it is now split into clearer modules:
 
-- `index.html`: app layout and controls
+- `index.html`: app layout and control surfaces
 - `style.css`: visual styling
-- `js/app.js`: UI state, charts (power, annual dispatch, sensitivity vs methane or token price), map rendering, and panel updates
-- `js/calculations/`: split modules (`calculations-core.js` finance helpers, `calculations-solar.js`, `calculations-battery.js`, `calculations-series-ai.js`, `calculations-process.js`, `calculations-economics.js`) — solar, annual series, battery firming, AI dispatch, process, economics, policy, and environmental calculations
-- `js/reference-data.js`: presets, chemistry constants, policy presets, and shared reference data
+- `js/app.js`: app bootstrap, high-level coordination, and dynamic module rendering
+- `js/app-controls.js`: UI event binding and control behavior
+- `js/app-ui-state.js`: dynamic UI visibility, policy/market sync, planetary-mode UI sync, and derived control state
+- `js/app-charts.js`: power, dispatch, economics, and sensitivity charts
+- `js/app-renderers.js`: production, economics, and environmental result rendering
+- `js/app-site-map.js`: site-footprint map overlay and module footprint display
+- `js/app-optimizer.js` + `js/optimizer-worker.js`: worker-backed IRR search for inline optimize buttons
+- `js/calculation-runtime-paths.js`: script loading order for the optimizer worker runtime
+- `js/reference-data.js`: presets, chemistry constants, policy presets, market presets, and shared assumptions
 - `js/module-registry.js` + `js/exploratory-routes.js`: supported/exploratory module metadata and route assumptions
-- `js/state-schema.js`: shared state defaults and normalization schema
+- `js/state-schema.js`: shared defaults, normalization, and dependency rules
 - `js/slider-markers.js`: slider guide markers and benchmark labels
-- `js/solar-geometry.js`: daily and planetary solar-profile shaping
+- `js/solar-geometry.js`: Earth, Mars, and Moon solar-profile shaping
 - `js/diagram.js`: process diagram rendering
+- `js/format-numbers.js`: shared numeric formatting helpers
+- `js/calculations/`: split calculation modules for finance, solar, battery, AI dispatch, process, and economics logic
+- `tests/`: Node-based regression tests for calculations and renderer output
 
 ## What Is Modeled Well Enough Today
 
-These are the parts of the app that are currently modeled with enough internal structure to be useful for scenario exploration:
+These are the parts of the app that are currently structured well enough to be useful for scenario exploration:
 
-- A methane-first plant architecture: solar -> electrolyzer -> DAC -> Sabatier methane (with optional **AI datacenter** on the same solar and battery when enabled)
-- Methanol as a second modeled product family
-- Yield-driven annual solar production rather than pure latitude-based annual output
-- Optional **AI compute** economics: constant IT load sized to hit a chosen annual **delivered utilization** target against full-year hourly solar, plus token price and throughput, GPU CAPEX, fixed AI O&M, revenue in NPV, and sensitivity on token price when AI mode is on
-- Distinct CAPEX buckets for solar modules, BOS, land, site prep, battery, electrolyzer, DAC, reactors, and (when enabled) AI IT
-- Separate asset lives for solar, battery, and process hardware
-- Replacement CAPEX events inside the discounted cash flow horizon
-- Policy duration limits for support mechanisms like `45V` and EU Hydrogen Bank style premiums
-- Clear separation between supported modules and exploratory modules
+- Yield-driven annual solar production with mounting-specific yield and land-packing effects layered on top of a base site yield.
+- Earth annual-average and specific-day views, plus Mars and Moon annual-dispatch paths based on representative local-cycle assumptions.
+- A methane and methanol product system with shared H2 and CO2 allocation, explicit conversion assumptions, and export accounting.
+- Optional MTG diversion of methanol into a downstream hydrocarbon product rather than treating all methanol as exported sale volume.
+- Optional AI compute economics: constant IT load sizing, token throughput and price assumptions, GPU CAPEX, AI O&M, and revenue integrated into project economics.
+- Distinct CAPEX buckets for solar modules, BOS, land, site prep, battery, core process modules, exploratory route blocks, and AI IT when enabled.
+- Separate asset lives, replacement CAPEX events, panel degradation, and policy-duration limits inside the discounted cash flow.
+- Optional debt financing that switches the headline IRR from unlevered project IRR to sponsor-style equity IRR while keeping project NPV unlevered.
+- Exploratory route economics driven by route-specific electricity intensity, required feedstocks, cycling penalties, peak-throughput sizing, CAPEX basis, O&M, and sale-price assumptions.
+- A lean IRR calculation path plus worker-backed search used by the inline optimization controls.
 
 ## What Is Still Simplified Or Missing
 
 The simulator is useful, but it still has important limitations:
 
-- Earth fallback solar yield still relies on a latitude/GHI heuristic when the user is not using a preset or manual annual yield.
+- Earth fallback solar yield still relies on a latitude and GHI heuristic when the user is not using a preset or manual annual yield.
 - Hydrogen-only sales are not yet modeled as a revenue line.
 - DAC-only and hydrogen-only operating modes are still stylized fallback cases rather than dedicated product modes.
-- Exploratory modules do not yet have route-specific mass balance, CAPEX, replacement, or OPEX logic.
-- O&M is still represented as simple percentages of CAPEX rather than a detailed fixed-and-variable cost model.
-- Debt, taxes, inflation, salvage value, working capital, and ownership structure are not modeled.
+- Exploratory routes are rough techno-economic placeholders, not full first-principles process designs with validated thermal, logistics, startup, or quality constraints.
+- O&M is still represented as simple percentages of CAPEX rather than a detailed fixed-plus-variable cost model.
+- Financing is limited to a simple upfront debt share, fee, and amortizing annual debt service. Taxes, depreciation, inflation, salvage value, working capital, tax equity, and ownership structure are not modeled.
 - Policy eligibility is not legally validated against full lifecycle, jurisdictional, or contractual requirements.
-- The battery model is a simplified continuous-output firming heuristic, not a full storage engineering model or year-round governor.
-- **AI compute** is a stylized constant-load and token-pricing layer, not a GPU/network/datacenter engineering model; “integrated” $/M token metrics allocate solar + battery + AI capital to tokens for intuition, not as a contractual PPA structure.
+- The battery model is a simplified firming heuristic, not a full storage engineering model or year-round plant-control system.
+- AI compute is a stylized constant-load and token-pricing layer, not a GPU, network, or datacenter engineering model.
 - Planetary modes are exploratory and use literature-inspired benchmarks rather than bankable resource datasets.
 
 ## Key Assumptions
 
 The current implementation makes several deliberate assumptions that should stay visible:
 
-- Annual economics are driven by `siteYieldMwhPerMwdcYear`; the daily solar profile is mainly used for shaping charts and dispatch.
-- With **AI compute** enabled, the model builds a **full-year hourly solar series** (Earth: day-by-day geometry scaled to annual yield) and dispatches **AI first**; the chemical plant and battery charging use **residual** solar after the AI load, with the same **2%/month** storage leakage as the battery-only path.
+- Annual economics are driven by `siteYieldMwhPerMwdcYear`; the day selector mainly changes charting and Earth day-level visualization, not the annual non-AI economics.
+- `siteYieldMwhPerMwdcYear` is treated as a base annual yield. Mounting effects are applied on top of that base yield rather than asking the user for a fully mounting-adjusted number.
+- With AI compute enabled, the model builds an annual dispatch path and serves AI first; the chemical plant and battery charging use residual solar after the AI load.
+- `chemicalSizingPercent` scales the full-capture chemical peak and allows intentional clipping of the highest-solar hours.
+- Supported products and exploratory routes share H2, CO2, methanol, and power through an auto-balanced weighted allocation rather than a user-entered process-flow sheet.
 - Panel efficiency affects panel area and land use, not annual energy yield, because the model is framed around fixed MWdc nameplate.
+- Stored energy always loses a fixed `2%/month` through standing leakage.
+- Solar-linked revenue degrades with panel degradation over time, including AI token revenue and exploratory-route revenue.
+- Policy presets are non-stacked by default except in `Custom` mode, and time-limited support ends after the modeled support duration.
 - Default methane volume conversion assumes `19.25 kg CH4 / MCF`.
 - Default fossil gas displacement uses `0.053 tCO2 / MCF`.
 - Default low-capex Terraform-style process presets are approximate, not universal truths.
-- Exploratory modules are shown to represent architecture coverage, not validated economics.
-- Policy presets are non-stacked by default except in `Custom` mode.
-- The default state approximates a `1 MW` Mojave-style methane case, but there is not yet a dedicated `Mark One` preset object.
 
 ## Core Formula Summary
 
@@ -85,6 +99,12 @@ The formulas below are the current conceptual backbone of the app.
 ### Solar
 
 ```text
+base_yield_mwh_per_mwdc_year =
+  manual_or_preset_or_estimated_yield
+
+site_yield_mwh_per_mwdc_year =
+  base_yield_mwh_per_mwdc_year * mounting_yield_multiplier
+
 annual_solar_mwh = solar_mwdc * site_yield_mwh_per_mwdc_year
 
 daily_solar_kwh_avg = annual_solar_mwh * 1000 / cycles_per_year
@@ -96,13 +116,34 @@ panel_area_m2 = solar_mwdc * 1e6 / (module_efficiency * 1000)
 site_area_m2 = panel_area_m2 / packing_factor
 ```
 
-For Earth sites, the model can still fall back to:
+For Earth sites, the fallback base-yield estimate is still:
 
 ```text
-base_yield_mwh_per_mwdc_year = ghi * 0.82
+estimated_base_yield_mwh_per_mwdc_year = ghi * 0.82
 ```
 
 That fallback is intentionally treated as a heuristic, not a project-grade solar dataset.
+
+### Chemical sizing and allocation
+
+The app first determines a full-capture peak, then optionally undersizes the chemical plant:
+
+```text
+chemical_peak_kw = full_capture_peak_kw * chemical_sizing_fraction
+```
+
+Power and feed shares are then auto-balanced from the enabled downstream routes:
+
+```text
+electrolyzer_share = h2_power_demand / total_power_demand
+
+dac_share = co2_power_demand / total_power_demand
+
+exploratory_share_i =
+  exploratory_pool_share * priority_weight_i / sum(priority_weights)
+```
+
+That is a conceptual summary. In the code, the demand proxy also depends on each route's electricity intensity and required feedstocks.
 
 ### Electrolysis
 
@@ -187,12 +228,47 @@ water_per_kg_meoh = 0.562
 Core formulas:
 
 ```text
-meoh_kg = min(h2_kg / 0.189, co2_kg / 1.374) * methanol_conversion
+gross_meoh_kg = min(h2_kg / 0.189, co2_kg / 1.374) * methanol_conversion
+
+export_meoh_kg = max(0, gross_meoh_kg - mtg_methanol_consumption)
 ```
+
+### Exploratory routes
+
+Each exploratory route uses a rough throughput limit from electricity plus any required feedstocks:
+
+```text
+output_units =
+  min(
+    daily_kwh / electricity_kwh_per_unit,
+    h2_available_kg / h2_kg_per_unit,
+    co2_available_kg / co2_kg_per_unit,
+    methanol_available_kg / methanol_kg_per_unit
+  )
+```
+
+Peak-throughput sizing drives route CAPEX:
+
+```text
+peak_nameplate_units_per_hour =
+  min(
+    peak_alloc_kw / electricity_kwh_per_unit,
+    peak_h2_kg_per_hour / h2_kg_per_unit,
+    peak_co2_kg_per_hour / co2_kg_per_unit,
+    peak_methanol_kg_per_hour / methanol_kg_per_unit
+  )
+
+route_capex =
+  peak_nameplate_capacity * capex_basis * cycling_penalty
+
+annual_route_revenue = annual_output_units * sale_price
+```
+
+Most exploratory routes size CAPEX on `$/ton/yr capacity`; desalination routes use `$/m3/day`.
 
 ### AI compute (optional)
 
-When enabled, a constant `load_kw` is chosen so simulated **delivered utilization** (energy served to the AI load divided by demand) meets the selected reliability target. Tokens and revenue follow throughput and price inputs:
+When enabled, a constant `load_kw` is chosen so simulated delivered utilization meets the selected reliability target. Tokens and revenue follow throughput and price inputs:
 
 ```text
 annual_tokens_m = ai_served_mwh * million_tokens_per_mwh
@@ -200,11 +276,11 @@ annual_tokens_m = ai_served_mwh * million_tokens_per_mwh
 annual_ai_revenue = annual_tokens_m * price_per_million_tokens
 ```
 
-GPU CAPEX uses `$ / kW` of installed IT load at the solved `load_kw`. The UI also reports **full-rate reliability** (hours at full AI power), **integrated $/M token** (solar + battery + AI annualized cost divided by tokens), and **token margin** vs the token price.
+GPU CAPEX uses `$ / kW` of installed IT load at the solved `load_kw`. The UI also reports full-rate reliability, integrated `$ / M token`, and token margin versus the token price.
 
 ### Finance
 
-The app uses capital recovery factor annualization plus a separate discounted cash flow path with explicit replacement years.
+The app uses capital recovery factor annualization plus a discounted cash flow path with explicit replacement years.
 
 ```text
 crf(r, n) = r * (1 + r)^n / ((1 + r)^n - 1)
@@ -213,23 +289,36 @@ annualized_capex_i = capex_i * crf(discount_rate, asset_life_i)
 
 annual_cost = sum(annualized_capex_i) + annual_om
 
-yearly_net_cash_flow_y =
+net_cash_flow_y =
   yearly_revenue_y -
   annual_om -
   replacement_capex_y
 
 npv =
   -initial_capex +
-  sum(yearly_net_cash_flow_y / (1 + discount_rate)^y)
+  sum(net_cash_flow_y / (1 + discount_rate)^y)
+```
+
+When debt financing is enabled, the model also tracks a simple upfront debt structure:
+
+```text
+debt_amount = total_capex * debt_share
+
+equity_upfront = total_capex - debt_amount + upfront_fee
+
+annual_debt_service = debt_amount * crf(interest_rate, debt_term)
+
+equity_cash_flow_y = net_cash_flow_y - debt_service_y
 ```
 
 Important implementation detail:
 
-- Solar-linked revenue degrades with panel degradation over time (including **AI token revenue** when AI compute is enabled).
+- Solar-linked revenue degrades with panel degradation over time, including AI token revenue and exploratory-route revenue.
 - Time-limited policy modes only apply for their modeled support duration.
 - Replacement CAPEX appears as discrete outflows when asset life rolls over within the analysis horizon.
+- With financing enabled, the headline IRR switches from project IRR to equity IRR, while project NPV remains unlevered.
 
-### Environmental Outputs
+### Environmental outputs
 
 ```text
 co2_captured_tpy = annual_co2_captured_kg / 1000
@@ -248,21 +337,32 @@ net_water_needed_kgpd =
 
 The current default state is roughly a `1 MW` Mojave-style methane scenario:
 
-- Site: Mojave Desert style Earth preset
-- Annual yield: `2050 MWh / MWdc / year`
+- Site: Mojave Desert Earth preset
+- Analysis cycle: `Annual Average`
+- Annual base yield: `2050 MWh / MWdc / year`
 - Mounting: East-West fixed
+- System size: `1 MW`
 - Panel efficiency: `20%`
 - Module cost: `$0.20/W`
 - BOS cost: `$0.12/W`
 - Panel degradation: `0.65%/yr`
+- Battery: off by default (`0 MWh`), with `$150/kWh` storage cost when enabled
+- Chemical peak sizing: `100%`
 - Electrolyzer: `79 kWh/kg H2`, `$100/kW`
-- DAC: `3440 kWh/t-CO2`, `$600/t-yr`
+- DAC: `3440 kWh/t-CO2`, `$450/kW`
 - Sabatier conversion: `99%`
+- Methane market preset: `Commodity gas / whitepaper-style case`
 - Methane price: `$20/MCF`
 - Methanol price: `$600/t`
+- AI compute: off by default
+- Financing: off by default
 - Policy mode: `45V Tier 4`
+- Solar O&M: `1.5%/yr`
+- Process O&M: `3.0%/yr`
+- Battery O&M: `1.5%/yr`
+- Exploratory O&M: `4.0%/yr`
 - Solar asset life: `30 years`
-- Process asset life defaults: `7 years`
+- Core process asset life defaults: `7 years`
 - Analysis horizon: `30 years`
 - Discount rate: `8%`
 
@@ -275,29 +375,32 @@ The current default state is roughly a `1 MW` Mojave-style methane scenario:
 - Methane / Sabatier
 - Methanol
 
-### Exploratory scaffolds in the UI
+### Exploratory routes with rough economics
 
+- MTG (`methanol -> gasoline-range hydrocarbons`)
 - CO2 -> CO
 - Ammonia
-- Coke / graphite / graphene
-- Cement / lime
+- Specialty Electrocarbon
+- Lime
+- Cement
 - Steel
 - Silicon
 - Aluminum
 - Titanium
 - Desalination
 
-These exploratory modules are intentionally excluded from ROI and NPV until route-specific assumptions are added.
+These exploratory routes are no longer UI-only scaffolds. They now carry rough throughput, CAPEX, O&M, replacement, and revenue assumptions into project economics, but they should still be treated as high-level placeholders rather than validated process designs.
 
 ## Future Improvements
 
 The most important next steps are:
 
-- Replace fallback annual-yield heuristics with imported PV datasets or a proper site-yield workflow.
-- Extend exploratory modules with route-specific mass balance, CAPEX, OPEX, and replacement logic.
-- Improve variable OPEX and maintenance treatment for supported modules.
+- Replace fallback annual-yield heuristics with a stronger site-yield workflow or imported PV datasets.
+- Add explicit hydrogen sales and dedicated hydrogen-first business cases.
+- Deepen exploratory routes with better feedstock, logistics, thermal-balance, and intermittency assumptions.
+- Improve variable OPEX and maintenance treatment for both supported and exploratory modules.
+- Expand financing beyond simple amortizing debt into taxes, depreciation, inflation, and ownership structure.
 - Make policy qualification logic more explicit and jurisdiction-aware.
-- Add automated regression coverage for finance, policy duration, replacement timing, and dispatch-sensitive sizing.
 
 ## Running Locally
 
@@ -312,7 +415,17 @@ Notes:
 
 - The app depends on CDN-hosted `Chart.js` and `Leaflet`.
 - Earth satellite imagery depends on external map tiles.
-- Manual annual yield input is the best option today if you want to use a site-specific PV benchmark.
+- Manual annual yield input is still the best option if you want to use a site-specific PV benchmark.
+
+## Tests
+
+From the repo root, run:
+
+```bash
+node --test
+```
+
+The test suite covers calculations, planetary dispatch behavior, exploratory-route economics, optimizer behavior, and renderer formatting.
 
 ## Sources
 

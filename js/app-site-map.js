@@ -40,7 +40,7 @@ window.AppSiteMapMethods = {
       color: '#ffffff',
       weight: 2,
       fillColor: markerColor,
-      fillOpacity: 0.95,
+      fillOpacity: 0.5,
     }).addTo(this.siteMap);
 
     this.siteMapOverlay = L.rectangle(
@@ -52,7 +52,7 @@ window.AppSiteMapMethods = {
         color: overlayColor,
         weight: 2,
         fillColor: overlayColor,
-        fillOpacity: 0.22,
+        fillOpacity: 0.5,
         interactive: false,
       }
     ).addTo(this.siteMap);
@@ -294,7 +294,7 @@ window.AppSiteMapMethods = {
         weight: 1,
         opacity: 0.95,
         fillColor: item.color,
-        fillOpacity: 0.42,
+        fillOpacity: 0.58,
         interactive: false,
       }).addTo(this.siteMapModuleLayer);
       cursorX += scaledSide + scaledGapMeters;

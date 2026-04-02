@@ -14,7 +14,7 @@ const MODULE_REGISTRY = [
     defaultAssetLife: 7,
     configs: [
       { key: 'electrolyzerEfficiency', label: 'Efficiency (kWh/kg H2)', type: 'range', min: 39, max: 100, step: 1, unit: 'kWh/kg', defaultValue: 79 },
-      { key: 'electrolyzerCapex', label: 'CAPEX ($/kW)', type: 'range', min: 10, max: 500, step: 10, unit: '$/kW', defaultValue: 100 },
+      { key: 'electrolyzerCapex', label: 'CAPEX ($/kW)', type: 'range', min: 10, max: 5000, step: 10, unit: '$/kW', defaultValue: 100 },
     ],
   },
   {
@@ -27,8 +27,8 @@ const MODULE_REGISTRY = [
     assetLifeKey: 'dacAssetLife',
     defaultAssetLife: 7,
     configs: [
-      { key: 'dacEnergy', label: 'Efficiency (kWh/t-CO2)', type: 'range', min: 1000, max: 5000, step: 100, unit: 'kWh/t', defaultValue: 3440 },
-      { key: 'dacCapex', label: 'CAPEX ($/kW)', type: 'range', min: 50, max: 5000, step: 50, unit: '$/kW', defaultValue: 450 },
+      { key: 'dacEnergy', label: 'Efficiency (kWh/t-CO2)', type: 'range', min: 500, max: 5000, step: 5, unit: 'kWh/t', defaultValue: 3440 },
+      { key: 'dacCapex', label: 'CAPEX ($/kW)', type: 'range', min: 50, max: 20000, step: 50, unit: '$/kW', defaultValue: 450 },
     ],
   },
   {

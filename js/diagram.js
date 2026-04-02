@@ -365,12 +365,13 @@ const Diagram = {
         color: this.colors.methane,
       });
     }
-    if (r.methanol.enabled) {
+    const methanolAnnualTons = r.methanol.exportAnnualTons ?? r.methanol.annualTons ?? 0;
+    if (r.methanol.enabled && methanolAnnualTons > 0.1) {
       outputs.push({
         id: 'out-methanol',
         icon: '',
         title: 'Methanol output',
-        value: `${FormatNumbers.fixed(r.methanol.annualTons, 1)} t/yr`,
+        value: `${FormatNumbers.fixed(methanolAnnualTons, 1)} t/yr`,
         subtitle: `${FormatNumbers.formatMoney(r.economics.revenue.methanol)} /yr`,
         color: this.colors.methanol,
       });

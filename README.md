@@ -50,7 +50,7 @@ The app is still a static front-end project with no build step, but it is now sp
 
 These are the parts of the app that are currently structured well enough to be useful for scenario exploration:
 
-- Yield-driven annual solar production with mounting-specific yield and land-packing effects layered on top of a base site yield.
+- Yield-driven annual solar production with mounting-specific yield and land-use effects layered on top of a base site yield.
 - Earth annual-average and specific-day views, plus Mars and Moon annual-dispatch paths based on representative local-cycle assumptions.
 - A methane and methanol product system with shared H2 and CO2 allocation, explicit conversion assumptions, and export accounting.
 - Optional MTG diversion of methanol into a downstream hydrocarbon product rather than treating all methanol as exported sale volume.
@@ -115,7 +115,7 @@ capacity_factor = annual_solar_mwh / (solar_mwdc * 8760)
 
 panel_area_m2 = solar_mwdc * 1e6 / (module_efficiency * 1000)
 
-site_area_m2 = panel_area_m2 / packing_factor
+site_area_m2 = panel_area_m2 / ground_coverage_ratio
 ```
 
 For Earth sites, the fallback base-yield estimate is still:

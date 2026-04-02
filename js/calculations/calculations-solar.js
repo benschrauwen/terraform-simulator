@@ -149,7 +149,8 @@ Object.assign(Calc, {
     const totalBOSCost = state.systemSizeMW * 1e6 * state.bosCostPerW;
 
     const panelArea = (state.systemSizeMW * 1e6) / ((state.panelEfficiency / 100) * 1000);
-    const landArea = panelArea / mounting.landPacking;
+    const groundCoverageRatio = Math.max(0.05, Math.min(mounting.groundCoverageRatio || 0.35, 0.95));
+    const landArea = panelArea / groundCoverageRatio;
     const acres = landArea / 4047;
     const landCapex = acres * (state.landCostPerAcre || 0);
     const sitePrepCapex = acres * (state.sitePrepCostPerAcre || 0);
@@ -195,6 +196,7 @@ Object.assign(Calc, {
       panelAreaM2: panelArea,
       landAreaM2: landArea,
       acres,
+      groundCoverageRatio,
       solarCapex: totalPanelCost,
       moduleCapex: totalPanelCost,
       bosCapex: totalBOSCost,

@@ -34,6 +34,38 @@ test('capex breakdown still adds up to the reported total', () => {
   );
 });
 
+test('solar land use stays physically larger than panel area while preserving denser east-west packing', () => {
+  const baseOverrides = {
+    systemSizeMW: 1,
+    panelEfficiency: 20,
+    batteryCapacityMWh: 0,
+    electrolyzerEnabled: false,
+    dacEnabled: false,
+    sabatierEnabled: false,
+    methanolEnabled: false,
+  };
+  const fixed = runScenario({ ...baseOverrides, mountingType: 'fixed' });
+  const eastWest = runScenario({ ...baseOverrides, mountingType: 'ew' });
+  const singleAxis = runScenario({ ...baseOverrides, mountingType: 'single' });
+
+  for (const [label, result] of [
+    ['fixed tilt', fixed],
+    ['east-west', eastWest],
+    ['single-axis', singleAxis],
+  ]) {
+    assert.ok(
+      result.solar.landAreaM2 > result.solar.panelAreaM2,
+      `Expected ${label} land area ${result.solar.landAreaM2.toFixed(3)} m2 to exceed panel area ${result.solar.panelAreaM2.toFixed(3)} m2.`
+    );
+  }
+
+  const densityRatio = singleAxis.solar.landAreaM2 / eastWest.solar.landAreaM2;
+  assert.ok(
+    densityRatio > 2.45 && densityRatio < 2.55,
+    `Expected east-west to stay about 2.5x denser than single-axis tracking, observed ${densityRatio.toFixed(3)}x.`
+  );
+});
+
 test('dac capex is sized from allocated DAC power', () => {
   const allocation = { dac: 0.4 };
   const lessEfficient = Calc.calculateDAC(

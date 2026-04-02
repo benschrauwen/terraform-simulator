@@ -88,7 +88,7 @@ const MOUNTING_TYPES = {
   fixed: {
     label: 'Fixed Tilt',
     yieldMult: 1.0,
-    landPacking: 1.0,
+    groundCoverageRatio: 0.45,
     windRating: '130 mph',
     typicalBOS: 0.20,
     note: 'Simple baseline for generic utility-scale PV.',
@@ -96,7 +96,7 @@ const MOUNTING_TYPES = {
   ew: {
     label: 'East-West Fixed',
     yieldMult: 0.92,
-    landPacking: 2.25,
+    groundCoverageRatio: 0.75,
     windRating: '180 mph (vendor claim class)',
     typicalBOS: 0.12,
     note: 'High-density low-tilt layout inspired by PEG-style systems with a broader two-shoulder daily profile.',
@@ -104,7 +104,7 @@ const MOUNTING_TYPES = {
   single: {
     label: 'Single-Axis Tracker',
     yieldMult: 1.18,
-    landPacking: 0.90,
+    groundCoverageRatio: 0.30,
     windRating: '120 mph',
     typicalBOS: 0.35,
     note: 'Higher yield, higher BOS, more land, stronger weather dependence, and a flatter tracked daily profile.',
@@ -112,7 +112,7 @@ const MOUNTING_TYPES = {
   dual: {
     label: 'Dual-Axis Tracker',
     yieldMult: 1.28,
-    landPacking: 0.60,
+    groundCoverageRatio: 0.22,
     windRating: '90 mph',
     typicalBOS: 0.55,
     note: 'Comparison only. Not part of the Terraform-style thesis.',

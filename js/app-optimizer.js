@@ -1,6 +1,11 @@
 /* Optimizer helpers attached to App */
 
-const APP_OPTIMIZER_WORKER_VERSION = '20260402-maintainability';
+function resolveOptimizerAssetPath(path) {
+  if (typeof AssetPaths !== 'undefined' && typeof AssetPaths.resolve === 'function') {
+    return AssetPaths.resolve(path);
+  }
+  return path;
+}
 
 const APP_IRR_OPTIMIZER_BUTTONS = [
   {
@@ -145,7 +150,7 @@ const AppOptimizerMethods = {
   getOptimizerWorker() {
     if (this.optimizerWorker) return this.optimizerWorker;
 
-    this.optimizerWorker = new Worker(`js/optimizer-worker.js?v=${APP_OPTIMIZER_WORKER_VERSION}`);
+    this.optimizerWorker = new Worker(resolveOptimizerAssetPath('js/optimizer-worker.js'));
     this.optimizerWorker.addEventListener('message', event => {
       const { requestId, messageType, progress, result, error } = event.data || {};
       const pending = this.optimizerRequests.get(requestId);

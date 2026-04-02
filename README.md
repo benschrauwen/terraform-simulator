@@ -24,7 +24,7 @@ Today it supports:
 - Daily power, annual dispatch, economics, sensitivity, environmental, and site-footprint views.
 - Inline IRR optimizers for battery capacity, chemical peak sizing, and methane-vs-methanol feedstock split.
 
-The app is still a static front-end project with no build step, but it is now split into clearer modules:
+The app is still a mostly static front-end project, with a lightweight Node build that generates versioned `dist/` assets for deployment. The source is split into clearer modules:
 
 - `index.html`: app layout and control surfaces
 - `style.css`: visual styling
@@ -35,6 +35,7 @@ The app is still a static front-end project with no build step, but it is now sp
 - `js/app-renderers.js`: production, economics, and environmental result rendering
 - `js/app-site-map.js`: site-footprint map overlay and module footprint display
 - `js/app-optimizer.js` + `js/optimizer-worker.js`: worker-backed IRR search for inline optimize buttons
+- `js/asset-paths.js`: shared asset URL helper for clean local paths and versioned deployment output
 - `js/calculation-runtime-paths.js`: script loading order for the optimizer worker runtime
 - `js/reference-data.js`: presets, chemistry constants, policy presets, market presets, and shared assumptions
 - `js/module-registry.js` + `js/exploratory-routes.js`: supported/exploratory module metadata and route assumptions
@@ -44,6 +45,7 @@ The app is still a static front-end project with no build step, but it is now sp
 - `js/diagram.js`: process diagram rendering
 - `js/format-numbers.js`: shared numeric formatting helpers
 - `js/calculations/`: split calculation modules for finance, solar, battery, AI dispatch, process, and economics logic
+- `scripts/build.mjs` + `scripts/dev.mjs`: minimal build and static-serving scripts for local development and deployment output
 - `tests/`: Node-based regression tests for calculations and renderer output
 
 ## What Is Modeled Well Enough Today
@@ -422,18 +424,18 @@ The most important next steps are:
 
 ## Running Locally
 
-There is no build step.
+Use the npm scripts:
 
-You can either:
-
-1. Open `index.html` directly in a browser.
-2. Serve the folder locally, for example with `python3 -m http.server`.
+1. `npm run dev` to serve the source files locally with caching disabled.
+2. `npm run build` to generate a versioned `dist/` folder for deployment.
+3. `npm run preview` to serve the built `dist/` output locally.
 
 Notes:
 
 - The app depends on CDN-hosted `Chart.js` and `Leaflet`.
 - Earth satellite imagery depends on external map tiles.
 - Manual annual yield input is still the best option if you want to use a site-specific PV benchmark.
+- Vercel can deploy directly from `dist/`; the repo includes `vercel.json` so `npm run build` is used automatically.
 
 ## Tests
 

@@ -1,7 +1,14 @@
-const OPTIMIZER_WORKER_VERSION = '20260401-maintainability';
+const OPTIMIZER_WORKER_BUILD_ID = '__APP_BUILD_ID__';
+const OPTIMIZER_WORKER_ASSET_VERSION = OPTIMIZER_WORKER_BUILD_ID.startsWith('__') ? '' : OPTIMIZER_WORKER_BUILD_ID;
 
-importScripts(`calculation-runtime-paths.js?v=${OPTIMIZER_WORKER_VERSION}`);
-importScripts(...getWorkerCalculationRuntimeScriptPaths(`?v=${OPTIMIZER_WORKER_VERSION}`));
+function resolveOptimizerWorkerBootstrapPath(path) {
+  if (!OPTIMIZER_WORKER_ASSET_VERSION) return path;
+  return `${path}?v=${encodeURIComponent(OPTIMIZER_WORKER_ASSET_VERSION)}`;
+}
+
+importScripts(resolveOptimizerWorkerBootstrapPath('asset-paths.js'));
+importScripts(AssetPaths.resolve('calculation-runtime-paths.js'));
+importScripts(...getWorkerCalculationRuntimeScriptPaths(path => AssetPaths.resolve(path)));
 
 self.addEventListener('message', event => {
   const { requestId, type, state, search } = event.data || {};

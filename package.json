@@ -1,0 +1,13 @@
+{
+  "name": "terraform-industries",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "node scripts/build.mjs",
+    "preview": "node scripts/dev.mjs dist",
+    "test": "node --test tests/calculations/calculations.test.js tests/renderers/diagram.test.js tests/renderers/production.test.js"
+  }
+}

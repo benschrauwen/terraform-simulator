@@ -14,9 +14,9 @@ const CALCULATION_RUNTIME_SCRIPT_PATHS = [
   'js/calculations/calculations-economics.js',
 ];
 
-function getWorkerCalculationRuntimeScriptPaths(query = '') {
+function getWorkerCalculationRuntimeScriptPaths(resolvePath = path => path) {
   return CALCULATION_RUNTIME_SCRIPT_PATHS.map(path => {
     const workerPath = path.replace(/^js\//, '');
-    return query ? `${workerPath}${query}` : workerPath;
+    return resolvePath(workerPath);
   });
 }

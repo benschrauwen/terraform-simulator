@@ -413,6 +413,50 @@ test('ai mode preserves explicit non-zero battery sizing', () => {
   );
 });
 
+test('ai-only 1 GW zero-battery entry seeds a larger and worse battery than nearby explicit capacities', () => {
+  const baseOverrides = {
+    systemSizeMW: 1000,
+    loadConfigTab: 'ai',
+    aiComputeEnabled: true,
+    electrolyzerEnabled: false,
+    dacEnabled: false,
+    sabatierEnabled: false,
+    methanolEnabled: false,
+  };
+  const zeroEntry = runScenario({ ...baseOverrides, batteryCapacityMWh: 0 });
+  const sampledCandidates = [1200, 1400, 1600].map(batteryCapacityMWh => ({
+    batteryCapacityMWh,
+    result: runScenario({ ...baseOverrides, batteryCapacityMWh }),
+  }));
+  const bestSample = sampledCandidates.reduce((best, candidate) => (
+    !best || candidate.result.economics.irr > best.result.economics.irr ? candidate : best
+  ), null);
+
+  assert.ok(
+    zeroEntry.state.batteryCapacityMWh > 1000,
+    [
+      'Expected the visible 0 MWh AI-only entry to seed a large implicit battery before optimization.',
+      `Observed ${zeroEntry.state.batteryCapacityMWh.toFixed(3)} MWh.`,
+    ].join(' ')
+  );
+  assert.ok(bestSample, 'Expected to collect at least one explicit battery candidate for comparison.');
+  assert.ok(
+    bestSample.result.economics.irr > zeroEntry.economics.irr + 0.1,
+    [
+      'Expected a nearby explicit battery size to beat the zero-entry AI heuristic in the 1 GW AI-only case.',
+      `Observed zero-entry IRR ${zeroEntry.economics.irr.toFixed(6)}% from an implicit ${zeroEntry.state.batteryCapacityMWh.toFixed(3)} MWh battery,`,
+      `best sampled explicit point ${bestSample.batteryCapacityMWh.toFixed(1)} MWh -> ${bestSample.result.economics.irr.toFixed(6)}%.`,
+    ].join(' ')
+  );
+  assert.ok(
+    bestSample.batteryCapacityMWh < zeroEntry.state.batteryCapacityMWh,
+    [
+      'Expected the better nearby explicit capacity to be smaller than the implicit zero-entry battery.',
+      `Observed ${bestSample.batteryCapacityMWh.toFixed(1)} MWh vs ${zeroEntry.state.batteryCapacityMWh.toFixed(3)} MWh.`,
+    ].join(' ')
+  );
+});
+
 test('ai storage summary reflects the settled annual dispatch state', () => {
   const result = runScenario({ aiComputeEnabled: true, batteryCapacityMWh: 24, aiReliabilityTarget: 95 });
   const settleToleranceKWh = Math.max(1e-3, result.storage.battCapKWh * 1e-6) + 1e-6;

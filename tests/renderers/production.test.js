@@ -109,3 +109,16 @@ test('production summary omits disabled process rows', () => {
   assert.equal(productionGrid.innerHTML.includes('CO₂ Captured'), false);
   assert.equal(productionGrid.innerHTML.includes('AI Tokens'), false);
 });
+
+test('economics renderer uses custom tooltip attributes on labels', () => {
+  const { methods } = createHarness();
+
+  const rowHtml = methods.econRow('IRR', '12.4%', '', 'Project "return" & hurdle comparison');
+  assert.ok(rowHtml.includes('class="econ-label tooltip-label"'));
+  assert.ok(rowHtml.includes('data-tooltip="Project &quot;return&quot; &amp; hurdle comparison"'));
+  assert.equal(rowHtml.includes('title='), false);
+
+  const metricHtml = methods.econMetric('Levelized cost', '$42', 'negative', 'CRF capital + O&M');
+  assert.ok(metricHtml.includes('class="econ-metric-label tooltip-label"'));
+  assert.ok(metricHtml.includes('data-tooltip="CRF capital + O&amp;M"'));
+});

@@ -1,5 +1,15 @@
 /* Rendering helpers attached to App */
 
+const APP_EDUCATIONAL_TOOLTIPS = Object.freeze({
+  projectIrr: 'Internal rate of return on project cash flows before debt financing.',
+  equityIrr: 'Internal rate of return on sponsor equity cash flows after debt funding and debt service.',
+  effectiveCf: 'Average utilization of the chemical plant after storage smooths solar output.',
+  residualChemCf: 'Average utilization left for the chemical plant after AI load is served first.',
+  dailyOpHours: 'Average hours per day the chemical plant can run at its modeled load.',
+  residualChemHoursDay: 'Average hours per day left for chemicals after AI load is served first.',
+  residualChemHoursCycle: 'Average hours per cycle left for chemicals after AI load is served first.',
+});
+
 window.AppRendererMethods = {
   updateInfoDisplays(r) {
     document.getElementById('ghiValue').textContent = `${FormatNumbers.fixed(r.solar.ghi, 0)} kWh/m²/yr`;
@@ -14,10 +24,26 @@ window.AppRendererMethods = {
     }
 
     const effectiveCfLabel = document.getElementById('effectiveCFLabel');
-    if (effectiveCfLabel) effectiveCfLabel.textContent = r.ai.enabled ? 'Residual Chem CF:' : 'Effective CF:';
+    if (effectiveCfLabel) {
+      effectiveCfLabel.textContent = r.ai.enabled ? 'Residual Chem CF:' : 'Effective CF:';
+      window.AppRendererMethods.applyTooltip(
+        effectiveCfLabel,
+        r.ai.enabled ? APP_EDUCATIONAL_TOOLTIPS.residualChemCf : APP_EDUCATIONAL_TOOLTIPS.effectiveCf
+      );
+    }
     const dailyOpHoursLabel = document.getElementById('dailyOpHoursLabel');
-    if (dailyOpHoursLabel && r.ai.enabled) {
-      dailyOpHoursLabel.textContent = r.solar.bodyKey === 'earth' ? 'Residual Chem Hrs/Day:' : 'Residual Chem Hrs/Cycle:';
+    if (dailyOpHoursLabel) {
+      dailyOpHoursLabel.textContent = r.ai.enabled
+        ? (r.solar.bodyKey === 'earth' ? 'Residual Chem Hrs/Day:' : 'Residual Chem Hrs/Cycle:')
+        : 'Daily Op Hours:';
+      window.AppRendererMethods.applyTooltip(
+        dailyOpHoursLabel,
+        r.ai.enabled
+          ? (r.solar.bodyKey === 'earth'
+            ? APP_EDUCATIONAL_TOOLTIPS.residualChemHoursDay
+            : APP_EDUCATIONAL_TOOLTIPS.residualChemHoursCycle)
+          : APP_EDUCATIONAL_TOOLTIPS.dailyOpHours
+      );
     }
     const useChemicalUtilizationMetrics = r.ai.enabled ||
       r.storage.enabled ||
@@ -67,7 +93,13 @@ window.AppRendererMethods = {
     document.getElementById('metricRevenue').textContent = `${this.formatMoney(e.totalAnnualRevenue)}/yr`;
     document.getElementById('metricPayback').textContent = Number.isFinite(e.paybackYears) ? `${FormatNumbers.fixed(e.paybackYears, 1)} yrs` : 'No payback';
     const irrLabel = document.getElementById('metricIrrLabel');
-    if (irrLabel) irrLabel.textContent = e.financing.enabled ? 'Equity IRR' : 'IRR';
+    if (irrLabel) {
+      irrLabel.textContent = e.financing.enabled ? 'Equity IRR' : 'IRR';
+      window.AppRendererMethods.applyTooltip(
+        irrLabel,
+        e.financing.enabled ? APP_EDUCATIONAL_TOOLTIPS.equityIrr : APP_EDUCATIONAL_TOOLTIPS.projectIrr
+      );
+    }
     document.getElementById('metricIRR').textContent = this.formatIrr(e.irr);
 
     const financingHeadlineValue = document.getElementById('financingHeadlineValue');
@@ -228,28 +260,49 @@ window.AppRendererMethods = {
     const econGroup = (...args) => window.AppRendererMethods.econGroup(...args);
 
     summaryMetrics.push(
-      econMetric('Total CAPEX', this.formatMoney(e.totalCapex), '', 'Installed build cost'),
+      econMetric(
+        'Total CAPEX',
+        this.formatMoney(e.totalCapex),
+        '',
+        'Installed build cost',
+        'All upfront installed project cost before any upfront incentive support.'
+      ),
       econMetric(
         'Annual revenue',
         this.formatMoney(e.totalAnnualRevenue),
         e.totalAnnualRevenue >= 0 ? 'positive' : 'negative',
-        'Product sales plus any annual operating support'
+        'Product sales plus any annual operating support',
+        'Expected yearly revenue from products plus any modeled operating support.'
       ),
-      econMetric('Levelized cost', this.formatMoney(e.annualCost), 'negative', 'CRF capital + O&M'),
-      econMetric('Annual profit', this.formatMoney(e.annualProfit), e.annualProfit >= 0 ? 'positive' : 'negative', 'Revenue minus levelized cost'),
+      econMetric(
+        'Levelized cost',
+        this.formatMoney(e.annualCost),
+        'negative',
+        'CRF capital + O&M',
+        'Equivalent yearly cost combining annualized capital charges and fixed O&M.'
+      ),
+      econMetric(
+        'Annual profit',
+        this.formatMoney(e.annualProfit),
+        e.annualProfit >= 0 ? 'positive' : 'negative',
+        'Revenue minus levelized cost',
+        'Annual revenue minus total levelized annual cost.'
+      ),
       econMetric(
         projectNpvLabel,
         this.formatMoney(e.npv),
         e.npv >= 0 ? 'positive' : 'negative',
         e.totalReplacementOutflows > 0
           ? `Includes ${this.formatMoney(e.totalReplacementOutflows)} replacements`
-          : 'Discounted project cash flow'
+          : 'Discounted project cash flow',
+        'Discounted value of project cash flows over the selected analysis horizon.'
       ),
       econMetric(
         projectIrrLabel,
         this.formatIrr(e.projectIrr),
         Number.isFinite(e.projectIrr) ? (e.projectIrr >= 0 ? 'positive' : 'negative') : '',
-        `${projectPaybackLabel}: ${formatPaybackShort(e.paybackYears)}`
+        `${projectPaybackLabel}: ${formatPaybackShort(e.paybackYears)}`,
+        APP_EDUCATIONAL_TOOLTIPS.projectIrr
       )
     );
 
@@ -259,7 +312,8 @@ window.AppRendererMethods = {
           'Equity IRR',
           this.formatIrr(e.equityIrr),
           Number.isFinite(e.equityIrr) ? (e.equityIrr >= 0 ? 'positive' : 'negative') : '',
-          `Equity payback: ${formatPaybackShort(e.equityPaybackYears)}`
+          `Equity payback: ${formatPaybackShort(e.equityPaybackYears)}`,
+          APP_EDUCATIONAL_TOOLTIPS.equityIrr
         )
       );
     }
@@ -376,7 +430,12 @@ window.AppRendererMethods = {
     costRows.push(
       this.econRow('Installed CAPEX', '', 'header'),
       this.econRow('Solar modules', this.formatMoney(solarBreakdown.solarModules || 0)),
-      this.econRow('Solar structure + install BOS', this.formatMoney(solarBreakdown.solarBos || 0))
+      this.econRow(
+        'Solar structure + install BOS',
+        this.formatMoney(solarBreakdown.solarBos || 0),
+        '',
+        'Balance of system: the non-panel parts of the solar installation, such as mounting structure, inverters, wiring, and installation labor.'
+      )
     );
     if ((solarBreakdown.solarLand || 0) > 0) costRows.push(this.econRow('Land acquisition', this.formatMoney(solarBreakdown.solarLand)));
     if ((solarBreakdown.solarSitePrep || 0) > 0) costRows.push(this.econRow('Site prep', this.formatMoney(solarBreakdown.solarSitePrep)));
@@ -645,12 +704,11 @@ window.AppRendererMethods = {
   },
 
   econMetric(label, value, cls = '', note = '', title = '') {
-    const safeTitle = title
-      ? ` title="${String(title).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"`
-      : '';
+    const tooltipText = title || note;
+    const labelMarkup = window.AppRendererMethods.tooltipLabel(label, tooltipText, 'econ-metric-label');
     const noteMarkup = note ? `<span class="econ-metric-note">${note}</span>` : '';
-    return `<div class="econ-metric ${cls}"${safeTitle}>
-      <span class="econ-metric-label">${label}</span>
+    return `<div class="econ-metric ${cls}">
+      ${labelMarkup}
       <span class="econ-metric-value">${value}</span>
       ${noteMarkup}
     </div>`;
@@ -670,12 +728,41 @@ window.AppRendererMethods = {
     </details>`;
   },
 
+  applyTooltip(element, text = '') {
+    if (!element) return;
+    if (text) {
+      if (element.dataset) element.dataset.tooltip = text;
+      element.classList?.add('tooltip-label');
+      return;
+    }
+    if (typeof element.removeAttribute === 'function') {
+      element.removeAttribute('data-tooltip');
+    }
+    element.classList?.remove('tooltip-label');
+  },
+
+  tooltipLabel(label, tooltip = '', className = '') {
+    const classNames = [className, tooltip ? 'tooltip-label' : ''].filter(Boolean).join(' ');
+    const classAttr = classNames ? ` class="${classNames}"` : '';
+    return `<span${classAttr}${window.AppRendererMethods.tooltipAttr(tooltip)}>${label}</span>`;
+  },
+
+  tooltipAttr(text = '') {
+    return text ? ` data-tooltip="${window.AppRendererMethods.escapeAttribute(text)}"` : '';
+  },
+
+  escapeAttribute(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  },
+
   econRow(label, value, cls = '', title = '') {
-    const safeTitle = title
-      ? ` title="${String(title).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"`
-      : '';
-    return `<div class="econ-row ${cls}"${safeTitle}>
-      <span class="econ-label">${label}</span>
+    const labelMarkup = window.AppRendererMethods.tooltipLabel(label, title, 'econ-label');
+    return `<div class="econ-row ${cls}">
+      ${labelMarkup}
       <span class="econ-value">${value}</span>
     </div>`;
   },

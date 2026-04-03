@@ -197,6 +197,19 @@ body {
   color: var(--text-muted);
 }
 
+.tooltip-label {
+  cursor: help;
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: rgba(141, 153, 168, 0.58);
+  text-underline-offset: 0.16em;
+  text-decoration-thickness: 1px;
+}
+
+.tooltip-label:hover {
+  text-decoration-color: rgba(95, 127, 184, 0.72);
+}
+
 .metric-value {
   display: block;
   font-size: 14px;
@@ -814,6 +827,7 @@ input[type="range"]::-moz-range-track {
   outline: none;
 }
 
+.hover-tooltip,
 .slider-hover-tooltip {
   position: fixed;
   left: 0;
@@ -823,18 +837,21 @@ input[type="range"]::-moz-range-track {
   transform: translateY(4px);
   pointer-events: none;
   max-width: min(260px, calc(100vw - 16px));
-  padding: 4px 6px;
+  padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: #14181d;
   color: var(--text-primary);
   font-size: 10px;
   font-weight: 500;
-  white-space: nowrap;
+  line-height: 1.4;
+  white-space: normal;
+  text-align: left;
   box-shadow: var(--shadow);
   transition: opacity var(--transition), transform var(--transition);
 }
 
+.hover-tooltip.visible,
 .slider-hover-tooltip.visible {
   opacity: 1;
   transform: translateY(0);

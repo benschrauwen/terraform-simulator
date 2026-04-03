@@ -29,23 +29,23 @@
     </div>
     <div class="header-metrics" id="headerMetrics">
       <div class="metric">
-        <span class="metric-label">CAPEX</span>
+        <span class="metric-label tooltip-label" data-tooltip="Total upfront cost to build the project.">CAPEX</span>
         <span class="metric-value" id="metricCapex">$0</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Annual Revenue</span>
+        <span class="metric-label tooltip-label" data-tooltip="Expected money earned in a typical year from products and any modeled support.">Annual Revenue</span>
         <span class="metric-value" id="metricRevenue">$0</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Payback</span>
+        <span class="metric-label tooltip-label" data-tooltip="Years until cumulative net cash first turns positive.">Payback</span>
         <span class="metric-value" id="metricPayback">—</span>
       </div>
       <div class="metric">
-        <span class="metric-label" id="metricIrrLabel">IRR</span>
+        <span class="metric-label tooltip-label" id="metricIrrLabel" data-tooltip="Internal rate of return on project cash flows before debt financing.">IRR</span>
         <span class="metric-value" id="metricIRR">—</span>
       </div>
       <div class="metric viability" id="metricViability">
-        <span class="metric-label">Status</span>
+        <span class="metric-label tooltip-label" data-tooltip="Quick viability flag based mainly on whether NPV is positive and payback fits inside the analysis horizon.">Status</span>
         <span class="metric-value" id="metricViabilityValue">Awaiting input</span>
       </div>
     </div>
@@ -131,11 +131,11 @@
             <a href="https://globalsolaratlas.info/" target="_blank" rel="noopener noreferrer">Global Solar Atlas PVOUT</a>.
           </div>
           <div class="info-row">
-            <span id="irradianceLabel">GHI:</span>
+            <span id="irradianceLabel" class="tooltip-label" data-tooltip="Global horizontal irradiance: yearly sunlight energy hitting a flat surface.">GHI:</span>
             <span id="ghiValue" class="highlight">— kWh/m²/yr</span>
           </div>
           <div class="info-row">
-            <span id="sunHoursLabel">Avg Sun Hours:</span>
+            <span id="sunHoursLabel" class="tooltip-label" data-tooltip="Equivalent full-sun hours per day implied by the site's annual yield.">Avg Sun Hours:</span>
             <span id="sunHoursValue" class="highlight">— hrs/day</span>
           </div>
         </div>
@@ -175,7 +175,7 @@
               <option value="dual">Dual-Axis Tracker (+35%)</option>
             </select>
           </label>
-          <label>Structure + Installation BOS ($/W)
+          <label><span class="tooltip-label" data-tooltip="Balance of system: the non-panel parts of the solar installation, such as mounting structure, inverters, wiring, and installation labor.">Structure + Installation BOS ($/W)</span>
             <input type="range" id="bosCost" min="0.05" max="1.00" step="0.01" value="0.20">
             <span class="range-value" id="bosCostValue">$0.20/W</span>
           </label>
@@ -188,23 +188,23 @@
             <span class="range-value" id="sitePrepCostValue">$15,000/acre</span>
           </label>
           <div class="info-row">
-            <span>Base Yield:</span>
+            <span class="tooltip-label" data-tooltip="Modeled yearly solar output per MWdc before multiplying by plant size.">Base Yield:</span>
             <span id="baseYieldValue" class="highlight">— MWh/MWdc-yr</span>
           </div>
           <div class="info-row">
-            <span>Annual Production:</span>
+            <span class="tooltip-label" data-tooltip="Total electricity the solar array generates in a typical year.">Annual Production:</span>
             <span id="annualProduction" class="highlight">— MWh</span>
           </div>
           <div class="info-row">
-            <span>Capacity Factor:</span>
+            <span class="tooltip-label" data-tooltip="Average output divided by nameplate output over the year.">Capacity Factor:</span>
             <span id="capacityFactor" class="highlight">— %</span>
           </div>
           <div class="info-row">
-            <span>LCOE:</span>
+            <span class="tooltip-label" data-tooltip="Levelized cost of energy from the solar plant alone.">LCOE:</span>
             <span id="lcoe" class="highlight">— $/MWh</span>
           </div>
           <div class="info-row">
-            <span>Solar Install CAPEX:</span>
+            <span class="tooltip-label" data-tooltip="Upfront installed solar cost, including modules, BOS, land, and site prep.">Solar Install CAPEX:</span>
             <span id="solarInstallCapex" class="highlight">—</span>
           </div>
         </div>
@@ -247,15 +247,15 @@
               <span class="range-value" id="batteryCyclesValue">4,000</span>
             </label>
             <div class="info-row">
-              <span id="effectiveCFLabel">Effective CF:</span>
+              <span id="effectiveCFLabel" class="tooltip-label" data-tooltip="Average utilization of the chemical plant after storage smooths solar output.">Effective CF:</span>
               <span id="effectiveCF" class="highlight">— %</span>
             </div>
             <div class="info-row">
-              <span id="dailyOpHoursLabel">Daily Op Hours:</span>
+              <span id="dailyOpHoursLabel" class="tooltip-label" data-tooltip="Average hours per day the chemical plant can run at its modeled load.">Daily Op Hours:</span>
               <span id="dailyOpHours" class="highlight">— hrs</span>
             </div>
             <div class="info-row">
-              <span title="Solar plus battery annualized cost divided by modeled delivered electricity after storage losses.">Buffered LCOE:</span>
+              <span class="tooltip-label" data-tooltip="Cost per MWh of delivered electricity after adding battery costs and storage losses.">Buffered LCOE:</span>
               <span id="bufferedElectricityCost" class="highlight">— $/MWh</span>
             </div>
           </div>
@@ -357,19 +357,19 @@
                   <span class="range-value" id="aiAssetLifeYearsValue">5 years</span>
                 </label>
                 <div class="info-row">
-                  <span>Auto-sized AI load:</span>
+                  <span class="tooltip-label" data-tooltip="AI load size the current solar-plus-battery system can support at the selected reliability target.">Auto-sized AI load:</span>
                   <span id="aiDesignLoadValue" class="highlight">—</span>
                 </div>
                 <div class="info-row">
-                  <span>Served-energy utilization:</span>
+                  <span class="tooltip-label" data-tooltip="Fraction of that AI design load actually served with electricity over the year.">Served-energy utilization:</span>
                   <span id="aiUtilizationValue" class="highlight">—</span>
                 </div>
                 <div class="info-row">
-                  <span>Full-rate reliability:</span>
+                  <span class="tooltip-label" data-tooltip="Share of time the AI load can run at full target output.">Full-rate reliability:</span>
                   <span id="aiFullRateValue" class="highlight">—</span>
                 </div>
                 <div class="info-row">
-                  <span>Annual tokens:</span>
+                  <span class="tooltip-label" data-tooltip="Total yearly AI tokens produced and sold in the model.">Annual tokens:</span>
                   <span id="aiTokensAnnualValue" class="highlight">—</span>
                 </div>
               </div>

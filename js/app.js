@@ -36,7 +36,8 @@ class App {
     this.renderExploratoryOmControls();
     this.bindControls();
     this.bindShareControls();
-    this.createSliderTooltip();
+    this.createHoverTooltip();
+    this.bindHoverTooltips();
     this.initSliderMarkers();
     this.bindSectionToggles();
     this.bindMobilePaneControls();
@@ -590,17 +591,56 @@ class App {
     window.requestAnimationFrame(() => this.positionSliderMarkers());
   }
 
-  createSliderTooltip() {
-    if (this.sliderTooltip) return;
+  createHoverTooltip() {
+    if (this.hoverTooltip) return;
 
-    this.sliderTooltip = document.createElement('div');
-    this.sliderTooltip.className = 'slider-hover-tooltip';
-    document.body.appendChild(this.sliderTooltip);
+    this.hoverTooltip = document.createElement('div');
+    this.hoverTooltip.className = 'hover-tooltip';
+    document.body.appendChild(this.hoverTooltip);
 
-    window.addEventListener('scroll', () => this.hideSliderTooltip(), true);
+    window.addEventListener('scroll', () => this.hideHoverTooltip(), true);
     window.addEventListener('resize', () => {
-      this.hideSliderTooltip();
+      this.hideHoverTooltip();
       this.positionSliderMarkers();
+    });
+  }
+
+  bindHoverTooltips() {
+    if (this.hoverTooltipBindingsAttached) return;
+    this.hoverTooltipBindingsAttached = true;
+
+    const resolveTooltipTarget = rawTarget => {
+      const element = rawTarget && typeof rawTarget.closest === 'function'
+        ? rawTarget
+        : rawTarget?.parentElement;
+      if (!element || typeof element.closest !== 'function') return null;
+      return element.closest('[data-tooltip]');
+    };
+
+    document.addEventListener('mouseover', event => {
+      const target = resolveTooltipTarget(event.target);
+      if (!target?.dataset.tooltip) return;
+      if (target.contains(event.relatedTarget)) return;
+      this.showHoverTooltip(target, target.dataset.tooltip);
+    });
+
+    document.addEventListener('mouseout', event => {
+      const target = resolveTooltipTarget(event.target);
+      if (!target) return;
+      if (target.contains(event.relatedTarget)) return;
+      this.hideHoverTooltip();
+    });
+
+    document.addEventListener('focusin', event => {
+      const target = resolveTooltipTarget(event.target);
+      if (!target?.dataset.tooltip) return;
+      this.showHoverTooltip(target, target.dataset.tooltip);
+    });
+
+    document.addEventListener('focusout', event => {
+      const target = resolveTooltipTarget(event.target);
+      if (!target) return;
+      this.hideHoverTooltip();
     });
   }
 
@@ -635,12 +675,8 @@ class App {
 
         const valueText = formatter ? formatter(marker.value) : String(marker.value);
         const tooltipText = `${valueText} - ${marker.label}`;
-        markerButton.title = tooltipText;
+        markerButton.dataset.tooltip = tooltipText;
         markerButton.setAttribute('aria-label', tooltipText);
-        markerButton.addEventListener('mouseenter', () => this.showSliderTooltip(markerButton, tooltipText));
-        markerButton.addEventListener('mouseleave', () => this.hideSliderTooltip());
-        markerButton.addEventListener('focus', () => this.showSliderTooltip(markerButton, tooltipText));
-        markerButton.addEventListener('blur', () => this.hideSliderTooltip());
 
         markerButton.addEventListener('click', event => {
           event.preventDefault();
@@ -688,28 +724,31 @@ class App {
     return Number.isFinite(parsed) ? parsed : 14;
   }
 
-  showSliderTooltip(target, text) {
-    if (!this.sliderTooltip) return;
+  showHoverTooltip(target, text) {
+    if (!this.hoverTooltip || !text) return;
 
-    this.sliderTooltip.textContent = text;
-    this.sliderTooltip.classList.add('visible');
+    this.hoverTooltip.textContent = text;
+    this.hoverTooltip.classList.add('visible');
 
     const rect = target.getBoundingClientRect();
-    const tooltipRect = this.sliderTooltip.getBoundingClientRect();
+    const tooltipRect = this.hoverTooltip.getBoundingClientRect();
     const margin = 8;
     const left = Math.min(
       window.innerWidth - tooltipRect.width - margin,
       Math.max(margin, rect.left + (rect.width / 2) - (tooltipRect.width / 2))
     );
-    const top = Math.max(margin, rect.top - tooltipRect.height - 10);
+    const preferredTop = rect.top - tooltipRect.height - 10;
+    const top = preferredTop >= margin
+      ? preferredTop
+      : Math.min(window.innerHeight - tooltipRect.height - margin, rect.bottom + 10);
 
-    this.sliderTooltip.style.left = `${left}px`;
-    this.sliderTooltip.style.top = `${top}px`;
+    this.hoverTooltip.style.left = `${left}px`;
+    this.hoverTooltip.style.top = `${top}px`;
   }
 
-  hideSliderTooltip() {
-    if (!this.sliderTooltip) return;
-    this.sliderTooltip.classList.remove('visible');
+  hideHoverTooltip() {
+    if (!this.hoverTooltip) return;
+    this.hoverTooltip.classList.remove('visible');
   }
 
   initSiteMap() {

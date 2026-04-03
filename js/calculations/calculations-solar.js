@@ -1,5 +1,11 @@
 /* Solar resource and PV plant */
 
+const SOLAR_LAYOUT_REFERENCE = {
+  latitude: 35.05,
+  winterNoonElevationDeg: 31.51,
+  cloudiness: 0.05,
+};
+
 Object.assign(Calc, {
   getBodyConfig(bodyKey) {
     return PLANETARY_BODIES[bodyKey] || PLANETARY_BODIES.earth;
@@ -95,6 +101,12 @@ Object.assign(Calc, {
     return ghi / 365;
   },
 
+  getWinterNoonElevation(latitude) {
+    const safeLatitude = Number.isFinite(latitude) ? latitude : 0;
+    const winterDeclination = safeLatitude >= 0 ? -23.44 : 23.44;
+    return Math.max(6, 90 - Math.abs(safeLatitude - winterDeclination));
+  },
+
   getCloudinessFactor(region, ghi, bodyKey = 'earth') {
     if (bodyKey !== 'earth') return 0;
     if (region === 'cloudy') return 1.0;
@@ -106,6 +118,15 @@ Object.assign(Calc, {
     if (ghi <= 1400) return 0.70;
     if (ghi <= 1800) return 0.40;
     return 0.10;
+  },
+
+  getEarthLocationFactors(state, preset, ghi, bodyKey = 'earth') {
+    const safeLatitude = Number.isFinite(state?.latitude) ? state.latitude : 0;
+    return {
+      absLat: Math.abs(safeLatitude),
+      cloudiness: this.getCloudinessFactor(preset?.region, ghi, bodyKey),
+      winterNoonElevationDeg: this.getWinterNoonElevation(safeLatitude),
+    };
   },
 
   getMountingYieldMultiplier(state, preset, ghi) {
@@ -133,6 +154,67 @@ Object.assign(Calc, {
     return mounting.yieldMult;
   },
 
+  getLocationAdjustedGroundCoverageRatio(state, preset, ghi, mounting) {
+    const baseGroundCoverageRatio = Math.max(0.05, Math.min(mounting?.groundCoverageRatio || 0.35, 0.95));
+    if ((state.body || 'earth') !== 'earth') {
+      return {
+        baseGroundCoverageRatio,
+        groundCoverageRatio: baseGroundCoverageRatio,
+        layoutSpacingMultiplier: 1,
+      };
+    }
+
+    const locationFactors = this.getEarthLocationFactors(state, preset, ghi, state.body || 'earth');
+    const sunAngleRatio = SOLAR_LAYOUT_REFERENCE.winterNoonElevationDeg / Math.max(locationFactors.winterNoonElevationDeg, 6);
+    const spacingFromLatitude = Math.pow(sunAngleRatio, mounting?.spacingLatitudeSensitivity || 0);
+    const cloudinessDelta = locationFactors.cloudiness - SOLAR_LAYOUT_REFERENCE.cloudiness;
+    const cloudinessRelief = Math.max(0.88, 1 - ((mounting?.spacingCloudRelief || 0) * cloudinessDelta));
+    const layoutSpacingMultiplier = Math.max(0.82, Math.min(spacingFromLatitude * cloudinessRelief, 1.35));
+    const groundCoverageRatio = Math.max(0.05, Math.min(baseGroundCoverageRatio / layoutSpacingMultiplier, 0.95));
+
+    return {
+      baseGroundCoverageRatio,
+      groundCoverageRatio,
+      layoutSpacingMultiplier,
+    };
+  },
+
+  getLocationAdjustedBosCostPerW(state, preset, ghi, mounting, layoutSpacingMultiplier = 1) {
+    const baseBosCostPerW = Math.max(0, state.bosCostPerW ?? mounting?.typicalBOS ?? 0);
+    if ((state.body || 'earth') !== 'earth') {
+      return {
+        baseBosCostPerW,
+        bosCostPerW: baseBosCostPerW,
+        bosLocationMultiplier: 1,
+      };
+    }
+
+    const locationFactors = this.getEarthLocationFactors(state, preset, ghi, state.body || 'earth');
+    const layoutShift = layoutSpacingMultiplier - 1;
+    const winterPenalty = Math.max(
+      0,
+      (SOLAR_LAYOUT_REFERENCE.winterNoonElevationDeg - locationFactors.winterNoonElevationDeg) /
+      SOLAR_LAYOUT_REFERENCE.winterNoonElevationDeg
+    );
+    const cloudinessPenalty = Math.max(0, locationFactors.cloudiness - SOLAR_LAYOUT_REFERENCE.cloudiness);
+    const bosLocationMultiplier = Math.max(
+      0.85,
+      Math.min(
+        1 +
+          ((mounting?.bosLayoutSensitivity || 0) * layoutShift) +
+          ((mounting?.bosLatitudeSensitivity || 0) * winterPenalty) +
+          ((mounting?.bosCloudSensitivity || 0) * cloudinessPenalty),
+        1.25
+      )
+    );
+
+    return {
+      baseBosCostPerW,
+      bosCostPerW: baseBosCostPerW * bosLocationMultiplier,
+      bosLocationMultiplier,
+    };
+  },
+
   calculateSolar(state) {
     const bodyKey = state.body || 'earth';
     const body = this.getBodyConfig(bodyKey);
@@ -145,13 +227,22 @@ Object.assign(Calc, {
     const annualMWh = state.systemSizeMW * siteYield;
     const dailyMWh = annualMWh / body.cyclesPerEarthYear;
     const peakPowerKW = state.systemSizeMW * 1000;
+    const baseBosCostPerW = Math.max(0, state.bosCostPerW ?? mounting.typicalBOS ?? 0);
     const totalPanelCost = state.systemSizeMW * 1e6 * state.panelCostPerW;
-    const totalBOSCost = state.systemSizeMW * 1e6 * state.bosCostPerW;
 
     const panelArea = (state.systemSizeMW * 1e6) / ((state.panelEfficiency / 100) * 1000);
-    const groundCoverageRatio = Math.max(0.05, Math.min(mounting.groundCoverageRatio || 0.35, 0.95));
+    const coverageModel = this.getLocationAdjustedGroundCoverageRatio(state, preset, ghi, mounting);
+    const groundCoverageRatio = coverageModel.groundCoverageRatio;
     const landArea = panelArea / groundCoverageRatio;
     const acres = landArea / 4047;
+    const bosModel = this.getLocationAdjustedBosCostPerW(
+      state,
+      preset,
+      ghi,
+      mounting,
+      coverageModel.layoutSpacingMultiplier
+    );
+    const totalBOSCost = state.systemSizeMW * 1e6 * bosModel.bosCostPerW;
     const landCapex = acres * (state.landCostPerAcre || 0);
     const sitePrepCapex = acres * (state.sitePrepCostPerAcre || 0);
     const totalSolarCapex = totalPanelCost + totalBOSCost + landCapex + sitePrepCapex;
@@ -196,9 +287,14 @@ Object.assign(Calc, {
       panelAreaM2: panelArea,
       landAreaM2: landArea,
       acres,
+      baseGroundCoverageRatio: coverageModel.baseGroundCoverageRatio,
       groundCoverageRatio,
+      layoutSpacingMultiplier: coverageModel.layoutSpacingMultiplier,
       solarCapex: totalPanelCost,
       moduleCapex: totalPanelCost,
+      baseBosCostPerW,
+      bosCostPerW: bosModel.bosCostPerW,
+      bosLocationMultiplier: bosModel.bosLocationMultiplier,
       bosCapex: totalBOSCost,
       landCapex,
       sitePrepCapex,

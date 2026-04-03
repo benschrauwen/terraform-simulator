@@ -73,6 +73,60 @@ test('solar land use stays physically larger than panel area while preserving de
   );
 });
 
+test('solar acreage and BOS respond to location while keeping installed MW fixed', () => {
+  function solarAt({ latitude, longitude, mountingType, bosCostPerW }) {
+    return Calc.calculateSolar(createState({
+      latitude,
+      longitude,
+      mountingType,
+      systemSizeMW: 1,
+      panelEfficiency: 21.5,
+      panelCostPerW: 0.20,
+      bosCostPerW,
+      landCostPerAcre: 5000,
+      sitePrepCostPerAcre: 15000,
+      siteYieldMwhPerMwdcYear: 0,
+    }));
+  }
+
+  const mojaveEw = solarAt({ latitude: 35.05, longitude: -117.60, mountingType: 'ew', bosCostPerW: 0.12 });
+  const houstonEw = solarAt({ latitude: 29.7604, longitude: -95.3698, mountingType: 'ew', bosCostPerW: 0.12 });
+  const buffaloEw = solarAt({ latitude: 42.8864, longitude: -78.8784, mountingType: 'ew', bosCostPerW: 0.12 });
+  const mojaveSingle = solarAt({ latitude: 35.05, longitude: -117.60, mountingType: 'single', bosCostPerW: 0.35 });
+  const houstonSingle = solarAt({ latitude: 29.7604, longitude: -95.3698, mountingType: 'single', bosCostPerW: 0.35 });
+  const buffaloSingle = solarAt({ latitude: 42.8864, longitude: -78.8784, mountingType: 'single', bosCostPerW: 0.35 });
+
+  assert.ok(
+    Math.abs(mojaveEw.groundCoverageRatio - mojaveEw.baseGroundCoverageRatio) <= 1e-12,
+    'Expected the Mojave east-west reference case to preserve the baseline ground coverage ratio.'
+  );
+  assert.ok(
+    Math.abs(mojaveSingle.bosCostPerW - mojaveSingle.baseBosCostPerW) <= 1e-12,
+    'Expected the Mojave single-axis reference case to preserve the baseline BOS cost per watt.'
+  );
+  assert.ok(
+    houstonSingle.acres < mojaveSingle.acres && buffaloSingle.acres > mojaveSingle.acres,
+    [
+      'Expected the same installed single-axis MWdc to use less land in Houston and more land in Buffalo than the Mojave reference.',
+      `Observed Houston ${houstonSingle.acres.toFixed(3)}, Mojave ${mojaveSingle.acres.toFixed(3)}, Buffalo ${buffaloSingle.acres.toFixed(3)} acres.`,
+    ].join(' ')
+  );
+  assert.ok(
+    houstonSingle.bosCapex < mojaveSingle.bosCapex && buffaloSingle.bosCapex > mojaveSingle.bosCapex,
+    [
+      'Expected single-axis BOS to fall slightly at lower-latitude Houston and rise at higher-latitude Buffalo.',
+      `Observed Houston ${houstonSingle.bosCapex.toFixed(0)}, Mojave ${mojaveSingle.bosCapex.toFixed(0)}, Buffalo ${buffaloSingle.bosCapex.toFixed(0)} USD.`,
+    ].join(' ')
+  );
+  assert.ok(
+    Math.abs(buffaloSingle.acres - houstonSingle.acres) > Math.abs(buffaloEw.acres - houstonEw.acres),
+    [
+      'Expected tracker acreage to react more strongly to location than east-west acreage at fixed installed MWdc.',
+      `Observed EW swing ${Math.abs(buffaloEw.acres - houstonEw.acres).toFixed(3)} vs tracker swing ${Math.abs(buffaloSingle.acres - houstonSingle.acres).toFixed(3)} acres.`,
+    ].join(' ')
+  );
+});
+
 test('dac capex is sized from allocated DAC power', () => {
   const allocation = { dac: 0.4 };
   const lessEfficient = Calc.calculateDAC(

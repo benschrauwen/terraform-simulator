@@ -53,7 +53,7 @@ The app is still a mostly static front-end project, with a lightweight Node buil
 
 These are the parts of the app that are currently structured well enough to be useful for scenario exploration:
 
-- Yield-driven annual solar production with mounting-specific yield and land-use effects layered on top of a base site yield.
+- Yield-driven annual solar production with mounting-specific yield plus location-adjusted land-use and solar-BOS effects layered on top of a base site yield.
 - Earth annual-average and specific-day views, plus Mars and Moon annual-dispatch paths based on representative local-cycle assumptions.
 - A methane and methanol product system with shared H2 and CO2 allocation, explicit conversion assumptions, and export accounting.
 - Optional MTG diversion of methanol into a downstream hydrocarbon product rather than treating all methanol as exported sale volume.
@@ -91,7 +91,8 @@ The current implementation makes several deliberate assumptions that should stay
 - `chemicalSizingPercent` scales the full-capture chemical peak and allows intentional clipping of the highest-solar hours.
 - Feed buffers, when enabled, are treated as part of the process block and are not costed or modeled as standalone storage assets.
 - Supported products and exploratory routes share H2, CO2, methanol, and power through an auto-balanced weighted allocation rather than a user-entered process-flow sheet.
-- Panel efficiency affects panel area and land use, not annual energy yield, because the model is framed around fixed MWdc nameplate.
+- Panel efficiency affects panel area and land use, not annual energy yield, because the model is framed around user-set fixed MWdc nameplate rather than auto-resizing solar capacity to a target output.
+- Earth-site acreage and solar BOS keep the user-selected installed MWdc fixed, then apply location-aware layout heuristics on top of the mounting baseline instead of solving a new required MWdc for each site.
 - Stored energy always loses a fixed `2%/month` through standing leakage.
 - Solar-linked revenue degrades with panel degradation over time, including AI token revenue and exploratory-route revenue.
 - Named incentive schemes are non-stacked by default except in `Custom mixed support`, framework-only entries do not change cash flow, and time-limited support ends after the modeled support duration.
@@ -121,7 +122,13 @@ capacity_factor = annual_solar_mwh / (solar_mwdc * 8760)
 
 panel_area_m2 = solar_mwdc * 1e6 / (module_efficiency * 1000)
 
+ground_coverage_ratio =
+  mounting_baseline adjusted by Earth-site latitude/cloudiness heuristics
+
 site_area_m2 = panel_area_m2 / ground_coverage_ratio
+
+solar_bos_cost_per_w =
+  user_selected_bos_baseline adjusted by mounting + Earth-site layout heuristics
 ```
 
 For Earth sites, the fallback base-yield estimate is still:

@@ -1722,6 +1722,72 @@ test('methanol feed buffer keeps output while sizing from peak-day average gas f
   );
 });
 
+test('co2-to-co feed buffer keeps output while sizing from peak-day average co2 flow', () => {
+  const baseOverrides = {
+    latitude: 64.15,
+    longitude: -21.94,
+    systemSizeMW: 100,
+    batteryCapacityMWh: 0,
+    sabatierEnabled: false,
+    methanolEnabled: false,
+    carbonMonoxideEnabled: true,
+    carbonMonoxideRoute: 'plasma',
+    carbonMonoxideBufferEnabled: false,
+  };
+  const unbuffered = runScenario(baseOverrides);
+  const buffered = runScenario({ ...baseOverrides, carbonMonoxideBufferEnabled: true });
+  const coUnbuffered = unbuffered.exploratoryModules.find(module => module.id === 'carbonMonoxide');
+  const coBuffered = buffered.exploratoryModules.find(module => module.id === 'carbonMonoxide');
+  const route = Calc.getExploratoryRouteConfig('carbonMonoxide', 'plasma');
+  const peakChemicalDailyKWh = Math.max(...(buffered.ai.dispatch?.dailyChemicalKWh || []), 0);
+  const peakDayScale = buffered.chemicalSupply.dailyAvailableKWh > 0
+    ? Math.max(1, peakChemicalDailyKWh / buffered.chemicalSupply.dailyAvailableKWh)
+    : 1;
+  const allocationPlan = Calc.buildProcessAllocationPlan(buffered.state);
+  const powerShare = allocationPlan.powerShares.exploratory.carbonMonoxide || 0;
+  const co2Share = allocationPlan.feedShares.co2.carbonMonoxide || 0;
+  const peakSizingKW = Math.max(
+    buffered.chemicalSupply.processPowerKW,
+    buffered.ai.dispatch?.chemicalPeakKW || 0
+  );
+  const expectedBufferedPeakUnitsPerHour = Math.min(
+    route.electricityKwhPerUnit > 0
+      ? (peakSizingKW * powerShare) / route.electricityKwhPerUnit
+      : Infinity,
+    route.feedstocks.co2Kg > 0 && buffered.solar.cycleHours > 0
+      ? ((((buffered.dac.co2DailyKg || 0) * peakDayScale) * co2Share) / buffered.solar.cycleHours) / route.feedstocks.co2Kg
+      : Infinity
+  );
+
+  assert.ok(coUnbuffered && coBuffered, 'Expected the CO module to appear in both buffered and unbuffered results.');
+  assert.equal(coBuffered.bufferEnabled, true, 'Expected the CO result to reflect the feed-buffer toggle.');
+  assert.ok(
+    Math.abs(coBuffered.outputDailyUnits - coUnbuffered.outputDailyUnits) <= 1e-9,
+    'Expected the CO feed buffer to preserve exploratory output.'
+  );
+  assert.ok(
+    Math.abs(coBuffered.capexSizingOutputUnitsPerHour - expectedBufferedPeakUnitsPerHour) <= 1e-9,
+    [
+      'Expected the CO module to size from peak-day average buffered CO2 flow when the feed buffer is enabled.',
+      `Observed ${coBuffered.capexSizingOutputUnitsPerHour.toFixed(9)} vs expected ${expectedBufferedPeakUnitsPerHour.toFixed(9)} units/hour.`,
+    ].join(' ')
+  );
+  assert.ok(
+    coBuffered.capexSizingOutputUnitsPerHour < coUnbuffered.capexSizingOutputUnitsPerHour,
+    [
+      'Expected the CO feed buffer to reduce nameplate sizing below the unbuffered peak throughput.',
+      `Observed ${coUnbuffered.capexSizingOutputUnitsPerHour.toFixed(9)} -> ${coBuffered.capexSizingOutputUnitsPerHour.toFixed(9)} units/hour.`,
+    ].join(' ')
+  );
+  assert.ok(
+    coBuffered.capex < coUnbuffered.capex,
+    [
+      'Expected the CO feed buffer to reduce exploratory CAPEX at unchanged output.',
+      `Observed ${formatMoney(coUnbuffered.capex)} -> ${formatMoney(coBuffered.capex)}.`,
+    ].join(' ')
+  );
+});
+
 test('mtg peak fully reflects upstream methanol buffering even without the MTG buffer', () => {
   const baseOverrides = {
     latitude: 64.15,

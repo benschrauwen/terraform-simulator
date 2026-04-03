@@ -100,10 +100,9 @@ const AppControlMethods = {
 
     AppControlMethods.on.call(this, 'policyMode', 'change', value => {
       this.state.policyMode = value;
+      this.renderPolicyInputs();
       this.syncDynamicVisibility();
     });
-    AppControlMethods.bindRange.call(this, 'customH2Credit', 'customH2Credit', value => `$${FormatNumbers.fixed(parseFloat(value), 2)}/kg`);
-    AppControlMethods.bindRange.call(this, 'customCo2Credit', 'customCo2Credit', value => `$${FormatNumbers.fixed(parseInt(value, 10), 0)}/ton`);
     AppControlMethods.bindRange.call(this, 'solarAssetLife', 'solarAssetLife', value => `${FormatNumbers.fixed(parseInt(value, 10), 0)} years`);
     AppControlMethods.bindRange.call(this, 'analysisHorizonYears', 'analysisHorizonYears', value => `${FormatNumbers.fixed(parseInt(value, 10), 0)} years`);
     AppControlMethods.bindRange.call(this, 'discountRate', 'discountRate', value => `${FormatNumbers.fixed(parseFloat(value), 1)}%`);
@@ -292,6 +291,9 @@ const AppControlMethods = {
 
     document.getElementById('aiComputeConfig').classList.toggle('active', this.state.aiComputeEnabled);
     document.getElementById('financingConfig').classList.toggle('active', this.state.financingEnabled);
+    if (typeof this.renderPolicyInputs === 'function') {
+      this.renderPolicyInputs();
+    }
     AppControlMethods.syncLoadConfigTabs.call(this);
   },
 

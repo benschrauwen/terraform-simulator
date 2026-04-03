@@ -9,6 +9,7 @@ const ROOT = path.resolve(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
 const BUILD_ID = getBuildId();
 const BUILD_TOKEN = '__APP_BUILD_ID__';
+const EXTRA_COPY_FILES = ['node_modules/lz-string/libs/lz-string.min.js'];
 
 const EXCLUDED_PATH_PREFIXES = ['.git', 'dist', 'node_modules', 'scripts', 'tests'];
 const EXCLUDED_ROOT_FILES = new Set(['.gitignore', 'package.json', 'package-lock.json', 'vercel.json']);
@@ -17,6 +18,7 @@ const TEXT_FILE_EXTENSIONS = new Set(['.css', '.html', '.js', '.json', '.md', '.
 await fs.rm(DIST, { recursive: true, force: true });
 await fs.mkdir(DIST, { recursive: true });
 await copyProjectTree(ROOT, DIST, '');
+await copyExtraFiles(ROOT, DIST, EXTRA_COPY_FILES);
 await rewriteDistFiles(DIST);
 
 console.log(`Built dist/ with asset version ${BUILD_ID}`);
@@ -69,6 +71,15 @@ async function copyProjectTree(sourceDir, targetDir, relativePath) {
       continue;
     }
 
+    await fs.copyFile(sourcePath, targetPath);
+  }
+}
+
+async function copyExtraFiles(sourceRoot, targetRoot, relativePaths) {
+  for (const relativePath of relativePaths) {
+    const sourcePath = path.join(sourceRoot, relativePath);
+    const targetPath = path.join(targetRoot, relativePath);
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
     await fs.copyFile(sourcePath, targetPath);
   }
 }

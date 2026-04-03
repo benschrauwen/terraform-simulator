@@ -20,7 +20,7 @@ const CORE_STATE_FIELDS = [
   { key: 'body', type: 'enum', getOptions: () => Object.keys(PLANETARY_BODIES), defaultValue: 'earth' },
   { key: 'mountingType', type: 'enum', getOptions: () => Object.keys(MOUNTING_TYPES), defaultValue: 'ew' },
   { key: 'siteYieldSource', type: 'enum', options: ['preset', 'manual', 'estimated', 'planetary-custom'], defaultValue: 'preset' },
-  { key: 'policyMode', type: 'enum', getOptions: () => Object.keys(POLICY_OPTIONS), defaultValue: 'us_45v_tier4' },
+  { key: 'policyMode', type: 'enum', getOptions: () => Object.keys(POLICY_SCHEMES), defaultValue: 'us_45v_h2' },
   { key: 'methaneMarketPreset', type: 'enum', getOptions: () => Object.keys(METHANE_MARKET_PRESETS), defaultValue: 'terraform_commodity' },
 
   { key: 'dayOfYear', type: 'integer', min: 1, max: 365, defaultValue: 172 },
@@ -56,8 +56,7 @@ const CORE_STATE_FIELDS = [
   { key: 'methanolPrice', type: 'number', min: 0, max: 1e9, defaultValue: 600 },
   { key: 'exploratoryOmPercent', type: 'number', min: 0, max: 20, defaultValue: 4 },
 
-  { key: 'customH2Credit', type: 'number', min: 0, max: 1e6, defaultValue: 0 },
-  { key: 'customCo2Credit', type: 'number', min: 0, max: 1e6, defaultValue: 0 },
+  ...POLICY_INPUT_FIELDS,
 
   { key: 'solarAssetLife', type: 'integer', min: 1, max: 100, defaultValue: 30 },
   { key: 'analysisHorizonYears', type: 'integer', min: 1, max: 100, defaultValue: 30 },

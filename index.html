@@ -16,6 +16,16 @@
     <div class="header-left">
       <h1>Solar Chemical/AI Plant Builder</h1>
       <span class="subtitle">Terraform Industries process model</span>
+      <div class="header-actions">
+        <button
+          type="button"
+          class="header-icon-button"
+          id="resetStateButton"
+          aria-label="Reset all settings"
+          title="Reset all settings"
+        ><span aria-hidden="true">&#8635;</span></button>
+        <span class="header-action-status" id="headerActionStatus" aria-live="polite"></span>
+      </div>
     </div>
     <div class="header-metrics" id="headerMetrics">
       <div class="metric">
@@ -420,48 +430,25 @@
           </div>
           <div class="market-card">
             <div class="market-card-header">
-              <div class="market-card-title">Policy credits</div>
-              <div class="market-card-subtitle">Model one incentive regime at a time. Custom inputs appear only when the selected mode needs them.</div>
+              <div class="market-card-title">Incentive scheme</div>
+              <div class="market-card-subtitle">Model one named program or framework at a time. The active input controls come from the selected scheme definition.</div>
             </div>
-            <label>Policy Mode
-              <select id="policyMode">
-                <option value="none">No credits</option>
-                <optgroup label="United States">
-                  <option value="us_45v_tier4">45V clean H2 - Tier 4 ($3.00/kg)</option>
-                  <option value="us_45v_tier3">45V clean H2 - Tier 3 ($1.00/kg)</option>
-                  <option value="us_45v_tier2">45V clean H2 - Tier 2 ($0.75/kg)</option>
-                  <option value="us_45v_tier1">45V clean H2 - Tier 1 ($0.60/kg)</option>
-                  <option value="us_45q_utilization">45Q DAC utilization ($130/t-CO2)</option>
-                  <option value="us_45q_sequestration">45Q DAC sequestration ($180/t-CO2)</option>
-                </optgroup>
-                <optgroup label="European Union">
-                  <option value="eu_hydrogen_bank">Hydrogen Bank / Innovation Fund premium (bid-based)</option>
-                </optgroup>
-                <option value="custom">Custom / country-specific</option>
-              </select>
+            <label>Scheme
+              <select id="policyMode"></select>
             </label>
-            <label id="customH2CreditWrap">
-              <span id="customH2CreditLabel">Custom H₂ Credit ($/kg)</span>
-              <input type="range" id="customH2Credit" min="0" max="5" step="0.25" value="0">
-              <span class="range-value" id="customH2CreditValue">$0.00/kg</span>
-            </label>
-            <label id="customCo2CreditWrap">
-              <span id="customCo2CreditLabel">Custom CO₂ Credit ($/ton)</span>
-              <input type="range" id="customCo2Credit" min="0" max="250" step="5" value="0">
-              <span class="range-value" id="customCo2CreditValue">$0/ton</span>
-            </label>
+            <div id="policyInputControls"></div>
             <div class="market-summary">
               <div class="market-summary-row">
                 <span class="market-summary-label">Applies in</span>
-                <span id="policyApplicabilityValue" class="market-summary-value highlight">United States</span>
+                <span id="policyApplicabilityValue" class="market-summary-value highlight">None selected</span>
               </div>
               <div class="market-summary-row">
                 <span class="market-summary-label">Modeled as</span>
-                <span id="policyBasisValue" class="market-summary-value highlight">Top-tier hydrogen production credit on H₂ output</span>
+                <span id="policyBasisValue" class="market-summary-value highlight">Pure market revenue only</span>
               </div>
               <div class="market-summary-row">
                 <span class="market-summary-label">Stacking rule</span>
-                <span id="stackingRuleValue" class="market-summary-value highlight">US 45V and 45Q are mutually exclusive here</span>
+                <span id="stackingRuleValue" class="market-summary-value highlight">No direct support selected</span>
               </div>
             </div>
             <div class="field-note compact-note market-callout" id="policyNote"></div>
@@ -469,10 +456,10 @@
               <summary>US policy caveats</summary>
               <div class="market-disclosure-body">
                 <div class="field-note compact-note">
-                  Older Terraform materials discuss a US electricity-side credit using 45E language. Post-2024 that framing is generally 45Y / 48E and is not directly modeled here because it depends on solar asset ownership and tax structure.
+                  Older Terraform materials sometimes discuss US electricity-side support using `45E` language. For current solar scenarios this app now maps the power-side incentive discussion to `45Y` and `48E`.
                 </div>
                 <div class="field-note compact-note">
-                  This panel forces one named policy mode at a time. In real US projects, some power-side incentives may coexist with product-side incentives depending on structure, but 45V and 45Q should not both be claimed for the same facility.
+                  This panel still models one named program or framework at a time unless you choose `Custom mixed support`. In real US projects, solar-side and product-side incentives can interact through ownership, transferability, and tax structure, so treat the result as a TEA simplification rather than legal advice.
                 </div>
               </div>
             </details>
@@ -625,6 +612,14 @@
           <canvas id="annualDispatchChart"></canvas>
         </div>
       </div>
+
+      <div class="chart-section">
+        <h3>Economics Over Time <span id="economicsTimelineMode" class="chart-title-meta"></span></h3>
+        <div class="field-note compact-note" id="economicsTimelineNote"></div>
+        <div class="chart-wrapper chart-wrapper-timeline">
+          <canvas id="economicsTimelineChart"></canvas>
+        </div>
+      </div>
     </section>
 
     <!-- RIGHT: Results Panel -->
@@ -729,11 +724,14 @@
     View the source on <a href="https://github.com/benschrauwen/terraform-simulator" target="_blank" rel="noreferrer">GitHub</a>.</p>
   </footer>
 
+  <script src="js/policy-model.js"></script>
   <script src="js/reference-data.js"></script>
   <script src="js/module-registry.js"></script>
   <script src="js/exploratory-routes.js"></script>
   <script src="js/state-schema.js"></script>
   <script src="js/slider-markers.js"></script>
+  <script src="node_modules/lz-string/libs/lz-string.min.js"></script>
+  <script src="js/share-state.js"></script>
   <script src="js/calculations/calculations-core.js"></script>
   <script src="js/calculations/calculations-solar.js"></script>
   <script src="js/calculations/calculations-battery.js"></script>
@@ -743,6 +741,7 @@
   <script src="js/diagram.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="js/app.js"></script>
+  <script src="js/app-share-state.js"></script>
   <script src="js/app-controls.js"></script>
   <script src="js/app-optimizer.js"></script>
   <script src="js/app-ui-state.js"></script>

@@ -385,7 +385,9 @@ Object.assign(Calc, {
   },
 
   normalizeState(rawState = {}) {
-    const input = rawState && typeof rawState === 'object' ? rawState : {};
+    const input = PolicyModel.normalizeLegacyState(
+      rawState && typeof rawState === 'object' ? rawState : {}
+    );
     const normalized = {
       ...DEFAULT_STATE,
       ...input,
@@ -605,7 +607,7 @@ Object.assign(Calc, {
     };
   },
 
-  approximateIRR(cashFlows) {
+  approximateIRR(cashFlows, preferredRate = 0.1) {
     if (!Array.isArray(cashFlows) || cashFlows.length < 2 || cashFlows[0] >= 0) return NaN;
     if (!cashFlows.slice(1).some(value => value > 0)) return NaN;
 
@@ -617,33 +619,98 @@ Object.assign(Calc, {
       return npv;
     };
 
-    let lo = -0.99;
-    let hi = 0.25;
-    let npvLo = npvAt(lo);
-    let npvHi = npvAt(hi);
+    const solveBracket = (lo, hi, npvLo = npvAt(lo), npvHi = npvAt(hi)) => {
+      if (!Number.isFinite(npvLo) || !Number.isFinite(npvHi)) return NaN;
+      if (npvLo === 0) return lo;
+      if (npvHi === 0) return hi;
+      if (npvLo * npvHi > 0) return NaN;
 
-    while (npvLo * npvHi > 0 && hi < 100) {
-      hi = hi < 1 ? (hi * 2) + 0.25 : hi * 2;
-      npvHi = npvAt(hi);
-    }
+      let low = lo;
+      let high = hi;
+      let lowNpv = npvLo;
+      let highNpv = npvHi;
 
-    if (!Number.isFinite(npvLo) || !Number.isFinite(npvHi) || npvLo * npvHi > 0) {
-      return NaN;
-    }
-
-    for (let i = 0; i < 60; i++) {
-      const mid = (lo + hi) / 2;
-      const npvMid = npvAt(mid);
-      if (npvMid === 0) return mid * 100;
-      if (npvLo * npvMid > 0) {
-        lo = mid;
-        npvLo = npvMid;
-      } else {
-        hi = mid;
-        npvHi = npvMid;
+      for (let i = 0; i < 60; i++) {
+        const mid = (low + high) / 2;
+        const npvMid = npvAt(mid);
+        if (npvMid === 0) return mid;
+        if (lowNpv * npvMid > 0) {
+          low = mid;
+          lowNpv = npvMid;
+        } else {
+          high = mid;
+          highNpv = npvMid;
+        }
       }
+
+      return (low + high) / 2;
+    };
+
+    const minRate = -0.99;
+    const maxRate = 100;
+    const safePreferredRate = Number.isFinite(preferredRate)
+      ? Math.max(minRate, Math.min(maxRate, preferredRate))
+      : 0.1;
+    const scanRates = [minRate, safePreferredRate];
+    const pushRange = (start, end, step) => {
+      for (let rate = start; rate <= (end + (step / 2)); rate += step) {
+        scanRates.push(Number(rate.toFixed(12)));
+      }
+    };
+
+    pushRange(-0.98, 1, 0.01);
+    pushRange(1.05, 5, 0.05);
+    pushRange(5.25, 20, 0.25);
+    pushRange(21, maxRate, 1);
+
+    const sortedRates = [...new Set(scanRates.map(rate => Number(rate.toFixed(12))))]
+      .sort((a, b) => a - b);
+    const rootCandidates = [];
+    let previousRate = sortedRates[0];
+    let previousNpv = npvAt(previousRate);
+
+    if (previousNpv === 0) {
+      rootCandidates.push(previousRate);
     }
 
-    return ((lo + hi) / 2) * 100;
+    for (let i = 1; i < sortedRates.length; i++) {
+      const rate = sortedRates[i];
+      const npv = npvAt(rate);
+
+      if (!Number.isFinite(previousNpv) || !Number.isFinite(npv)) {
+        previousRate = rate;
+        previousNpv = npv;
+        continue;
+      }
+
+      if (npv === 0) {
+        rootCandidates.push(rate);
+      } else if ((previousNpv > 0) !== (npv > 0)) {
+        const root = solveBracket(previousRate, rate, previousNpv, npv);
+        if (Number.isFinite(root)) {
+          rootCandidates.push(root);
+        }
+      }
+
+      previousRate = rate;
+      previousNpv = npv;
+    }
+
+    if (!rootCandidates.length) return NaN;
+
+    const uniqueRoots = rootCandidates
+      .filter(root => Number.isFinite(root))
+      .sort((a, b) => a - b)
+      .filter((root, index, roots) => index === 0 || Math.abs(root - roots[index - 1]) > 1e-9);
+    const positiveRoots = uniqueRoots.filter(root => root > 1e-9);
+    // Multiple IRRs are ambiguous. Prefer the largest positive root so nearby
+    // financing inputs stay on one stable economic branch instead of hopping
+    // between smaller and larger positive solutions around the hurdle rate.
+    if (positiveRoots.length) {
+      return positiveRoots[positiveRoots.length - 1] * 100;
+    }
+
+    // If every real root is non-positive, keep the least-negative one.
+    return uniqueRoots[uniqueRoots.length - 1] * 100;
   },
 });

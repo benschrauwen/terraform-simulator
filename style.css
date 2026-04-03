@@ -96,12 +96,18 @@ body {
 
 .header-left {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "title actions"
+    "subtitle actions";
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 4px;
 }
 
 .header-left h1 {
+  grid-area: title;
   font-size: 18px;
   font-weight: 650;
   letter-spacing: -0.01em;
@@ -111,10 +117,59 @@ body {
 }
 
 .header-left .subtitle {
+  grid-area: subtitle;
   font-size: 10px;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.header-actions {
+  grid-area: actions;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  justify-self: end;
+}
+
+.header-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(95, 127, 184, 0.32);
+  border-radius: 50%;
+  background: rgba(95, 127, 184, 0.14);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+
+.header-icon-button:hover,
+.header-icon-button:focus-visible {
+  border-color: rgba(95, 127, 184, 0.5);
+  background: rgba(95, 127, 184, 0.24);
+  outline: none;
+}
+
+.header-action-status {
+  min-height: 14px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.header-action-status[data-state="success"] {
+  color: var(--success);
+}
+
+.header-action-status[data-state="error"] {
+  color: var(--danger);
 }
 
 .header-metrics {
@@ -1360,6 +1415,10 @@ input[type="range"]::-moz-range-track {
   height: 220px;
 }
 
+.chart-wrapper-timeline {
+  height: 280px;
+}
+
 /* Economics doughnut: bottom legend + title need more vertical space than default charts */
 .chart-wrapper-econ {
   height: 280px;
@@ -1741,6 +1800,8 @@ input[type="range"]::-moz-range-track {
 
 .econ-row.positive .econ-value { color: var(--success); }
 .econ-row.negative .econ-value { color: var(--danger); }
+.econ-row.warning .econ-label,
+.econ-row.warning .econ-value { color: var(--warning); }
 
 .econ-row.total {
   font-weight: 700;
@@ -1908,6 +1969,15 @@ input[type="range"]::-moz-range-track {
     font-size: 9px;
   }
 
+  .header-left {
+    column-gap: 8px;
+  }
+
+  .header-actions {
+    gap: 6px;
+    align-self: start;
+  }
+
   .header-metrics {
     display: grid;
     grid-auto-flow: column;
@@ -2013,6 +2083,10 @@ input[type="range"]::-moz-range-track {
   .site-map {
     min-height: 240px;
     height: 240px;
+  }
+
+  .chart-wrapper-timeline {
+    height: 250px;
   }
 
   .app-footer {

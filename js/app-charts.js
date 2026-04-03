@@ -467,6 +467,267 @@ window.AppChartMethods = {
     this.chartKeys.annualDispatch = chartKey;
   },
 
+  updateEconomicsTimelineChart(r) {
+    const timeline = r.economics?.cashFlowTimeline;
+    const canvas = document.getElementById('economicsTimelineChart');
+    if (!timeline || !canvas) return;
+
+    const modeMeta = document.getElementById('economicsTimelineMode');
+    if (modeMeta) {
+      modeMeta.textContent = timeline.financed ? '— Project + sponsor cash' : '— Unlevered project cash';
+    }
+
+    const note = document.getElementById('economicsTimelineNote');
+    if (note) {
+      const noteParts = [
+        timeline.financed
+          ? (timeline.hasPolicyCredits
+              ? 'Bars show annual market revenue, incentive support, fixed O&M, scheduled replacements, and debt service when financing is enabled.'
+              : 'Bars show annual revenue, fixed O&M, scheduled replacements, and debt service when financing is enabled.')
+          : (timeline.hasPolicyCredits
+              ? 'Bars show annual market revenue, incentive support, fixed O&M, and any scheduled replacement CAPEX.'
+              : 'Bars show annual revenue, fixed O&M, and any scheduled replacement CAPEX.'),
+        timeline.financed
+          ? 'The dashed green line starts at upfront CAPEX and tracks cumulative project cash before financing; the solid blue line starts at sponsor cash at close and tracks cumulative equity cash after debt service.'
+          : 'The green line starts at upfront CAPEX at close and tracks cumulative project cash through the selected analysis horizon.',
+      ];
+      if ((timeline.upfrontPolicySupport || 0) > 1e-9) {
+        noteParts.push('If the selected scheme includes upfront capex support, the close bucket shows that support while the cumulative cash line starts from the net CAPEX at close.');
+      }
+      if (timeline.financed && timeline.hasSponsorSupport) {
+        const uncoveredYears = r.economics.financing?.uncoveredDebtServiceYearCount || 0;
+        noteParts.push(
+          `Debt service exceeds operating cash flow in ${uncoveredYears === 1 ? '1 year' : `${FormatNumbers.fixed(uncoveredYears, 0)} years`}; hover financed years to inspect sponsor support and remaining debt balance.`
+        );
+      } else if (timeline.financed && timeline.hasDebtService) {
+        noteParts.push('Hover financed years to compare project cash, sponsor equity cash, and remaining debt balance.');
+      }
+      note.textContent = noteParts.join(' ');
+    }
+
+    const datasets = [
+      {
+        type: 'bar',
+        label: timeline.hasPolicyCredits ? 'Market revenue' : 'Revenue',
+        data: timeline.hasPolicyCredits ? timeline.annualMarketRevenue : timeline.annualRevenue,
+        yAxisID: 'yAnnual',
+        stack: 'cash-items',
+        backgroundColor: 'rgba(16, 185, 129, 0.55)',
+        borderColor: '#10b981',
+        borderWidth: 1,
+        borderRadius: 3,
+        maxBarThickness: 18,
+      },
+      ...(timeline.hasPolicyCredits ? [{
+        type: 'bar',
+        label: 'Incentive support',
+        data: timeline.annualPolicyCredits,
+        yAxisID: 'yAnnual',
+        stack: 'cash-items',
+        backgroundColor: 'rgba(250, 204, 21, 0.58)',
+        borderColor: '#facc15',
+        borderWidth: 1,
+        borderRadius: 3,
+        maxBarThickness: 18,
+      }] : []),
+      {
+        type: 'bar',
+        label: 'O&M',
+        data: timeline.annualOperatingCost.map(value => -value),
+        yAxisID: 'yAnnual',
+        stack: 'cash-items',
+        backgroundColor: 'rgba(148, 163, 184, 0.55)',
+        borderColor: '#94a3b8',
+        borderWidth: 1,
+        borderRadius: 3,
+        maxBarThickness: 18,
+      },
+      ...(timeline.hasReplacements ? [{
+        type: 'bar',
+        label: 'Replacement CAPEX',
+        data: timeline.replacementCapex.map(value => -value),
+        yAxisID: 'yAnnual',
+        stack: 'cash-items',
+        backgroundColor: 'rgba(199, 115, 121, 0.62)',
+        borderColor: '#c77379',
+        borderWidth: 1,
+        borderRadius: 3,
+        maxBarThickness: 18,
+      }] : []),
+      ...(timeline.hasDebtService ? [{
+        type: 'bar',
+        label: 'Debt service',
+        data: timeline.annualDebtService.map(value => -value),
+        yAxisID: 'yAnnual',
+        stack: 'cash-items',
+        backgroundColor: 'rgba(95, 127, 184, 0.6)',
+        borderColor: '#5f7fb8',
+        borderWidth: 1,
+        borderRadius: 3,
+        maxBarThickness: 18,
+      }] : []),
+      {
+        type: 'line',
+        label: 'Cumulative project cash',
+        data: timeline.cumulativeProjectCash,
+        yAxisID: 'yCumulative',
+        borderColor: '#34d399',
+        backgroundColor: 'rgba(52, 211, 153, 0.08)',
+        borderWidth: 2,
+        borderDash: timeline.financed ? [6, 4] : [],
+        tension: 0.2,
+        fill: false,
+        pointRadius: 0,
+        pointHoverRadius: 3,
+      },
+      ...(timeline.financed ? [{
+        type: 'line',
+        label: 'Cumulative equity cash',
+        data: timeline.cumulativeEquityCash,
+        yAxisID: 'yCumulative',
+        borderColor: '#60a5fa',
+        backgroundColor: 'rgba(96, 165, 250, 0.08)',
+        borderWidth: 2,
+        tension: 0.2,
+        fill: false,
+        pointRadius: 0,
+        pointHoverRadius: 3,
+      }] : []),
+    ];
+
+    const chartKey = JSON.stringify({
+      labels: timeline.labels,
+      annualRevenue: timeline.annualRevenue,
+      annualMarketRevenue: timeline.annualMarketRevenue,
+      annualPolicyCredits: timeline.annualPolicyCredits,
+      annualOperatingCost: timeline.annualOperatingCost,
+      replacementCapex: timeline.replacementCapex,
+      annualDebtService: timeline.annualDebtService,
+      cumulativeProjectCash: timeline.cumulativeProjectCash,
+      cumulativeEquityCash: timeline.financed ? timeline.cumulativeEquityCash : [],
+    });
+    if (this.chartKeys.econTimeline === chartKey && this.charts.econTimeline) return;
+
+    if (this.charts.econTimeline) this.charts.econTimeline.destroy();
+    this.charts.econTimeline = new Chart(canvas, {
+      data: {
+        labels: timeline.labels,
+        datasets,
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false,
+        },
+        plugins: {
+          legend: {
+            labels: {
+              color: '#94a3b8',
+              font: { size: 10 },
+            },
+          },
+          tooltip: {
+            filter(ctx) {
+              return Math.abs(ctx.parsed.y || 0) > 1e-9;
+            },
+            callbacks: {
+              label(ctx) {
+                const value = ctx.parsed.y;
+                return `${ctx.dataset.label}: ${FormatNumbers.formatMoney(value)}`;
+              },
+              footer(items) {
+                if (!items.length) return '';
+                const index = items[0].dataIndex;
+                const lines = [];
+
+                if (index === 0) {
+                  lines.push(`Gross upfront CAPEX: ${FormatNumbers.formatMoney(timeline.totalCapex)}`);
+                  if ((timeline.upfrontPolicySupport || 0) > 1e-9) {
+                    lines.push(`Upfront incentive support: ${FormatNumbers.formatMoney(timeline.upfrontPolicySupport)}`);
+                    lines.push(`Net project cash at close: ${FormatNumbers.formatMoney(timeline.projectCashFlow[index])}`);
+                  }
+                  if (timeline.financed) {
+                    lines.push(`Sponsor cash at close: ${FormatNumbers.formatMoney(timeline.equityCashFlow[index])}`);
+                    if (timeline.debtAmount > 0) {
+                      lines.push(`Debt funded at close: ${FormatNumbers.formatMoney(timeline.debtAmount)}`);
+                    }
+                  }
+                  return lines;
+                }
+
+                lines.push(`Project cash: ${FormatNumbers.formatMoney(timeline.projectCashFlow[index])}`);
+                if (timeline.financed) {
+                  lines.push(`Equity cash: ${FormatNumbers.formatMoney(timeline.equityCashFlow[index])}`);
+                  const sponsorSupport = timeline.sponsorSupportNeeded[index] || 0;
+                  if (sponsorSupport > 1e-9) {
+                    lines.push(`Sponsor support needed: ${FormatNumbers.formatMoney(sponsorSupport)}`);
+                  }
+                  const debtEndingBalance = timeline.debtEndingBalance[index] || 0;
+                  if (debtEndingBalance > 1e-9) {
+                    lines.push(`Debt balance end-year: ${FormatNumbers.formatMoney(debtEndingBalance)}`);
+                  }
+                }
+                return lines;
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            stacked: true,
+            ticks: {
+              color: '#64748b',
+              font: { size: 9 },
+              maxTicksLimit: 10,
+            },
+            grid: { color: '#1e293b' },
+            title: {
+              display: true,
+              text: 'Analysis year',
+              color: '#64748b',
+              font: { size: 10 },
+            },
+          },
+          yAnnual: {
+            position: 'left',
+            stacked: true,
+            ticks: {
+              color: '#64748b',
+              font: { size: 9 },
+              callback: value => FormatNumbers.formatMoney(Number(value)),
+            },
+            grid: { color: '#1e293b' },
+            title: {
+              display: true,
+              text: 'Annual cash items ($/yr)',
+              color: '#64748b',
+              font: { size: 10 },
+            },
+          },
+          yCumulative: {
+            position: 'right',
+            ticks: {
+              color: '#64748b',
+              font: { size: 9 },
+              callback: value => FormatNumbers.formatMoney(Number(value)),
+            },
+            grid: { drawOnChartArea: false },
+            title: {
+              display: true,
+              text: 'Cumulative cash ($)',
+              color: '#64748b',
+              font: { size: 10 },
+            },
+          },
+        },
+      },
+    });
+
+    this.chartKeys.econTimeline = chartKey;
+  },
+
   updateEconChart(r) {
     const e = r.economics;
     const solarBreakdown = e.capexBreakdown || {};

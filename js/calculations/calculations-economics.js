@@ -6,55 +6,7 @@ Object.assign(Calc, {
   },
 
   getPolicyCredits(state, context) {
-    const {
-      electrolyzer,
-      dac,
-      co2Surplus = 0,
-    } = context;
-    const mode = state.policyMode;
-    const policy = POLICY_OPTIONS[mode] || POLICY_OPTIONS.none;
-    const cyclesPerYear = this.getBodyConfig(state.body || 'earth').cyclesPerEarthYear;
-    const h2Credit = policy.useCustomH2
-      ? (state.customH2Credit || 0)
-      : (policy.h2Credit || 0);
-    const co2Credit = policy.useCustomCo2
-      ? (state.customCo2Credit || 0)
-      : (policy.co2Credit || 0);
-    const eligibleH2Kg = electrolyzer.enabled ? electrolyzer.h2AnnualKg : 0;
-    const capturedCo2Tons = dac.enabled ? dac.co2AnnualTons : 0;
-    const surplusCo2Tons = Math.max(0, co2Surplus || 0) * cyclesPerYear / 1000;
-    const utilizedCo2Tons = Math.max(0, capturedCo2Tons - surplusCo2Tons);
-    let eligibleCo2Tons = capturedCo2Tons;
-
-    if (mode === 'us_45q_utilization') {
-      eligibleCo2Tons = utilizedCo2Tons;
-    } else if (mode === 'us_45q_sequestration') {
-      eligibleCo2Tons = surplusCo2Tons;
-    }
-
-    const h2Value = eligibleH2Kg * h2Credit;
-    const co2Value = eligibleCo2Tons * co2Credit;
-    const total = h2Value + co2Value;
-
-    return {
-      mode,
-      label: policy.label,
-      total,
-      applicability: policy.applicability,
-      basis: policy.basis,
-      note: policy.note,
-      stackingRule: policy.stackingRule,
-      h2Credit,
-      co2Credit,
-      h2Value,
-      co2Value,
-      durationYears: Number.isFinite(policy.durationYears) ? policy.durationYears : null,
-      eligibleH2Kg,
-      eligibleCo2Tons,
-      capturedCo2Tons,
-      utilizedCo2Tons,
-      surplusCo2Tons,
-    };
+    return PolicyModel.evaluate(state, context);
   },
 
   buildFinancingModel(state, totalCapex) {
@@ -94,10 +46,101 @@ Object.assign(Calc, {
     };
   },
 
+  buildCashFlowTimeline(totalCapex, financing, yearlyCashFlows, policy = {}) {
+    const financed = Boolean(financing?.enabled);
+    const safeTotalCapex = Math.max(0, Number(totalCapex) || 0);
+    const safeUpfrontPolicySupport = Math.max(0, Number(policy?.upfrontSupport) || 0);
+    const safeNetCapexAtClose = Math.max(0, safeTotalCapex - safeUpfrontPolicySupport);
+    const safeEquityUpfront = financed
+      ? Math.max(0, Number(financing?.equityUpfront) || 0)
+      : safeNetCapexAtClose;
+    const safeDebtAmount = financed
+      ? Math.max(0, Number(financing?.debtAmount) || 0)
+      : 0;
+    const labels = ['Close'];
+    const annualRevenue = [safeUpfrontPolicySupport];
+    const annualMarketRevenue = [0];
+    const annualPolicyCredits = [safeUpfrontPolicySupport];
+    const annualOperatingCost = [0];
+    const replacementCapex = [0];
+    const annualDebtService = [0];
+    const projectCashFlow = [-safeNetCapexAtClose];
+    const equityCashFlow = [-safeEquityUpfront];
+    const cumulativeProjectCash = [-safeNetCapexAtClose];
+    const cumulativeEquityCash = [-safeEquityUpfront];
+    const sponsorSupportNeeded = [0];
+    const debtStartingBalance = [safeDebtAmount];
+    const debtEndingBalance = [safeDebtAmount];
+
+    (Array.isArray(yearlyCashFlows) ? yearlyCashFlows : []).forEach(entry => {
+      const revenue = Number.isFinite(entry?.totalRevenue) ? entry.totalRevenue : 0;
+      const policyCredits = Number.isFinite(entry?.revenue?.policyCredits) ? entry.revenue.policyCredits : 0;
+      const marketRevenue = revenue - policyCredits;
+      const operatingCash = Number.isFinite(entry?.operatingCashFlow) ? entry.operatingCashFlow : 0;
+      const operatingCost = Math.max(0, revenue - operatingCash);
+      const replacements = Math.max(0, Number(entry?.replacementOutflow) || 0);
+      const debtService = financed ? Math.max(0, Number(entry?.debtService) || 0) : 0;
+      const projectCash = Number.isFinite(entry?.netCashFlow) ? entry.netCashFlow : 0;
+      const equityCash = financed
+        ? (Number.isFinite(entry?.equityCashFlow) ? entry.equityCashFlow : projectCash)
+        : projectCash;
+      const cumulativeProject = Number.isFinite(entry?.cumulativeNetCash)
+        ? entry.cumulativeNetCash
+        : (cumulativeProjectCash[cumulativeProjectCash.length - 1] + projectCash);
+      const cumulativeEquity = financed
+        ? (Number.isFinite(entry?.cumulativeEquityCash)
+            ? entry.cumulativeEquityCash
+            : (cumulativeEquityCash[cumulativeEquityCash.length - 1] + equityCash))
+        : cumulativeProject;
+
+      labels.push(`Year ${entry?.year ?? labels.length}`);
+      annualRevenue.push(revenue);
+      annualMarketRevenue.push(marketRevenue);
+      annualPolicyCredits.push(policyCredits);
+      annualOperatingCost.push(operatingCost);
+      replacementCapex.push(replacements);
+      annualDebtService.push(debtService);
+      projectCashFlow.push(projectCash);
+      equityCashFlow.push(equityCash);
+      cumulativeProjectCash.push(cumulativeProject);
+      cumulativeEquityCash.push(cumulativeEquity);
+      sponsorSupportNeeded.push(financed ? Math.max(0, Number(entry?.sponsorSupportNeeded) || 0) : 0);
+      debtStartingBalance.push(financed ? Math.max(0, Number(entry?.debtStartingBalance) || 0) : 0);
+      debtEndingBalance.push(financed ? Math.max(0, Number(entry?.debtEndingBalance) || 0) : 0);
+    });
+
+    return {
+      labels,
+      annualRevenue,
+      annualMarketRevenue,
+      annualPolicyCredits,
+      annualOperatingCost,
+      replacementCapex,
+      annualDebtService,
+      projectCashFlow,
+      equityCashFlow,
+      cumulativeProjectCash,
+      cumulativeEquityCash,
+      sponsorSupportNeeded,
+      debtStartingBalance,
+      debtEndingBalance,
+      financed,
+      hasDebtService: financed && annualDebtService.some(value => value > 1e-9),
+      hasPolicyCredits: annualPolicyCredits.some(value => Math.abs(value) > 1e-9),
+      hasReplacements: replacementCapex.some(value => value > 1e-9),
+      hasSponsorSupport: financed && sponsorSupportNeeded.some(value => value > 1e-9),
+      totalCapex: safeTotalCapex,
+      netCapexAtClose: safeNetCapexAtClose,
+      upfrontPolicySupport: safeUpfrontPolicySupport,
+      debtAmount: safeDebtAmount,
+      equityUpfront: safeEquityUpfront,
+    };
+  },
+
   calculateEconomics(state, context) {
     const {
       solar, storage, ai, electrolyzer, dac, sabatier, methanol,
-      h2Surplus, co2Surplus, exploratoryModules,
+      exploratoryModules,
     } = context;
 
     const rate = state.discountRate / 100;
@@ -128,7 +171,6 @@ Object.assign(Calc, {
         };
       });
     const exploratoryCapex = exploratoryDetails.reduce((sum, module) => sum + module.capex, 0);
-    const exploratoryAnnualizedCapex = exploratoryDetails.reduce((sum, module) => sum + module.annualizedCapex, 0);
     const exploratoryAnnualOM = exploratoryDetails.reduce((sum, module) => sum + module.annualOM, 0);
     const exploratoryRevenue = exploratoryDetails.reduce((sum, module) => sum + module.annualRevenue, 0);
 
@@ -149,7 +191,14 @@ Object.assign(Calc, {
       solarSitePrep: solar.sitePrepCapex,
     };
     const totalCapex = Object.values(capex).reduce((sum, value) => sum + value, 0);
-    const financing = this.buildFinancingModel(state, totalCapex);
+    const policy = this.getPolicyCredits(state, {
+      solar,
+      electrolyzer,
+      dac,
+      capex,
+    });
+    const netCapexAtClose = Math.max(0, totalCapex - (policy.upfrontSupport || 0));
+    const financing = this.buildFinancingModel(state, netCapexAtClose);
     const replacementSchedule = this.buildReplacementSchedule(state.analysisHorizonYears, [
       { key: 'solar', label: 'Solar', cost: capex.solar, lifeYears: state.solarAssetLife },
       { key: 'battery', label: 'Battery', cost: capex.battery, lifeYears: batteryLifeYears },
@@ -165,15 +214,42 @@ Object.assign(Calc, {
         lifeYears: module.assetLifeYears,
       })),
     ]);
+    const exploratoryUpfrontSupport = Math.max(0, Number(policy.upfrontSupportByCapexKey?.exploratory) || 0);
+    let remainingExploratorySupport = exploratoryUpfrontSupport;
+    exploratoryDetails.forEach((module, index) => {
+      const moduleCapex = Math.max(0, Number(module.capex) || 0);
+      const value = index === (exploratoryDetails.length - 1)
+        ? Math.max(0, remainingExploratorySupport)
+        : (
+            exploratoryCapex > 0
+              ? (exploratoryUpfrontSupport * moduleCapex) / exploratoryCapex
+              : 0
+          );
+      remainingExploratorySupport -= value;
+      module.upfrontSupport = value;
+      module.netCapexAtClose = Math.max(0, moduleCapex - value);
+      module.annualizedCapex = module.netCapexAtClose * this.crf(rate, module.assetLifeYears);
+    });
+    const netCapexByKey = {
+      solar: Math.max(0, capex.solar - (policy.upfrontSupportByCapexKey?.solar || 0)),
+      battery: Math.max(0, capex.battery - (policy.upfrontSupportByCapexKey?.battery || 0)),
+      ai: Math.max(0, capex.ai - (policy.upfrontSupportByCapexKey?.ai || 0)),
+      electrolyzer: Math.max(0, capex.electrolyzer - (policy.upfrontSupportByCapexKey?.electrolyzer || 0)),
+      dac: Math.max(0, capex.dac - (policy.upfrontSupportByCapexKey?.dac || 0)),
+      sabatier: Math.max(0, capex.sabatier - (policy.upfrontSupportByCapexKey?.sabatier || 0)),
+      methanol: Math.max(0, capex.methanol - (policy.upfrontSupportByCapexKey?.methanol || 0)),
+      exploratory: Math.max(0, capex.exploratory - exploratoryUpfrontSupport),
+    };
+    const exploratoryAnnualizedCapex = exploratoryDetails.reduce((sum, module) => sum + module.annualizedCapex, 0);
 
     const annualizedCapex = {
-      solar: capex.solar * this.crf(rate, state.solarAssetLife),
-      battery: storage.enabled ? capex.battery * this.crf(rate, batteryLifeYears) : 0,
-      ai: ai.enabled ? capex.ai * this.crf(rate, ai.assetLifeYears) : 0,
-      electrolyzer: capex.electrolyzer * this.crf(rate, state.electrolyzerAssetLife),
-      dac: capex.dac * this.crf(rate, state.dacAssetLife),
-      sabatier: capex.sabatier * this.crf(rate, state.sabatierAssetLife),
-      methanol: capex.methanol * this.crf(rate, state.methanolAssetLife),
+      solar: netCapexByKey.solar * this.crf(rate, state.solarAssetLife),
+      battery: storage.enabled ? netCapexByKey.battery * this.crf(rate, batteryLifeYears) : 0,
+      ai: ai.enabled ? netCapexByKey.ai * this.crf(rate, ai.assetLifeYears) : 0,
+      electrolyzer: netCapexByKey.electrolyzer * this.crf(rate, state.electrolyzerAssetLife),
+      dac: netCapexByKey.dac * this.crf(rate, state.dacAssetLife),
+      sabatier: netCapexByKey.sabatier * this.crf(rate, state.sabatierAssetLife),
+      methanol: netCapexByKey.methanol * this.crf(rate, state.methanolAssetLife),
       exploratory: exploratoryAnnualizedCapex,
     };
 
@@ -186,7 +262,6 @@ Object.assign(Calc, {
       exploratoryAnnualOM;
 
     const methaneSalePrice = this.getMethaneSalePrice(state);
-    const policy = this.getPolicyCredits(state, { electrolyzer, dac, co2Surplus });
     const revenue = {
       ai: ai.enabled ? ai.annualRevenue : 0,
       methane: sabatier.enabled ? sabatier.ch4AnnualMCF * methaneSalePrice : 0,
@@ -202,8 +277,12 @@ Object.assign(Calc, {
     const annualProfit = totalAnnualRevenue - annualCost;
     const annualOperatingCashFlow = totalAnnualRevenue - annualOM;
     const yearlyCashFlows = [];
-    let npv = -totalCapex;
+    let npv = -netCapexAtClose;
     let equityNpv = -financing.equityUpfront;
+    let sponsorSupportTotal = 0;
+    let peakSponsorSupport = 0;
+    let peakSponsorSupportYear = null;
+    const uncoveredDebtServiceYears = [];
     for (let year = 1; year <= state.analysisHorizonYears; year++) {
       const degradationFactor = this.getSolarDegradationFactor(state.panelDegradationAnnual, year);
       const policyDurationFactor = this.getPolicyDurationFactor(policy, year);
@@ -227,14 +306,23 @@ Object.assign(Calc, {
         principalPaid: 0,
         debtService: 0,
       };
+      const sponsorSupportNeeded = Math.max(0, debtEntry.debtService - operatingCashFlow);
+      if (sponsorSupportNeeded > 1e-9) {
+        sponsorSupportTotal += sponsorSupportNeeded;
+        uncoveredDebtServiceYears.push(year);
+        if (sponsorSupportNeeded > peakSponsorSupport) {
+          peakSponsorSupport = sponsorSupportNeeded;
+          peakSponsorSupportYear = year;
+        }
+      }
       const equityCashFlow = netCashFlow - debtEntry.debtService;
       const yearProfit = totalYearRevenue - annualCost;
       const cumulativeOperatingBefore = year === 1
-        ? -totalCapex
+        ? -netCapexAtClose
         : yearlyCashFlows[yearlyCashFlows.length - 1].cumulativeOperatingCash;
       const cumulativeOperatingAfter = cumulativeOperatingBefore + operatingCashFlow;
       const cumulativeNetBefore = year === 1
-        ? -totalCapex
+        ? -netCapexAtClose
         : yearlyCashFlows[yearlyCashFlows.length - 1].cumulativeNetCash;
       const cumulativeNetAfter = cumulativeNetBefore + netCashFlow;
       const cumulativeEquityBefore = year === 1
@@ -260,6 +348,7 @@ Object.assign(Calc, {
         debtInterest: debtEntry.interest,
         debtPrincipal: debtEntry.principalPaid,
         debtService: debtEntry.debtService,
+        sponsorSupportNeeded,
         equityCashFlow,
         cumulativeEquityCash: cumulativeEquityAfter,
       });
@@ -284,16 +373,16 @@ Object.assign(Calc, {
       : annualProfit;
     const finalCumulativeNetCash = yearlyCashFlows.length > 0
       ? yearlyCashFlows[yearlyCashFlows.length - 1].cumulativeNetCash
-      : -totalCapex;
+      : -netCapexAtClose;
     const finalCumulativeEquityCash = yearlyCashFlows.length > 0
       ? yearlyCashFlows[yearlyCashFlows.length - 1].cumulativeEquityCash
       : -financing.equityUpfront;
     const paybackYears = this.calculateSimplePaybackYears(
-      totalCapex,
+      netCapexAtClose,
       yearlyCashFlows.map(entry => entry.netCashFlow)
     );
     const sustainedPaybackYears = this.calculateSustainedPaybackYears(
-      totalCapex,
+      netCapexAtClose,
       yearlyCashFlows.map(entry => entry.netCashFlow)
     );
     const equityPaybackYears = this.calculateSimplePaybackYears(
@@ -304,19 +393,30 @@ Object.assign(Calc, {
       financing.equityUpfront,
       yearlyCashFlows.map(entry => entry.equityCashFlow)
     );
-    const roi = totalCapex > 0 ? (finalCumulativeNetCash / totalCapex) * 100 : 0;
+    const roi = netCapexAtClose > 0 ? (finalCumulativeNetCash / netCapexAtClose) * 100 : 0;
 
     const projectIrr = this.approximateIRR([
-      -totalCapex,
+      -netCapexAtClose,
       ...yearlyCashFlows.map(entry => entry.netCashFlow),
-    ]);
+    ], rate);
     const equityIrr = financing.enabled
       ? this.approximateIRR([
         -financing.equityUpfront,
         ...yearlyCashFlows.map(entry => entry.equityCashFlow),
-      ])
+      ], rate)
       : projectIrr;
     const irr = financing.enabled ? equityIrr : projectIrr;
+    const financingSummary = {
+      ...financing,
+      canFullyCoverDebtService: uncoveredDebtServiceYears.length === 0,
+      uncoveredDebtServiceYears,
+      uncoveredDebtServiceYearCount: uncoveredDebtServiceYears.length,
+      firstUncoveredDebtServiceYear: uncoveredDebtServiceYears[0] || null,
+      sponsorSupportTotal,
+      peakSponsorSupport,
+      peakSponsorSupportYear,
+    };
+    const cashFlowTimeline = this.buildCashFlowTimeline(totalCapex, financingSummary, yearlyCashFlows, policy);
 
     const aiCoreAnnualCost = ai.enabled
       ? annualizedCapex.solar + annualizedCapex.battery + annualizedCapex.ai + solar.annualSolarOm + (storage.capex * batteryOmFrac) + (ai.annualOM || 0)
@@ -327,6 +427,7 @@ Object.assign(Calc, {
       capexBreakdown,
       annualizedCapex,
       totalCapex,
+      netCapexAtClose,
       annualOM,
       annualCost,
       annualizedCapexTotal,
@@ -347,7 +448,7 @@ Object.assign(Calc, {
       finalCumulativeEquityCash,
       methaneSalePrice,
       policy,
-      financing,
+      financing: financingSummary,
       paybackYears,
       sustainedPaybackYears,
       equityPaybackYears,
@@ -359,6 +460,7 @@ Object.assign(Calc, {
       equityIrr,
       irr,
       yearlyCashFlows,
+      cashFlowTimeline,
       aiCoreAnnualCost,
       costPerMToken: ai.enabled && ai.annualTokensM > 0 ? aiCoreAnnualCost / ai.annualTokensM : 0,
       tokenMarginPerM: ai.enabled && ai.annualTokensM > 0 ? (state.aiTokenPricePerM || 0) - (aiCoreAnnualCost / ai.annualTokensM) : 0,

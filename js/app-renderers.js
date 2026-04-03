@@ -225,7 +225,12 @@ window.AppRendererMethods = {
 
     summaryMetrics.push(
       econMetric('Total CAPEX', this.formatMoney(e.totalCapex), '', 'Installed build cost'),
-      econMetric('Annual revenue', this.formatMoney(e.totalAnnualRevenue), 'positive', 'Product and policy sales'),
+      econMetric(
+        'Annual revenue',
+        this.formatMoney(e.totalAnnualRevenue),
+        e.totalAnnualRevenue >= 0 ? 'positive' : 'negative',
+        'Product sales plus any annual operating support'
+      ),
       econMetric('Levelized cost', this.formatMoney(e.annualCost), 'negative', 'CRF capital + O&M'),
       econMetric('Annual profit', this.formatMoney(e.annualProfit), e.annualProfit >= 0 ? 'positive' : 'negative', 'Revenue minus levelized cost'),
       econMetric(
@@ -266,13 +271,13 @@ window.AppRendererMethods = {
         projectNpvLabel,
         this.formatMoney(e.npv),
         e.npv >= 0 ? 'positive' : 'negative',
-        'Discounted cash flows: -upfront CAPEX in year 0, then yearly revenue minus O&M and any scheduled replacement CAPEX. CRF capital recovery is not repeated as a cash outflow.'
+        'Discounted cash flows: gross upfront CAPEX less any close-date policy support in year 0, then yearly revenue minus O&M and any scheduled replacement CAPEX. CRF capital recovery is not repeated as a cash outflow.'
       ),
       this.econRow(
         projectIrrLabel,
         this.formatIrr(e.projectIrr),
         Number.isFinite(e.projectIrr) ? (e.projectIrr >= 0 ? 'positive' : 'negative') : '',
-        'Internal rate of return on the same net-cash path as NPV after O&M and scheduled replacements.'
+        'Internal rate of return on the same net-cash path as NPV after O&M, close-date policy support, and scheduled replacements.'
       )
     );
 
@@ -383,6 +388,17 @@ window.AppRendererMethods = {
       costRows.push(this.econRow(`${module.label} (${module.routeLabel})`, this.formatMoney(module.capex)));
     });
     costRows.push(this.econRow('Total CAPEX', this.formatMoney(e.totalCapex), 'total'));
+    if (Math.abs(e.policy.upfrontSupport || 0) > 1e-9) {
+      costRows.push(
+        this.econRow(
+          'Upfront incentive support',
+          this.formatMoney(e.policy.upfrontSupport),
+          'positive',
+          'Applied at close as a reduction to eligible upfront CAPEX only. Replacement CAPEX later in life is not automatically subsidized in the current model.'
+        ),
+        this.econRow('Net CAPEX at close', this.formatMoney(e.netCapexAtClose), 'total')
+      );
+    }
 
     if (e.revenue.ai > 0) revenueRows.push(this.econRow('AI token revenue', this.formatMoney(e.revenue.ai), 'positive'));
     if (e.revenue.methane > 0) {
@@ -403,7 +419,15 @@ window.AppRendererMethods = {
         )
       );
     });
-    if (e.revenue.policyCredits > 0) revenueRows.push(this.econRow(e.policy.label, this.formatMoney(e.revenue.policyCredits), 'positive'));
+    if (Math.abs(e.revenue.policyCredits || 0) > 1e-9) {
+      revenueRows.push(
+        this.econRow(
+          e.policy.label,
+          this.formatMoney(e.revenue.policyCredits),
+          e.revenue.policyCredits >= 0 ? 'positive' : 'negative'
+        )
+      );
+    }
     revenueRows.push(this.econRow('Total revenue', this.formatMoney(e.totalAnnualRevenue), 'total'));
 
     if (e.financing.enabled) {
@@ -429,6 +453,34 @@ window.AppRendererMethods = {
             'Modeled as a level-payment amortizing loan over the selected debt term.'
           ),
           this.econRow('Total debt interest', this.formatMoney(e.financing.totalInterest), 'negative')
+        );
+      }
+      if (!e.financing.canFullyCoverDebtService && e.financing.sponsorSupportTotal > 0) {
+        const uncoveredYearsLabel = e.financing.uncoveredDebtServiceYearCount === 1
+          ? '1 year'
+          : `${FormatNumbers.fixed(e.financing.uncoveredDebtServiceYearCount, 0)} years`;
+        const peakSupportLabel = e.financing.peakSponsorSupportYear
+          ? `${this.formatMoney(e.financing.peakSponsorSupport)} in year ${FormatNumbers.fixed(e.financing.peakSponsorSupportYear, 0)}`
+          : this.formatMoney(e.financing.peakSponsorSupport);
+        financingRows.push(
+          this.econRow(
+            'Financing warning',
+            `Debt service exceeds operating cash flow in ${uncoveredYearsLabel}`,
+            'warning',
+            'The model does not default or restructure the debt. It assumes the sponsor contributes extra cash whenever scheduled debt service is higher than project operating cash flow.'
+          ),
+          this.econRow(
+            'Additional sponsor cash support',
+            this.formatMoney(e.financing.sponsorSupportTotal),
+            'warning',
+            'Total additional sponsor cash assumed to cover debt-service shortfalls after O&M over the selected analysis horizon.'
+          ),
+          this.econRow(
+            'Peak annual sponsor support',
+            peakSupportLabel,
+            'warning',
+            'Largest single-year sponsor cash support needed because debt service is higher than project operating cash flow.'
+          )
         );
       }
     }
@@ -462,19 +514,34 @@ window.AppRendererMethods = {
     }
     if (e.policy.mode !== 'none') {
       contextRows.push(
-        this.econRow('Policy mode', e.policy.label),
-        this.econRow('Policy scope', e.policy.applicability)
+        this.econRow('Incentive scheme', e.policy.label),
+        this.econRow('Policy scope', e.policy.applicability),
+        this.econRow('Model treatment', String(e.policy.simulatorTreatment || '').replace(/_/g, ' ')),
+        this.econRow('Support family', e.policy.supportFamilyLabel)
       );
       if (Number.isFinite(e.policy.durationYears)) {
         contextRows.push(this.econRow('Policy duration', `${FormatNumbers.fixed(e.policy.durationYears, 0)} years`));
       }
-      if (e.policy.co2Credit > 0) {
-        const co2Basis = e.policy.mode === 'us_45q_sequestration'
-          ? 'Eligible sequestered CO₂'
-          : e.policy.mode === 'us_45q_utilization'
-            ? 'Eligible utilized CO₂'
-            : 'Eligible CO₂';
-        contextRows.push(this.econRow(co2Basis, `${FormatNumbers.fixed(e.policy.eligibleCo2Tons, 1)} tons/yr`));
+      if ((e.policy.outputMetric?.value || 0) > 0 && e.policy.outputMetric?.unit) {
+        const digits = e.policy.outputMetric.unit === 'MWh/yr' ? 1 : 0;
+        contextRows.push(
+          this.econRow(
+            e.policy.outputMetric.label,
+            `${FormatNumbers.fixed(e.policy.outputMetric.value, digits)} ${e.policy.outputMetric.unit}`
+          )
+        );
+      }
+      if ((e.policy.eligibleCapex || 0) > 0) {
+        contextRows.push(this.econRow(e.policy.eligibleCapexLabel, this.formatMoney(e.policy.eligibleCapex)));
+      }
+      if (Math.abs(e.policy.upfrontSupport || 0) > 1e-9) {
+        contextRows.push(this.econRow('Upfront support at close', this.formatMoney(e.policy.upfrontSupport), 'positive'));
+      }
+      (e.policy.inputValues || []).forEach(input => {
+        contextRows.push(this.econRow(input.label, input.formattedValue));
+      });
+      if (e.policy.referencePriceRequired) {
+        contextRows.push(this.econRow('Reference price required', 'Yes'));
       }
     }
     if (r.h2Surplus > 0.1) {
@@ -528,12 +595,15 @@ window.AppRendererMethods = {
       'Revenue breakdown',
       `${this.formatMoney(e.totalAnnualRevenue)} /yr`,
       revenueRows.join(''),
-      'Annual revenue sources by product and policy'
+      'Annual revenue sources by product and operating-support regime'
     );
     if (financingRows.length) {
+      const financingSummary = (!e.financing.canFullyCoverDebtService && e.financing.sponsorSupportTotal > 0)
+        ? `${FormatNumbers.fixed(e.financing.debtSharePercent, 0)}% debt + sponsor support`
+        : `${FormatNumbers.fixed(e.financing.debtSharePercent, 0)}% debt`;
       html += econGroup(
         'Financing details',
-        `${FormatNumbers.fixed(e.financing.debtSharePercent, 0)}% debt`,
+        financingSummary,
         financingRows.join(''),
         'Sponsor cash needs and debt service'
       );

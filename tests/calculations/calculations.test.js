@@ -9,6 +9,13 @@ const {
   runScenario,
 } = require('./harness');
 
+function npvAt(cashFlows, rate) {
+  return cashFlows.reduce(
+    (sum, cashFlow, year) => sum + (cashFlow / Math.pow(1 + rate, year)),
+    0
+  );
+}
+
 test('default scenario stays numerically sane', () => {
   const state = createState();
   const result = runScenario();
@@ -157,6 +164,630 @@ test('lean IRR path matches the full exploratory-enabled scenario calculation', 
   assert.ok(
     Math.abs(fullResult.economics.irr - leanIrr) <= 1e-9,
     `Expected lean exploratory IRR ${leanIrr} to match full IRR ${fullResult.economics.irr}.`
+  );
+});
+
+test('headline IRR stays on the discount-rate root when replacement cycles create multiple roots', () => {
+  const higherConversionState = createState({ sabatierConversion: 85 });
+  const lowerConversionState = createState({ sabatierConversion: 84 });
+  const higherConversionResult = Calc.calculateAll(higherConversionState);
+  const lowerConversionResult = Calc.calculateAll(lowerConversionState);
+  const leanLowerConversionIrr = Calc.calculateIrr(lowerConversionState);
+
+  assert.ok(
+    higherConversionResult.economics.irr > 0,
+    `Expected the 85% Sabatier case to keep a positive headline IRR, got ${higherConversionResult.economics.irr}.`
+  );
+  assert.ok(
+    lowerConversionResult.economics.irr > 0,
+    `Expected the 84% Sabatier case to stay on the positive IRR root instead of flipping negative, got ${lowerConversionResult.economics.irr}.`
+  );
+  assert.ok(
+    lowerConversionResult.economics.irr < higherConversionResult.economics.irr,
+    [
+      'Expected a lower Sabatier conversion to reduce the positive IRR root without jumping to a different branch.',
+      `Observed 85% -> ${higherConversionResult.economics.irr.toFixed(6)}% and 84% -> ${lowerConversionResult.economics.irr.toFixed(6)}%.`,
+    ].join(' ')
+  );
+  assert.ok(
+    Math.abs(higherConversionResult.economics.irr - 7.925879719420551) <= 1e-6,
+    `Expected the 85% Sabatier regression case to stay near a 7.925880% headline IRR, got ${higherConversionResult.economics.irr}.`
+  );
+  assert.ok(
+    Math.abs(lowerConversionResult.economics.irr - 7.722987106999568) <= 1e-6,
+    `Expected the 84% Sabatier regression case to stay near a 7.722987% headline IRR, got ${lowerConversionResult.economics.irr}.`
+  );
+  assert.ok(
+    Math.abs(lowerConversionResult.economics.irr - leanLowerConversionIrr) <= 1e-9,
+    `Expected lean IRR ${leanLowerConversionIrr} to match full IRR ${lowerConversionResult.economics.irr}.`
+  );
+});
+
+test('equity IRR stays on the positive branch when longer debt terms add another debt-service year', () => {
+  const twentyYearDebtState = createState({ financingEnabled: true, debtTermYears: 20 });
+  const twentyOneYearDebtState = createState({ financingEnabled: true, debtTermYears: 21 });
+  const twentyYearDebtResult = Calc.calculateAll(twentyYearDebtState);
+  const twentyOneYearDebtResult = Calc.calculateAll(twentyOneYearDebtState);
+  const leanTwentyOneYearEquityIrr = Calc.calculateIrr(twentyOneYearDebtState);
+
+  assert.ok(
+    twentyYearDebtResult.economics.equityIrr > 0,
+    `Expected the 20-year debt case to keep a positive equity IRR, got ${twentyYearDebtResult.economics.equityIrr}.`
+  );
+  assert.ok(
+    twentyOneYearDebtResult.economics.equityIrr > 0,
+    `Expected the 21-year debt case to stay on the positive equity IRR branch instead of flipping negative, got ${twentyOneYearDebtResult.economics.equityIrr}.`
+  );
+  assert.ok(
+    twentyOneYearDebtResult.economics.equityNpv > twentyYearDebtResult.economics.equityNpv,
+    [
+      'Expected stretching the debt tenor from 20 to 21 years to slightly improve equity NPV at the configured hurdle rate.',
+      `Observed 20-year ${twentyYearDebtResult.economics.equityNpv.toFixed(6)} vs 21-year ${twentyOneYearDebtResult.economics.equityNpv.toFixed(6)}.`,
+    ].join(' ')
+  );
+  assert.ok(
+    twentyOneYearDebtResult.economics.equityIrr > twentyYearDebtResult.economics.equityIrr,
+    [
+      'Expected the 21-year debt term to keep a slightly higher positive equity IRR rather than jumping to a negative branch.',
+      `Observed 20-year ${twentyYearDebtResult.economics.equityIrr.toFixed(6)}% vs 21-year ${twentyOneYearDebtResult.economics.equityIrr.toFixed(6)}%.`,
+    ].join(' ')
+  );
+  assert.ok(
+    Math.abs(twentyYearDebtResult.economics.equityIrr - 29.794783415880932) <= 1e-6,
+    `Expected the 20-year debt regression case to stay near a 29.794783% equity IRR, got ${twentyYearDebtResult.economics.equityIrr}.`
+  );
+  assert.ok(
+    Math.abs(twentyOneYearDebtResult.economics.equityIrr - 30.521265100441365) <= 1e-6,
+    `Expected the 21-year debt regression case to stay near a 30.521265% equity IRR, got ${twentyOneYearDebtResult.economics.equityIrr}.`
+  );
+  assert.ok(
+    Math.abs(twentyOneYearDebtResult.economics.equityIrr - leanTwentyOneYearEquityIrr) <= 1e-9,
+    `Expected lean IRR ${leanTwentyOneYearEquityIrr} to match full IRR ${twentyOneYearDebtResult.economics.equityIrr}.`
+  );
+});
+
+test('reported project and equity IRRs zero their respective cash-flow NPVs', () => {
+  const projectResult = Calc.calculateAll(createState({ sabatierConversion: 84 }));
+  const projectCashFlows = [
+    -projectResult.economics.totalCapex,
+    ...projectResult.economics.yearlyCashFlows.map(entry => entry.netCashFlow),
+  ];
+  const projectIrrRate = projectResult.economics.projectIrr / 100;
+  const equityResult = Calc.calculateAll(createState({ financingEnabled: true, debtTermYears: 21 }));
+  const equityCashFlows = [
+    -equityResult.economics.financing.equityUpfront,
+    ...equityResult.economics.yearlyCashFlows.map(entry => entry.equityCashFlow),
+  ];
+  const equityIrrRate = equityResult.economics.equityIrr / 100;
+
+  assert.ok(
+    Math.abs(npvAt(projectCashFlows, projectIrrRate)) <= 1e-6,
+    [
+      'Expected the reported project IRR to zero the corresponding unlevered project cash flows.',
+      `Observed NPV ${npvAt(projectCashFlows, projectIrrRate)} at ${projectResult.economics.projectIrr.toFixed(12)}%.`,
+    ].join(' ')
+  );
+  assert.ok(
+    Math.abs(npvAt(equityCashFlows, equityIrrRate)) <= 1e-6,
+    [
+      'Expected the reported equity IRR to zero the corresponding levered sponsor equity cash flows.',
+      `Observed NPV ${npvAt(equityCashFlows, equityIrrRate)} at ${equityResult.economics.equityIrr.toFixed(12)}%.`,
+    ].join(' ')
+  );
+});
+
+test('approximateIRR keeps the largest positive root when multiple positive roots exist', () => {
+  const lowerRootRate = 0.09;
+  const upperRootRate = 0.24;
+  const lowerDiscountFactor = 1 / (1 + lowerRootRate);
+  const upperDiscountFactor = 1 / (1 + upperRootRate);
+  const cashFlows = [
+    -(lowerDiscountFactor * upperDiscountFactor),
+    lowerDiscountFactor + upperDiscountFactor,
+    -1,
+  ];
+  const reportedIrr = Calc.approximateIRR(cashFlows, 0.08);
+
+  assert.ok(
+    Math.abs(reportedIrr - (upperRootRate * 100)) <= 1e-9,
+    [
+      'Expected multi-root cash flows to report the largest positive IRR root for stability.',
+      `Observed ${reportedIrr.toFixed(12)}% instead of ${(upperRootRate * 100).toFixed(12)}%.`,
+    ].join(' ')
+  );
+});
+
+test('30-year financed equity IRR stays on the upper branch until no real root remains', () => {
+  const ninePointFivePercent = Calc.calculateAll(createState({
+    financingEnabled: true,
+    debtTermYears: 30,
+    debtInterestRate: 9.5,
+  })).economics;
+  const ninePointSeventyFivePercent = Calc.calculateAll(createState({
+    financingEnabled: true,
+    debtTermYears: 30,
+    debtInterestRate: 9.75,
+  })).economics;
+  const tenPointFivePercent = Calc.calculateAll(createState({
+    financingEnabled: true,
+    debtTermYears: 30,
+    debtInterestRate: 10.5,
+  })).economics;
+  const tenPointSeventyFivePercent = Calc.calculateAll(createState({
+    financingEnabled: true,
+    debtTermYears: 30,
+    debtInterestRate: 10.75,
+  })).economics;
+
+  assert.ok(
+    ninePointSeventyFivePercent.equityIrr < ninePointFivePercent.equityIrr,
+    [
+      'Expected the upper positive equity IRR branch to keep decreasing as debt interest rises.',
+      `Observed 9.5% -> ${ninePointFivePercent.equityIrr.toFixed(6)}% vs 9.75% -> ${ninePointSeventyFivePercent.equityIrr.toFixed(6)}%.`,
+    ].join(' ')
+  );
+  assert.ok(
+    tenPointFivePercent.equityIrr < ninePointSeventyFivePercent.equityIrr,
+    [
+      'Expected the financed 30-year case to keep following the same declining positive IRR branch at 10.5% debt interest.',
+      `Observed 9.75% -> ${ninePointSeventyFivePercent.equityIrr.toFixed(6)}% vs 10.5% -> ${tenPointFivePercent.equityIrr.toFixed(6)}%.`,
+    ].join(' ')
+  );
+  assert.ok(
+    Math.abs(ninePointFivePercent.equityIrr - 25.0781235266443) <= 1e-6,
+    `Expected the 9.5% debt-interest regression case to stay near a 25.078124% equity IRR, got ${ninePointFivePercent.equityIrr}.`
+  );
+  assert.ok(
+    Math.abs(ninePointSeventyFivePercent.equityIrr - 23.98580764526344) <= 1e-6,
+    `Expected the 9.75% debt-interest regression case to stay near a 23.985808% equity IRR, got ${ninePointSeventyFivePercent.equityIrr}.`
+  );
+  assert.ok(
+    Math.abs(tenPointFivePercent.equityIrr - 19.570495416597528) <= 1e-6,
+    `Expected the 10.5% debt-interest regression case to stay near a 19.570495% equity IRR, got ${tenPointFivePercent.equityIrr}.`
+  );
+  assert.ok(
+    !Number.isFinite(tenPointSeventyFivePercent.equityIrr),
+    `Expected the 10.75% debt-interest case to lose all real equity IRR roots, got ${tenPointSeventyFivePercent.equityIrr}.`
+  );
+});
+
+test('amortizing debt schedule matches standard level-payment loan math', () => {
+  const principal = 100000;
+  const annualRate = 0.065;
+  const termYears = 15;
+  const horizonYears = 30;
+  const schedule = Calc.buildDebtSchedule(principal, annualRate, termYears, horizonYears);
+  const growth = Math.pow(1 + annualRate, termYears);
+  const expectedAnnualDebtService = principal * ((annualRate * growth) / (growth - 1));
+  const firstYear = schedule.schedule[0];
+  const lastDebtYear = schedule.schedule[termYears - 1];
+  const yearAfterDebt = schedule.schedule[termYears];
+
+  assert.ok(
+    Math.abs(schedule.annualDebtService - expectedAnnualDebtService) <= 1e-9,
+    [
+      'Expected annual debt service to follow the standard level-payment amortization formula.',
+      `Observed ${schedule.annualDebtService.toFixed(12)} vs expected ${expectedAnnualDebtService.toFixed(12)}.`,
+    ].join(' ')
+  );
+  assert.ok(
+    Math.abs(firstYear.interest - (principal * annualRate)) <= 1e-9,
+    [
+      'Expected first-year interest to accrue on the starting balance at the configured annual rate.',
+      `Observed ${firstYear.interest.toFixed(12)} vs expected ${(principal * annualRate).toFixed(12)}.`,
+    ].join(' ')
+  );
+  assert.ok(
+    Math.abs(firstYear.principalPaid - (expectedAnnualDebtService - firstYear.interest)) <= 1e-9,
+    [
+      'Expected first-year principal to be the level payment minus that year’s interest.',
+      `Observed ${firstYear.principalPaid.toFixed(12)} vs expected ${(expectedAnnualDebtService - firstYear.interest).toFixed(12)}.`,
+    ].join(' ')
+  );
+  assert.ok(
+    Math.abs(schedule.totalPrincipal - principal) <= 1e-6,
+    `Expected total principal repaid to equal the original ${formatMoney(principal)} loan balance, got ${formatMoney(schedule.totalPrincipal)}.`
+  );
+  assert.ok(
+    Math.abs(lastDebtYear.endingBalance) <= 1e-9,
+    `Expected the last amortizing year to retire the balance, got ending balance ${lastDebtYear.endingBalance}.`
+  );
+  assert.equal(yearAfterDebt.debtService, 0, 'Expected debt service to stop immediately after the modeled term ends.');
+});
+
+test('zero-interest debt schedule repays principal evenly and then stops', () => {
+  const principal = 120000;
+  const termYears = 6;
+  const schedule = Calc.buildDebtSchedule(principal, 0, termYears, 10);
+  const expectedAnnualDebtService = principal / termYears;
+  const debtYears = schedule.schedule.slice(0, termYears);
+  const yearsAfterDebt = schedule.schedule.slice(termYears);
+
+  assert.equal(
+    schedule.annualDebtService,
+    expectedAnnualDebtService,
+    `Expected a zero-rate loan to repay ${formatMoney(expectedAnnualDebtService)} of principal each year.`
+  );
+  assert.ok(
+    debtYears.every(entry => entry.interest === 0),
+    'Expected zero-interest debt to accrue no interest in any amortizing year.'
+  );
+  assert.ok(
+    debtYears.every(entry => Math.abs(entry.principalPaid - expectedAnnualDebtService) <= 1e-9),
+    'Expected each zero-interest debt payment to repay an equal slice of principal.'
+  );
+  assert.equal(schedule.totalInterest, 0, 'Expected the zero-interest debt case to accumulate no interest.');
+  assert.equal(schedule.totalPrincipal, principal, 'Expected the zero-interest debt case to repay the full principal balance.');
+  assert.ok(
+    yearsAfterDebt.every(entry => entry.debtService === 0 && entry.endingBalance === 0),
+    'Expected debt service and balances to stay at zero after the modeled term.'
+  );
+});
+
+test('financing model funds only the debt share and leaves zero-debt cases unlevered', () => {
+  const financedResult = Calc.calculateAll(createState({
+    financingEnabled: true,
+    debtSharePercent: 70,
+    debtInterestRate: 6.5,
+    debtTermYears: 15,
+    debtFeePercent: 1.5,
+  }));
+  const financedEconomics = financedResult.economics;
+  const financedModel = financedEconomics.financing;
+  const expectedDebtAmount = financedEconomics.totalCapex * 0.70;
+  const expectedFee = expectedDebtAmount * 0.015;
+  const expectedEquityUpfront = financedEconomics.totalCapex - expectedDebtAmount + expectedFee;
+  const zeroDebtEconomics = Calc.calculateAll(createState({
+    financingEnabled: true,
+    debtSharePercent: 0,
+    debtFeePercent: 5,
+    debtTermYears: 25,
+  })).economics;
+
+  assert.ok(
+    Math.abs(financedModel.debtAmount - expectedDebtAmount) <= 1e-6,
+    [
+      'Expected the debt amount to fund only the configured share of upfront CAPEX.',
+      `Observed ${formatMoney(financedModel.debtAmount)} vs expected ${formatMoney(expectedDebtAmount)}.`,
+    ].join(' ')
+  );
+  assert.ok(
+    Math.abs(financedModel.upfrontFee - expectedFee) <= 1e-6,
+    [
+      'Expected the upfront fee to be calculated as a percentage of the gross debt amount.',
+      `Observed ${formatMoney(financedModel.upfrontFee)} vs expected ${formatMoney(expectedFee)}.`,
+    ].join(' ')
+  );
+  assert.ok(
+    Math.abs(financedModel.equityUpfront - expectedEquityUpfront) <= 1e-6,
+    [
+      'Expected sponsor cash at close to equal uncovered CAPEX plus the financing fee.',
+      `Observed ${formatMoney(financedModel.equityUpfront)} vs expected ${formatMoney(expectedEquityUpfront)}.`,
+    ].join(' ')
+  );
+  assert.ok(
+    Math.abs(zeroDebtEconomics.equityIrr - zeroDebtEconomics.projectIrr) <= 1e-12,
+    [
+      'Expected a 0% debt share to leave equity IRR identical to the unlevered project IRR.',
+      `Observed project ${zeroDebtEconomics.projectIrr.toFixed(12)}% vs equity ${zeroDebtEconomics.equityIrr.toFixed(12)}%.`,
+    ].join(' ')
+  );
+  assert.ok(
+    Math.abs(zeroDebtEconomics.equityNpv - zeroDebtEconomics.npv) <= 1e-9,
+    [
+      'Expected a 0% debt share to leave equity NPV identical to project NPV.',
+      `Observed project ${zeroDebtEconomics.npv.toFixed(12)} vs equity ${zeroDebtEconomics.equityNpv.toFixed(12)}.`,
+    ].join(' ')
+  );
+});
+
+test('financing coverage metrics flag sponsor support when debt service exceeds operating cash flow', () => {
+  const economics = Calc.calculateAll(createState({
+    financingEnabled: true,
+    debtTermYears: 1,
+  })).economics;
+  const financedModel = economics.financing;
+  const yearOne = economics.yearlyCashFlows[0];
+  const expectedSupport = Math.max(0, yearOne.debtService - yearOne.operatingCashFlow);
+
+  assert.equal(
+    financedModel.canFullyCoverDebtService,
+    false,
+    'Expected a one-year debt term to outrun year-one operating cash flow and require sponsor support.'
+  );
+  assert.deepEqual(
+    Array.from(financedModel.uncoveredDebtServiceYears),
+    [1],
+    `Expected only year 1 to need sponsor debt-service support, got ${JSON.stringify(financedModel.uncoveredDebtServiceYears)}.`
+  );
+  assert.equal(
+    financedModel.firstUncoveredDebtServiceYear,
+    1,
+    `Expected year 1 to be the first uncovered debt-service year, got ${financedModel.firstUncoveredDebtServiceYear}.`
+  );
+  assert.equal(
+    financedModel.uncoveredDebtServiceYearCount,
+    1,
+    `Expected exactly one uncovered debt-service year, got ${financedModel.uncoveredDebtServiceYearCount}.`
+  );
+  assert.ok(
+    Math.abs(financedModel.sponsorSupportTotal - expectedSupport) <= 1e-6,
+    [
+      'Expected total modeled sponsor support to match the year-one debt-service shortfall.',
+      `Observed ${formatMoney(financedModel.sponsorSupportTotal)} vs expected ${formatMoney(expectedSupport)}.`,
+    ].join(' ')
+  );
+  assert.ok(
+    Math.abs(financedModel.peakSponsorSupport - expectedSupport) <= 1e-6,
+    [
+      'Expected peak sponsor support to match the one uncovered year in the one-year debt case.',
+      `Observed ${formatMoney(financedModel.peakSponsorSupport)} vs expected ${formatMoney(expectedSupport)}.`,
+    ].join(' ')
+  );
+  assert.equal(
+    financedModel.peakSponsorSupportYear,
+    1,
+    `Expected peak sponsor support in year 1, got ${financedModel.peakSponsorSupportYear}.`
+  );
+  assert.ok(
+    Math.abs(yearOne.sponsorSupportNeeded - expectedSupport) <= 1e-6,
+    [
+      'Expected the yearly cash-flow view to expose the same sponsor support amount as the financing summary.',
+      `Observed ${formatMoney(yearOne.sponsorSupportNeeded)} vs expected ${formatMoney(expectedSupport)}.`,
+    ].join(' ')
+  );
+});
+
+test('financing coverage metrics stay clear when operating cash flow covers debt service', () => {
+  const economics = Calc.calculateAll(createState({
+    financingEnabled: true,
+    debtTermYears: 10,
+  })).economics;
+  const financedModel = economics.financing;
+
+  assert.equal(
+    financedModel.canFullyCoverDebtService,
+    true,
+    'Expected the 10-year debt case to keep scheduled debt service within operating cash flow in every debt year.'
+  );
+  assert.deepEqual(
+    Array.from(financedModel.uncoveredDebtServiceYears),
+    [],
+    `Expected no uncovered debt-service years, got ${JSON.stringify(financedModel.uncoveredDebtServiceYears)}.`
+  );
+  assert.equal(
+    financedModel.firstUncoveredDebtServiceYear,
+    null,
+    `Expected no first uncovered debt-service year, got ${financedModel.firstUncoveredDebtServiceYear}.`
+  );
+  assert.equal(
+    financedModel.uncoveredDebtServiceYearCount,
+    0,
+    `Expected zero uncovered debt-service years, got ${financedModel.uncoveredDebtServiceYearCount}.`
+  );
+  assert.equal(financedModel.sponsorSupportTotal, 0, 'Expected no additional sponsor support when debt service stays covered.');
+  assert.equal(financedModel.peakSponsorSupport, 0, 'Expected no peak sponsor support when debt service stays covered.');
+  assert.equal(financedModel.peakSponsorSupportYear, null, 'Expected no peak sponsor support year when debt service stays covered.');
+  assert.ok(
+    economics.yearlyCashFlows.every(entry => entry.sponsorSupportNeeded === 0),
+    'Expected every yearly cash-flow entry to report zero sponsor support when debt service stays covered.'
+  );
+});
+
+test('cash-flow timeline starts at close and follows unlevered project cash', () => {
+  const economics = Calc.calculateAll(createState({ analysisHorizonYears: 5 })).economics;
+  const timeline = economics.cashFlowTimeline;
+  const expectedLabels = ['Close', ...economics.yearlyCashFlows.map(entry => `Year ${entry.year}`)];
+
+  assert.ok(timeline, 'Expected economics results to include a chart-ready cash-flow timeline.');
+  assert.equal(timeline.financed, false, 'Expected the default timeline to stay unlevered.');
+  assert.deepEqual(
+    Array.from(timeline.labels),
+    expectedLabels,
+    'Expected cash-flow timeline labels to cover close plus each modeled year.'
+  );
+  assert.equal(
+    timeline.projectCashFlow[0],
+    -economics.totalCapex,
+    `Expected the close entry to start at upfront CAPEX ${formatMoney(economics.totalCapex)}.`
+  );
+  assert.equal(
+    timeline.cumulativeProjectCash[0],
+    -economics.totalCapex,
+    `Expected cumulative project cash to start at upfront CAPEX ${formatMoney(economics.totalCapex)}.`
+  );
+  assert.deepEqual(
+    timeline.projectCashFlow.slice(1),
+    economics.yearlyCashFlows.map(entry => entry.netCashFlow),
+    'Expected the unlevered timeline to use yearly project net cash after O&M and replacements.'
+  );
+  assert.deepEqual(
+    timeline.annualRevenue.slice(1),
+    economics.yearlyCashFlows.map(entry => entry.totalRevenue),
+    'Expected timeline revenue bars to stay aligned with total yearly revenue.'
+  );
+  assert.deepEqual(
+    timeline.annualMarketRevenue.slice(1),
+    economics.yearlyCashFlows.map(entry => entry.totalRevenue - (entry.revenue.policyCredits || 0)),
+    'Expected timeline market-revenue bars to exclude policy credits from the yearly revenue total.'
+  );
+  assert.deepEqual(
+    timeline.annualPolicyCredits.slice(1),
+    economics.yearlyCashFlows.map(entry => entry.revenue.policyCredits || 0),
+    'Expected timeline policy-credit bars to align with the yearly policy revenue component.'
+  );
+  assert.deepEqual(
+    timeline.cumulativeProjectCash.slice(1),
+    economics.yearlyCashFlows.map(entry => entry.cumulativeNetCash),
+    'Expected cumulative project cash to stay aligned with the yearly economics table.'
+  );
+  assert.ok(
+    timeline.annualDebtService.every(value => value === 0),
+    'Expected the unlevered timeline to exclude debt service entirely.'
+  );
+  assert.equal(timeline.hasPolicyCredits, true, 'Expected the default timeline to surface active policy credits.');
+});
+
+test('cash-flow timeline collapses cleanly when policy credits are disabled', () => {
+  const economics = Calc.calculateAll(createState({
+    analysisHorizonYears: 5,
+    policyMode: 'none',
+  })).economics;
+  const timeline = economics.cashFlowTimeline;
+
+  assert.ok(timeline, 'Expected the no-policy case to still include a cash-flow timeline.');
+  assert.equal(timeline.hasPolicyCredits, false, 'Expected the no-policy timeline to hide the policy-credit series.');
+  assert.ok(
+    timeline.annualPolicyCredits.every(value => value === 0),
+    'Expected policy-credit bars to stay at zero when no policy credits are selected.'
+  );
+  assert.deepEqual(
+    timeline.annualMarketRevenue,
+    timeline.annualRevenue,
+    'Expected market revenue to equal total revenue when policy credits are disabled.'
+  );
+});
+
+test('legacy policy modes normalize to the consolidated incentive schemes', () => {
+  const legacy45v = Calc.normalizeState({ policyMode: 'us_45v_tier2' });
+  const legacy45q = Calc.normalizeState({ policyMode: 'us_45q_utilization' });
+  const legacyEhb = Calc.normalizeState({
+    policyMode: 'eu_hydrogen_bank',
+    customH2Credit: 0.55,
+  });
+
+  assert.equal(legacy45v.policyMode, 'us_45v_h2', 'Expected legacy 45V modes to map onto the consolidated 45V scheme.');
+  assert.ok(
+    Math.abs(legacy45v.us45vHydrogenCreditPerKg - 0.75) <= 1e-9,
+    `Expected legacy 45V tier 2 to seed $0.75/kg, got ${legacy45v.us45vHydrogenCreditPerKg}.`
+  );
+  assert.equal(legacy45q.policyMode, 'us_45q_dac', 'Expected legacy 45Q modes to map onto the consolidated 45Q DAC scheme.');
+  assert.ok(
+    Math.abs(legacy45q.us45qDacCreditPerTon - 130) <= 1e-9,
+    `Expected legacy 45Q utilization to seed $130/tCO2, got ${legacy45q.us45qDacCreditPerTon}.`
+  );
+  assert.equal(legacyEhb.policyMode, 'eu_ehb_rfnbo', 'Expected the legacy Hydrogen Bank mode to map onto the new EU Hydrogen Bank scheme.');
+  assert.ok(
+    Math.abs(legacyEhb.euHydrogenBankPremiumPerKg - 0.55) <= 1e-9,
+    `Expected the legacy Hydrogen Bank mode to preserve the prior custom H2 premium, got ${legacyEhb.euHydrogenBankPremiumPerKg}.`
+  );
+});
+
+test('48E solar support reduces net capex at close and appears in the close bucket', () => {
+  const economics = Calc.calculateAll(createState({
+    policyMode: 'us_48e_solar',
+    us48eSolarRate: 0.30,
+  })).economics;
+  const expectedSupport = economics.capex.solar * 0.30;
+
+  assert.ok(
+    Math.abs(economics.policy.upfrontSupport - expectedSupport) <= 1e-6,
+    [
+      'Expected 48E support to equal the configured share of solar CAPEX.',
+      `Observed ${formatMoney(economics.policy.upfrontSupport)} vs expected ${formatMoney(expectedSupport)}.`,
+    ].join(' ')
+  );
+  assert.ok(
+    Math.abs(economics.netCapexAtClose - (economics.totalCapex - expectedSupport)) <= 1e-6,
+    [
+      'Expected close-date net CAPEX to equal gross CAPEX minus the 48E support.',
+      `Observed ${formatMoney(economics.netCapexAtClose)} vs expected ${formatMoney(economics.totalCapex - expectedSupport)}.`,
+    ].join(' ')
+  );
+  assert.equal(economics.revenue.policyCredits, 0, 'Expected 48E to stay a close-date capex support rather than annual operating revenue.');
+  assert.ok(
+    Math.abs(economics.cashFlowTimeline.annualPolicyCredits[0] - expectedSupport) <= 1e-6,
+    'Expected the cash-flow timeline close bucket to show the upfront 48E support.'
+  );
+  assert.ok(
+    Math.abs(economics.cashFlowTimeline.projectCashFlow[0] + economics.netCapexAtClose) <= 1e-6,
+    'Expected project cash at close to start from the net CAPEX after 48E support.'
+  );
+});
+
+test('45Y solar support scales directly with modeled annual solar output', () => {
+  const economics = Calc.calculateAll(createState({
+    policyMode: 'us_45y_solar',
+    us45ySolarCreditPerKwh: 0.00363,
+  })).economics;
+  const expectedSupport = economics.policy.outputMetric.value * 0.00363;
+
+  assert.equal(economics.policy.outputMetric.unit, 'kWh/yr', 'Expected 45Y to use solar output in kWh/year.');
+  assert.ok(
+    Math.abs(economics.revenue.policyCredits - expectedSupport) <= 1e-6,
+    [
+      'Expected 45Y support to equal annual solar generation times the configured $/kWh credit.',
+      `Observed ${formatMoney(economics.revenue.policyCredits)} vs expected ${formatMoney(expectedSupport)}.`,
+    ].join(' ')
+  );
+});
+
+test('two-way solar CfD support can turn negative when reference price exceeds strike', () => {
+  const economics = Calc.calculateAll(createState({
+    policyMode: 'uk_cfd_solar_ar7',
+    ukCfdSolarStrikePricePerMwh: 50,
+    ukCfdSolarReferencePricePerMwh: 60,
+  })).economics;
+  const expectedSupport = economics.policy.outputMetric.value * (50 - 60);
+
+  assert.ok(
+    Math.abs(economics.revenue.policyCredits - expectedSupport) <= 1e-6,
+    [
+      'Expected the solar CfD support to equal annual solar output times strike minus reference price.',
+      `Observed ${formatMoney(economics.revenue.policyCredits)} vs expected ${formatMoney(expectedSupport)}.`,
+    ].join(' ')
+  );
+  assert.ok(economics.revenue.policyCredits < 0, 'Expected the modeled CfD support to go negative when the reference price exceeds strike.');
+  assert.equal(economics.cashFlowTimeline.hasPolicyCredits, true, 'Expected negative incentive support to still keep the policy-support series visible.');
+  assert.ok(
+    economics.cashFlowTimeline.annualPolicyCredits.slice(1, 21).every(value => value < 0),
+    'Expected the active CfD years to stay negative when the reference price exceeds strike.'
+  );
+  assert.ok(
+    economics.cashFlowTimeline.annualPolicyCredits.slice(21).every(value => Math.abs(value) <= 1e-9),
+    'Expected the modeled CfD support to stop after the 20-year support window ends.'
+  );
+});
+
+test('cash-flow timeline adds debt service and sponsor equity tracking for financed cases', () => {
+  const economics = Calc.calculateAll(createState({
+    financingEnabled: true,
+    debtTermYears: 1,
+    analysisHorizonYears: 5,
+  })).economics;
+  const timeline = economics.cashFlowTimeline;
+
+  assert.ok(timeline, 'Expected financed economics results to include a cash-flow timeline.');
+  assert.equal(timeline.financed, true, 'Expected the financed timeline to flag that financing is enabled.');
+  assert.equal(
+    timeline.equityCashFlow[0],
+    -economics.financing.equityUpfront,
+    `Expected close equity cash to start at sponsor cash at close ${formatMoney(economics.financing.equityUpfront)}.`
+  );
+  assert.equal(
+    timeline.cumulativeEquityCash[0],
+    -economics.financing.equityUpfront,
+    `Expected cumulative equity cash to start at sponsor cash at close ${formatMoney(economics.financing.equityUpfront)}.`
+  );
+  assert.deepEqual(
+    timeline.annualDebtService.slice(1),
+    economics.yearlyCashFlows.map(entry => entry.debtService),
+    'Expected financed timeline debt-service bars to align with the modeled amortization schedule.'
+  );
+  assert.deepEqual(
+    timeline.cumulativeEquityCash.slice(1),
+    economics.yearlyCashFlows.map(entry => entry.cumulativeEquityCash),
+    'Expected financed cumulative equity cash to stay aligned with the yearly sponsor cash path.'
+  );
+  assert.equal(timeline.hasDebtService, true, 'Expected financed timelines to expose debt service when debt is modeled.');
+  assert.equal(timeline.hasSponsorSupport, true, 'Expected the one-year debt stress case to surface sponsor support in the timeline.');
+  assert.ok(
+    Math.abs(timeline.sponsorSupportNeeded[1] - economics.yearlyCashFlows[0].sponsorSupportNeeded) <= 1e-6,
+    'Expected sponsor support in year 1 to match the yearly financed cash-flow view.'
+  );
+  assert.ok(
+    Math.abs(timeline.debtEndingBalance[1] - economics.yearlyCashFlows[0].debtEndingBalance) <= 1e-6,
+    'Expected timeline debt balances to stay aligned with the yearly financing schedule.'
   );
 });
 

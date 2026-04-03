@@ -2,6 +2,7 @@
 
 const CALCULATION_RUNTIME_SCRIPT_PATHS = [
   'js/solar-geometry.js',
+  'js/policy-model.js',
   'js/reference-data.js',
   'js/module-registry.js',
   'js/exploratory-routes.js',

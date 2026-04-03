@@ -19,7 +19,7 @@ Today it supports:
 - Exploratory industrial routes with selectable pathways, priority weights, rough throughput modeling, CAPEX basis controls, shared exploratory O&M, sale-price inputs, and inclusion in CAPEX, revenue, NPV, and IRR.
 - MTG (`methanol -> gasoline-range hydrocarbons`) as an exploratory downstream route that diverts a configurable share of methanol away from export.
 - Optional on-site AI datacenter mode: a reliability-targeted constant IT load sized against the modeled solar and battery system, with token revenue, GPU CAPEX, AI O&M, and annual dispatch.
-- Policy modes for `45V`, `45Q`, EU Hydrogen Bank style premiums, and custom H2 / CO2 credits, plus methane market presets for commodity, premium, and country-context cases.
+- A data-driven incentive layer aligned to the policy parameter sheet: US `48E`, `45Y`, `45V`, `45Q`, Hydrogen / DAC Hub grants, EU Hydrogen Bank and Innovation Fund style support, Germany / Netherlands / UK / Spain program proxies, framework-only backdrops, and a custom mixed-support mode.
 - NPV, project IRR, optional equity IRR with debt financing, ROI, payback, replacement-aware discounted cash flow outputs, and price sensitivity charts.
 - Daily power, annual dispatch, economics, sensitivity, environmental, and site-footprint views.
 - Inline IRR optimizers for battery capacity, chemical peak sizing, and methane-vs-methanol feedstock split.
@@ -37,7 +37,8 @@ The app is still a mostly static front-end project, with a lightweight Node buil
 - `js/app-optimizer.js` + `js/optimizer-worker.js`: worker-backed IRR search for inline optimize buttons
 - `js/asset-paths.js`: shared asset URL helper for clean local paths and versioned deployment output
 - `js/calculation-runtime-paths.js`: script loading order for the optimizer worker runtime
-- `js/reference-data.js`: presets, chemistry constants, policy presets, market presets, and shared assumptions
+- `js/policy-model.js`: named policy schemes, per-scheme inputs, cash-flow formulas, framework-only entries, and legacy-policy normalization
+- `js/reference-data.js`: presets, chemistry constants, methane market presets, and shared assumptions
 - `js/module-registry.js` + `js/exploratory-routes.js`: supported/exploratory module metadata and route assumptions
 - `js/state-schema.js`: shared defaults, normalization, and dependency rules
 - `js/slider-markers.js`: slider guide markers and benchmark labels
@@ -59,6 +60,7 @@ These are the parts of the app that are currently structured well enough to be u
 - Optional AI compute economics: constant IT load sizing, token throughput and price assumptions, GPU CAPEX, AI O&M, and revenue integrated into project economics.
 - Distinct CAPEX buckets for solar modules, BOS, land, site prep, battery, core process modules, exploratory route blocks, and AI IT when enabled.
 - Separate asset lives, replacement CAPEX events, panel degradation, and policy-duration limits inside the discounted cash flow.
+- A centralized policy registry that maps one-time capex support, per-output support, strike-minus-reference schemes, base-minus-correction schemes, framework-only policy backdrops, and a custom mixed-support stack into the cash-flow model.
 - Optional debt financing that switches the headline IRR from unlevered project IRR to sponsor-style equity IRR while keeping project NPV unlevered.
 - Exploratory route economics driven by route-specific electricity intensity, required feedstocks, cycling penalties, peak-throughput sizing, CAPEX basis, O&M, and sale-price assumptions.
 - A lean IRR calculation path plus worker-backed search used by the inline optimization controls.
@@ -73,7 +75,8 @@ The simulator is useful, but it still has important limitations:
 - Exploratory routes are rough techno-economic placeholders, not full first-principles process designs with validated thermal, logistics, startup, or quality constraints.
 - O&M is still represented as simple percentages of CAPEX rather than a detailed fixed-plus-variable cost model.
 - Financing is limited to a simple upfront debt share, fee, and amortizing annual debt service. Taxes, depreciation, inflation, salvage value, working capital, tax equity, and ownership structure are not modeled.
-- Policy eligibility is not legally validated against full lifecycle, jurisdictional, or contractual requirements.
+- Policy eligibility is not legally validated against full lifecycle, jurisdictional, wage, certification, ownership, or contractual requirements.
+- Bid-based grants, premiums, CfDs, and correction mechanisms still depend on user-entered award assumptions rather than live auction or tariff datasets.
 - The battery model is a simplified firming heuristic, not a full storage engineering model or year-round plant-control system.
 - AI compute is a stylized constant-load and token-pricing layer, not a GPU, network, or datacenter engineering model.
 - Planetary modes are exploratory and use literature-inspired benchmarks rather than bankable resource datasets.
@@ -91,7 +94,8 @@ The current implementation makes several deliberate assumptions that should stay
 - Panel efficiency affects panel area and land use, not annual energy yield, because the model is framed around fixed MWdc nameplate.
 - Stored energy always loses a fixed `2%/month` through standing leakage.
 - Solar-linked revenue degrades with panel degradation over time, including AI token revenue and exploratory-route revenue.
-- Policy presets are non-stacked by default except in `Custom` mode, and time-limited support ends after the modeled support duration.
+- Named incentive schemes are non-stacked by default except in `Custom mixed support`, framework-only entries do not change cash flow, and time-limited support ends after the modeled support duration.
+- Upfront capex support is applied at close against the eligible capex basis only; later replacement CAPEX is not automatically re-subsidized in the current model.
 - Default methane volume conversion assumes `19.25 kg CH4 / MCF`.
 - Default fossil gas displacement uses `0.053 tCO2 / MCF`.
 - Default low-capex Terraform-style process presets are approximate, not universal truths.
@@ -297,6 +301,29 @@ annual_ai_revenue = annual_tokens_m * price_per_million_tokens
 
 GPU CAPEX uses `$ / kW` of installed IT load at the solved `load_kw`. The UI also reports full-rate reliability, integrated `$ / M token`, and token margin versus the token price.
 
+### Policy layer
+
+The policy model now uses a small set of direct cash-flow archetypes plus framework-only backdrop modes:
+
+```text
+upfront_capex_support = eligible_capex * chosen_share
+
+annual_output_support = eligible_output * unit_support
+
+two_way_support = eligible_output * (strike_price - reference_price)
+
+base_minus_correction_support =
+  eligible_output * max(base_amount - correction_amount, 0)
+```
+
+Implementation assumptions:
+
+- Named schemes model one program or framework at a time.
+- `Custom mixed support` can stack total-capex support with solar, hydrogen, and CO2 annual support.
+- Upfront support reduces net CAPEX at close and the annualized capital charge on the supported initial build.
+- Annual support follows the modeled output basis (`solar`, `H2`, or `CO2`) and stops when the scheme duration expires.
+- Framework-only entries intentionally change scenario context without inventing a cash flow.
+
 ### Finance
 
 The app uses capital recovery factor annualization plus a discounted cash flow path with explicit replacement years.
@@ -376,7 +403,8 @@ The current default state is roughly a `1 MW` Mojave-style methane scenario:
 - Methanol price: `$600/t`
 - AI compute: off by default
 - Financing: off by default
-- Policy mode: `45V Tier 4`
+- Policy mode: `US 45V hydrogen PTC`
+- Default 45V input: `$3.00/kg H2`
 - Solar O&M: `1.5%/yr`
 - Process O&M: `3.0%/yr`
 - Battery O&M: `1.5%/yr`

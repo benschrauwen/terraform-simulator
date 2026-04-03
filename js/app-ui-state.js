@@ -88,33 +88,15 @@ const AppUiStateMethods = {
     if (methaneMarketNote) methaneMarketNote.textContent = methaneMarket.note;
 
     const policy = this.getPolicyConfig();
-    const showCustomH2 = Boolean(policy.useCustomH2);
-    const showCustomCo2 = Boolean(policy.useCustomCo2);
-
-    const customH2Wrap = document.getElementById('customH2CreditWrap');
-    if (customH2Wrap) customH2Wrap.style.display = showCustomH2 ? 'block' : 'none';
-
-    const customCo2Wrap = document.getElementById('customCo2CreditWrap');
-    if (customCo2Wrap) customCo2Wrap.style.display = showCustomCo2 ? 'block' : 'none';
-
-    const customH2Label = document.getElementById('customH2CreditLabel');
-    if (customH2Label) {
-      customH2Label.textContent = policy.h2InputLabel || 'Custom H2 Credit ($/kg)';
-    }
-
-    const customCo2Label = document.getElementById('customCo2CreditLabel');
-    if (customCo2Label) {
-      customCo2Label.textContent = policy.co2InputLabel || 'Custom CO2 Credit ($/ton)';
-    }
 
     const policyApplicability = document.getElementById('policyApplicabilityValue');
-    if (policyApplicability) policyApplicability.textContent = policy.applicability;
+    if (policyApplicability) policyApplicability.textContent = policy.jurisdiction || 'None selected';
 
     const policyBasis = document.getElementById('policyBasisValue');
     if (policyBasis) policyBasis.textContent = policy.basis;
 
     const stackingRule = document.getElementById('stackingRuleValue');
-    if (stackingRule) stackingRule.textContent = policy.stackingRule;
+    if (stackingRule) stackingRule.textContent = policy.stackingOrExclusivity;
 
     const policyNote = document.getElementById('policyNote');
     if (policyNote) policyNote.textContent = policy.note;

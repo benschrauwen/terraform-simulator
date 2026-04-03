@@ -21,15 +21,21 @@ class App {
     this.pendingSensitivityTimer = null;
     this.pendingSensitivityResults = null;
     this.sensitivityDebounceMs = 180;
+    this.shareFeedbackTimer = null;
+    this.shareUrlSyncTimer = null;
+    this.pendingShareFeedback = null;
     this.init();
   }
 
   init() {
+    this.initSharedState();
     this.populatePresets();
+    this.renderPolicyInputs();
     this.renderModuleControls();
     this.renderExploratoryMarketControls();
     this.renderExploratoryOmControls();
     this.bindControls();
+    this.bindShareControls();
     this.createSliderTooltip();
     this.initSliderMarkers();
     this.bindSectionToggles();
@@ -51,7 +57,7 @@ class App {
   }
 
   getPolicyConfig() {
-    return POLICY_OPTIONS[this.state.policyMode] || POLICY_OPTIONS.none;
+    return PolicyModel.getScheme(this.state.policyMode);
   }
 
   getMethaneMarketConfig() {
@@ -85,6 +91,19 @@ class App {
       aiReliabilitySel.innerHTML = AI_RELIABILITY_OPTIONS.map(option =>
         `<option value="${option.value}">${option.label}</option>`
       ).join('');
+    }
+
+    const policySel = document.getElementById('policyMode');
+    if (policySel) {
+      policySel.innerHTML = PolicyModel.getSelectGroups().map(group => {
+        if (group.label === 'Baseline' && group.options.length === 1) {
+          return `<option value="${group.options[0].id}">${group.options[0].label}</option>`;
+        }
+        const optionsHtml = group.options
+          .map(option => `<option value="${option.id}">${option.label}</option>`)
+          .join('');
+        return `<optgroup label="${group.label}">${optionsHtml}</optgroup>`;
+      }).join('');
     }
   }
 
@@ -142,6 +161,52 @@ class App {
       .join('');
 
     container.innerHTML = controls;
+  }
+
+  renderPolicyInputs() {
+    const container = document.getElementById('policyInputControls');
+    if (!container) return;
+
+    const policy = this.getPolicyConfig();
+    const inputs = PolicyModel.getInputDetails(this.state, policy);
+
+    if (!inputs.length) {
+      container.innerHTML = `
+        <div class="field-note compact-note">
+          This scheme does not need a user-entered support parameter in the current model.
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = inputs.map(input => `
+      <label>
+        ${input.label}
+        <input
+          type="range"
+          id="${input.key}"
+          min="${input.min}"
+          max="${input.max}"
+          step="${input.step}"
+          value="${input.value}"
+        >
+        <span class="range-value" id="${input.key}Value">${input.formattedValue}</span>
+      </label>
+    `).join('');
+
+    inputs.forEach(input => {
+      const el = document.getElementById(input.key);
+      if (!el) return;
+      el.addEventListener('input', () => {
+        this.state[input.key] = parseFloat(el.value);
+        const display = document.getElementById(`${input.key}Value`);
+        if (display) {
+          display.textContent = PolicyModel.formatInputValue(input, el.value);
+        }
+        this.syncDynamicVisibility();
+        this.requestRecalculate({ includeSensitivity: false });
+      });
+    });
   }
 
   renderExploratoryOmControls() {
@@ -278,6 +343,26 @@ class App {
 
   bindControls() {
     return AppControlMethods.bindControls.call(this);
+  }
+
+  initSharedState() {
+    return AppShareStateMethods.initSharedState.call(this);
+  }
+
+  bindShareControls() {
+    return AppShareStateMethods.bindShareControls.call(this);
+  }
+
+  scheduleShareStateUrlSync() {
+    return AppShareStateMethods.scheduleShareStateUrlSync.call(this);
+  }
+
+  syncShareStateUrl() {
+    return AppShareStateMethods.syncShareStateUrl.call(this);
+  }
+
+  resetState() {
+    return AppShareStateMethods.resetState.call(this);
   }
 
   bindLoadConfigTabs() {
@@ -845,6 +930,7 @@ class App {
     this.updateInfoDisplays(this.lastResults);
     this.updateDiagram(this.lastResults);
     this.updatePowerChart(this.lastResults);
+    this.scheduleShareStateUrlSync();
   }
 
   formatMtgMethanolSplit(value) {
@@ -895,10 +981,12 @@ class App {
       this.updatePlantScore(r);
       this.updatePowerChart(r);
       this.updateAnnualDispatchChart(r);
+      this.updateEconomicsTimelineChart(r);
       this.updateEconChart(r);
       if (includeSensitivity) this.flushSensitivityUpdate(r);
       else this.scheduleSensitivityUpdate(r);
       this.updateImpact(r);
+      this.scheduleShareStateUrlSync();
     } catch (error) {
       this.showCalculationError(error);
     }
@@ -950,6 +1038,10 @@ class App {
 
   updateAnnualDispatchChart(r) {
     return AppChartMethods.updateAnnualDispatchChart.call(this, r);
+  }
+
+  updateEconomicsTimelineChart(r) {
+    return AppChartMethods.updateEconomicsTimelineChart.call(this, r);
   }
 
   updateEconChart(r) {

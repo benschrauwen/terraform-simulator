@@ -158,8 +158,27 @@ const AppControlMethods = {
         this.state[`${module.id}BufferEnabled`] = el.checked;
       });
 
+      if (ModuleCatalog.hasPresets(module)) {
+        AppControlMethods.on.call(this, `${module.id}Preset`, 'change', value => {
+          if (value === 'custom') {
+            AppControlMethods.syncModulePresetControl.call(this, module.id);
+            return;
+          }
+          AppControlMethods.applyModulePreset.call(this, module.id, value);
+        });
+      }
+
       ModuleCatalog.getConfigFields(module).forEach(config => {
-        AppControlMethods.bindRange.call(this, config.key, config.key, value => this.formatConfigValue(config.unit, value));
+        const extra = ModuleCatalog.isPresetConfigField(module, config.key)
+          ? { onInput: () => AppControlMethods.syncModulePresetControl.call(this, module.id) }
+          : undefined;
+        AppControlMethods.bindRange.call(
+          this,
+          config.key,
+          config.key,
+          value => this.formatConfigValue(config.unit, value),
+          extra
+        );
       });
 
       const assetLifeKey = ModuleCatalog.getAssetLifeKey(module);
@@ -244,6 +263,29 @@ const AppControlMethods = {
     });
   },
 
+  applyModulePreset(moduleId, presetValue) {
+    const preset = ModuleCatalog.getPreset(moduleId, presetValue);
+    if (!preset) {
+      AppControlMethods.syncModulePresetControl.call(this, moduleId);
+      return;
+    }
+
+    Object.entries(preset.values || {}).forEach(([stateKey, value]) => {
+      this.state[stateKey] = value;
+      const input = document.getElementById(stateKey);
+      if (input) input.value = String(value);
+      AppControlMethods.syncRangeDisplay.call(this, stateKey, value);
+    });
+
+    AppControlMethods.syncModulePresetControl.call(this, moduleId);
+  },
+
+  syncModulePresetControl(moduleId) {
+    const select = document.getElementById(`${moduleId}Preset`);
+    if (!select || typeof this.getSelectedModulePreset !== 'function') return;
+    select.value = this.getSelectedModulePreset(moduleId);
+  },
+
   bindNumber(id, stateKey, extra) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -293,6 +335,7 @@ const AppControlMethods = {
       if (configEl) configEl.classList.toggle('active', Boolean(this.state[`${module.id}Enabled`]));
       const routeEl = document.getElementById(`${module.id}Route`);
       if (routeEl && this.state[`${module.id}Route`]) routeEl.value = this.state[`${module.id}Route`];
+      AppControlMethods.syncModulePresetControl.call(this, module.id);
     });
 
     document.getElementById('aiComputeConfig').classList.toggle('active', this.state.aiComputeEnabled);

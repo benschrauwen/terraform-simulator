@@ -47,6 +47,39 @@ test('module catalog keeps exploratory routes and markets in one definition', ()
   );
 });
 
+test('supported module presets map paired config values and detect custom mixes', () => {
+  const alkalineElectrolyzer = ModuleCatalog.getMatchingPreset('electrolyzer', createState({
+    electrolyzerEfficiency: 55,
+    electrolyzerCapex: 1300,
+  }));
+  const electroSwingDac = ModuleCatalog.getPreset('dac', 'electro-swing-absorption');
+  const customElectrolyzer = ModuleCatalog.getMatchingPreset('electrolyzer', createState({
+    electrolyzerEfficiency: 55,
+    electrolyzerCapex: 2100,
+  }));
+
+  assert.equal(
+    alkalineElectrolyzer?.value,
+    'alkaline',
+    'Expected electrolyzer presets to recognize the paired alkaline efficiency and CAPEX values.'
+  );
+  assert.equal(
+    electroSwingDac?.values.dacEnergy,
+    655,
+    'Expected DAC presets to keep the electro-swing efficiency value in one place.'
+  );
+  assert.equal(
+    electroSwingDac?.values.dacCapex,
+    4700,
+    'Expected DAC presets to keep the electro-swing CAPEX value in one place.'
+  );
+  assert.equal(
+    customElectrolyzer,
+    null,
+    'Expected mismatched electrolyzer efficiency and CAPEX values to fall back to a custom preset state.'
+  );
+});
+
 test('capex breakdown still adds up to the reported total', () => {
   const result = runScenario();
   const capex = result.economics.capex;

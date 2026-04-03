@@ -65,6 +65,10 @@ class App {
     return METHANE_MARKET_PRESETS[this.state.methaneMarketPreset] || METHANE_MARKET_PRESETS.terraform_commodity;
   }
 
+  getSelectedModulePreset(moduleId, state = this.state) {
+    return ModuleCatalog.getMatchingPreset(moduleId, state)?.value || 'custom';
+  }
+
   getPowerChartLabels(r) {
     return AppChartMethods.getPowerChartLabels.call(this, r);
   }
@@ -230,6 +234,19 @@ class App {
   }
 
   renderSupportedModule(module) {
+    const selectedPreset = this.getSelectedModulePreset(module.id);
+    const presetControl = ModuleCatalog.hasPresets(module)
+      ? `
+        <label>Preset
+          <select id="${module.id}Preset">
+            <option value="custom" ${selectedPreset === 'custom' ? 'selected' : ''}>Custom values</option>
+            ${ModuleCatalog.getPresets(module).map(preset => `
+              <option value="${preset.value}" ${selectedPreset === preset.value ? 'selected' : ''}>${preset.label}</option>
+            `).join('')}
+          </select>
+        </label>
+      `
+      : '';
     const configs = module.configs.map(config => `
       <label>${config.label}
         <input type="range" id="${config.key}" min="${config.min}" max="${config.max}" step="${config.step}" value="${this.state[config.key]}">
@@ -259,6 +276,7 @@ class App {
           <span class="maturity-badge supported">${module.exploratory ? 'Exploratory' : 'Supported'}</span>
         </div>
         <div class="process-config disabled-group ${this.state[`${module.id}Enabled`] ? 'active' : ''}" id="${module.id}Config">
+          ${presetControl}
           ${configs}
           ${assetLifeControl}
           ${bufferControl}

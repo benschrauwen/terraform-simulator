@@ -8,30 +8,6 @@ const SLIDER_MARKERS = {
     { value: 85, label: 'Moderate peak shaving' },
     { value: 100, label: 'Full-capture default' },
   ],
-  electrolyzerEfficiency: [
-    { value: 79, label: 'Terraform default' },
-    { value: 55, label: 'Alkaline' },
-    { value: 53, label: 'PEM' },
-    { value: 47, label: 'SOEC (39 electrical + 8 thermal)' },
-  ],
-  electrolyzerCapex: [
-    { value: 100, label: 'Terraform default' },
-    { value: 1300, label: 'Alkaline' },
-    { value: 2100, label: 'PEM' },
-    { value: 4500, label: 'SOEC' },
-  ],
-  dacEnergy: [
-    { value: 3440, label: 'Terraform default' },
-    { value: 1500, label: 'Solid DAC' },
-    { value: 1900, label: 'Liquid DAC' },
-    { value: 655, label: 'Electro-swing absorption' },
-  ],
-  dacCapex: [
-    { value: 450, label: 'Terraform default' },
-    { value: 15600, label: 'Solid DAC (GBP converted to USD)' },
-    { value: 7800, label: 'Liquid DAC (GBP converted to USD)' },
-    { value: 4700, label: 'Electro-swing absorption' },
-  ],
   aiTokenPrice: [
     { value: 1, label: 'Low-value internal workload' },
     { value: 3, label: 'Balanced default case' },

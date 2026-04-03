@@ -20,6 +20,13 @@ function normalizeRouteDefinition(routeId, definition = {}) {
   });
 }
 
+function normalizePresetDefinition(definition = {}) {
+  return Object.freeze({
+    ...definition,
+    values: Object.freeze({ ...(definition.values || {}) }),
+  });
+}
+
 function normalizeModuleDefinition(definition = {}) {
   const routeEntries = Object.entries(definition.routes || {});
   const routes = Object.freeze(
@@ -27,6 +34,9 @@ function normalizeModuleDefinition(definition = {}) {
       routeId,
       normalizeRouteDefinition(routeId, routeDefinition),
     ]))
+  );
+  const presets = Object.freeze(
+    (definition.presets || []).map(normalizePresetDefinition)
   );
   const routeOptions = Object.freeze(
     (definition.routeOptions || routeEntries.map(([routeId, routeDefinition]) => ({
@@ -53,6 +63,10 @@ function normalizeModuleDefinition(definition = {}) {
     maturity: definition.exploratory ? 'Exploratory' : 'Supported',
     configs: Object.freeze([...(definition.configs || [])]),
     dependencies: Object.freeze([...(definition.dependencies || [])]),
+    presets,
+    defaultPreset: presets.some(preset => preset.value === definition.defaultPreset)
+      ? definition.defaultPreset
+      : (presets[0]?.value || null),
     routeDependencies,
     routeOptions,
     routes,
@@ -73,6 +87,41 @@ const MODULE_CATALOG = Object.freeze([
     defaultEnabled: true,
     assetLifeKey: 'electrolyzerAssetLife',
     defaultAssetLife: 7,
+    presets: [
+      {
+        value: 'terraform-default',
+        label: 'Terraform default',
+        values: {
+          electrolyzerEfficiency: 79,
+          electrolyzerCapex: 100,
+        },
+      },
+      {
+        value: 'alkaline',
+        label: 'Alkaline',
+        values: {
+          electrolyzerEfficiency: 55,
+          electrolyzerCapex: 1300,
+        },
+      },
+      {
+        value: 'pem',
+        label: 'PEM',
+        values: {
+          electrolyzerEfficiency: 53,
+          electrolyzerCapex: 2100,
+        },
+      },
+      {
+        value: 'soec',
+        label: 'SOEC',
+        values: {
+          electrolyzerEfficiency: 47,
+          electrolyzerCapex: 4500,
+        },
+      },
+    ],
+    defaultPreset: 'terraform-default',
     configs: [
       { key: 'electrolyzerEfficiency', label: 'Efficiency (kWh/kg H2)', type: 'range', min: 39, max: 100, step: 1, unit: 'kWh/kg', defaultValue: 79 },
       { key: 'electrolyzerCapex', label: 'CAPEX ($/kW)', type: 'range', min: 10, max: 5000, step: 10, unit: '$/kW', defaultValue: 100 },
@@ -87,6 +136,41 @@ const MODULE_CATALOG = Object.freeze([
     defaultEnabled: true,
     assetLifeKey: 'dacAssetLife',
     defaultAssetLife: 7,
+    presets: [
+      {
+        value: 'terraform-default',
+        label: 'Terraform default',
+        values: {
+          dacEnergy: 3440,
+          dacCapex: 450,
+        },
+      },
+      {
+        value: 'solid-dac',
+        label: 'Solid DAC',
+        values: {
+          dacEnergy: 1500,
+          dacCapex: 15600,
+        },
+      },
+      {
+        value: 'liquid-dac',
+        label: 'Liquid DAC',
+        values: {
+          dacEnergy: 1900,
+          dacCapex: 7800,
+        },
+      },
+      {
+        value: 'electro-swing-absorption',
+        label: 'Electro-swing absorption',
+        values: {
+          dacEnergy: 655,
+          dacCapex: 4700,
+        },
+      },
+    ],
+    defaultPreset: 'terraform-default',
     configs: [
       { key: 'dacEnergy', label: 'Efficiency (kWh/t-CO2)', type: 'range', min: 500, max: 5000, step: 5, unit: 'kWh/t', defaultValue: 3440 },
       { key: 'dacCapex', label: 'CAPEX ($/kW)', type: 'range', min: 50, max: 20000, step: 50, unit: '$/kW', defaultValue: 450 },
@@ -768,6 +852,44 @@ const ModuleCatalog = Object.freeze({
 
   hasRoutes(moduleOrId) {
     return Object.keys(resolveModule(moduleOrId)?.routes || {}).length > 0;
+  },
+
+  hasPresets(moduleOrId) {
+    return (resolveModule(moduleOrId)?.presets || []).length > 0;
+  },
+
+  getPresets(moduleOrId) {
+    return resolveModule(moduleOrId)?.presets || [];
+  },
+
+  getPreset(moduleOrId, presetValue = null) {
+    const module = resolveModule(moduleOrId);
+    if (!module) return null;
+
+    const presets = module.presets || [];
+    if (!presets.length) return null;
+    if (presetValue) {
+      return presets.find(preset => preset.value === presetValue) || null;
+    }
+    return presets.find(preset => preset.value === module.defaultPreset) || presets[0] || null;
+  },
+
+  getMatchingPreset(moduleOrId, state = {}) {
+    return this.getPresets(moduleOrId).find(preset =>
+      Object.entries(preset.values || {}).every(([stateKey, expectedValue]) => {
+        const actualValue = Number(state?.[stateKey]);
+        const targetValue = Number(expectedValue);
+        return Number.isFinite(actualValue)
+          && Number.isFinite(targetValue)
+          && Math.abs(actualValue - targetValue) <= 1e-9;
+      })
+    ) || null;
+  },
+
+  isPresetConfigField(moduleOrId, configKey) {
+    return this.getPresets(moduleOrId).some(
+      preset => Object.prototype.hasOwnProperty.call(preset.values || {}, configKey)
+    );
   },
 
   getRouteOptions(moduleOrId) {

@@ -106,11 +106,7 @@ function getStateFieldOptions(field) {
 }
 
 function getModuleDefaultRoute(module) {
-  if (typeof module?.defaultRoute === 'string' && module.defaultRoute) {
-    return module.defaultRoute;
-  }
-
-  return module?.routeOptions?.[0]?.value || null;
+  return ModuleCatalog.getDefaultRoute(module);
 }
 
 function buildCoreDefaultState() {
@@ -128,18 +124,19 @@ function buildCoreDefaultState() {
 function buildModuleDefaultState() {
   const defaults = {};
 
-  MODULE_REGISTRY.forEach(module => {
+  ModuleCatalog.getAll().forEach(module => {
     defaults[`${module.id}Enabled`] = Boolean(module.defaultEnabled);
     defaults[`${module.id}BufferEnabled`] = Boolean(module.defaultBufferEnabled);
 
-    (module.configs || []).forEach(config => {
+    ModuleCatalog.getConfigFields(module).forEach(config => {
       if (Object.prototype.hasOwnProperty.call(config, 'defaultValue')) {
         defaults[config.key] = config.defaultValue;
       }
     });
 
-    if (module.assetLifeKey) {
-      defaults[module.assetLifeKey] = module.defaultAssetLife ?? 7;
+    const assetLifeKey = ModuleCatalog.getAssetLifeKey(module);
+    if (assetLifeKey) {
+      defaults[assetLifeKey] = ModuleCatalog.getDefaultAssetLife(module);
     }
 
     const defaultRoute = getModuleDefaultRoute(module);
@@ -147,18 +144,18 @@ function buildModuleDefaultState() {
       defaults[`${module.id}Route`] = defaultRoute;
     }
 
-    if (module.maturity === 'Exploratory') {
+    if (module.exploratory) {
       defaults[`${module.id}PriorityWeight`] = module.defaultPriorityWeight ?? 100;
 
       if (defaultRoute) {
         defaults[`${module.id}CapexBasis`] =
-          EXPLORATORY_ROUTE_LIBRARY[module.id]?.routes?.[defaultRoute]?.capexPerAnnualUnit ?? 0;
+          ModuleCatalog.getRouteConfig(module, defaultRoute)?.capexPerAnnualUnit ?? 0;
       }
+    }
 
-      const marketConfig = EXPLORATORY_MARKET_CONFIG[module.id];
-      if (marketConfig) {
-        defaults[`${module.id}Price`] = marketConfig.defaultValue;
-      }
+    const marketConfig = ModuleCatalog.getMarketConfig(module, defaultRoute);
+    if (marketConfig) {
+      defaults[`${module.id}Price`] = marketConfig.defaultValue;
     }
   });
 

@@ -90,11 +90,11 @@ const AppControlMethods = {
     });
     AppControlMethods.bindRange.call(this, 'methanePrice', 'methanePrice', value => `$${FormatNumbers.fixed(parseFloat(value), 2)}/MCF`);
     AppControlMethods.bindRange.call(this, 'methanolPrice', 'methanolPrice', value => `$${FormatNumbers.fixed(parseInt(value, 10), 0)}/ton`);
-    MODULE_REGISTRY
-      .filter(module => module.maturity === 'Exploratory' && EXPLORATORY_MARKET_CONFIG[module.id])
+    ModuleCatalog.getExploratoryModules()
+      .filter(module => ModuleCatalog.hasMarket(module.id, this.state[`${module.id}Route`] || ModuleCatalog.getDefaultRoute(module)))
       .forEach(module => {
         const priceKey = `${module.id}Price`;
-        AppControlMethods.bindRange.call(this, priceKey, priceKey, value => this.formatExploratorySalePrice(module.id, value));
+        AppControlMethods.bindRange.call(this, priceKey, priceKey, value => this.formatModuleMarketValue(module.id, value));
       });
     AppControlMethods.bindRange.call(this, 'exploratoryOmPercent', 'exploratoryOmPercent', value => this.formatExploratoryOmPercent(value));
 
@@ -147,7 +147,7 @@ const AppControlMethods = {
   },
 
   bindModuleControls() {
-    MODULE_REGISTRY.forEach(module => {
+    ModuleCatalog.getAll().forEach(module => {
       const enabledKey = `${module.id}Enabled`;
       AppControlMethods.on.call(this, enabledKey, 'change', (_, el) => {
         this.state[enabledKey] = el.checked;
@@ -158,21 +158,27 @@ const AppControlMethods = {
         this.state[`${module.id}BufferEnabled`] = el.checked;
       });
 
-      if (module.maturity === 'Supported') {
-        module.configs.forEach(config => {
-          AppControlMethods.bindRange.call(this, config.key, config.key, value => this.formatConfigValue(config.unit, value));
-        });
-        if (module.assetLifeKey) {
-          AppControlMethods.bindRange.call(this, module.assetLifeKey, module.assetLifeKey, value => `${FormatNumbers.fixed(parseInt(value, 10), 0)} years`);
-        }
-      } else {
+      ModuleCatalog.getConfigFields(module).forEach(config => {
+        AppControlMethods.bindRange.call(this, config.key, config.key, value => this.formatConfigValue(config.unit, value));
+      });
+
+      const assetLifeKey = ModuleCatalog.getAssetLifeKey(module);
+      if (assetLifeKey) {
+        AppControlMethods.bindRange.call(this, assetLifeKey, assetLifeKey, value => `${FormatNumbers.fixed(parseInt(value, 10), 0)} years`);
+      }
+
+      if (ModuleCatalog.hasRoutes(module)) {
         AppControlMethods.on.call(this, `${module.id}Route`, 'change', value => {
           this.state[`${module.id}Route`] = value;
-          this.syncExploratoryCapexControl(module.id);
+          this.syncModuleCapexControl(module.id);
+          this.syncModuleMarketControl(module.id);
           this.enforceModuleDependencies();
           this.syncDynamicVisibility();
           this.syncDerivedFeedControls();
         });
+      }
+
+      if (module.exploratory) {
         AppControlMethods.bindRange.call(
           this,
           `${module.id}CapexBasis`,
@@ -278,7 +284,7 @@ const AppControlMethods = {
       AppControlMethods.syncRangeDisplay.call(this, binding.id, this.state[binding.stateKey], binding.formatter);
     });
 
-    MODULE_REGISTRY.forEach(module => {
+    ModuleCatalog.getAll().forEach(module => {
       const enabledEl = document.getElementById(`${module.id}Enabled`);
       if (enabledEl) enabledEl.checked = Boolean(this.state[`${module.id}Enabled`]);
       const bufferEl = document.getElementById(`${module.id}BufferEnabled`);

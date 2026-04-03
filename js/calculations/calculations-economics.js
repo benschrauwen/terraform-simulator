@@ -148,7 +148,7 @@ Object.assign(Calc, {
     const exploratoryDetails = (exploratoryModules || [])
       .filter(module => module.enabled && module.modeled && (module.capex > 0 || module.annualOutputUnits > 0))
       .map(module => {
-        const marketConfig = EXPLORATORY_MARKET_CONFIG[module.id] || {};
+        const marketConfig = ModuleCatalog.getMarketConfig(module.id, module.route) || {};
         const priceKey = `${module.id}Price`;
         const unitPrice = state[priceKey] ?? marketConfig.defaultValue ?? 0;
         const assetLifeYears = module.routeConfig?.assetLifeYears || 10;
@@ -542,10 +542,10 @@ Object.assign(Calc, {
   calculateScenario(state, options = {}) {
     const fastMode = Boolean(options.fastMode);
     const normalizedState = this.normalizeState(state);
-    const exploratoryEnabled = MODULE_REGISTRY.some(
-      module => module.maturity === 'Exploratory' && Boolean(normalizedState[`${module.id}Enabled`])
+    const exploratoryEnabled = ModuleCatalog.getExploratoryModules().some(
+      module => Boolean(normalizedState[`${module.id}Enabled`])
     );
-    const bufferedModuleEnabled = MODULE_REGISTRY.some(module => {
+    const bufferedModuleEnabled = ModuleCatalog.getAll().some(module => {
       if (!normalizedState[`${module.id}Enabled`]) return false;
       return this.isModuleFeedBufferEnabled(
         normalizedState,

@@ -44,15 +44,16 @@ Object.assign(Calc, {
     };
   },
 
-  getExploratoryRouteConfig(moduleId, route) {
-    const library = EXPLORATORY_ROUTE_LIBRARY[moduleId]?.routes || {};
-    if (library[route]) return library[route];
-    const fallbackRoute = Object.keys(library)[0];
-    return fallbackRoute ? library[fallbackRoute] : null;
+  getModuleRouteConfig(moduleId, route) {
+    return ModuleCatalog.getRouteConfig(moduleId, route);
   },
 
-  getExploratoryCapexControlConfig(moduleId, route) {
-    const routeConfig = this.getExploratoryRouteConfig(moduleId, route);
+  getExploratoryRouteConfig(moduleId, route) {
+    return this.getModuleRouteConfig(moduleId, route);
+  },
+
+  getModuleCapexControlConfig(moduleId, route) {
+    const routeConfig = this.getModuleRouteConfig(moduleId, route);
     const defaultValue = routeConfig?.capexPerAnnualUnit || 0;
     const unitLabel = routeConfig?.capexUnit === 'm3pd' ? '$/m3/day' : '$/ton/yr capacity';
     const step = defaultValue >= 5000 ? 100 : defaultValue >= 1000 ? 50 : defaultValue >= 250 ? 10 : 5;
@@ -65,6 +66,10 @@ Object.assign(Calc, {
       defaultValue,
       unitLabel,
     };
+  },
+
+  getExploratoryCapexControlConfig(moduleId, route) {
+    return this.getModuleCapexControlConfig(moduleId, route);
   },
 
   getExploratoryPriorityWeight(state, moduleId) {
@@ -92,12 +97,11 @@ Object.assign(Calc, {
       ? this.clampNumber(state.mtgMethanolSplit, 0, 100, DEFAULT_STATE.mtgMethanolSplit) / 100
       : 0;
 
-    const exploratoryModules = MODULE_REGISTRY
-      .filter(module => module.maturity === 'Exploratory')
+    const exploratoryModules = ModuleCatalog.getExploratoryModules()
       .map(module => {
         const enabled = Boolean(state[`${module.id}Enabled`]);
-        const route = state[`${module.id}Route`] || module.routeOptions[0]?.value || 'unspecified';
-        const routeConfig = this.getExploratoryRouteConfig(module.id, route);
+        const route = state[`${module.id}Route`] || ModuleCatalog.getDefaultRoute(module) || 'unspecified';
+        const routeConfig = this.getModuleRouteConfig(module.id, route);
         const priorityWeight = this.getExploratoryPriorityWeight(state, module.id);
         const effectivePriorityWeight = enabled
           ? module.id === 'mtg'
@@ -646,12 +650,11 @@ Object.assign(Calc, {
       ? Math.max(1, peakDailyKWh / effectiveDailyKWh)
       : 1;
 
-    return MODULE_REGISTRY
-      .filter(module => module.maturity === 'Exploratory')
+    return ModuleCatalog.getExploratoryModules()
       .map(module => {
         const enabled = Boolean(state[`${module.id}Enabled`]);
-        const route = state[`${module.id}Route`] || module.routeOptions[0]?.value || 'unspecified';
-        const routeConfig = this.getExploratoryRouteConfig(module.id, route);
+        const route = state[`${module.id}Route`] || ModuleCatalog.getDefaultRoute(module) || 'unspecified';
+        const routeConfig = this.getModuleRouteConfig(module.id, route);
         const capexBasis = Number(state[`${module.id}CapexBasis`]);
         const omPercent = Number(state.exploratoryOmPercent);
         const powerShare = allocationPlan?.powerShares?.exploratory?.[module.id] || 0;
@@ -703,7 +706,7 @@ Object.assign(Calc, {
           ...module,
           enabled,
           route,
-          routeLabel: module.routeOptions.find(option => option.value === route)?.label || route,
+          routeLabel: ModuleCatalog.getRouteOptions(module).find(option => option.value === route)?.label || route,
           routeConfig,
           modeled: enabled,
           bufferEnabled,

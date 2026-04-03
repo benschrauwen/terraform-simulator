@@ -109,27 +109,15 @@ class App {
   }
 
   renderModuleControls() {
-    const supported = MODULE_REGISTRY.filter(module => module.maturity === 'Supported');
+    const supported = ModuleCatalog.getSupportedModules();
     const supportedHtml = supported.map(module => this.renderSupportedModule(module)).join('');
     document.getElementById('supportedModuleList').innerHTML = supportedHtml;
 
-    const familyLabels = {
-      'air-water-chemistry': 'Air and water chemistry',
-      'carbon-solids': 'Carbon solids',
-      'calcination-minerals': 'Calcination and mineral decomposition',
-      'oxide-reduction': 'Oxide reduction and metallurgy',
-      'water-systems': 'Water systems',
-    };
-
-    const grouped = {};
-    MODULE_REGISTRY.filter(module => module.maturity === 'Exploratory').forEach(module => {
-      grouped[module.family] = grouped[module.family] || [];
-      grouped[module.family].push(module);
-    });
+    const grouped = ModuleCatalog.groupByFamily(ModuleCatalog.getExploratoryModules());
 
     const exploratoryHtml = Object.entries(grouped).map(([family, modules]) => `
       <div class="module-family">
-        <div class="module-family-title">${familyLabels[family] || family}</div>
+        <div class="module-family-title">${ModuleCatalog.getFamilyLabel(family)}</div>
         ${modules.map(module => this.renderExploratoryModule(module)).join('')}
       </div>
     `).join('');
@@ -141,10 +129,9 @@ class App {
     const container = document.getElementById('exploratoryMarketControls');
     if (!container) return;
 
-    const controls = MODULE_REGISTRY
-      .filter(module => module.maturity === 'Exploratory')
+    const controls = ModuleCatalog.getExploratoryModules()
       .map(module => {
-        const marketConfig = EXPLORATORY_MARKET_CONFIG[module.id];
+        const marketConfig = ModuleCatalog.getMarketConfig(module.id, this.state[`${module.id}Route`]);
         if (!marketConfig) return '';
         const priceKey = `${module.id}Price`;
         const currentValue = this.state[priceKey] ?? marketConfig.defaultValue;
@@ -152,9 +139,9 @@ class App {
           <div id="${module.id}MarketWrap" class="market-exploratory-group" style="display:none;">
             <div class="module-note-title">${module.label}</div>
             <label>
-              ${marketConfig.label} (${marketConfig.unitLabel})
+              <span id="${module.id}MarketLabel">${marketConfig.label} (${marketConfig.unitLabel})</span>
               <input type="range" id="${priceKey}" min="${marketConfig.min}" max="${marketConfig.max}" step="${marketConfig.step}" value="${currentValue}">
-              <span class="range-value" id="${priceKey}Value">${this.formatExploratorySalePrice(module.id, currentValue)}</span>
+              <span class="range-value" id="${priceKey}Value">${this.formatModuleMarketValue(module.id, currentValue)}</span>
             </label>
           </div>
         `;
@@ -249,7 +236,7 @@ class App {
         <span class="range-value" id="${config.key}Value">${this.formatConfigValue(config.unit, this.state[config.key])}</span>
       </label>
     `).join('');
-    const assetLifeKey = module.assetLifeKey;
+    const assetLifeKey = ModuleCatalog.getAssetLifeKey(module);
     const assetLifeControl = assetLifeKey ? `
       <label>Asset Life (years)
         <input type="range" id="${assetLifeKey}" min="3" max="20" step="1" value="${this.state[assetLifeKey]}">
@@ -269,7 +256,7 @@ class App {
             <input type="checkbox" id="${module.id}Enabled" ${this.state[`${module.id}Enabled`] ? 'checked' : ''}>
             <span>${module.label}</span>
           </label>
-          <span class="maturity-badge supported">${module.maturity}</span>
+          <span class="maturity-badge supported">${module.exploratory ? 'Exploratory' : 'Supported'}</span>
         </div>
         <div class="process-config disabled-group ${this.state[`${module.id}Enabled`] ? 'active' : ''}" id="${module.id}Config">
           ${configs}
@@ -282,12 +269,12 @@ class App {
   }
 
   renderExploratoryModule(module) {
-    const routeOptions = module.routeOptions.map(option =>
+    const routeOptions = ModuleCatalog.getRouteOptions(module).map(option =>
       `<option value="${option.value}" ${this.state[`${module.id}Route`] === option.value ? 'selected' : ''}>${option.label}</option>`
     ).join('');
     const priorityKey = `${module.id}PriorityWeight`;
     const capexKey = `${module.id}CapexBasis`;
-    const capexControl = Calc.getExploratoryCapexControlConfig(module.id, this.state[`${module.id}Route`]);
+    const capexControl = Calc.getModuleCapexControlConfig(module.id, this.state[`${module.id}Route`]);
     const priorityControl = `
       <label>Shared Pool Priority
         <input type="range" id="${priorityKey}" min="0" max="100" step="5" value="${this.state[priorityKey] ?? 100}">
@@ -318,7 +305,7 @@ class App {
             <input type="checkbox" id="${module.id}Enabled" ${this.state[`${module.id}Enabled`] ? 'checked' : ''}>
             <span>${module.label}</span>
           </label>
-          <span class="maturity-badge exploratory">${module.maturity}</span>
+          <span class="maturity-badge exploratory">${module.exploratory ? 'Exploratory' : 'Supported'}</span>
         </div>
         <div class="process-config disabled-group ${this.state[`${module.id}Enabled`] ? 'active' : ''}" id="${module.id}Config">
           <label>Route Choice
@@ -334,7 +321,7 @@ class App {
           <div class="missing-assumptions">
             <div class="module-note-title">Key missing assumptions</div>
             <ul class="missing-list">
-              ${module.missingInputs.map(item => `<li>${item}</li>`).join('')}
+              ${ModuleCatalog.getMissingInputs(module).map(item => `<li>${item}</li>`).join('')}
             </ul>
           </div>
         </div>
@@ -838,7 +825,7 @@ class App {
   }
 
   formatExploratoryCapexBasis(moduleId, value) {
-    const capexConfig = Calc.getExploratoryCapexControlConfig(moduleId, this.state[`${moduleId}Route`]);
+    const capexConfig = Calc.getModuleCapexControlConfig(moduleId, this.state[`${moduleId}Route`]);
     const digits = capexConfig.step < 1 ? 2 : 0;
     return `$${FormatNumbers.fixed(parseFloat(value), digits)}/${capexConfig.unitLabel.replace('$/', '')}`;
   }
@@ -978,19 +965,31 @@ class App {
     return `${FormatNumbers.fixed(mtgShare, 0)}% MTG / ${FormatNumbers.fixed(exportShare, 0)}% export`;
   }
 
-  formatExploratorySalePrice(moduleId, value) {
-    const marketConfig = EXPLORATORY_MARKET_CONFIG[moduleId];
+  formatModuleMarketValue(moduleId, value) {
+    const marketConfig = ModuleCatalog.getMarketConfig(moduleId, this.state[`${moduleId}Route`]);
     if (!marketConfig) return `$${FormatNumbers.fixed(parseFloat(value), 2)}`;
     const digits = marketConfig.step < 1 ? 2 : 0;
     return `$${FormatNumbers.fixed(parseFloat(value), digits)}/${marketConfig.unitLabel.replace('$/', '')}`;
+  }
+
+  formatExploratorySalePrice(moduleId, value) {
+    return this.formatModuleMarketValue(moduleId, value);
   }
 
   syncDynamicVisibility() {
     return AppUiStateMethods.syncDynamicVisibility.call(this);
   }
 
+  syncModuleCapexControl(moduleId) {
+    return AppUiStateMethods.syncModuleCapexControl.call(this, moduleId);
+  }
+
   syncExploratoryCapexControl(moduleId) {
-    return AppUiStateMethods.syncExploratoryCapexControl.call(this, moduleId);
+    return this.syncModuleCapexControl(moduleId);
+  }
+
+  syncModuleMarketControl(moduleId) {
+    return AppUiStateMethods.syncModuleMarketControl.call(this, moduleId);
   }
 
   syncDerivedFeedControls() {

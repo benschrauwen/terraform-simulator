@@ -3,6 +3,7 @@ const test = require('node:test');
 
 const {
   Calc,
+  ModuleCatalog,
   createState,
   formatMoney,
   runBatterySweep,
@@ -28,6 +29,22 @@ test('default scenario stays numerically sane', () => {
   assert.ok(Number.isFinite(result.economics.irr), 'IRR should be finite.');
   assert.ok(Number.isFinite(result.electrolyzer.h2AnnualKg), 'Hydrogen output should be finite.');
   assert.ok(Number.isFinite(result.dac.co2AnnualTons), 'DAC output should be finite.');
+});
+
+test('module catalog keeps exploratory routes and markets in one definition', () => {
+  const mtg = ModuleCatalog.getById('mtg');
+  const fluidBedRoute = ModuleCatalog.getRouteConfig('mtg', 'fluid-bed');
+  const marketConfig = ModuleCatalog.getMarketConfig('mtg');
+
+  assert.ok(mtg, 'Expected MTG to be present in the unified module catalog.');
+  assert.equal(mtg.exploratory, true, 'Expected MTG to be marked as exploratory on the module definition itself.');
+  assert.equal(ModuleCatalog.getDefaultRoute('mtg'), 'fixed-bed', 'Expected the first MTG route to be used as the default route.');
+  assert.equal(fluidBedRoute.capexPerAnnualUnit, 450, 'Expected route metadata to be resolved directly from the unified catalog.');
+  assert.equal(marketConfig.defaultValue, 900, 'Expected module sale-price defaults to live alongside the module definition.');
+  assert.ok(
+    ModuleCatalog.getSupportedModules().some(module => module.id === 'electrolyzer'),
+    'Expected supported modules to be queryable from the same catalog.'
+  );
 });
 
 test('capex breakdown still adds up to the reported total', () => {

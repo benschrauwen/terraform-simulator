@@ -127,42 +127,42 @@ const AppUiStateMethods = {
     const methanolMarketWrap = document.getElementById('methanolMarketWrap');
     if (methanolMarketWrap) methanolMarketWrap.style.display = showMethanolMarket ? 'block' : 'none';
 
-    MODULE_REGISTRY
-      .filter(module => module.maturity === 'Exploratory' && EXPLORATORY_MARKET_CONFIG[module.id])
-      .forEach(module => {
-        const wrap = document.getElementById(`${module.id}MarketWrap`);
-        const showWrap = results ? generatedExploratoryIds.has(module.id) : Boolean(this.state[`${module.id}Enabled`]);
-        if (wrap) wrap.style.display = showWrap ? 'block' : 'none';
-      });
+    const visibleModuleMarketIds = new Set();
+    ModuleCatalog.getExploratoryModules().forEach(module => {
+      const wrap = document.getElementById(`${module.id}MarketWrap`);
+      const hasMarket = ModuleCatalog.hasMarket(module.id, this.state[`${module.id}Route`]);
+      const showWrap = hasMarket && (results ? generatedExploratoryIds.has(module.id) : Boolean(this.state[`${module.id}Enabled`]));
+      if (wrap) wrap.style.display = showWrap ? 'block' : 'none';
+      if (showWrap) visibleModuleMarketIds.add(module.id);
+    });
 
     const exploratoryOmWrap = document.getElementById('exploratoryOmWrap');
     if (exploratoryOmWrap) {
       const showWrap = results
         ? generatedExploratoryIds.size > 0
-        : MODULE_REGISTRY.some(module => module.maturity === 'Exploratory' && this.state[`${module.id}Enabled`]);
+        : ModuleCatalog.getExploratoryModules().some(module => this.state[`${module.id}Enabled`]);
       exploratoryOmWrap.style.display = showWrap ? 'block' : 'none';
     }
 
     const productMarketEmptyState = document.getElementById('productMarketEmptyState');
     if (productMarketEmptyState) {
-      const hasVisibleMarketControl = showMethaneMarket || showMethanolMarket || generatedExploratoryIds.size > 0;
+      const hasVisibleMarketControl = showMethaneMarket || showMethanolMarket || visibleModuleMarketIds.size > 0;
       productMarketEmptyState.style.display = hasVisibleMarketControl ? 'none' : 'block';
     }
 
-    MODULE_REGISTRY
-      .filter(module => module.maturity === 'Exploratory')
-      .forEach(module => {
-        AppUiStateMethods.syncExploratoryCapexControl.call(this, module.id);
-        AppUiStateMethods.syncExploratoryBufferControl.call(this, module.id);
-      });
+    ModuleCatalog.getExploratoryModules().forEach(module => {
+      AppUiStateMethods.syncModuleCapexControl.call(this, module.id);
+      AppUiStateMethods.syncModuleMarketControl.call(this, module.id);
+      AppUiStateMethods.syncModuleBufferControl.call(this, module.id);
+    });
   },
 
-  syncExploratoryCapexControl(moduleId) {
+  syncModuleCapexControl(moduleId) {
     const input = document.getElementById(`${moduleId}CapexBasis`);
     const label = document.getElementById(`${moduleId}CapexBasisLabel`);
     if (!input) return;
 
-    const capexConfig = Calc.getExploratoryCapexControlConfig(moduleId, this.state[`${moduleId}Route`]);
+    const capexConfig = Calc.getModuleCapexControlConfig(moduleId, this.state[`${moduleId}Route`]);
     input.min = String(capexConfig.min);
     input.max = String(capexConfig.max);
     input.step = String(capexConfig.step);
@@ -181,11 +181,45 @@ const AppUiStateMethods = {
     );
   },
 
-  syncExploratoryBufferControl(moduleId) {
+  syncExploratoryCapexControl(moduleId) {
+    return AppUiStateMethods.syncModuleCapexControl.call(this, moduleId);
+  },
+
+  syncModuleMarketControl(moduleId) {
+    const input = document.getElementById(`${moduleId}Price`);
+    const label = document.getElementById(`${moduleId}MarketLabel`);
+    if (!input) return;
+
+    const marketConfig = ModuleCatalog.getMarketConfig(moduleId, this.state[`${moduleId}Route`]);
+    if (!marketConfig) return;
+
+    input.min = String(marketConfig.min);
+    input.max = String(marketConfig.max);
+    input.step = String(marketConfig.step);
+    this.state[`${moduleId}Price`] = Calc.clampNumber(
+      this.state[`${moduleId}Price`],
+      marketConfig.min,
+      marketConfig.max,
+      marketConfig.defaultValue
+    );
+    input.value = String(this.state[`${moduleId}Price`]);
+    if (label) label.textContent = `${marketConfig.label} (${marketConfig.unitLabel})`;
+    this.syncRangeDisplay(
+      `${moduleId}Price`,
+      this.state[`${moduleId}Price`],
+      value => this.formatModuleMarketValue(moduleId, value)
+    );
+  },
+
+  syncModuleBufferControl(moduleId) {
     const wrap = document.getElementById(`${moduleId}BufferWrap`);
     if (!wrap) return;
     const route = this.state[`${moduleId}Route`];
     wrap.style.display = Calc.moduleSupportsFeedBuffer(moduleId, route) ? 'block' : 'none';
+  },
+
+  syncExploratoryBufferControl(moduleId) {
+    return AppUiStateMethods.syncModuleBufferControl.call(this, moduleId);
   },
 
   syncDerivedFeedControls() {

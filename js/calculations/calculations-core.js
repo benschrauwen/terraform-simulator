@@ -206,17 +206,17 @@ Object.assign(Calc, {
   },
 
   getModuleById(moduleId) {
-    return MODULE_REGISTRY.find(module => module.id === moduleId) || null;
+    return ModuleCatalog.getById(moduleId);
   },
 
   moduleSupportsFeedBuffer(moduleId, route = null) {
     const module = this.getModuleById(moduleId);
     if (!module) return false;
     if (module.supportsFeedBuffer) return true;
-    if (!module.routeOptions?.length) return false;
+    if (!ModuleCatalog.hasRoutes(module)) return false;
 
-    const routeToCheck = route || getModuleDefaultRoute(module);
-    const routeConfig = routeToCheck ? this.getExploratoryRouteConfig(moduleId, routeToCheck) : null;
+    const routeToCheck = route || ModuleCatalog.getDefaultRoute(module);
+    const routeConfig = routeToCheck ? ModuleCatalog.getRouteConfig(moduleId, routeToCheck) : null;
     return Boolean(routeConfig?.supportsFeedBuffer);
   },
 
@@ -224,7 +224,7 @@ Object.assign(Calc, {
     const module = this.getModuleById(moduleId);
     if (!module) return false;
     if (module.supportsFeedBuffer) return true;
-    return Boolean(module.routeOptions?.some(option => this.moduleSupportsFeedBuffer(moduleId, option.value)));
+    return Boolean(ModuleCatalog.getRouteOptions(module).some(option => this.moduleSupportsFeedBuffer(moduleId, option.value)));
   },
 
   getModuleFeedBufferLabel(moduleId, route = null) {
@@ -232,8 +232,8 @@ Object.assign(Calc, {
     if (!module) return 'Feed buffer (cycle-average sizing)';
     if (module.bufferLabel) return module.bufferLabel;
 
-    const routeToCheck = route || getModuleDefaultRoute(module);
-    const routeConfig = routeToCheck ? this.getExploratoryRouteConfig(moduleId, routeToCheck) : null;
+    const routeToCheck = route || ModuleCatalog.getDefaultRoute(module);
+    const routeConfig = routeToCheck ? ModuleCatalog.getRouteConfig(moduleId, routeToCheck) : null;
     return routeConfig?.bufferLabel || 'Feed buffer (cycle-average sizing)';
   },
 
@@ -242,17 +242,7 @@ Object.assign(Calc, {
   },
 
   getDirectModuleDependencies(moduleId, state = {}) {
-    const module = this.getModuleById(moduleId);
-    if (!module) return [];
-
-    const dependencies = new Set(Array.isArray(module.dependencies) ? module.dependencies : []);
-    const route = state?.[`${module.id}Route`] || module.routeOptions?.[0]?.value;
-    const routeDependencies = module.routeDependencies?.[route];
-    if (Array.isArray(routeDependencies)) {
-      routeDependencies.forEach(dependencyId => dependencies.add(dependencyId));
-    }
-
-    return Array.from(dependencies);
+    return ModuleCatalog.getDependencies(moduleId, state);
   },
 
   normalizeCoreStateFields(input = {}, normalized = {}) {
@@ -296,12 +286,12 @@ Object.assign(Calc, {
   },
 
   normalizeModuleStateFields(input = {}, normalized = {}) {
-    MODULE_REGISTRY.forEach(module => {
+    ModuleCatalog.getAll().forEach(module => {
       const enabledKey = `${module.id}Enabled`;
       normalized[enabledKey] = Boolean(normalized[enabledKey]);
       normalized[`${module.id}BufferEnabled`] = Boolean(normalized[`${module.id}BufferEnabled`]);
 
-      (module.configs || []).forEach(config => {
+      ModuleCatalog.getConfigFields(module).forEach(config => {
         const fallback = Object.prototype.hasOwnProperty.call(config, 'defaultValue')
           ? config.defaultValue
           : DEFAULT_STATE[config.key];
@@ -313,31 +303,32 @@ Object.assign(Calc, {
         );
       });
 
-      if (module.assetLifeKey) {
-        normalized[module.assetLifeKey] = this.clampInteger(
-          input[module.assetLifeKey],
+      const assetLifeKey = ModuleCatalog.getAssetLifeKey(module);
+      if (assetLifeKey) {
+        normalized[assetLifeKey] = this.clampInteger(
+          input[assetLifeKey],
           1,
           100,
-          DEFAULT_STATE[module.assetLifeKey] ?? module.defaultAssetLife ?? 7
+          DEFAULT_STATE[assetLifeKey] ?? ModuleCatalog.getDefaultAssetLife(module)
         );
       }
 
-      if (module.routeOptions?.length) {
-        const fallbackRoute = getModuleDefaultRoute(module);
-        const routeOptions = new Set(module.routeOptions.map(option => option.value));
+      if (ModuleCatalog.hasRoutes(module)) {
+        const fallbackRoute = ModuleCatalog.getDefaultRoute(module);
+        const routeOptions = new Set(ModuleCatalog.getRouteOptions(module).map(option => option.value));
         normalized[`${module.id}Route`] = routeOptions.has(input[`${module.id}Route`])
           ? input[`${module.id}Route`]
           : fallbackRoute;
       }
 
-      if (module.maturity === 'Exploratory') {
+      if (module.exploratory) {
         normalized[`${module.id}PriorityWeight`] = this.clampNumber(
           input[`${module.id}PriorityWeight`],
           0,
           100,
           DEFAULT_STATE[`${module.id}PriorityWeight`] ?? module.defaultPriorityWeight ?? 100
         );
-        const capexControl = this.getExploratoryCapexControlConfig(
+        const capexControl = this.getModuleCapexControlConfig(
           module.id,
           normalized[`${module.id}Route`]
         );
@@ -347,15 +338,16 @@ Object.assign(Calc, {
           capexControl.max,
           DEFAULT_STATE[`${module.id}CapexBasis`] ?? capexControl.defaultValue
         );
-        const marketConfig = EXPLORATORY_MARKET_CONFIG[module.id];
-        if (marketConfig) {
-          normalized[`${module.id}Price`] = this.clampNumber(
-            input[`${module.id}Price`],
-            marketConfig.min,
-            marketConfig.max,
-            DEFAULT_STATE[`${module.id}Price`] ?? marketConfig.defaultValue
-          );
-        }
+      }
+
+      const marketConfig = ModuleCatalog.getMarketConfig(module.id, normalized[`${module.id}Route`]);
+      if (marketConfig) {
+        normalized[`${module.id}Price`] = this.clampNumber(
+          input[`${module.id}Price`],
+          marketConfig.min,
+          marketConfig.max,
+          DEFAULT_STATE[`${module.id}Price`] ?? marketConfig.defaultValue
+        );
       }
     });
   },
@@ -368,7 +360,7 @@ Object.assign(Calc, {
     let changed = true;
     while (changed) {
       changed = false;
-      for (const module of MODULE_REGISTRY) {
+      for (const module of ModuleCatalog.getAll()) {
         if (!nextState[`${module.id}Enabled`]) continue;
 
         for (const dependencyId of this.getDirectModuleDependencies(module.id, nextState)) {

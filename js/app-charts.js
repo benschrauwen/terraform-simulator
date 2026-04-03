@@ -27,6 +27,116 @@ function compactCapexChartData(labels, values, colors) {
   };
 }
 
+function normalizeAxisValue(value) {
+  return Math.abs(value) < 1e-9 ? 0 : value;
+}
+
+function getAxisExtents(values, paddingFraction = 0.08) {
+  let positive = 0;
+  let negative = 0;
+  let hasFiniteValue = false;
+
+  (Array.isArray(values) ? values : []).forEach(value => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return;
+    hasFiniteValue = true;
+    if (numeric > positive) positive = numeric;
+    if (numeric < 0) negative = Math.max(negative, -numeric);
+  });
+
+  if (!hasFiniteValue || (positive === 0 && negative === 0)) {
+    return { positive: 1, negative: 0 };
+  }
+
+  return {
+    positive: positive > 0 ? positive * (1 + paddingFraction) : 0,
+    negative: negative > 0 ? negative * (1 + paddingFraction) : 0,
+  };
+}
+
+function getZeroRatio(extents) {
+  const totalSpan = extents.positive + extents.negative;
+  return totalSpan > 0 ? extents.negative / totalSpan : 0;
+}
+
+function getAlignedZeroRatio(primaryExtents, secondaryExtents) {
+  if (primaryExtents.negative === 0 && secondaryExtents.negative === 0) return 0;
+  if (primaryExtents.positive === 0 && secondaryExtents.positive === 0) return 1;
+
+  const ratios = [getZeroRatio(primaryExtents), getZeroRatio(secondaryExtents)].sort((a, b) => a - b);
+  const [lowRatio, highRatio] = ratios;
+
+  if (Math.abs(highRatio - lowRatio) < 1e-9) return highRatio;
+  return highRatio / (1 + highRatio - lowRatio);
+}
+
+function getBoundsForZeroRatio(extents, zeroRatio) {
+  if (zeroRatio <= 0) {
+    return {
+      min: 0,
+      max: normalizeAxisValue(extents.positive || 1),
+    };
+  }
+
+  if (zeroRatio >= 1) {
+    return {
+      min: normalizeAxisValue(-(extents.negative || 1)),
+      max: 0,
+    };
+  }
+
+  const totalSpan = Math.max(
+    extents.negative > 0 ? extents.negative / zeroRatio : 0,
+    extents.positive > 0 ? extents.positive / (1 - zeroRatio) : 0,
+    1
+  );
+
+  return {
+    min: normalizeAxisValue(-zeroRatio * totalSpan),
+    max: normalizeAxisValue((1 - zeroRatio) * totalSpan),
+  };
+}
+
+function getStackedAxisValues(datasets, labelCount) {
+  const positiveTotals = Array.from({ length: labelCount }, () => 0);
+  const negativeTotals = Array.from({ length: labelCount }, () => 0);
+
+  (Array.isArray(datasets) ? datasets : []).forEach(dataset => {
+    const values = Array.isArray(dataset?.data) ? dataset.data : [];
+    for (let index = 0; index < labelCount; index += 1) {
+      const numeric = Number(values[index]);
+      if (!Number.isFinite(numeric)) continue;
+      if (numeric >= 0) positiveTotals[index] += numeric;
+      else negativeTotals[index] += numeric;
+    }
+  });
+
+  return positiveTotals.concat(negativeTotals);
+}
+
+// Keep dual-axis zero baselines visually locked so both scales cross at the same gridline.
+function getAlignedZeroBounds(primaryDatasets, secondaryDatasets, labelCount) {
+  const primaryValues = getStackedAxisValues(primaryDatasets, labelCount);
+  const secondaryValues = [];
+
+  (Array.isArray(secondaryDatasets) ? secondaryDatasets : []).forEach(dataset => {
+    const values = Array.isArray(dataset?.data) ? dataset.data : [];
+    values.forEach(value => {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) secondaryValues.push(numeric);
+    });
+  });
+
+  const primaryExtents = getAxisExtents(primaryValues);
+  const secondaryExtents = getAxisExtents(secondaryValues);
+  const zeroRatio = getAlignedZeroRatio(primaryExtents, secondaryExtents);
+
+  return {
+    primary: getBoundsForZeroRatio(primaryExtents, zeroRatio),
+    secondary: getBoundsForZeroRatio(secondaryExtents, zeroRatio),
+  };
+}
+
 window.AppChartMethods = {
   getPowerChartLabels(r) {
     const count = r.solar.hourlyProfile.length;
@@ -608,6 +718,10 @@ window.AppChartMethods = {
     });
     if (this.chartKeys.econTimeline === chartKey && this.charts.econTimeline) return;
 
+    const annualDatasets = datasets.filter(dataset => dataset.yAxisID === 'yAnnual');
+    const cumulativeDatasets = datasets.filter(dataset => dataset.yAxisID === 'yCumulative');
+    const alignedZeroBounds = getAlignedZeroBounds(annualDatasets, cumulativeDatasets, timeline.labels.length);
+
     if (this.charts.econTimeline) this.charts.econTimeline.destroy();
     this.charts.econTimeline = new Chart(canvas, {
       data: {
@@ -693,6 +807,8 @@ window.AppChartMethods = {
           yAnnual: {
             position: 'left',
             stacked: true,
+            min: alignedZeroBounds.primary.min,
+            max: alignedZeroBounds.primary.max,
             ticks: {
               color: '#64748b',
               font: { size: 9 },
@@ -708,6 +824,8 @@ window.AppChartMethods = {
           },
           yCumulative: {
             position: 'right',
+            min: alignedZeroBounds.secondary.min,
+            max: alignedZeroBounds.secondary.max,
             ticks: {
               color: '#64748b',
               font: { size: 9 },

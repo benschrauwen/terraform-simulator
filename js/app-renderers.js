@@ -31,6 +31,10 @@ window.AppRendererMethods = {
       : (useChemicalUtilizationMetrics ? r.chemicalSupply.dailyOpHours : r.solar.sunHours);
     document.getElementById('effectiveCF').textContent = `${FormatNumbers.fixed(displayedCf * 100, 1)}%`;
     document.getElementById('dailyOpHours').textContent = `${FormatNumbers.fixed(parseFloat(displayedHours), 1)} hrs`;
+    const bufferedElectricityCost = document.getElementById('bufferedElectricityCost');
+    if (bufferedElectricityCost) {
+      bufferedElectricityCost.textContent = `$${FormatNumbers.fixed(r.economics.bufferedElectricityCostPerMWh, 2)}/MWh`;
+    }
 
     const aiDesignLoadValue = document.getElementById('aiDesignLoadValue');
     const aiUtilizationValue = document.getElementById('aiUtilizationValue');

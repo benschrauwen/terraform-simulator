@@ -139,7 +139,7 @@ Object.assign(Calc, {
 
   calculateEconomics(state, context) {
     const {
-      solar, storage, ai, electrolyzer, dac, sabatier, methanol,
+      solar, storage, chemicalSupply, ai, electrolyzer, dac, sabatier, methanol,
       exploratoryModules,
     } = context;
 
@@ -421,6 +421,20 @@ Object.assign(Calc, {
     const aiCoreAnnualCost = ai.enabled
       ? annualizedCapex.solar + annualizedCapex.battery + annualizedCapex.ai + solar.annualSolarOm + (storage.capex * batteryOmFrac) + (ai.annualOM || 0)
       : 0;
+    const bufferedElectricityAnnualCost = solar.annualizedSolar +
+      solar.annualSolarOm +
+      (storage.annualizedCapex || 0) +
+      (storage.capex * batteryOmFrac);
+    const bufferedElectricityAnnualDeliveredMWh = (
+      ai.enabled
+        ? ((ai.annualAiServedKWh || 0) + (ai.chemicalAnnualKWh || 0))
+        : ((chemicalSupply.dailyAvailableKWh || 0) * (solar.cyclesPerYear || 0))
+    ) / 1000;
+    const bufferedElectricityLifetimeAverageAnnualMWh = bufferedElectricityAnnualDeliveredMWh *
+      this.getAverageSolarDegradationFactor(state.panelDegradationAnnual, state.solarAssetLife);
+    const bufferedElectricityCostPerMWh = bufferedElectricityLifetimeAverageAnnualMWh > 0
+      ? bufferedElectricityAnnualCost / bufferedElectricityLifetimeAverageAnnualMWh
+      : 0;
 
     return {
       capex,
@@ -462,6 +476,10 @@ Object.assign(Calc, {
       yearlyCashFlows,
       cashFlowTimeline,
       aiCoreAnnualCost,
+      bufferedElectricityAnnualCost,
+      bufferedElectricityAnnualDeliveredMWh,
+      bufferedElectricityLifetimeAverageAnnualMWh,
+      bufferedElectricityCostPerMWh,
       costPerMToken: ai.enabled && ai.annualTokensM > 0 ? aiCoreAnnualCost / ai.annualTokensM : 0,
       tokenMarginPerM: ai.enabled && ai.annualTokensM > 0 ? (state.aiTokenPricePerM || 0) - (aiCoreAnnualCost / ai.annualTokensM) : 0,
       costPerKgH2: electrolyzer.enabled && electrolyzer.h2AnnualKg > 0 ? annualCost / electrolyzer.h2AnnualKg : 0,

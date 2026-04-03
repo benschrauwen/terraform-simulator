@@ -924,6 +924,92 @@ test('no-battery process sizing follows the modeled direct-solar peak', () => {
   );
 });
 
+test('buffered electricity cost matches solar lcoe when all solar is used without storage', () => {
+  const result = runScenario({
+    systemSizeMW: 100,
+    batteryCapacityMWh: 0,
+    chemicalSizingPercent: 100,
+    aiComputeEnabled: false,
+    electrolyzerEnabled: false,
+    dacEnabled: false,
+    sabatierEnabled: false,
+    methanolEnabled: false,
+  });
+
+  assert.ok(
+    Math.abs(result.economics.bufferedElectricityCostPerMWh - result.solar.lcoe) <= 1e-9,
+    [
+      'Expected the buffered electricity cost to collapse to the base solar LCOE when storage is off and the modeled load uses the full solar output.',
+      `Observed buffered ${result.economics.bufferedElectricityCostPerMWh.toFixed(12)} vs solar ${result.solar.lcoe.toFixed(12)} $/MWh.`,
+    ].join(' ')
+  );
+});
+
+test('buffered electricity cost includes battery annualized cost and storage losses', () => {
+  const result = runScenario({
+    systemSizeMW: 100,
+    batteryCapacityMWh: 24,
+    chemicalSizingPercent: 100,
+    aiComputeEnabled: false,
+    electrolyzerEnabled: false,
+    dacEnabled: false,
+    sabatierEnabled: false,
+    methanolEnabled: false,
+  });
+  const state = result.state;
+  const batteryOmFrac = (state.batteryOmPercent ?? 1.5) / 100;
+  const expectedAnnualCost = result.solar.annualizedSolar +
+    result.solar.annualSolarOm +
+    result.storage.annualizedCapex +
+    (result.storage.capex * batteryOmFrac);
+  const degradationFactor = Calc.getAverageSolarDegradationFactor(state.panelDegradationAnnual, state.solarAssetLife);
+  const expectedLifetimeAverageAnnualMWh = ((result.chemicalSupply.dailyAvailableKWh * result.solar.cyclesPerYear) / 1000) * degradationFactor;
+  const expectedBufferedElectricityCost = expectedLifetimeAverageAnnualMWh > 0
+    ? expectedAnnualCost / expectedLifetimeAverageAnnualMWh
+    : 0;
+
+  assert.ok(
+    Math.abs(result.economics.bufferedElectricityAnnualCost - expectedAnnualCost) <= 1e-6,
+    [
+      'Expected the buffered electricity annual cost to include solar annualization, solar O&M, battery annualization, and battery O&M.',
+      `Observed ${result.economics.bufferedElectricityAnnualCost.toFixed(6)} vs expected ${expectedAnnualCost.toFixed(6)} USD/yr.`,
+    ].join(' ')
+  );
+  assert.ok(
+    Math.abs(result.economics.bufferedElectricityLifetimeAverageAnnualMWh - expectedLifetimeAverageAnnualMWh) <= 1e-9,
+    [
+      'Expected the buffered electricity denominator to use lifetime-average delivered MWh after storage losses.',
+      `Observed ${result.economics.bufferedElectricityLifetimeAverageAnnualMWh.toFixed(12)} vs expected ${expectedLifetimeAverageAnnualMWh.toFixed(12)} MWh/yr.`,
+    ].join(' ')
+  );
+  assert.ok(
+    Math.abs(result.economics.bufferedElectricityCostPerMWh - expectedBufferedElectricityCost) <= 1e-9,
+    [
+      'Expected the buffered electricity cost to equal annualized solar-plus-battery cost divided by lifetime-average delivered MWh.',
+      `Observed ${result.economics.bufferedElectricityCostPerMWh.toFixed(12)} vs expected ${expectedBufferedElectricityCost.toFixed(12)} $/MWh.`,
+    ].join(' ')
+  );
+});
+
+test('buffered electricity cost counts AI-served electricity in AI mode', () => {
+  const result = runScenario({
+    systemSizeMW: 100,
+    batteryCapacityMWh: 24,
+    aiComputeEnabled: true,
+    aiReliabilityTarget: 95,
+  });
+  const expectedAnnualDeliveredMWh = (result.ai.annualAiServedKWh + result.ai.chemicalAnnualKWh) / 1000;
+
+  assert.ok(result.ai.annualAiServedKWh > 0, 'Expected AI mode to report a non-zero annual AI-served electricity total.');
+  assert.ok(
+    Math.abs(result.economics.bufferedElectricityAnnualDeliveredMWh - expectedAnnualDeliveredMWh) <= 1e-9,
+    [
+      'Expected the buffered electricity metric to count total delivered electricity in AI mode, including the AI-served share.',
+      `Observed ${result.economics.bufferedElectricityAnnualDeliveredMWh.toFixed(12)} vs expected ${expectedAnnualDeliveredMWh.toFixed(12)} MWh/yr.`,
+    ].join(' ')
+  );
+});
+
 test('undersizing the no-battery chemical plant clips the modeled solar peak', () => {
   const fullCapture = runScenario({ systemSizeMW: 100, batteryCapacityMWh: 0, chemicalSizingPercent: 100 });
   const undersized = runScenario({ systemSizeMW: 100, batteryCapacityMWh: 0, chemicalSizingPercent: 70 });

@@ -153,6 +153,7 @@ const CHEMISTRY = {
   sabatier: {
     ch4MolarMass: 16.04,
     ch4PerMCF: 19.25,
+    ch4LhvKwhPerKg: 13.9,
     h2MassPerKgCH4: 0.503,
     co2MassPerKgCH4: 2.744,
     waterPerKgCH4: 2.25,

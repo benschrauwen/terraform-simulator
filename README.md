@@ -403,7 +403,8 @@ The current default state is roughly a `1 MW` Mojave-style methane scenario:
 - Chemical peak sizing: `100%`
 - Electrolyzer: `79 kWh/kg H2`, `$100/kW`
 - DAC: `3440 kWh/t-CO2`, `$450/kW`
-- Sabatier conversion: `99%`
+- Sabatier conversion: `95%`
+- Sabatier reactor CAPEX: `$50/kW CH4`
 - Feed buffers: on by default for methane and methanol, and default on for exploratory modules whenever the selected route supports buffered gas-feed sizing
 - Methane market preset: `Commodity gas / whitepaper-style case`
 - Methane price: `$20/MCF`

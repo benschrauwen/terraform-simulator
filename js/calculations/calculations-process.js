@@ -347,6 +347,7 @@ Object.assign(Calc, {
         designCO2FeedKgPerHour: 0,
         designFeedKgPerHour: 0,
         designHourlyOutputKg: 0,
+        designOutputKW: 0,
         designHourlyRate: 0,
         averageUtilization: 0,
         operatingUtilization: 0,
@@ -378,6 +379,7 @@ Object.assign(Calc, {
     const designCO2FeedKgPerHour = designGrossCh4KgPerHour * c.co2MassPerKgCH4;
     const designFeedKgPerHour = designH2FeedKgPerHour + designCO2FeedKgPerHour;
     const designHourlyOutputKg = designGrossCh4KgPerHour * conv;
+    const designOutputKW = designHourlyOutputKg * c.ch4LhvKwhPerKg;
     const designHourlyRate = designHourlyOutputKg / c.ch4PerMCF;
     const ch4DailyMCF = ch4DailyKg / c.ch4PerMCF;
     const designRunHours = bufferEnabled ? body.cycleHours : opHours;
@@ -412,12 +414,13 @@ Object.assign(Calc, {
       designCO2FeedKgPerHour,
       designFeedKgPerHour,
       designHourlyOutputKg,
+      designOutputKW,
       limitingReagent: ch4FromH2 < ch4FromCO2 ? 'H2' : 'CO2',
       hourlyRate,
       designHourlyRate,
       averageUtilization,
       operatingUtilization,
-      capex: state.sabatierCapex * designFeedKgPerHour,
+      capex: state.sabatierCapex * designOutputKW,
     };
   },
 

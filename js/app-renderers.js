@@ -786,7 +786,7 @@ window.AppRendererMethods = {
     if (unit === '$') return `$${FormatNumbers.fixed(Math.round(numeric), 0)}`;
     if (unit === '$/W') return `$${FormatNumbers.fixed(numeric, 2)}/W`;
     if (unit === '$/kW') return `$${FormatNumbers.fixed(Math.round(numeric), 0)}/kW`;
-    if (unit === '$/t-yr') return `$${FormatNumbers.fixed(Math.round(numeric), 0)}/t-yr`;
+    if (unit === '$/t-yr') return `$${FormatNumbers.fixed(Math.round(numeric), 0)}/ton/yr`;
     if (unit === '$/kg-feed-hr') return `$${FormatNumbers.fixed(Math.round(numeric), 0)}/(kg/h feed)`;
     if (unit === 'kWh/kg') return `${FormatNumbers.fixed(Math.round(numeric), 0)} kWh/kg`;
     if (unit === 'kWh/t') return `${FormatNumbers.fixed(Math.round(numeric), 0)} kWh/t`;

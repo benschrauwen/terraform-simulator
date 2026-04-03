@@ -53,6 +53,7 @@ test('supported module presets map paired config values and detect custom mixes'
     electrolyzerCapex: 1300,
   }));
   const electroSwingDac = ModuleCatalog.getPreset('dac', 'electro-swing-absorption');
+  const dacCapexConfig = ModuleCatalog.getConfigFields('dac').find(config => config.key === 'dacCapex');
   const customElectrolyzer = ModuleCatalog.getMatchingPreset('electrolyzer', createState({
     electrolyzerEfficiency: 55,
     electrolyzerCapex: 2100,
@@ -72,6 +73,11 @@ test('supported module presets map paired config values and detect custom mixes'
     electroSwingDac?.values.dacCapex,
     4700,
     'Expected DAC presets to keep the electro-swing CAPEX value in one place.'
+  );
+  assert.equal(
+    dacCapexConfig?.unit,
+    '$/t-yr',
+    'Expected DAC CAPEX to be configured in dollars per ton of annual capture capacity.'
   );
   assert.equal(
     customElectrolyzer,
@@ -177,7 +183,7 @@ test('solar acreage and BOS respond to location while keeping installed MW fixed
   );
 });
 
-test('dac capex is sized from allocated DAC power', () => {
+test('dac capex is sized from annual capture capacity', () => {
   const allocation = { dac: 0.4 };
   const lessEfficient = Calc.calculateDAC(
     createState({ dacEnabled: true, dacCapex: 450, dacEnergy: 4000 }),
@@ -193,14 +199,15 @@ test('dac capex is sized from allocated DAC power', () => {
   );
 
   assert.ok(Math.abs(lessEfficient.allocKW - 50) <= 1e-9, `Expected 50 kW of DAC allocation, got ${lessEfficient.allocKW}.`);
-  assert.ok(Math.abs(lessEfficient.capex - 22500) <= 1e-9, `Expected DAC CAPEX of $22,500, got ${lessEfficient.capex}.`);
+  assert.ok(Math.abs(lessEfficient.co2AnnualTons - 109.5) <= 1e-9, `Expected 109.5 tons/year of DAC capture, got ${lessEfficient.co2AnnualTons}.`);
+  assert.ok(Math.abs(lessEfficient.capex - 49275) <= 1e-9, `Expected DAC CAPEX of $49,275, got ${lessEfficient.capex}.`);
   assert.ok(
     moreEfficient.co2AnnualTons > lessEfficient.co2AnnualTons,
     'Expected a lower DAC energy intensity to increase annual CO2 capture at the same allocated power.'
   );
   assert.ok(
-    Math.abs(moreEfficient.capex - lessEfficient.capex) <= 1e-9,
-    'Expected DAC CAPEX to stay tied to allocated kW rather than annual capture.'
+    Math.abs(moreEfficient.capex - 98550) <= 1e-9,
+    `Expected lower DAC energy intensity to size CAPEX from 219 tons/year of capture, got ${moreEfficient.capex}.`
   );
 });
 
@@ -294,12 +301,12 @@ test('headline IRR stays on the discount-rate root when replacement cycles creat
     ].join(' ')
   );
   assert.ok(
-    Math.abs(higherConversionResult.economics.irr - 7.925879719420551) <= 1e-6,
-    `Expected the 85% Sabatier regression case to stay near a 7.925880% headline IRR, got ${higherConversionResult.economics.irr}.`
+    Math.abs(higherConversionResult.economics.irr - 9.922766166753282) <= 1e-6,
+    `Expected the 85% Sabatier regression case to stay near a 9.922766% headline IRR, got ${higherConversionResult.economics.irr}.`
   );
   assert.ok(
-    Math.abs(lowerConversionResult.economics.irr - 7.722987106999568) <= 1e-6,
-    `Expected the 84% Sabatier regression case to stay near a 7.722987% headline IRR, got ${lowerConversionResult.economics.irr}.`
+    Math.abs(lowerConversionResult.economics.irr - 9.748394388464721) <= 1e-6,
+    `Expected the 84% Sabatier regression case to stay near a 9.748394% headline IRR, got ${lowerConversionResult.economics.irr}.`
   );
   assert.ok(
     Math.abs(lowerConversionResult.economics.irr - leanLowerConversionIrr) <= 1e-9,
@@ -337,12 +344,12 @@ test('equity IRR stays on the positive branch when longer debt terms add another
     ].join(' ')
   );
   assert.ok(
-    Math.abs(twentyYearDebtResult.economics.equityIrr - 29.794783415880932) <= 1e-6,
-    `Expected the 20-year debt regression case to stay near a 29.794783% equity IRR, got ${twentyYearDebtResult.economics.equityIrr}.`
+    Math.abs(twentyYearDebtResult.economics.equityIrr - 34.123119813903756) <= 1e-6,
+    `Expected the 20-year debt regression case to stay near a 34.123120% equity IRR, got ${twentyYearDebtResult.economics.equityIrr}.`
   );
   assert.ok(
-    Math.abs(twentyOneYearDebtResult.economics.equityIrr - 30.521265100441365) <= 1e-6,
-    `Expected the 21-year debt regression case to stay near a 30.521265% equity IRR, got ${twentyOneYearDebtResult.economics.equityIrr}.`
+    Math.abs(twentyOneYearDebtResult.economics.equityIrr - 34.77745461092406) <= 1e-6,
+    `Expected the 21-year debt regression case to stay near a 34.777455% equity IRR, got ${twentyOneYearDebtResult.economics.equityIrr}.`
   );
   assert.ok(
     Math.abs(twentyOneYearDebtResult.economics.equityIrr - leanTwentyOneYearEquityIrr) <= 1e-9,
@@ -417,10 +424,10 @@ test('30-year financed equity IRR stays on the upper branch until no real root r
     debtTermYears: 30,
     debtInterestRate: 10.5,
   })).economics;
-  const tenPointSeventyFivePercent = Calc.calculateAll(createState({
+  const twelvePointFivePercent = Calc.calculateAll(createState({
     financingEnabled: true,
     debtTermYears: 30,
-    debtInterestRate: 10.75,
+    debtInterestRate: 12.5,
   })).economics;
 
   assert.ok(
@@ -438,20 +445,20 @@ test('30-year financed equity IRR stays on the upper branch until no real root r
     ].join(' ')
   );
   assert.ok(
-    Math.abs(ninePointFivePercent.equityIrr - 25.0781235266443) <= 1e-6,
-    `Expected the 9.5% debt-interest regression case to stay near a 25.078124% equity IRR, got ${ninePointFivePercent.equityIrr}.`
+    Math.abs(ninePointFivePercent.equityIrr - 30.349924707760202) <= 1e-6,
+    `Expected the 9.5% debt-interest regression case to stay near a 30.349925% equity IRR, got ${ninePointFivePercent.equityIrr}.`
   );
   assert.ok(
-    Math.abs(ninePointSeventyFivePercent.equityIrr - 23.98580764526344) <= 1e-6,
-    `Expected the 9.75% debt-interest regression case to stay near a 23.985808% equity IRR, got ${ninePointSeventyFivePercent.equityIrr}.`
+    Math.abs(ninePointSeventyFivePercent.equityIrr - 29.550048357917824) <= 1e-6,
+    `Expected the 9.75% debt-interest regression case to stay near a 29.550048% equity IRR, got ${ninePointSeventyFivePercent.equityIrr}.`
   );
   assert.ok(
-    Math.abs(tenPointFivePercent.equityIrr - 19.570495416597528) <= 1e-6,
-    `Expected the 10.5% debt-interest regression case to stay near a 19.570495% equity IRR, got ${tenPointFivePercent.equityIrr}.`
+    Math.abs(tenPointFivePercent.equityIrr - 26.936066857128292) <= 1e-6,
+    `Expected the 10.5% debt-interest regression case to stay near a 26.936067% equity IRR, got ${tenPointFivePercent.equityIrr}.`
   );
   assert.ok(
-    !Number.isFinite(tenPointSeventyFivePercent.equityIrr),
-    `Expected the 10.75% debt-interest case to lose all real equity IRR roots, got ${tenPointSeventyFivePercent.equityIrr}.`
+    !Number.isFinite(twelvePointFivePercent.equityIrr),
+    `Expected the 12.5% debt-interest case to lose all real equity IRR roots, got ${twelvePointFivePercent.equityIrr}.`
   );
 });
 

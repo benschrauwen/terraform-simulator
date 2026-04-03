@@ -312,7 +312,7 @@ Object.assign(Calc, {
       co2DailyKg,
       co2AnnualKg,
       co2AnnualTons,
-      capex: allocKW * state.dacCapex,
+      capex: co2AnnualTons * state.dacCapex,
     };
   },
 

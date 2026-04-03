@@ -173,7 +173,7 @@ const MODULE_CATALOG = Object.freeze([
     defaultPreset: 'terraform-default',
     configs: [
       { key: 'dacEnergy', label: 'Efficiency (kWh/t-CO2)', type: 'range', min: 500, max: 5000, step: 5, unit: 'kWh/t', defaultValue: 3440 },
-      { key: 'dacCapex', label: 'CAPEX ($/kW)', type: 'range', min: 50, max: 20000, step: 50, unit: '$/kW', defaultValue: 450 },
+      { key: 'dacCapex', label: 'CAPEX ($/ton capture capacity/yr)', type: 'range', min: 50, max: 20000, step: 50, unit: '$/t-yr', defaultValue: 450 },
     ],
   }),
   normalizeModuleDefinition({

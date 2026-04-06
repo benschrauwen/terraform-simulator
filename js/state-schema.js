@@ -27,6 +27,11 @@ const CORE_STATE_FIELDS = [
 
   { key: 'latitude', type: 'number', min: -90, max: 90, defaultValue: 35.05 },
   { key: 'longitude', type: 'number', min: -180, max: 180, defaultValue: -117.60 },
+  {
+    key: 'locationPresetIsCustom',
+    type: 'boolean',
+    defaultValue: false,
+  },
   { key: 'siteYieldMwhPerMwdcYear', type: 'number', min: 0, max: 1e6, defaultValue: 2050 },
   { key: 'systemSizeMW', type: 'number', min: 0, max: 1e6, defaultValue: 1.0 },
   { key: 'panelEfficiency', type: 'number', min: 1, max: 100, defaultValue: 20 },

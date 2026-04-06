@@ -1270,7 +1270,8 @@ input[type="range"]::-moz-range-track {
 
 .site-map-shell {
   position: relative;
-  min-height: 300px;
+  width: 100%;
+  aspect-ratio: 1 / 1;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
@@ -1279,8 +1280,26 @@ input[type="range"]::-moz-range-track {
 }
 
 .site-map {
-  height: 300px;
+  position: absolute;
+  inset: 0;
   width: 100%;
+  height: 100%;
+}
+
+.site-map-shell .site-map-site-marker-wrap {
+  border: none;
+  background: transparent;
+}
+
+.site-map-site-marker-dot {
+  display: block;
+  width: 10px;
+  height: 10px;
+  box-sizing: content-box;
+  margin: 0;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
 .site-map-empty {
@@ -2096,10 +2115,8 @@ input[type="range"]::-moz-range-track {
     min-height: 280px;
   }
 
-  .site-map-shell,
-  .site-map {
-    min-height: 240px;
-    height: 240px;
+  .site-map-shell {
+    min-height: 0;
   }
 
   .chart-wrapper-timeline {

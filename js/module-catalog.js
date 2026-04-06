@@ -90,7 +90,7 @@ const MODULE_CATALOG = Object.freeze([
     presets: [
       {
         value: 'terraform-default',
-        label: 'Terraform default',
+        label: 'Terraform',
         values: {
           electrolyzerEfficiency: 79,
           electrolyzerCapex: 100,
@@ -139,7 +139,7 @@ const MODULE_CATALOG = Object.freeze([
     presets: [
       {
         value: 'terraform-default',
-        label: 'Terraform default',
+        label: 'Terraform',
         values: {
           dacEnergy: 3440,
           dacCapex: 450,

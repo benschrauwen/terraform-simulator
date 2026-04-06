@@ -760,12 +760,28 @@ class App {
     return AppSiteMapMethods.initSiteMap.call(this);
   }
 
+  applySiteLocationFromMap(lat, lng) {
+    return AppSiteMapMethods.applySiteLocationFromMap.call(this, lat, lng);
+  }
+
   showSiteMapMessage(message, noteText) {
     return AppSiteMapMethods.showSiteMapMessage.call(this, message, noteText);
   }
 
   showSiteMap(noteText) {
     return AppSiteMapMethods.showSiteMap.call(this, noteText);
+  }
+
+  getRectBounds(lat, lon, widthMeters, heightMeters, minWidthMeters = 20, minHeightMeters = minWidthMeters) {
+    return AppSiteMapMethods.getRectBounds.call(
+      this,
+      lat,
+      lon,
+      widthMeters,
+      heightMeters,
+      minWidthMeters,
+      minHeightMeters
+    );
   }
 
   getSquareBounds(lat, lon, sideMeters, minSideMeters = 20) {

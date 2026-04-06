@@ -27,7 +27,11 @@ const AppControlMethods = {
     });
 
     AppControlMethods.on.call(this, 'locationPreset', 'change', value => {
-      if (value === 'custom') return;
+      if (value === 'custom') {
+        this.state.locationPresetIsCustom = true;
+        return;
+      }
+      this.state.locationPresetIsCustom = false;
       const loc = LOCATION_PRESETS[parseInt(value, 10)];
       if (!loc) return;
       this.state.body = loc.body || 'earth';
@@ -43,7 +47,9 @@ const AppControlMethods = {
     AppControlMethods.bindNumber.call(this, 'longitude', 'longitude', () => AppControlMethods.handleLocationEdited.call(this));
     AppControlMethods.bindNumber.call(this, 'siteYield', 'siteYieldMwhPerMwdcYear', () => {
       this.state.siteYieldSource = 'manual';
-      document.getElementById('locationPreset').value = 'custom';
+      this.state.locationPresetIsCustom = true;
+      const locPresetEl = document.getElementById('locationPreset');
+      if (locPresetEl) locPresetEl.value = 'custom';
     });
 
     AppControlMethods.bindRange.call(this, 'systemSize', 'systemSizeMW', value => this.formatSystemSizeMW(value));
@@ -215,7 +221,9 @@ const AppControlMethods = {
   },
 
   handleLocationEdited() {
-    document.getElementById('locationPreset').value = 'custom';
+    this.state.locationPresetIsCustom = true;
+    const locPresetEl = document.getElementById('locationPreset');
+    if (locPresetEl) locPresetEl.value = 'custom';
     if ((this.state.body || 'earth') !== 'earth') {
       if (this.state.siteYieldSource !== 'manual') {
         this.state.siteYieldSource = 'planetary-custom';
@@ -312,12 +320,19 @@ const AppControlMethods = {
       if (el) el.value = this.state[stateKey];
     });
 
-    const presetIndex = LOCATION_PRESETS.findIndex(loc =>
-      (loc.body || 'earth') === (this.state.body || 'earth') &&
-      Math.abs(loc.lat - this.state.latitude) < 0.1 &&
-      Math.abs(loc.lon - this.state.longitude) < 0.1
-    );
-    document.getElementById('locationPreset').value = presetIndex >= 0 ? String(presetIndex) : 'custom';
+    const locPresetSelect = document.getElementById('locationPreset');
+    if (locPresetSelect) {
+      if (this.state.locationPresetIsCustom) {
+        locPresetSelect.value = 'custom';
+      } else {
+        const presetIndex = LOCATION_PRESETS.findIndex(loc =>
+          (loc.body || 'earth') === (this.state.body || 'earth') &&
+          Math.abs(loc.lat - this.state.latitude) < 0.1 &&
+          Math.abs(loc.lon - this.state.longitude) < 0.1
+        );
+        locPresetSelect.value = presetIndex >= 0 ? String(presetIndex) : 'custom';
+      }
+    }
 
     this.rangeBindings.forEach(binding => {
       const el = document.getElementById(binding.id);

@@ -1,12 +1,26 @@
 /* Site map helpers attached to App */
 
 window.AppSiteMapMethods = {
+  applySiteLocationFromMap(lat, lng) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const clampedLat = Math.max(-90, Math.min(90, lat));
+    let clampedLng = lng;
+    while (clampedLng > 180) clampedLng -= 360;
+    while (clampedLng < -180) clampedLng += 360;
+
+    this.state.latitude = clampedLat;
+    this.state.longitude = clampedLng;
+    this.handleLocationEdited();
+    this.syncStateToControls();
+    this.recalculate();
+  },
+
   initSiteMap() {
     const mapEl = document.getElementById('siteMap');
     if (!mapEl || this.siteMap) return;
     const palette = (typeof Diagram !== 'undefined' && Diagram.colors) ? Diagram.colors : {};
     const markerColor = palette.electric || '#5f7fb8';
-    const overlayColor = palette.solar || '#c6923a';
+    const overlayColor = this.getSiteFootprintColor('total');
 
     if (typeof L === 'undefined') {
       this.showSiteMapMessage(
@@ -35,13 +49,32 @@ window.AppSiteMapMethods = {
       }
     ).addTo(this.siteMap);
 
-    this.siteMapMarker = L.circleMarker([this.state.latitude, this.state.longitude], {
-      radius: 4,
-      color: '#ffffff',
-      weight: 2,
-      fillColor: markerColor,
-      fillOpacity: 0.5,
+    const markerFill = this.hexToRgba(markerColor, 0.5);
+    const siteIcon = L.divIcon({
+      className: 'site-map-site-marker-wrap',
+      html: `<span class="site-map-site-marker-dot" style="background:${markerFill}"></span>`,
+      iconSize: [14, 14],
+      iconAnchor: [7, 7],
+    });
+    this.siteMapMarker = L.marker([this.state.latitude, this.state.longitude], {
+      icon: siteIcon,
+      draggable: true,
+      keyboard: false,
     }).addTo(this.siteMap);
+
+    this.siteMap.on('click', e => {
+      if (typeof performance !== 'undefined' && performance.now() < (this._siteMapSuppressClickUntil || 0)) return;
+      if (!e.latlng || !Number.isFinite(e.latlng.lat) || !Number.isFinite(e.latlng.lng)) return;
+      this.applySiteLocationFromMap(e.latlng.lat, e.latlng.lng);
+    });
+
+    this.siteMapMarker.on('dragend', ev => {
+      if (typeof performance !== 'undefined') {
+        this._siteMapSuppressClickUntil = performance.now() + 200;
+      }
+      const ll = ev.target.getLatLng();
+      this.applySiteLocationFromMap(ll.lat, ll.lng);
+    });
 
     this.siteMapOverlay = L.rectangle(
       [
@@ -50,9 +83,10 @@ window.AppSiteMapMethods = {
       ],
       {
         color: overlayColor,
-        weight: 2,
+        weight: 2.5,
+        opacity: 0.96,
         fillColor: overlayColor,
-        fillOpacity: 0.5,
+        fillOpacity: 0.22,
         interactive: false,
       }
     ).addTo(this.siteMap);
@@ -83,17 +117,22 @@ window.AppSiteMapMethods = {
     if (noteEl && noteText) noteEl.textContent = noteText;
   },
 
-  getSquareBounds(lat, lon, sideMeters, minSideMeters = 20) {
-    const halfSide = Math.max(sideMeters, minSideMeters) / 2;
+  getRectBounds(lat, lon, widthMeters, heightMeters, minWidthMeters = 20, minHeightMeters = minWidthMeters) {
+    const halfWidth = Math.max(widthMeters, minWidthMeters) / 2;
+    const halfHeight = Math.max(heightMeters, minHeightMeters) / 2;
     const metersPerDegLat = 111320;
     const metersPerDegLon = Math.max(111320 * Math.cos((lat * Math.PI) / 180), 1000);
-    const deltaLat = halfSide / metersPerDegLat;
-    const deltaLon = halfSide / metersPerDegLon;
+    const deltaLat = halfHeight / metersPerDegLat;
+    const deltaLon = halfWidth / metersPerDegLon;
 
     return [
       [lat - deltaLat, lon - deltaLon],
       [lat + deltaLat, lon + deltaLon],
     ];
+  },
+
+  getSquareBounds(lat, lon, sideMeters, minSideMeters = 20) {
+    return this.getRectBounds(lat, lon, sideMeters, sideMeters, minSideMeters, minSideMeters);
   },
 
   formatArea(areaM2) {
@@ -124,18 +163,19 @@ window.AppSiteMapMethods = {
   },
 
   getSiteFootprintColor(id) {
-    const palette = (typeof Diagram !== 'undefined' && Diagram.colors) ? Diagram.colors : {};
+    // Use a higher-contrast palette on the satellite map so tiny process blocks
+    // read clearly against the aerial imagery.
     const colorMap = {
-      total: palette.solar || '#c6923a',
-      solar: palette.solar || '#c6923a',
-      battery: palette.battery || '#6c76a9',
-      ai: palette.ai || '#78a6d8',
-      electrolyzer: palette.h2 || '#6ba5b5',
-      dac: palette.co2 || '#8c84b4',
-      sabatier: palette.methane || '#6ba177',
-      methanol: palette.methanol || '#b47b41',
+      total: '#ffbf3c',
+      solar: '#ffbf3c',
+      battery: '#6674ff',
+      ai: '#2fa4ff',
+      electrolyzer: '#15c1c9',
+      dac: '#a066ff',
+      sabatier: '#29c36b',
+      methanol: '#ff8d32',
     };
-    return colorMap[id] || palette.inactive || '#8d99a8';
+    return colorMap[id] || '#93a3b5';
   },
 
   getSiteFootprintAbbreviation(id) {
@@ -290,11 +330,11 @@ window.AppSiteMapMethods = {
       const center = this.offsetLatLon(lat, lon, x, y);
       const bounds = this.getSquareBounds(center.lat, center.lon, scaledSide, 0);
       L.rectangle(bounds, {
-        color: item.color,
-        weight: 1,
-        opacity: 0.95,
+        color: '#f8fafc',
+        weight: 1.7,
+        opacity: 0.98,
         fillColor: item.color,
-        fillOpacity: 0.58,
+        fillOpacity: 0.9,
         interactive: false,
       }).addTo(this.siteMapModuleLayer);
       cursorX += scaledSide + scaledGapMeters;
@@ -312,7 +352,7 @@ window.AppSiteMapMethods = {
     const footprint = this.buildSiteFootprintEstimate(r);
     const landAreaM2 = Math.max(footprint.totalAreaM2 || 0, 0);
     const squareSideMeters = footprint.totalSideMeters;
-    const mapNote = 'Satellite view for Earth locations. The highlighted amber square is the estimated total site footprint (solar + active plant modules); the smaller colored squares sit at the top-left as a simple side-by-side process row.';
+    const mapNote = 'Satellite view for Earth locations. Click the map or drag the site pin to set latitude and longitude (the Site block updates). The highlighted amber square is the estimated total site footprint (solar + active plant modules); the high-contrast colored subblocks grouped at the top-left show the individual process areas in a simple side-by-side row.';
 
     this.renderSiteFootprintEstimate(footprint);
 

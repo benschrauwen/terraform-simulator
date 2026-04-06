@@ -24,6 +24,7 @@ class App {
     this.shareFeedbackTimer = null;
     this.shareUrlSyncTimer = null;
     this.pendingShareFeedback = null;
+    this.skipInitialSavedSitePersist = true;
     this.init();
   }
 
@@ -78,13 +79,7 @@ class App {
   }
 
   populatePresets() {
-    const sel = document.getElementById('locationPreset');
-    LOCATION_PRESETS.forEach((loc, i) => {
-      const opt = document.createElement('option');
-      opt.value = i;
-      opt.textContent = `${loc.name} (${FormatNumbers.fixed(loc.baseYield, 0)} MWh/MWdc-yr)`;
-      sel.appendChild(opt);
-    });
+    this.populateLocationPresetSelect();
 
     const mountSel = document.getElementById('mountingType');
     mountSel.innerHTML = Object.entries(MOUNTING_TYPES).map(([key, value]) =>
@@ -110,6 +105,43 @@ class App {
         return `<optgroup label="${group.label}">${optionsHtml}</optgroup>`;
       }).join('');
     }
+  }
+
+  populateLocationPresetSelect() {
+    const sel = document.getElementById('locationPreset');
+    if (!sel) return;
+
+    sel.innerHTML = '';
+
+    const catalogGroup = document.createElement('optgroup');
+    catalogGroup.label = 'Reference';
+    LOCATION_PRESETS.forEach((loc, i) => {
+      const opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = `${loc.name} (${FormatNumbers.fixed(loc.baseYield, 0)} MWh/MWdc-yr)`;
+      catalogGroup.appendChild(opt);
+    });
+    sel.appendChild(catalogGroup);
+
+    if (typeof SavedSitePresets !== 'undefined') {
+      const saved = SavedSitePresets.list();
+      if (saved.length) {
+        const mine = document.createElement('optgroup');
+        mine.label = 'My sites';
+        saved.forEach(preset => {
+          const opt = document.createElement('option');
+          opt.value = SavedSitePresets.optionValueForId(preset.id);
+          opt.textContent = `${preset.name} (${FormatNumbers.fixed(preset.siteYieldMwhPerMwdcYear, 0)} MWh/MWdc-yr)`;
+          mine.appendChild(opt);
+        });
+        sel.appendChild(mine);
+      }
+    }
+
+    const customOpt = document.createElement('option');
+    customOpt.value = 'custom';
+    customOpt.textContent = 'Custom location';
+    sel.appendChild(customOpt);
   }
 
   renderModuleControls() {

@@ -19,6 +19,23 @@ test('share hash is empty when state matches defaults', () => {
   );
 });
 
+test('share hash buildDiff skips undefined state values', () => {
+  const defaults = {
+    batteryEnabled: false,
+    body: 'earth',
+    customSiteLabel: '',
+    systemSizeMW: 1,
+  };
+  const state = {
+    ...defaults,
+    systemSizeMW: 5,
+    customSiteLabel: undefined,
+  };
+
+  const diff = ShareStateCodec.buildDiff(state, defaults);
+  assert.deepEqual(diff, { systemSizeMW: 5 });
+});
+
 test('share hash round-trips the non-default state diff', () => {
   const defaults = {
     aiComputeEnabled: false,

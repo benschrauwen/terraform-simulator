@@ -32,6 +32,12 @@ const CORE_STATE_FIELDS = [
     type: 'boolean',
     defaultValue: false,
   },
+  {
+    key: 'customSiteLabel',
+    type: 'string',
+    defaultValue: '',
+    maxLength: 80,
+  },
   { key: 'siteYieldMwhPerMwdcYear', type: 'number', min: 0, max: 1e6, defaultValue: 2050 },
   { key: 'systemSizeMW', type: 'number', min: 0, max: 1e6, defaultValue: 1.0 },
   { key: 'panelEfficiency', type: 'number', min: 1, max: 100, defaultValue: 20 },

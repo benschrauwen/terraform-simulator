@@ -4,15 +4,34 @@ const SHARE_STATE_COMPARE_KEYS = Object.keys(DEFAULT_STATE);
 const SHARE_FEEDBACK_DURATION_MS = 2200;
 const SHARE_URL_SYNC_DELAY_MS = 150;
 
+function mergeStateForShareExport(state, defaults) {
+  const merged = { ...defaults };
+  if (!state || typeof state !== 'object') return merged;
+  Object.keys(state).forEach(key => {
+    if (!Object.prototype.hasOwnProperty.call(state, key)) return;
+    const value = state[key];
+    if (value === undefined) return;
+    merged[key] = value;
+  });
+  return merged;
+}
+
 const AppShareStateMethods = {
   initSharedState() {
     this.shareFeedbackTimer = null;
     this.shareUrlSyncTimer = null;
     this.pendingShareFeedback = null;
+    this.deferSavedSitePersistUntilNextSync = false;
+    this._hashHydratedState = null;
 
     const result = AppShareStateMethods.readSharedStateFromHash.call(this, window.location.hash);
     if (result.state) {
       this.state = result.state;
+    }
+
+    if (result.hasShareState) {
+      this.deferSavedSitePersistUntilNextSync = true;
+      this._hashHydratedState = { ...this.state };
     }
 
     if (result.error) {
@@ -106,6 +125,13 @@ const AppShareStateMethods = {
     this.shareUrlSyncTimer = null;
 
     this.state = result.state;
+    if (result.hasShareState) {
+      this.deferSavedSitePersistUntilNextSync = true;
+      this._hashHydratedState = { ...this.state };
+    } else {
+      this.deferSavedSitePersistUntilNextSync = false;
+      this._hashHydratedState = null;
+    }
     this.syncStateToControls();
     this.syncDynamicVisibility();
     this.syncDerivedFeedControls();
@@ -117,11 +143,36 @@ const AppShareStateMethods = {
     this.shareUrlSyncTimer = window.setTimeout(() => {
       this.shareUrlSyncTimer = null;
       AppShareStateMethods.syncShareStateUrl.call(this);
+      if (this.skipInitialSavedSitePersist) {
+        this.skipInitialSavedSitePersist = false;
+      } else {
+        AppShareStateMethods.persistSavedSiteAppStateIfNeeded.call(this);
+      }
     }, SHARE_URL_SYNC_DELAY_MS);
   },
 
+  persistSavedSiteAppStateIfNeeded() {
+    if (typeof SavedSitePresets === 'undefined' || !SavedSitePresets.saveAppStateForSite) return;
+    if (
+      this.deferSavedSitePersistUntilNextSync &&
+      this._hashHydratedState &&
+      ShareStateCodec.statesEqual(this.state, this._hashHydratedState, SHARE_STATE_COMPARE_KEYS)
+    ) {
+      return;
+    }
+    if (this.deferSavedSitePersistUntilNextSync && this._hashHydratedState) {
+      this.deferSavedSitePersistUntilNextSync = false;
+    }
+    const sel = document.getElementById('locationPreset');
+    const savedId = SavedSitePresets.parseOptionValue(sel?.value || '');
+    if (!savedId || !SavedSitePresets.getById(savedId)) return;
+    const snapshot = mergeStateForShareExport(this.state, DEFAULT_STATE);
+    SavedSitePresets.saveAppStateForSite(savedId, snapshot);
+  },
+
   syncShareStateUrl() {
-    const nextHash = ShareStateCodec.serializeHashFromState(this.state, DEFAULT_STATE, {
+    const exportState = mergeStateForShareExport(this.state, DEFAULT_STATE);
+    const nextHash = ShareStateCodec.serializeHashFromState(exportState, DEFAULT_STATE, {
       excludeKeys: ShareStateCodec.EXCLUDED_STATE_KEYS,
       lzString: window.LZString,
     });
@@ -158,6 +209,9 @@ const AppShareStateMethods = {
     this.shareUrlSyncTimer = null;
 
     this.state = { ...DEFAULT_STATE };
+    this.deferSavedSitePersistUntilNextSync = false;
+    this._hashHydratedState = null;
+    this.skipInitialSavedSitePersist = false;
     this.syncStateToControls();
     this.syncDynamicVisibility();
     this.syncDerivedFeedControls();

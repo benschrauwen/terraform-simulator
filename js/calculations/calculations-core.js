@@ -281,6 +281,20 @@ Object.assign(Calc, {
 
       if (field.type === 'boolean') {
         normalized[field.key] = Boolean(normalized[field.key]);
+        return;
+      }
+
+      if (field.type === 'string') {
+        let value = input[field.key];
+        if (typeof value !== 'string') {
+          const merged = normalized[field.key];
+          value = typeof merged === 'string' ? merged : field.defaultValue;
+        }
+        const maxLen = Number.isFinite(field.maxLength) ? field.maxLength : 200;
+        normalized[field.key] = value
+          .replace(/[\u0000-\u001F\u007F]/g, '')
+          .trim()
+          .slice(0, maxLen);
       }
     });
   },

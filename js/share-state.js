@@ -35,8 +35,10 @@
 
     Object.keys(defaults).forEach(key => {
       if (excludedKeys.has(key)) return;
-      if (Object.is(state[key], defaults[key])) return;
-      diff[key] = state[key];
+      const value = state[key];
+      if (value === undefined) return;
+      if (Object.is(value, defaults[key])) return;
+      diff[key] = value;
     });
 
     return diff;

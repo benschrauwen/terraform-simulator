@@ -27,11 +27,44 @@ const AppControlMethods = {
     });
 
     AppControlMethods.on.call(this, 'locationPreset', 'change', value => {
+      this.skipInitialSavedSitePersist = false;
       if (value === 'custom') {
         this.state.locationPresetIsCustom = true;
+        this.state.customSiteLabel = '';
+        AppControlMethods.syncStateToControls.call(this);
         return;
       }
+
+      const savedId =
+        typeof SavedSitePresets !== 'undefined' && SavedSitePresets.parseOptionValue
+          ? SavedSitePresets.parseOptionValue(value)
+          : null;
+      if (savedId) {
+        const preset = SavedSitePresets.getById(savedId);
+        if (!preset) return;
+        const snapshot =
+          typeof SavedSitePresets.loadAppStateForSite === 'function'
+            ? SavedSitePresets.loadAppStateForSite(savedId)
+            : null;
+        if (snapshot && typeof Calc !== 'undefined' && Calc.normalizeState) {
+          this.state = Calc.normalizeState(snapshot);
+        } else {
+          this.state.locationPresetIsCustom = false;
+          this.state.body = preset.body;
+          this.state.solarProfileModel =
+            preset.solarProfileModel || SOLAR_PROFILE_DEFAULTS_BY_BODY[preset.body] || this.state.body;
+          this.state.latitude = preset.lat;
+          this.state.longitude = preset.lon;
+          this.state.siteYieldMwhPerMwdcYear = preset.siteYieldMwhPerMwdcYear;
+          this.state.siteYieldSource = preset.siteYieldSource;
+          this.state.customSiteLabel = preset.name;
+        }
+        AppControlMethods.syncStateToControls.call(this);
+        return;
+      }
+
       this.state.locationPresetIsCustom = false;
+      this.state.customSiteLabel = '';
       const loc = LOCATION_PRESETS[parseInt(value, 10)];
       if (!loc) return;
       this.state.body = loc.body || 'earth';
@@ -48,6 +81,7 @@ const AppControlMethods = {
     AppControlMethods.bindNumber.call(this, 'siteYield', 'siteYieldMwhPerMwdcYear', () => {
       this.state.siteYieldSource = 'manual';
       this.state.locationPresetIsCustom = true;
+      this.state.customSiteLabel = '';
       const locPresetEl = document.getElementById('locationPreset');
       if (locPresetEl) locPresetEl.value = 'custom';
     });
@@ -124,7 +158,69 @@ const AppControlMethods = {
     AppControlMethods.bindRange.call(this, 'solarOmPercent', 'solarOmPercent', value => `${FormatNumbers.fixed(parseFloat(value), 1)}%/yr`);
     AppControlMethods.bindRange.call(this, 'processOmPercent', 'processOmPercent', value => `${FormatNumbers.fixed(parseFloat(value), 1)}%/yr`);
     AppControlMethods.bindRange.call(this, 'batteryOmPercent', 'batteryOmPercent', value => `${FormatNumbers.fixed(parseFloat(value), 1)}%/yr`);
+    AppControlMethods.bindSavedSitePresetControls.call(this);
     this.bindOptimizeButtons();
+  },
+
+  bindSavedSitePresetControls() {
+    const saveBtn = document.getElementById('saveSitePresetButton');
+    const nameInput = document.getElementById('saveSitePresetName');
+    const removeBtn = document.getElementById('removeSavedSitePresetButton');
+
+    if (saveBtn && nameInput) {
+      const runSave = () => {
+        if (typeof SavedSitePresets === 'undefined') return;
+        const result = SavedSitePresets.addFromState(this.state, nameInput.value);
+        if (!result.ok) {
+          if (result.error === 'empty' && typeof AppShareStateMethods.setShareFeedback === 'function') {
+            AppShareStateMethods.setShareFeedback.call(this, 'Enter a name to save', 'error');
+          }
+          return;
+        }
+        this.state.locationPresetIsCustom = false;
+        this.state.customSiteLabel = result.preset.name;
+        nameInput.value = '';
+        this.populateLocationPresetSelect();
+        AppControlMethods.syncStateToControls.call(this);
+        this.recalculate();
+        if (typeof AppShareStateMethods.setShareFeedback === 'function') {
+          AppShareStateMethods.setShareFeedback.call(this, 'Site saved', 'success');
+        }
+      };
+      saveBtn.addEventListener('click', runSave);
+      nameInput.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          runSave();
+        }
+      });
+      nameInput.addEventListener('input', () => {
+        if (!this.state.locationPresetIsCustom) return;
+        this.state.customSiteLabel = nameInput.value
+          .replace(/[\u0000-\u001F\u007F]/g, '')
+          .slice(0, 80);
+        if (typeof this.scheduleShareStateUrlSync === 'function') {
+          this.scheduleShareStateUrlSync();
+        }
+      });
+    }
+
+    if (removeBtn) {
+      removeBtn.addEventListener('click', () => {
+        if (typeof SavedSitePresets === 'undefined') return;
+        const sel = document.getElementById('locationPreset');
+        const id = SavedSitePresets.parseOptionValue(sel?.value || '');
+        if (!id || !SavedSitePresets.removeById(id)) return;
+        this.state.locationPresetIsCustom = true;
+        this.state.customSiteLabel = '';
+        this.populateLocationPresetSelect();
+        AppControlMethods.syncStateToControls.call(this);
+        this.recalculate();
+        if (typeof AppShareStateMethods.setShareFeedback === 'function') {
+          AppShareStateMethods.setShareFeedback.call(this, 'Removed from my sites', 'success');
+        }
+      });
+    }
   },
 
   bindLoadConfigTabs() {
@@ -222,6 +318,7 @@ const AppControlMethods = {
 
   handleLocationEdited() {
     this.state.locationPresetIsCustom = true;
+    this.state.customSiteLabel = '';
     const locPresetEl = document.getElementById('locationPreset');
     if (locPresetEl) locPresetEl.value = 'custom';
     if ((this.state.body || 'earth') !== 'earth') {
@@ -325,12 +422,67 @@ const AppControlMethods = {
       if (this.state.locationPresetIsCustom) {
         locPresetSelect.value = 'custom';
       } else {
-        const presetIndex = LOCATION_PRESETS.findIndex(loc =>
-          (loc.body || 'earth') === (this.state.body || 'earth') &&
-          Math.abs(loc.lat - this.state.latitude) < 0.1 &&
-          Math.abs(loc.lon - this.state.longitude) < 0.1
-        );
-        locPresetSelect.value = presetIndex >= 0 ? String(presetIndex) : 'custom';
+        let nextValue = 'custom';
+        let matchedSaved = false;
+        if (typeof SavedSitePresets !== 'undefined') {
+          const savedId = SavedSitePresets.findIdMatchingState(this.state);
+          if (savedId) {
+            matchedSaved = true;
+            nextValue = SavedSitePresets.optionValueForId(savedId);
+          }
+        }
+        const namedSite = (this.state.customSiteLabel || '').trim().length > 0;
+        if (!matchedSaved) {
+          if (namedSite) {
+            nextValue = 'custom';
+            this.state.locationPresetIsCustom = true;
+          } else {
+            const presetIndex = LOCATION_PRESETS.findIndex(loc =>
+              (loc.body || 'earth') === (this.state.body || 'earth') &&
+              Math.abs(loc.lat - this.state.latitude) < 0.1 &&
+              Math.abs(loc.lon - this.state.longitude) < 0.1
+            );
+            if (presetIndex >= 0) {
+              nextValue = String(presetIndex);
+            }
+          }
+        }
+        locPresetSelect.value = nextValue;
+      }
+    }
+
+    const saveWrap = document.getElementById('saveSitePresetWrap');
+    if (saveWrap) {
+      saveWrap.hidden = !this.state.locationPresetIsCustom;
+    }
+
+    const saveNameInput = document.getElementById('saveSitePresetName');
+    if (saveNameInput && this.state.locationPresetIsCustom && document.activeElement !== saveNameInput) {
+      const next = this.state.customSiteLabel || '';
+      if (saveNameInput.value !== next) {
+        saveNameInput.value = next;
+      }
+    }
+
+    const removeWrap = document.getElementById('removeSavedSiteWrap');
+    if (removeWrap && typeof SavedSitePresets !== 'undefined') {
+      const sel = document.getElementById('locationPreset');
+      removeWrap.hidden = !SavedSitePresets.parseOptionValue(sel?.value || '');
+    } else if (removeWrap) {
+      removeWrap.hidden = true;
+    }
+
+    const labelNote = document.getElementById('customSiteLabelNote');
+    if (labelNote) {
+      const sel = document.getElementById('locationPreset');
+      const label = (this.state.customSiteLabel || '').trim();
+      const showSharedLabel = Boolean(label && sel && sel.value === 'custom');
+      if (showSharedLabel) {
+        labelNote.textContent = `Site name (from link): ${label}`;
+        labelNote.hidden = false;
+      } else {
+        labelNote.textContent = '';
+        labelNote.hidden = true;
       }
     }
 

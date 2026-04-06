@@ -108,10 +108,16 @@
         </h2>
         <div class="section-body">
           <label>Preset Site
-            <select id="locationPreset">
-              <option value="custom">Custom</option>
-            </select>
+            <select id="locationPreset"></select>
           </label>
+          <div class="saved-site-actions" id="saveSitePresetWrap" hidden>
+            <input type="text" id="saveSitePresetName" maxlength="80" placeholder="Name this site" autocomplete="off" aria-label="Name for saved site">
+            <button type="button" id="saveSitePresetButton" class="saved-site-save-btn">Save</button>
+          </div>
+          <p class="field-note compact-note" id="removeSavedSiteWrap" hidden>
+            <button type="button" id="removeSavedSitePresetButton" class="saved-site-remove-btn">Remove from my sites</button>
+          </p>
+          <p class="field-note compact-note" id="customSiteLabelNote" hidden></p>
           <div class="input-row">
             <label>Latitude
               <input type="number" id="latitude" value="34.05" min="-90" max="90" step="0.1">
@@ -730,6 +736,7 @@
 
   <script src="js/policy-model.js"></script>
   <script src="js/reference-data.js"></script>
+  <script src="js/saved-site-presets.js"></script>
   <script src="js/module-catalog.js"></script>
   <script src="js/state-schema.js"></script>
   <script src="js/slider-markers.js"></script>

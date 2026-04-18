@@ -124,7 +124,7 @@ const MODULE_CATALOG = Object.freeze([
     defaultPreset: 'terraform-default',
     configs: [
       { key: 'electrolyzerEfficiency', label: 'Efficiency (kWh/kg H2)', type: 'range', min: 39, max: 100, step: 1, unit: 'kWh/kg', defaultValue: 79 },
-      { key: 'electrolyzerCapex', label: 'CAPEX ($/kW)', type: 'range', min: 10, max: 5000, step: 10, unit: '$/kW', defaultValue: 100 },
+      { key: 'electrolyzerCapex', label: 'CAPEX ($/kW)', type: 'range', min: 10, max: 5000, step: 10, unit: '$/kW', defaultValue: 100, scale: 'log' },
     ],
   }),
   normalizeModuleDefinition({
@@ -173,7 +173,7 @@ const MODULE_CATALOG = Object.freeze([
     defaultPreset: 'terraform-default',
     configs: [
       { key: 'dacEnergy', label: 'Efficiency (kWh/t-CO2)', type: 'range', min: 500, max: 5000, step: 5, unit: 'kWh/t', defaultValue: 3440 },
-      { key: 'dacCapex', label: 'CAPEX ($/ton capture capacity/yr)', type: 'range', min: 50, max: 20000, step: 50, unit: '$/t-yr', defaultValue: 450 },
+      { key: 'dacCapex', label: 'CAPEX ($/ton capture capacity/yr)', type: 'range', min: 50, max: 20000, step: 50, unit: '$/t-yr', defaultValue: 450, scale: 'log' },
     ],
   }),
   normalizeModuleDefinition({
@@ -191,7 +191,7 @@ const MODULE_CATALOG = Object.freeze([
     defaultAssetLife: 7,
     configs: [
       { key: 'sabatierConversion', label: 'Conversion Rate (%)', type: 'range', min: 80, max: 99.5, step: 0.5, unit: '%', defaultValue: 95 },
-      { key: 'sabatierCapex', label: 'CAPEX ($ per kW CH4)', type: 'range', min: 50, max: 5000, step: 50, unit: '$/kW-CH4', defaultValue: 50 },
+      { key: 'sabatierCapex', label: 'CAPEX ($ per kW CH4)', type: 'range', min: 50, max: 5000, step: 50, unit: '$/kW-CH4', defaultValue: 50, scale: 'log' },
     ],
   }),
   normalizeModuleDefinition({
@@ -209,7 +209,7 @@ const MODULE_CATALOG = Object.freeze([
     defaultAssetLife: 7,
     configs: [
       { key: 'methanolEfficiency', label: 'Conversion Rate (%)', type: 'range', min: 60, max: 95, step: 1, unit: '%', defaultValue: 80 },
-      { key: 'methanolCapex', label: 'CAPEX ($ per kg/h feed)', type: 'range', min: 50, max: 1000, step: 5, unit: '$/kg-feed-hr', defaultValue: 385 },
+      { key: 'methanolCapex', label: 'CAPEX ($ per kg/h feed)', type: 'range', min: 50, max: 1000, step: 5, unit: '$/kg-feed-hr', defaultValue: 385, scale: 'log' },
     ],
   }),
   normalizeModuleDefinition({

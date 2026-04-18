@@ -356,8 +356,10 @@ const AppControlMethods = {
     const extraConfig = typeof extra === 'function' ? { onInput: extra } : (extra || {});
     this.rangeBindings.push({ id, stateKey, formatter });
     el.addEventListener('input', () => {
-      this.state[stateKey] = parseFloat(el.value);
-      AppControlMethods.syncRangeDisplay.call(this, id, el.value, formatter);
+      const sliderValue = parseFloat(el.value);
+      const actualValue = el.dataset.scale === 'log' ? Math.pow(10, sliderValue) : sliderValue;
+      this.state[stateKey] = actualValue;
+      AppControlMethods.syncRangeDisplay.call(this, id, actualValue, formatter);
       if (extraConfig.onInput) extraConfig.onInput();
       this.syncDynamicVisibility();
       if (extraConfig.skipRecalculate) {
@@ -378,7 +380,11 @@ const AppControlMethods = {
     Object.entries(preset.values || {}).forEach(([stateKey, value]) => {
       this.state[stateKey] = value;
       const input = document.getElementById(stateKey);
-      if (input) input.value = String(value);
+      if (input) {
+        input.value = input.dataset.scale === 'log' && Number.isFinite(value) && value > 0
+          ? String(Math.log10(value))
+          : String(value);
+      }
       AppControlMethods.syncRangeDisplay.call(this, stateKey, value);
     });
 
@@ -489,8 +495,12 @@ const AppControlMethods = {
     this.rangeBindings.forEach(binding => {
       const el = document.getElementById(binding.id);
       if (!el) return;
-      el.value = this.state[binding.stateKey];
-      AppControlMethods.syncRangeDisplay.call(this, binding.id, this.state[binding.stateKey], binding.formatter);
+      const stateValue = this.state[binding.stateKey];
+      const numericState = parseFloat(stateValue);
+      el.value = el.dataset.scale === 'log' && Number.isFinite(numericState) && numericState > 0
+        ? Math.log10(numericState)
+        : stateValue;
+      AppControlMethods.syncRangeDisplay.call(this, binding.id, stateValue, binding.formatter);
     });
 
     ModuleCatalog.getAll().forEach(module => {

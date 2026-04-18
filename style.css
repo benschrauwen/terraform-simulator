@@ -772,6 +772,45 @@ input[type="range"]::-moz-range-track {
   overflow: visible;
 }
 
+.range-input-wrap.has-log-ticks {
+  padding-bottom: 18px;
+}
+
+.slider-log-ticks {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 16px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.slider-log-tick {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 4px;
+  background: rgba(141, 153, 168, 0.45);
+  transform: translateX(-50%);
+}
+
+.slider-log-tick.major {
+  height: 7px;
+  background: rgba(141, 153, 168, 0.85);
+}
+
+.slider-log-tick-label {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  line-height: 1;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 .range-input-wrap input[type="range"] {
   position: relative;
   z-index: 2;

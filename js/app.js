@@ -279,12 +279,21 @@ class App {
         </label>
       `
       : '';
-    const configs = module.configs.map(config => `
+    const configs = module.configs.map(config => {
+      const isLog = config.scale === 'log';
+      const stateValue = this.state[config.key];
+      const sliderMin = isLog ? Math.log10(config.min) : config.min;
+      const sliderMax = isLog ? Math.log10(config.max) : config.max;
+      const sliderStep = isLog ? 0.001 : config.step;
+      const sliderValue = isLog ? Math.log10(stateValue) : stateValue;
+      const dataScale = isLog ? ' data-scale="log"' : '';
+      return `
       <label>${config.label}
-        <input type="range" id="${config.key}" min="${config.min}" max="${config.max}" step="${config.step}" value="${this.state[config.key]}">
-        <span class="range-value" id="${config.key}Value">${this.formatConfigValue(config.unit, this.state[config.key])}</span>
+        <input type="range" id="${config.key}"${dataScale} min="${sliderMin}" max="${sliderMax}" step="${sliderStep}" value="${sliderValue}">
+        <span class="range-value" id="${config.key}Value">${this.formatConfigValue(config.unit, stateValue)}</span>
       </label>
-    `).join('');
+    `;
+    }).join('');
     const assetLifeKey = ModuleCatalog.getAssetLifeKey(module);
     const assetLifeControl = assetLifeKey ? `
       <label>Asset Life (years)
@@ -683,6 +692,7 @@ class App {
 
   initSliderMarkers() {
     this.sliderMarkerBindings = [];
+    this.logTickBindings = [];
 
     Object.entries(SLIDER_MARKERS).forEach(([id, markers]) => {
       const input = document.getElementById(id);
@@ -700,11 +710,13 @@ class App {
       const max = parseFloat(input.max);
       if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return;
 
+      const isLog = input.dataset.scale === 'log';
       const formatter = this.rangeBindings.find(binding => binding.id === id)?.formatter;
       markerLayer.innerHTML = '';
 
       markers.forEach(marker => {
-        if (marker.value < min || marker.value > max) return;
+        const sliderValue = isLog ? Math.log10(marker.value) : marker.value;
+        if (sliderValue < min || sliderValue > max) return;
 
         const markerButton = document.createElement('button');
         markerButton.type = 'button';
@@ -718,17 +730,61 @@ class App {
         markerButton.addEventListener('click', event => {
           event.preventDefault();
           event.stopPropagation();
-          input.value = String(marker.value);
+          input.value = String(sliderValue);
           input.dispatchEvent(new Event('input', { bubbles: true }));
           input.focus();
         });
 
         markerLayer.appendChild(markerButton);
-        this.sliderMarkerBindings.push({ input, markerButton, min, max, value: marker.value });
+        this.sliderMarkerBindings.push({ input, markerButton, min, max, value: sliderValue });
       });
     });
 
+    this.initLogSliderTicks();
     this.positionSliderMarkers();
+  }
+
+  initLogSliderTicks() {
+    document.querySelectorAll('input[type="range"][data-scale="log"]').forEach(input => {
+      const wrap = this.ensureRangeInputWrap(input);
+      wrap.classList.add('has-log-ticks');
+
+      let tickLayer = wrap.querySelector('.slider-log-ticks');
+      if (!tickLayer) {
+        tickLayer = document.createElement('div');
+        tickLayer.className = 'slider-log-ticks';
+        wrap.appendChild(tickLayer);
+      }
+      tickLayer.innerHTML = '';
+
+      const min = parseFloat(input.min);
+      const max = parseFloat(input.max);
+      if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return;
+
+      const realMin = Math.pow(10, min);
+      const realMax = Math.pow(10, max);
+
+      for (let decade = Math.floor(min); decade <= Math.ceil(max); decade++) {
+        for (const m of [1, 2, 5]) {
+          const realValue = m * Math.pow(10, decade);
+          if (realValue < realMin * 0.999 || realValue > realMax * 1.001) continue;
+
+          const sliderValue = Math.log10(realValue);
+          const tick = document.createElement('span');
+          tick.className = m === 1 ? 'slider-log-tick major' : 'slider-log-tick minor';
+          if (m === 1) {
+            const label = document.createElement('span');
+            label.className = 'slider-log-tick-label';
+            label.textContent = realValue >= 1000
+              ? `${(realValue / 1000).toLocaleString()}k`
+              : `${realValue}`;
+            tick.appendChild(label);
+          }
+          tickLayer.appendChild(tick);
+          this.logTickBindings.push({ input, element: tick, min, max, value: sliderValue });
+        }
+      }
+    });
   }
 
   ensureRangeInputWrap(input) {
@@ -752,6 +808,16 @@ class App {
       const ratio = (value - min) / (max - min);
       const left = (thumbSize / 2) + (ratio * Math.max(0, width - thumbSize));
       markerButton.style.left = `${left}px`;
+    });
+
+    (this.logTickBindings || []).forEach(({ input, element, min, max, value }) => {
+      const width = input.getBoundingClientRect().width;
+      if (!width || max <= min) return;
+
+      const thumbSize = this.getRangeThumbSize(input);
+      const ratio = (value - min) / (max - min);
+      const left = (thumbSize / 2) + (ratio * Math.max(0, width - thumbSize));
+      element.style.left = `${left}px`;
     });
   }
 

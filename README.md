@@ -39,7 +39,7 @@ The app is still a mostly static front-end project, with a lightweight Node buil
 - `js/calculation-runtime-paths.js`: script loading order for the optimizer worker runtime
 - `js/policy-model.js`: named policy schemes, per-scheme inputs, cash-flow formulas, framework-only entries, and legacy-policy normalization
 - `js/reference-data.js`: presets, chemistry constants, methane market presets, and shared assumptions
-- `js/module-registry.js` + `js/exploratory-routes.js`: supported/exploratory module metadata and route assumptions
+- `js/module-catalog.js`: supported/exploratory module metadata and route assumptions
 - `js/state-schema.js`: shared defaults, normalization, and dependency rules
 - `js/slider-markers.js`: slider guide markers and benchmark labels
 - `js/solar-geometry.js`: Earth, Mars, and Moon solar-profile shaping

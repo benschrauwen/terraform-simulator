@@ -552,10 +552,6 @@ Object.assign(Calc, {
     return Infinity;
   },
 
-  calculatePaybackYears(initialOutflow, yearlyCashFlows) {
-    return this.calculateSimplePaybackYears(initialOutflow, yearlyCashFlows);
-  },
-
   buildDebtSchedule(principal, annualRate, termYears, analysisHorizonYears) {
     const safePrincipal = Number.isFinite(principal) ? Math.max(0, principal) : 0;
     const safeRate = Number.isFinite(annualRate) ? Math.max(0, annualRate) : 0;

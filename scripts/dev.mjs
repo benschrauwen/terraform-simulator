@@ -30,8 +30,15 @@ try {
 }
 
 const server = http.createServer(async (request, response) => {
-  const requestUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
-  let pathname = decodeURIComponent(requestUrl.pathname);
+  let pathname;
+  try {
+    const requestUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
+    pathname = decodeURIComponent(requestUrl.pathname);
+  } catch {
+    response.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    response.end('Bad request');
+    return;
+  }
 
   if (pathname.endsWith('/')) {
     pathname = `${pathname}index.html`;
@@ -55,7 +62,14 @@ const server = http.createServer(async (request, response) => {
 
   const extension = path.extname(filePath).toLowerCase();
   const contentType = MIME_TYPES[extension] || 'application/octet-stream';
-  const contents = await fs.readFile(filePath);
+  let contents;
+  try {
+    contents = await fs.readFile(filePath);
+  } catch {
+    response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    response.end('Not found');
+    return;
+  }
 
   response.writeHead(200, {
     'Cache-Control': 'no-store',

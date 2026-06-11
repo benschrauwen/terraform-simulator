@@ -792,22 +792,6 @@ function resolveModule(moduleOrId) {
   return moduleOrId || null;
 }
 
-const EXPLORATORY_ROUTE_LIBRARY = Object.freeze(
-  Object.fromEntries(
-    MODULE_CATALOG
-      .filter(module => module.exploratory)
-      .map(module => [module.id, Object.freeze({ routes: module.routes || {} })])
-  )
-);
-
-const EXPLORATORY_MARKET_CONFIG = Object.freeze(
-  Object.fromEntries(
-    MODULE_CATALOG
-      .filter(module => module.exploratory && module.market)
-      .map(module => [module.id, module.market])
-  )
-);
-
 const ModuleCatalog = Object.freeze({
   getAll() {
     return MODULE_CATALOG;
@@ -961,14 +945,4 @@ const ModuleCatalog = Object.freeze({
       return groups;
     }, {});
   },
-
-  getExploratoryRouteLibrary() {
-    return EXPLORATORY_ROUTE_LIBRARY;
-  },
-
-  getExploratoryMarketConfigMap() {
-    return EXPLORATORY_MARKET_CONFIG;
-  },
 });
-
-const MODULE_REGISTRY = ModuleCatalog.getAll();

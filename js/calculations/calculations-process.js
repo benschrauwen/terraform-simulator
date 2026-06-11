@@ -223,17 +223,6 @@ Object.assign(Calc, {
     };
   },
 
-  getDownstreamDemand(state) {
-    const allocationPlan = this.buildProcessAllocationPlan(state);
-    return {
-      mix: allocationPlan.supported.mix,
-      label: allocationPlan.label,
-      h2PowerDemand: allocationPlan.powerProxy.electrolyzer,
-      co2PowerDemand: allocationPlan.powerProxy.dac,
-      exploratoryPowerDemand: allocationPlan.powerProxy.exploratoryTotal,
-    };
-  },
-
   getBalancedAllocation(state) {
     const allocationPlan = this.buildProcessAllocationPlan(state);
     return {

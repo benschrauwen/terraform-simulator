@@ -6,6 +6,7 @@ import { SpreadsheetFile, Workbook } from '@oai/artifact-tool';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const outputDir = __dirname;
+const shouldRenderPreviews = process.argv.includes('--render-previews');
 const lastTestedDate = '2026-06-23';
 const outputPath = path.join(outputDir, 'terraform-industries-quality-validation.xlsx');
 
@@ -615,14 +616,14 @@ const features = [
     name: 'Build and Deploy Asset Packaging',
     story: 'As a maintainer, I want a production dist folder with versioned app assets and no local development artifacts.',
     expected: 'Build deletes and rebuilds dist, copies app assets plus lz-string, excludes dev/test/runtime metadata, replaces __APP_BUILD_ID__, and versions local CSS/JS URLs.',
-    edge: 'Untracked local directories; .DS_Store files; generated outputs; package metadata; hidden agent configuration; git unavailable build ID fallback.',
-    validation: 'dist must not include .git, .claude, .codex, .agents, node_modules except explicit lz-string file, outputs, scripts, tests, package files, .DS_Store, or NOTES.md.',
+    edge: 'Untracked local directories; .DS_Store files; generated report directories; package metadata; hidden agent configuration; git unavailable build ID fallback.',
+    validation: 'dist must not include .git, .claude, .codex, .agents, node_modules except explicit lz-string file, outputs, software-quality-report, scripts, tests, package files, .DS_Store, or NOTES.md.',
     dependencies: 'scripts/build.mjs; package.json build script; dist preview server.',
     assumptions: 'Production host serves dist only.',
     status: 'Passed after remediation',
     defectCount: 1,
     severity: 'High (resolved)',
-    notes: 'D-001 fixed by excluding local agent/tooling dirs, outputs, .DS_Store, and NOTES.md; rebuild, dist preview, and automated build-regression test passed.',
+    notes: 'D-001 fixed by excluding local agent/tooling dirs, generated report directories, .DS_Store, and NOTES.md; rebuild, dist preview, and automated build-regression test passed.',
     source: 'scripts/build.mjs; tests/build/build.test.js; npm run build; dist file-tree validation.',
   },
   {
@@ -727,10 +728,10 @@ const defects = [
     severity: 'High',
     status: 'Resolved',
     repro: 'Run npm run build, then inspect dist. Initial output contained dist/.claude/launch.json, dist/.DS_Store, and dist/js/NOTES.md when those local files existed in the workspace.',
-    expected: 'Production dist output should contain only deployable app assets and approved static metadata, not local agent/tooling files, OS metadata, generated outputs, tests, scripts, or ad hoc notes.',
+    expected: 'Production dist output should contain only deployable app assets and approved static metadata, not local agent/tooling files, OS metadata, generated report artifacts, tests, scripts, or ad hoc notes.',
     actual: 'Initial dist output included local development artifacts before remediation.',
     rootCause: 'scripts/build.mjs used a narrow blacklist and copied most project-tree entries by default, so untracked local artifacts under root/js were included.',
-    fix: 'Extended build exclusions to skip .agents, .claude, .codex, outputs, .DS_Store, and NOTES.md files in addition to existing dev/test/package exclusions.',
+    fix: 'Extended build exclusions to skip .agents, .claude, .codex, outputs, software-quality-report, .DS_Store, and NOTES.md files in addition to existing dev/test/package exclusions.',
     verification: 'Rebuilt dist; file-tree check confirmed artifacts absent. Added tests/build/build.test.js regression coverage. npm test passed 82/82. Dist preview at localhost:4174 loaded with versioned assets and no browser errors.',
     opened: lastTestedDate,
     resolved: lastTestedDate,
@@ -928,7 +929,7 @@ const assumptions = [
   ['A-003', 'Browser coverage', 'Browser execution covered representative end-to-end journeys and responsive behavior. It did not exhaust every slider value or every exploratory route combination manually.'],
   ['A-004', 'External dependencies', 'Chart.js, Leaflet, and Esri tiles were available during browser checks. Chart.js absence, Leaflet absence, Esri tile failures, and optimizer Worker failures now have fallback coverage, but full offline chart/map functionality still requires bundling or local alternatives.'],
   ['A-005', 'Local storage', 'Saved site behavior is browser-local. The read-only browser evaluation scope could not inspect localStorage directly, so visible UI state and existing unit tests were used for validation.'],
-  ['A-006', 'Generated artifacts', 'The canonical workbook is under outputs/019ef1fe-2079-7a42-a2b9-f6a978ebc6cc and is excluded from production dist by the build patch.'],
+  ['A-006', 'Generated artifacts', 'The canonical workbook is under software-quality-report/ and is excluded from production dist by the build patch. Preview renders are optional local QA artifacts and are not committed.'],
 ];
 
 const workbook = Workbook.create();
@@ -1087,11 +1088,12 @@ addTableSheet(workbook, 'Assumptions', assumptionHeaders, assumptions, 'Assumpti
 
 styleSummary(summary);
 
-await verifyWorkbook(workbook);
+await verifyWorkbook(workbook, { renderPreviews: shouldRenderPreviews });
 await fs.mkdir(outputDir, { recursive: true });
 const output = await SpreadsheetFile.exportXlsx(workbook);
 await output.save(outputPath);
-console.log(JSON.stringify({ outputPath, features: features.length, testCases: testCases.length, defects: defects.length }, null, 2));
+await removeInspectArtifact();
+console.log(JSON.stringify({ outputPath, features: features.length, testCases: testCases.length, defects: defects.length, renderedPreviews: shouldRenderPreviews }, null, 2));
 
 function scenarioForFeature(featureId) {
   const scenarios = {
@@ -1196,7 +1198,7 @@ function styleSummary(sheet) {
   sheet.freezePanes.freezeRows(3);
 }
 
-async function verifyWorkbook(workbookInstance) {
+async function verifyWorkbook(workbookInstance, { renderPreviews = false } = {}) {
   const summaryInspect = await workbookInstance.inspect({
     kind: 'table',
     range: 'Coverage Summary!A1:B23',
@@ -1226,6 +1228,10 @@ async function verifyWorkbook(workbookInstance) {
   });
   console.log(errors.ndjson);
 
+  if (!renderPreviews) return;
+
+  const previewDir = path.join(outputDir, 'previews');
+  await fs.mkdir(previewDir, { recursive: true });
   const previews = [
     ['Coverage Summary', 'A1:B23', 'coverage-summary-preview.png'],
     ['Feature Matrix', 'A1:O18', 'feature-matrix-preview.png'],
@@ -1239,8 +1245,12 @@ async function verifyWorkbook(workbookInstance) {
   for (const [sheetName, range, fileName] of previews) {
     const blob = await workbookInstance.render({ sheetName, range, scale: 1, format: 'png' });
     const bytes = new Uint8Array(await blob.arrayBuffer());
-    await fs.writeFile(path.join(outputDir, fileName), bytes);
+    await fs.writeFile(path.join(previewDir, fileName), bytes);
   }
+}
+
+async function removeInspectArtifact() {
+  await fs.rm(`${outputPath}.inspect.ndjson`, { force: true });
 }
 
 function columnName(columnCount) {

@@ -1,3 +1,7 @@
 dist/
 node_modules/
 .DS_Store
+outputs/
+software-quality-report/node_modules
+software-quality-report/previews/
+software-quality-report/*.inspect.ndjson

@@ -20,6 +20,7 @@ const EXCLUDED_PATH_PREFIXES = [
   'node_modules',
   'outputs',
   'scripts',
+  'software-quality-report',
   'tests',
 ];
 const EXCLUDED_ROOT_FILES = new Set(['.DS_Store', '.gitignore', 'package.json', 'package-lock.json', 'vercel.json']);

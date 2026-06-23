@@ -41,6 +41,7 @@ test('production build excludes local development artifacts', () => {
     'package-lock.json',
     'package.json',
     'scripts',
+    'software-quality-report',
     'tests',
     'vercel.json',
   ].forEach(relativePath => {

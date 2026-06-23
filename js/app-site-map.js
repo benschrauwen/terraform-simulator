@@ -41,13 +41,22 @@ window.AppSiteMapMethods = {
 
     L.control.zoom({ position: 'bottomright' }).addTo(this.siteMap);
 
-    L.tileLayer(
+    this.siteMapTileLayer = L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       {
         attribution: 'Tiles &copy; Esri',
         maxZoom: 19,
       }
-    ).addTo(this.siteMap);
+    );
+    if (this.siteMapTileLayer.on) {
+      this.siteMapTileLayer.on('tileerror', () => {
+        this.showSiteMapMessage(
+          'Satellite tiles failed to load.',
+          'Satellite tile imagery is temporarily unavailable, but the footprint metrics still update from the model.'
+        );
+      });
+    }
+    this.siteMapTileLayer.addTo(this.siteMap);
 
     const markerFill = this.hexToRgba(markerColor, 0.5);
     const siteIcon = L.divIcon({

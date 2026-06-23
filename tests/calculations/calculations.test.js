@@ -4,6 +4,7 @@ const test = require('node:test');
 const {
   Calc,
   ModuleCatalog,
+  PolicyModel,
   createState,
   formatMoney,
   runBatterySweep,
@@ -834,6 +835,90 @@ test('legacy policy modes normalize to the consolidated incentive schemes', () =
     Math.abs(legacyEhb.euHydrogenBankPremiumPerKg - 0.55) <= 1e-9,
     `Expected the legacy Hydrogen Bank mode to preserve the prior custom H2 premium, got ${legacyEhb.euHydrogenBankPremiumPerKg}.`
   );
+});
+
+test('policy select catalog exposes valid unique schemes and input metadata', () => {
+  const groups = PolicyModel.getSelectGroups();
+  const options = groups.flatMap(group => group.options.map(option => ({ ...option, group: group.label })));
+  const ids = options.map(option => option.id);
+  const uniqueIds = new Set(ids);
+
+  assert.equal(groups.length, 5, 'Expected the policy select to retain the current five option groups.');
+  assert.equal(ids.length, uniqueIds.size, 'Expected policy select IDs to be unique across groups.');
+  assert.ok(ids.length >= 25, `Expected broad policy catalog coverage, got ${ids.length} policies.`);
+
+  options.forEach(option => {
+    const scheme = PolicyModel.getScheme(option.id);
+    assert.ok(scheme, `Expected policy scheme ${option.id} from ${option.group} to resolve.`);
+    assert.equal(option.label, scheme.selectLabel, `Expected select label for ${option.id} to match the scheme metadata.`);
+
+    [
+      'label',
+      'selectLabel',
+      'jurisdiction',
+      'policyLayer',
+      'technology',
+      'simulatorTreatment',
+      'supportFamily',
+      'supportTiming',
+      'basis',
+      'note',
+      'stackingOrExclusivity',
+      'implementationFormula',
+      'cashflowType',
+    ].forEach(key => {
+      assert.equal(typeof scheme[key], 'string', `Expected ${option.id}.${key} to be a string.`);
+      assert.notEqual(scheme[key].trim(), '', `Expected ${option.id}.${key} to be non-empty.`);
+    });
+
+    const inputDetails = PolicyModel.getInputDetails(createState({ policyMode: option.id }), scheme);
+    inputDetails.forEach(input => {
+      assert.equal(typeof input.key, 'string', `Expected ${option.id} input key to be a string.`);
+      assert.notEqual(input.key.trim(), '', `Expected ${option.id} input key to be non-empty.`);
+      assert.equal(typeof input.label, 'string', `Expected ${option.id}.${input.key} label to be a string.`);
+      assert.equal(Number.isFinite(input.min), true, `Expected ${option.id}.${input.key} min to be finite.`);
+      assert.equal(Number.isFinite(input.max), true, `Expected ${option.id}.${input.key} max to be finite.`);
+      assert.equal(Number.isFinite(input.step), true, `Expected ${option.id}.${input.key} step to be finite.`);
+      assert.equal(Number.isFinite(input.value), true, `Expected ${option.id}.${input.key} value to be finite.`);
+      assert.ok(input.min <= input.max, `Expected ${option.id}.${input.key} min <= max.`);
+      assert.ok(input.value >= input.min - 1e-12, `Expected ${option.id}.${input.key} value to be at least min.`);
+      assert.ok(input.value <= input.max + 1e-12, `Expected ${option.id}.${input.key} value to be at most max.`);
+      assert.equal(typeof input.formattedValue, 'string', `Expected ${option.id}.${input.key} formattedValue to be a string.`);
+      assert.notEqual(input.formattedValue.trim(), '', `Expected ${option.id}.${input.key} formattedValue to be non-empty.`);
+    });
+  });
+});
+
+test('every exposed policy scheme evaluates to finite economics outputs', () => {
+  const ids = PolicyModel.getSelectGroups().flatMap(group => group.options.map(option => option.id));
+
+  ids.forEach(policyMode => {
+    const result = Calc.calculateAll(createState({ policyMode }));
+    const policy = result.economics.policy;
+
+    assert.equal(policy.mode, policyMode, `Expected evaluated policy mode to remain ${policyMode}.`);
+    assert.equal(typeof policy.label, 'string', `Expected ${policyMode} label to be a string.`);
+    assert.notEqual(policy.label.trim(), '', `Expected ${policyMode} label to be non-empty.`);
+    assert.equal(Number.isFinite(policy.annualSupport), true, `Expected ${policyMode} annual support to be finite.`);
+    assert.equal(Number.isFinite(policy.upfrontSupport), true, `Expected ${policyMode} upfront support to be finite.`);
+    assert.equal(Number.isFinite(policy.total), true, `Expected ${policyMode} total support to be finite.`);
+    assert.equal(Number.isFinite(policy.effectiveUnitSupport), true, `Expected ${policyMode} effective unit support to be finite.`);
+    assert.equal(Number.isFinite(policy.outputMetric.value), true, `Expected ${policyMode} output metric to be finite.`);
+    assert.equal(Number.isFinite(policy.eligibleCapex), true, `Expected ${policyMode} eligible CAPEX to be finite.`);
+    assert.equal(Number.isFinite(result.economics.totalAnnualRevenue), true, `Expected ${policyMode} total annual revenue to be finite.`);
+    assert.equal(Number.isFinite(result.economics.npv), true, `Expected ${policyMode} NPV to be finite.`);
+
+    policy.inputValues.forEach(input => {
+      assert.equal(Number.isFinite(input.value), true, `Expected ${policyMode}.${input.key} evaluated value to be finite.`);
+      assert.equal(typeof input.formattedValue, 'string', `Expected ${policyMode}.${input.key} evaluated formatted value to be a string.`);
+      assert.notEqual(input.formattedValue.trim(), '', `Expected ${policyMode}.${input.key} evaluated formatted value to be non-empty.`);
+    });
+
+    if (policy.frameworkOnly || policyMode === 'none') {
+      assert.equal(policy.annualSupport, 0, `Expected ${policyMode} to have no annual modeled cash support.`);
+      assert.equal(policy.upfrontSupport, 0, `Expected ${policyMode} to have no upfront modeled cash support.`);
+    }
+  });
 });
 
 test('48E solar support reduces net capex at close and appears in the close bucket', () => {

@@ -1,5 +1,59 @@
 /* Chart helpers attached to App */
 
+const CHART_UNAVAILABLE_MESSAGE = 'Charts are unavailable because Chart.js failed to load.';
+
+function isChartRuntimeAvailable() {
+  return typeof Chart === 'function';
+}
+
+function getChartWrapper(canvas) {
+  return canvas?.closest?.('.chart-wrapper') || canvas?.parentElement || null;
+}
+
+function markChartUnavailable(canvasId, message = CHART_UNAVAILABLE_MESSAGE) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const wrapper = getChartWrapper(canvas);
+
+  canvas.hidden = true;
+  if (wrapper) {
+    wrapper.dataset.chartUnavailable = message;
+    wrapper.setAttribute('role', 'status');
+    wrapper.setAttribute('aria-label', message);
+  }
+}
+
+function clearChartUnavailable(canvasId) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const wrapper = getChartWrapper(canvas);
+
+  canvas.hidden = false;
+  if (wrapper) {
+    delete wrapper.dataset.chartUnavailable;
+    wrapper.removeAttribute('role');
+    wrapper.removeAttribute('aria-label');
+  }
+}
+
+function destroyChartInstance(app, chartKey) {
+  const chart = app?.charts?.[chartKey];
+  if (chart?.destroy) chart.destroy();
+  if (app?.charts) delete app.charts[chartKey];
+  if (app?.chartKeys) delete app.chartKeys[chartKey];
+}
+
+function ensureChartRuntime(app, chartKey, canvasId) {
+  if (isChartRuntimeAvailable()) {
+    clearChartUnavailable(canvasId);
+    return true;
+  }
+
+  destroyChartInstance(app, chartKey);
+  markChartUnavailable(canvasId);
+  return false;
+}
+
 /** Merge CAPEX segments under 2% of total into "Other" when there are many categories. */
 function compactCapexChartData(labels, values, colors) {
   const n = labels.length;
@@ -275,6 +329,7 @@ window.AppChartMethods = {
       chemicalData,
     });
 
+    if (!ensureChartRuntime(this, 'power', 'powerChart')) return;
     if (this.chartKeys.power === chartKey && this.charts.power) return;
 
     const datasets = [
@@ -503,6 +558,7 @@ window.AppChartMethods = {
       aiSeries: displayedAiSeries,
       chemicalSeries: displayedChemicalSeries,
     });
+    if (!ensureChartRuntime(this, 'annualDispatch', 'annualDispatchChart')) return;
     if (this.chartKeys.annualDispatch === chartKey && this.charts.annualDispatch) return;
 
     const datasets = [
@@ -716,6 +772,7 @@ window.AppChartMethods = {
       cumulativeProjectCash: timeline.cumulativeProjectCash,
       cumulativeEquityCash: timeline.financed ? timeline.cumulativeEquityCash : [],
     });
+    if (!ensureChartRuntime(this, 'econTimeline', 'economicsTimelineChart')) return;
     if (this.chartKeys.econTimeline === chartKey && this.charts.econTimeline) return;
 
     const annualDatasets = datasets.filter(dataset => dataset.yAxisID === 'yAnnual');
@@ -847,6 +904,8 @@ window.AppChartMethods = {
   },
 
   updateEconChart(r) {
+    if (!ensureChartRuntime(this, 'econ', 'econChart')) return;
+
     const e = r.economics;
     const solarBreakdown = e.capexBreakdown || {};
     const labels = [];
@@ -970,9 +1029,14 @@ window.AppChartMethods = {
         this.charts[config.chartKey].destroy();
         delete this.charts[config.chartKey];
       }
-      if (!config.active || !canvas) return;
+      if (!config.active || !canvas) {
+        clearChartUnavailable(config.canvasId);
+        return;
+      }
 
       visibleChartCount += 1;
+      if (!ensureChartRuntime(this, config.chartKey, config.canvasId)) return;
+
       const series = Calc.runSensitivity(this.state, config.paramKey, config.prices);
       this.charts[config.chartKey] = new Chart(canvas, {
         type: 'line',

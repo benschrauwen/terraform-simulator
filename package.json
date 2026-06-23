@@ -8,7 +8,7 @@
     "dev": "node scripts/dev.mjs",
     "build": "node scripts/build.mjs",
     "preview": "node scripts/dev.mjs dist",
-    "test": "node --test tests/calculations/calculations.test.js tests/renderers/diagram.test.js tests/renderers/production.test.js tests/share-state/share-state.test.js tests/saved-site-presets/saved-site-presets.test.js"
+    "test": "node --test tests/build/build.test.js tests/server/dev-server.test.js tests/ui/day-mode.test.js tests/ui/html-contract.test.js tests/ui/load-config-tabs.test.js tests/ui/section-toggles.test.js tests/calculations/calculations.test.js tests/renderers/charts.test.js tests/renderers/diagram.test.js tests/renderers/optimizer.test.js tests/renderers/production.test.js tests/renderers/site-map.test.js tests/share-state/share-state.test.js tests/saved-site-presets/saved-site-presets.test.js"
   },
   "dependencies": {
     "lz-string": "^1.5.0"

@@ -50,6 +50,7 @@ function loadRuntime() {
     Calc: vm.runInContext('Calc', context),
     DEFAULT_STATE: vm.runInContext('DEFAULT_STATE', context),
     ModuleCatalog: vm.runInContext('ModuleCatalog', context),
+    PolicyModel: vm.runInContext('PolicyModel', context),
   };
 }
 
@@ -128,6 +129,7 @@ module.exports = {
   CALCULATION_FILES,
   Calc: runtime.Calc,
   ModuleCatalog: runtime.ModuleCatalog,
+  PolicyModel: runtime.PolicyModel,
   createState,
   runScenario,
   summarizeResult,

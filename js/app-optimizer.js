@@ -182,12 +182,17 @@ const AppOptimizerMethods = {
     const requestId = ++this.optimizerRequestId;
     return new Promise((resolve, reject) => {
       this.optimizerRequests.set(requestId, { resolve, reject, onProgress });
-      worker.postMessage({
-        requestId,
-        type: 'findBestRangeValueForIrr',
-        state: this.state,
-        search,
-      });
+      try {
+        worker.postMessage({
+          requestId,
+          type: 'findBestRangeValueForIrr',
+          state: this.state,
+          search,
+        });
+      } catch (error) {
+        this.optimizerRequests.delete(requestId);
+        reject(error);
+      }
     });
   },
 };

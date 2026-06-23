@@ -224,13 +224,39 @@ const AppControlMethods = {
   },
 
   bindLoadConfigTabs() {
-    document.querySelectorAll('.load-config-tab').forEach(tab => {
+    const tabs = Array.from(document.querySelectorAll('.load-config-tab'));
+    tabs.forEach(tab => {
       tab.addEventListener('click', () => {
-        this.state.loadConfigTab = tab.dataset.loadTab || 'chemicals';
-        AppControlMethods.syncLoadConfigTabs.call(this);
+        AppControlMethods.selectLoadConfigTab.call(this, tab);
+      });
+      tab.addEventListener('keydown', event => {
+        const availableTabs = tabs.filter(item => !item.disabled);
+        if (!availableTabs.length) return;
+
+        const currentIndex = availableTabs.indexOf(tab);
+        const keyActions = {
+          ArrowRight: () => availableTabs[(currentIndex + 1) % availableTabs.length],
+          ArrowDown: () => availableTabs[(currentIndex + 1) % availableTabs.length],
+          ArrowLeft: () => availableTabs[(currentIndex - 1 + availableTabs.length) % availableTabs.length],
+          ArrowUp: () => availableTabs[(currentIndex - 1 + availableTabs.length) % availableTabs.length],
+          Home: () => availableTabs[0],
+          End: () => availableTabs[availableTabs.length - 1],
+        };
+        const nextTab = keyActions[event.key]?.();
+        if (!nextTab) return;
+
+        event.preventDefault();
+        AppControlMethods.selectLoadConfigTab.call(this, nextTab, { focus: true });
       });
     });
     AppControlMethods.syncLoadConfigTabs.call(this);
+  },
+
+  selectLoadConfigTab(tab, { focus = false } = {}) {
+    if (!tab || tab.disabled) return;
+    this.state.loadConfigTab = tab.dataset.loadTab || 'chemicals';
+    AppControlMethods.syncLoadConfigTabs.call(this);
+    if (focus && typeof tab.focus === 'function') tab.focus();
   },
 
   syncLoadConfigTabs() {
@@ -239,9 +265,13 @@ const AppControlMethods = {
       const isActive = tab.dataset.loadTab === activeTab;
       tab.classList.toggle('active', isActive);
       tab.setAttribute('aria-selected', String(isActive));
+      tab.setAttribute('tabindex', isActive ? '0' : '-1');
     });
     document.querySelectorAll('.load-config-panel').forEach(panel => {
-      panel.classList.toggle('active', panel.dataset.loadPanel === activeTab);
+      const isActive = panel.dataset.loadPanel === activeTab;
+      panel.classList.toggle('active', isActive);
+      panel.hidden = !isActive;
+      panel.setAttribute('aria-hidden', String(!isActive));
     });
     // Sliders are `display:none` when their load tab is inactive; marker positions need width
     // from layout after the panel becomes visible.

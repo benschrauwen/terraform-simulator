@@ -75,21 +75,34 @@
           <span class="chevron">▾</span>
         </h2>
         <div class="section-body">
-          <div class="day-mode-tabs" id="dayModeTabs">
-            <button class="day-tab active" data-mode="average">Annual Average</button>
-            <button class="day-tab" data-mode="specific">Specific Day</button>
+          <div class="day-mode-tabs" id="dayModeTabs" role="group" aria-label="Analysis cycle mode">
+            <button
+              type="button"
+              class="day-tab active"
+              data-mode="average"
+              aria-pressed="true"
+              aria-controls="daySpecificControls"
+            >Annual Average</button>
+            <button
+              type="button"
+              class="day-tab"
+              data-mode="specific"
+              aria-pressed="false"
+              aria-controls="daySpecificControls"
+              aria-disabled="false"
+            >Specific Day</button>
           </div>
           <div class="field-note compact-note" id="dayModeNote"></div>
-          <div class="day-specific-controls" id="daySpecificControls" style="display:none;">
+          <div class="day-specific-controls" id="daySpecificControls" hidden aria-hidden="true">
             <label>Day of Year
               <input type="range" id="dayOfYear" min="1" max="365" step="1" value="172">
               <span class="range-value" id="dayOfYearValue">Jun 21 (Summer Solstice)</span>
             </label>
             <div class="day-presets">
-              <button class="day-preset" data-day="80">Mar 21</button>
-              <button class="day-preset" data-day="172">Jun 21</button>
-              <button class="day-preset" data-day="266">Sep 23</button>
-              <button class="day-preset" data-day="355">Dec 21</button>
+              <button type="button" class="day-preset" data-day="80">Mar 21</button>
+              <button type="button" class="day-preset" data-day="172">Jun 21</button>
+              <button type="button" class="day-preset" data-day="266">Sep 23</button>
+              <button type="button" class="day-preset" data-day="355">Dec 21</button>
             </div>
             <div class="day-info">
               <span>Sunrise: <strong id="sunriseTime">—</strong></span>
@@ -276,11 +289,35 @@
         </h2>
         <div class="section-body">
           <div class="load-config-tabs" id="loadConfigTabs" role="tablist" aria-label="Site load configuration">
-            <button type="button" class="load-config-tab active" data-load-tab="chemicals" aria-selected="true">Chemical</button>
-            <button type="button" class="load-config-tab" data-load-tab="ai" aria-selected="false">AI Compute</button>
+            <button
+              type="button"
+              class="load-config-tab active"
+              id="loadTabChemicals"
+              data-load-tab="chemicals"
+              role="tab"
+              aria-controls="loadPanelChemicals"
+              aria-selected="true"
+              tabindex="0"
+            >Chemical</button>
+            <button
+              type="button"
+              class="load-config-tab"
+              id="loadTabAi"
+              data-load-tab="ai"
+              role="tab"
+              aria-controls="loadPanelAi"
+              aria-selected="false"
+              tabindex="-1"
+            >AI Compute</button>
           </div>
 
-          <div class="load-config-panel active" data-load-panel="chemicals">
+          <div
+            class="load-config-panel active"
+            id="loadPanelChemicals"
+            data-load-panel="chemicals"
+            role="tabpanel"
+            aria-labelledby="loadTabChemicals"
+          >
             <div class="range-control">
               <label for="chemicalSizingPercent">Chemical peak sizing</label>
               <input type="range" id="chemicalSizingPercent" min="0" max="100" step="1" value="100">
@@ -327,7 +364,15 @@
             </div>
           </div>
 
-          <div class="load-config-panel" data-load-panel="ai">
+          <div
+            class="load-config-panel"
+            id="loadPanelAi"
+            data-load-panel="ai"
+            role="tabpanel"
+            aria-labelledby="loadTabAi"
+            aria-hidden="true"
+            hidden
+          >
             <div class="process-card ai-compute-card">
               <div class="process-header">
                 <label class="toggle-label">

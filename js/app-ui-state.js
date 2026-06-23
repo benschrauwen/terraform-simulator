@@ -24,16 +24,24 @@ const AppUiStateMethods = {
     }
 
     document.querySelectorAll('.day-tab').forEach(tab => {
-      tab.classList.toggle('active', tab.dataset.mode === this.state.dayMode);
+      const isActive = tab.dataset.mode === this.state.dayMode;
+      tab.classList.toggle('active', isActive);
+      tab.setAttribute('aria-pressed', String(isActive));
     });
 
-    if (averageTab) averageTab.disabled = false;
+    if (averageTab) {
+      averageTab.disabled = false;
+      averageTab.setAttribute('aria-disabled', 'false');
+    }
     if (specificTab) {
       specificTab.disabled = !body.supportsSpecificDay;
       specificTab.classList.toggle('disabled', !body.supportsSpecificDay);
+      specificTab.setAttribute('aria-disabled', String(!body.supportsSpecificDay));
     }
     if (specificControls) {
-      specificControls.style.display = body.supportsSpecificDay && this.state.dayMode === 'specific' ? 'block' : 'none';
+      const showSpecificControls = body.supportsSpecificDay && this.state.dayMode === 'specific';
+      specificControls.hidden = !showSpecificControls;
+      specificControls.setAttribute('aria-hidden', String(!showSpecificControls));
     }
     if (dayModeNote) {
       dayModeNote.textContent = body.supportsSpecificDay

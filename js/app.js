@@ -13,6 +13,7 @@ class App {
     this.siteMapOverlay = null;
     this.siteMapModuleLayer = null;
     this.siteMapMarker = null;
+    this.siteMapTileLayer = null;
     this.optimizerWorker = null;
     this.optimizerRequestId = 0;
     this.optimizerRequests = new Map();
@@ -548,11 +549,41 @@ class App {
   }
 
   bindSectionToggles() {
-    document.querySelectorAll('.section-header').forEach(header => {
-      header.addEventListener('click', () => {
-        const section = header.closest('.config-section, .results-section');
+    const syncSectionState = (header, section, body) => {
+      const isOpen = section.classList.contains('open');
+      header.setAttribute('aria-expanded', String(isOpen));
+      if (body) {
+        body.hidden = !isOpen;
+        body.setAttribute('aria-hidden', String(!isOpen));
+      }
+    };
+
+    document.querySelectorAll('.section-header').forEach((header, index) => {
+      const section = header.closest('.config-section, .results-section');
+      const body = section?.querySelector('.section-body');
+      if (!section || !body) return;
+
+      if (!body.id) {
+        const sectionKey = section.dataset.section || header.dataset.toggle || `section-${index + 1}`;
+        body.id = `${sectionKey}SectionBody`;
+      }
+
+      header.setAttribute('role', 'button');
+      header.setAttribute('tabindex', '0');
+      header.setAttribute('aria-controls', body.id);
+      syncSectionState(header, section, body);
+
+      const toggleSection = () => {
         section.classList.toggle('open');
+        syncSectionState(header, section, body);
         window.requestAnimationFrame(() => this.positionSliderMarkers());
+      };
+
+      header.addEventListener('click', toggleSection);
+      header.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        toggleSection();
       });
     });
   }

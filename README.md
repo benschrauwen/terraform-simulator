@@ -567,7 +567,7 @@ NPV is linear in the revenue price, so the break-even rental price, token price 
 
 ### Design optimizer (`optimizer.js`)
 
-`optimizeDatacenterDesign(state, options)` looks for the design with the highest NPV whose achieved uptime meets the state's uptime target. It sizes what the options allow and keeps every other input (site, cooling, revenue, prices, the gas or nuclear type, battery duration) fixed:
+`optimizeDatacenterDesign(state, options)` looks for the design with the highest NPV whose achieved uptime meets the state's uptime target. It sizes what the options allow and keeps every other input (site, cooling, revenue, prices, the gas or nuclear type; battery duration and unit size unless `thorough`) fixed:
 
 | Decision | Range (P = design facility peak, IT nameplate x peak PUE) |
 | --- | --- |
@@ -575,6 +575,7 @@ NPV is linear in the revenue price, so the break-even rental price, token price 
 | Battery MWh | 0 to 24 h x P (x 2 with the wider range) |
 | Firm units | 0 to ceil(P / unit size) + 3 of the selected gas or nuclear type, manual sizing; 0 = no firm plant (so it is off the schedule too); an existing-plant nuclear contract is 0 or 1 block at the average load |
 | Grid connection | optional: firm and flexible are both searched (grid and hybrid) |
+| Battery duration, unit size | `thorough` only: 1, 2, 4, 8 h (and the current); the generator type's min, default and max unit size |
 
 ```text
 for each (solar, battery):
@@ -587,6 +588,8 @@ refine:      compass search from up to 3 coarse cells (the best, then the next b
              grid neighbours and are within 2% of its capex in NPV), step halved until below 1 MW / 1 MWh
 rank:        feasible before infeasible; then NPV; infeasible candidates by uptime
 ```
+
+**Wider search** (the UI checkbox: `boundsScale: 2, thorough: true`, `THOROUGH_SEARCH`): doubled bounds, then the default search on them, then a denser coarse grid (9 halvings and 11 uniform steps of each bound plus the small levels; 17 x 22 cells at the default site), refinement from up to five starts within 5% of capex of the best cell, each refined first at its own duration and unit size, then at every duration x unit size and onward with those as discrete steps. The default search's best stays a candidate, so the wider search never returns less. Budget 5,000 runs per architecture on top. A full comparison with the connection search: ~8,200 runs, ~10 s in Node and ~10 s in headless Chrome's worker (the default search: ~2.1 s in Node, ~2.5 s in Chrome). The unit-size search keeps the type's $/kW, heat rate and O&M at every size (no economies of scale), so it tends to pick the smallest units (finer steps fit the need more tightly; at the default site islanded 38 x 2.5 MW engines beat 10 x 10 MW by ~$11M): read it as a granularity check, not a sizing recommendation.
 
 The small battery levels and the extra starts are there because the landscape can have two basins: at the default hybrid design with a $150/kWh battery, ~50 MWh of battery riding through curtailments replaces seven diesel units ($154.7M at 196 MWdc, 51 MWh, 12 units), while halvings of the 24 h bound (3,144, 1,572, ..., 98 MWh) step over it and a single refinement from the best coarse cell stays in the no-battery basin ($150.6M, 19 units); a regression test checks the optimizer against a reduced brute force there.
 
@@ -616,7 +619,7 @@ Limitations: it is a local search (coarse grid, then compass steps on two axes f
 - `timeline.js`: one Gantt row per schedule path (permitting / procurement / construction / wait for COD), the critical path outlined, first power marked.
 - `dispatch-chart.js`: a typical day of any month (MW by hour) or daily energy over the year, stacked by source, surplus below zero.
 - `results.js` and `sensitivity.js`: warnings, key metrics, economics groups, header metrics, break-even price and the tornado. `share.js`: share links that always carry `DATACENTER_DERIVED_KEYS`.
-- `optimizer-panel.js` and `optimizer-client.js`: the Optimize Design card. The optimizer runs in `js/workers/datacenter-optimizer-worker.js` (messages `optimizeDatacenterDesign` / `compareDatacenterArchitectures`, progress then result; main thread when workers are unavailable). The results table has one column per design (current, then each architecture) and an Apply button per design that puts its patch, architecture included, into the state and recalculates (the share link follows).
+- `optimizer-panel.js` and `optimizer-client.js`: the Optimize Design card. The optimizer runs in `js/workers/datacenter-optimizer-worker.js` (messages `optimizeDatacenterDesign` / `compareDatacenterArchitectures`, progress then result; main thread when workers are unavailable). "Wider search range" runs the thorough search (labelled "slower: ~10–15 s, more thorough"; ~10 s at the default site). The results table has one column per design (current, then each architecture; the battery with its duration) and an Apply button per design that puts its patch, architecture included, into the state and recalculates (the share link follows).
 
 Every view renders with attributes and classes only (strict CSP) and escapes interpolated text; `datacenter.css` holds the page's styles. Tests: `tests/renderers/datacenter-*.test.js`, `tests/ui/datacenter-controls.test.js`, `tests/share-state/datacenter-share.test.js` and the boot smoke test.
 

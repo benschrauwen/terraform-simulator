@@ -110,7 +110,7 @@
 
       <section class="config-section open" data-section="gas">
         <h2 class="section-header" data-toggle="gas">
-          <span class="icon">🔥</span> Firm Generation: Gas / Nuclear
+          <span class="icon">🔥</span> Firm Generation: Diesel / Gas / Nuclear
           <span class="chevron">▾</span>
         </h2>
         <div class="section-body" id="gasControls"></div>
@@ -246,14 +246,14 @@
           <span class="chevron">▾</span>
         </h2>
         <div class="section-body" id="optimizerPanel">
-          <p class="field-note compact-note">Finds the design with the highest NPV that still meets the uptime target. It sizes what you tick below and keeps every other input (site, cooling, prices, gas or nuclear type, battery duration) as you set it; comparing architectures starts each from that architecture's starting design.</p>
+          <p class="field-note compact-note">Finds the design with the highest NPV that still meets the uptime target. It sizes what you tick below and keeps every other input (site, cooling, prices, gas or nuclear type; battery duration and unit size unless the wider search is on) as you set it; comparing architectures starts each from that architecture's starting design.</p>
           <div class="dc-opt-options" role="group" aria-label="What the optimizer may size">
             <label class="toggle-label"><input type="checkbox" id="optimizerSizeSolar" checked> Solar size</label>
             <label class="toggle-label"><input type="checkbox" id="optimizerSizeBattery" checked> Battery size</label>
             <label class="toggle-label"><input type="checkbox" id="optimizerSizeFirm" checked> Firm generation units</label>
             <label class="toggle-label"><input type="checkbox" id="optimizerSizeGrid"> Firm vs flexible grid</label>
             <label class="toggle-label"><input type="checkbox" id="optimizerCompare" checked> Compare all architectures</label>
-            <label class="toggle-label" title="Searches up to 8x the design peak in solar and 48 h of storage instead of 4x and 24 h."><input type="checkbox" id="optimizerWide"> Wider search range</label>
+            <label class="toggle-label" title="Searches up to 8x the design peak in solar and 48 h of storage instead of 4x and 24 h, on a denser grid from more starting points, and also tries battery durations of 1, 2, 4 and 8 h and the generator type's unit sizes."><input type="checkbox" id="optimizerWide"> Wider search range <span class="dc-opt-hint">(slower: ~10–15 s, more thorough)</span></label>
           </div>
           <div class="dc-opt-actions">
             <button type="button" id="optimizerRunButton" class="cash-flow-csv-btn">Run optimizer</button>

@@ -42,6 +42,7 @@
 
    Pure; no DOM. */
 
+import { GAS_GENSET_TYPES } from '../../data/datacenter/power.js';
 import { DATACENTER_DEFAULT_STATE, normalizeDatacenterState } from '../../state/datacenter-schema.js';
 import { calculateDatacenterScenario } from './scenario.js';
 import { buildStartingDesign } from './starting-design.js';
@@ -63,6 +64,29 @@ const BATTERY_PEAK_HOUR_LEVELS = Object.freeze([0.25, 0.5, 1, 2]);
 // Coarse cells the pattern search starts from (best first, then the next
 // best that are not grid neighbours of a chosen one).
 const REFINE_STARTS = 3;
+/* Thorough mode (the UI's "Wider search range", ~10-15 s for a full
+   comparison in the worker): the doubled bounds come from boundsScale; this
+   adds a denser coarse grid (9 halvings + 11 uniform steps of each bound +
+   the small levels; 17 x 22 distinct cells at the default site), five
+   refinement starts with a wider NPV window, battery durations 1/2/4/8 h and
+   the gas type's unit sizes (min, default, max). Each start is first
+   refined at the start's own duration and unit size, then every duration x
+   unit size is tried there and the search continues with those as discrete
+   steps. The default search on the same bounds runs first and its best
+   design stays a candidate, so the thorough result is never worse. Budget:
+   runs per architecture on top of the default search's; the coarse grid
+   gets at most 60% of a connection's share, the starts the rest. */
+export const THOROUGH_SEARCH = Object.freeze({
+  budget: 5000,
+  coarseBudgetShare: 0.6,
+  geometricLevels: 9,
+  uniformDivisions: 12,
+  solarPeakMultiples: Object.freeze([0.25, 0.5, 1]),
+  refineStarts: 5,
+  startNpvWindow: 0.05,
+  durationsHours: Object.freeze([1, 2, 4, 8]),
+});
+
 // judgment: refining could move a cell's NPV by a few % of capex (the
 // two-basin case at the default site differed by ~0.1%); further from the
 // best than this, a start is not worth its runs.
@@ -135,6 +159,7 @@ function summarize(r, design = {}) {
   return {
     solarMWdc: r.state.solarSizeMWdc,
     batteryMWh: r.state.batteryCapacityMWh,
+    batteryDurationHours: r.state.batteryDurationHours,
     units: r.firm.units,
     unitSizeMW: r.firm.unitSizeMW,
     firmFamily: r.firm.family,
@@ -163,8 +188,13 @@ const millions = value => `${value < 0 ? '-' : ''}$${Math.abs(value / 1e6).toFix
 
 // Decision fields every patch carries, so applying one design after another
 // never leaves the previous design's sizing behind.
-const DESIGN_KEYS = ['architecture', 'gridConnection', 'solarSizeMWdc', 'batteryCapacityMWh', 'firmFamily', 'firmSizingMode', 'firmUnits'];
+const DESIGN_KEYS = ['architecture', 'gridConnection', 'solarSizeMWdc', 'batteryCapacityMWh', 'batteryDurationHours', 'firmFamily', 'firmSizingMode', 'firmUnits', 'gasUnitSizeMW'];
 const resolutionFor = max => (max >= 100 ? 1 : max >= 10 ? 0.1 : 0.01);
+
+/** max x i / n for i = 1 .. n - 1. */
+function uniformLevels(max, divisions) {
+  return Array.from({ length: Math.max(0, divisions - 1) }, (_, i) => (max * (i + 1)) / divisions);
+}
 
 /** Coarse levels: 0 plus max, max/2, ... and any `extra` levels up to max (rounded, distinct, ascending). */
 function coarseLevels(max, resolution, count = COARSE_LEVELS, extra = []) {
@@ -191,9 +221,10 @@ function optimizeFrom(startState, referenceState, options = {}) {
     sizeBattery = true,
     sizeFirm = true,
     sizeGridConnection = false,
-    budget = DEFAULT_OPTIMIZER_BUDGET,
+    budget: budgetOption = null,
     bounds = {},
     boundsScale = 1,
+    thorough = false,
     onProgress = null,
   } = options;
   const start = normalizeDatacenterState(startState);
@@ -209,22 +240,51 @@ function optimizeFrom(startState, referenceState, options = {}) {
   const scale = Math.max(0.1, Number(boundsScale) || 1);
   const solarMax = sizeSolar ? (bounds.solarMaxMWdc ?? OPTIMIZER_BOUND_FACTORS.solarPeakMultiple * peakMW * scale) : start.solarSizeMWdc;
   const batteryMax = sizeBattery ? (bounds.batteryMaxMWh ?? OPTIMIZER_BOUND_FACTORS.batteryHoursOfPeak * peakMW * scale) : start.batteryCapacityMWh;
-  const unitsMax = !sizeFirm ? base.firm.units
+  const gasRange = firmFamily === 'gas' ? GAS_GENSET_TYPES[start.gasType]?.unitSizeMW : null;
+  // Thorough mode also searches battery duration and (gas types with a size
+  // range) the unit size: discrete values tried at each refinement start and
+  // as +/-1 steps of the pattern search.
+  const durations = thorough && sizeBattery
+    ? [...new Set([...THOROUGH_SEARCH.durationsHours, start.batteryDurationHours])].sort((x, y) => x - y)
+    : [start.batteryDurationHours];
+  const unitSizes = thorough && sizeFirm && gasRange && gasRange.max > gasRange.min
+    ? [...new Set([gasRange.min, gasRange.default, gasRange.max, start.gasUnitSizeMW])].sort((x, y) => x - y)
+    : [unitSizeMW];
+  const unitsMaxFor = size => (!sizeFirm ? base.firm.units
     : contract ? 1
-      : (bounds.unitsMax ?? Math.ceil((peakMW * scale) / unitSizeMW - 1e-9) + OPTIMIZER_BOUND_FACTORS.extraUnits);
+      : (bounds.unitsMax ?? Math.ceil((peakMW * scale) / size - 1e-9) + OPTIMIZER_BOUND_FACTORS.extraUnits));
+  const unitsMax = unitsMaxFor(unitSizeMW);
   const solarRes = resolutionFor(solarMax);
   const batteryRes = resolutionFor(batteryMax);
   const connections = !islanded && sizeGridConnection ? ['firm', 'flexible'] : [start.gridConnection];
+  const budget = budgetOption ?? (thorough ? THOROUGH_SEARCH.budget : DEFAULT_OPTIMIZER_BUDGET);
+  const refineStarts = thorough ? THOROUGH_SEARCH.refineStarts : REFINE_STARTS;
+  const startWindow = thorough ? THOROUGH_SEARCH.startNpvWindow : START_NPV_WINDOW;
 
-  let evaluations = 0;
+  // Thorough mode first runs the default search on the same bounds and keeps
+  // its best design as a candidate, so it can only add to it.
+  const quick = thorough
+    ? optimizeFrom(startState, referenceState, { ...options, thorough: false, budget: DEFAULT_OPTIMIZER_BUDGET, onProgress: null })
+    : null;
+  let evaluations = quick ? quick.candidatesEvaluated : 0;
   let monotonicityExceptions = 0;
   const cache = new Map();
-  const reserve = Math.ceil(Math.log2(unitsMax + 2)) + 4; // one candidate's unit search
+  const reserve = Math.ceil(Math.log2(Math.max(...unitSizes.map(unitsMaxFor)) + 2)) + 4; // one candidate's unit search
   const budgetLeft = () => budget - evaluations;
   const report = stage => onProgress?.({ stage, evaluations, budget, percent: Math.min(100, (evaluations / budget) * 100) });
 
+  // A point is { solar, battery, duration, unitSize }; with no battery the
+  // duration is irrelevant and kept at the start's (one cache entry).
+  const pointOf = (solar, battery, duration = start.batteryDurationHours, unitSize = unitSizeMW) => ({
+    solar, battery, duration: battery > 0 ? duration : start.batteryDurationHours, unitSize,
+  });
+  const pointKey = q => `${q.solar}|${q.battery}|${q.duration}|${q.unitSize}`;
   const stateFor = d => {
-    const s = { ...start, solarSizeMWdc: d.solar, batteryCapacityMWh: d.battery, gridConnection: d.connection };
+    const s = {
+      ...start, solarSizeMWdc: d.solar, batteryCapacityMWh: d.battery, gridConnection: d.connection,
+      batteryDurationHours: d.duration ?? start.batteryDurationHours,
+    };
+    if (firmFamily === 'gas' && !contract && d.unitSize) s.gasUnitSizeMW = d.unitSize;
     if (sizeFirm) {
       if (d.units > 0 && contract) Object.assign(s, { firmFamily, firmSizingMode: 'auto' });
       else if (d.units > 0) Object.assign(s, { firmFamily, firmSizingMode: 'manual', firmUnits: d.units });
@@ -233,7 +293,7 @@ function optimizeFrom(startState, referenceState, options = {}) {
     return s;
   };
   const evaluate = d => {
-    const key = `${d.solar}|${d.battery}|${d.units}|${d.connection}`;
+    const key = `${pointKey(d)}|${d.units}|${d.connection}`;
     if (cache.has(key)) return cache.get(key);
     const r = calculateDatacenterScenario(stateFor(d), { fastMode: true });
     evaluations += 1;
@@ -244,43 +304,44 @@ function optimizeFrom(startState, referenceState, options = {}) {
   };
 
   /*
-   * Fewest gas units meeting the target at (solar, battery, connection): the
-   * auto sizing with no spares (firm-sizing.js, one zero-gas dispatch; the
-   * same count the bisection finds, tested), its run doubling as the
-   * candidate at that count. Nuclear, or a count above unitsMax: null, and
-   * the caller bisects.
+   * Fewest gas units meeting the target at a point: the auto sizing with no
+   * spares (firm-sizing.js, one zero-gas dispatch; the same count the
+   * bisection finds, tested), its run doubling as the candidate at that
+   * count. Nuclear, or a count above the bound: null, and the caller bisects.
    */
-  const autoMinUnits = (solar, battery, connection) => {
+  const autoMinUnits = (q, connection, max) => {
     if (firmFamily !== 'gas') return null;
-    const key = `${solar}|${battery}|auto|${connection}`;
+    const key = `${pointKey(q)}|auto|${connection}`;
     if (!cache.has(key)) {
-      const r = calculateDatacenterScenario({ ...stateFor({ solar, battery, units: 1, connection }), firmSizingMode: 'auto', firmSpareUnits: 0 }, { fastMode: true });
+      const d = { ...q, units: 1, connection };
+      const r = calculateDatacenterScenario({ ...stateFor(d), firmSizingMode: 'auto', firmSpareUnits: 0 }, { fastMode: true });
       evaluations += 1;
       const basis = r.firm.sizingBasis;
       const units = basis?.reachable ? basis.minUnits : null;
       cache.set(key, units);
       // The auto run is the manual design at that count (same dispatch and costs; 0 units = no plant).
-      if (units !== null && units <= unitsMax) cache.set(`${solar}|${battery}|${units}|${connection}`, summarize(r, { solar, battery, units, connection }));
+      if (units !== null && units <= max) cache.set(`${pointKey(q)}|${units}|${connection}`, summarize(r, { ...q, units, connection }));
     }
     const units = cache.get(key);
-    return units !== null && units <= unitsMax ? units : null;
+    return units !== null && units <= max ? units : null;
   };
 
-  /** Best candidate for (solar, battery, connection): minimum feasible units, then an NPV walk. */
-  const bestForPoint = (solar, battery, connection, hint = {}) => {
-    const at = units => evaluate({ solar, battery, units, connection });
-    if (!sizeFirm) return { best: at(unitsMax), minUnits: null };
-    let minUnits = autoMinUnits(solar, battery, connection);
+  /** Best candidate at a point and connection: minimum feasible units, then an NPV walk. */
+  const bestForPoint = (q, connection, hint = {}) => {
+    const max = unitsMaxFor(q.unitSize);
+    const at = units => evaluate({ ...q, units, connection });
+    if (!sizeFirm) return { best: at(max), minUnits: null };
+    let minUnits = autoMinUnits(q, connection, max);
     if (minUnits === null || !at(minUnits).feasible) {
-      minUnits = findMinimumUnits(units => at(units).feasible, unitsMax, hint.minUnits ?? null);
+      minUnits = findMinimumUnits(units => at(units).feasible, max, hint.minUnits ?? null);
     }
-    if (minUnits === null) return { best: at(unitsMax), minUnits: null }; // infeasible: highest uptime
-    let n = Math.max(minUnits, Math.min(unitsMax, hint.units ?? minUnits));
+    if (minUnits === null) return { best: at(max), minUnits: null }; // infeasible: highest uptime
+    let n = Math.max(minUnits, Math.min(max, hint.units ?? minUnits));
     let best = at(n);
     // Walk while NPV improves (never below the minimum; a count above it that is
     // infeasible would break monotonicity: counted and skipped).
     for (const direction of [1, -1]) {
-      for (let next = n + direction; next >= minUnits && next <= unitsMax && budgetLeft() > 0; next += direction) {
+      for (let next = n + direction; next >= minUnits && next <= max && budgetLeft() > 0; next += direction) {
         const candidate = at(next);
         if (!candidate.feasible) { monotonicityExceptions += 1; continue; }
         if (!isBetterCandidate(candidate, best)) break;
@@ -291,15 +352,21 @@ function optimizeFrom(startState, referenceState, options = {}) {
     return { best, minUnits };
   };
 
-  const solarLevels = sizeSolar ? coarseLevels(solarMax, solarRes) : [start.solarSizeMWdc];
-  const batteryLevels = sizeBattery
-    ? coarseLevels(batteryMax, batteryRes, COARSE_LEVELS - 2, BATTERY_PEAK_HOUR_LEVELS.map(hours => hours * peakMW))
-    : [start.batteryCapacityMWh];
+  const solarExtra = thorough ? THOROUGH_SEARCH.solarPeakMultiples.map(multiple => multiple * peakMW) : [];
+  const batteryExtra = BATTERY_PEAK_HOUR_LEVELS.map(hours => hours * peakMW);
+  const solarLevels = !sizeSolar ? [start.solarSizeMWdc]
+    : thorough ? coarseLevels(solarMax, solarRes, THOROUGH_SEARCH.geometricLevels, [...solarExtra, ...uniformLevels(solarMax, THOROUGH_SEARCH.uniformDivisions)])
+      : coarseLevels(solarMax, solarRes);
+  const batteryLevels = !sizeBattery ? [start.batteryCapacityMWh]
+    : thorough ? coarseLevels(batteryMax, batteryRes, THOROUGH_SEARCH.geometricLevels, [...batteryExtra, ...uniformLevels(batteryMax, THOROUGH_SEARCH.uniformDivisions)])
+      : coarseLevels(batteryMax, batteryRes, COARSE_LEVELS - 2, batteryExtra);
   const perConnection = [];
   let overall = null;
 
   connections.forEach((connection, index) => {
     const share = Math.floor((budget * (index + 1)) / connections.length);
+    // The coarse grid may use at most this much, so the refinement keeps the rest.
+    const coarseShare = thorough ? evaluations + Math.floor((share - evaluations) * THOROUGH_SEARCH.coarseBudgetShare) : share;
     const cells = [];
     let best = null;
     let bestHint = { units: base.firm.units };
@@ -307,10 +374,10 @@ function optimizeFrom(startState, referenceState, options = {}) {
     solarLevels.forEach((solar, i) => {
       cells[i] = [];
       batteryLevels.forEach((battery, j) => {
-        if (evaluations + reserve > share) { cells[i][j] = null; return; }
+        if (evaluations + reserve > coarseShare) { cells[i][j] = null; return; }
         const neighbour = j > 0 ? cells[i][j - 1] : i > 0 ? cells[i - 1][j] : null;
         const hint = neighbour ? { minUnits: neighbour.minUnits, units: neighbour.units } : bestHint;
-        const { best: cellBest, minUnits } = bestForPoint(solar, battery, connection, hint);
+        const { best: cellBest, minUnits } = bestForPoint(pointOf(solar, battery), connection, hint);
         cells[i][j] = {
           solarMWdc: solar, batteryMWh: battery, units: cellBest.units, minUnits,
           npv: cellBest.npv, uptimePercent: cellBest.uptimePercent, feasible: cellBest.feasible,
@@ -324,52 +391,81 @@ function optimizeFrom(startState, referenceState, options = {}) {
     });
     report('refine');
 
-    // Pattern search on (solar, battery) from the best coarse cells: the best
-    // one and the next best that are not its grid neighbours (another basin,
-    // e.g. a small battery replacing firm units vs more units), up to
-    // REFINE_STARTS; each start's budget share is what is left / starts left.
+    // Pattern search from the best coarse cells: the best one and the next
+    // best that are not grid neighbours of a chosen one (another basin, e.g.
+    // a small battery replacing firm units vs more units) and come within
+    // the NPV window, up to refineStarts; each start's budget share is what
+    // is left / starts left.
     const ranked = [];
     cells.forEach((row, i) => row.forEach((cell, j) => { if (cell) ranked.push({ i, j, cell }); }));
-    ranked.sort((a, b) => (isBetterCandidate(a.cell.summary, b.cell.summary) ? -1 : isBetterCandidate(b.cell.summary, a.cell.summary) ? 1 : 0));
+    ranked.sort((x, y) => (isBetterCandidate(x.cell.summary, y.cell.summary) ? -1 : isBetterCandidate(y.cell.summary, x.cell.summary) ? 1 : 0));
     const starts = [];
     for (const entry of ranked) {
-      if (starts.length >= REFINE_STARTS) break;
+      if (starts.length >= refineStarts) break;
       if (starts.some(other => Math.abs(other.i - entry.i) <= 1 && Math.abs(other.j - entry.j) <= 1)) continue;
-      // A further start only for a feasible cell within reach of the best:
-      // NPV within START_NPV_WINDOW of the best design's capex.
       const lead = starts[0]?.cell.summary;
-      if (lead && (!entry.cell.feasible || entry.cell.npv < lead.npv - START_NPV_WINDOW * Math.abs(lead.totalCapex))) continue;
+      if (lead && (!entry.cell.feasible || entry.cell.npv < lead.npv - startWindow * Math.abs(lead.totalCapex))) continue;
       starts.push(entry);
     }
-    if (!sizeSolar && !sizeBattery) starts.length = Math.min(starts.length, 1);
+    if (!sizeSolar && !sizeBattery && durations.length * unitSizes.length === 1) starts.length = Math.min(starts.length, 1);
     starts.forEach((entry, startIndex) => {
       const startShare = evaluations + Math.floor((share - evaluations) / (starts.length - startIndex));
       let localBest = entry.cell.summary;
-      let point = { solar: localBest.design.solar, battery: localBest.design.battery };
+      let point = pointOf(localBest.design.solar, localBest.design.battery);
       let hint = { minUnits: entry.cell.minUnits, units: localBest.units };
-      const axes = [];
-      if (sizeSolar) axes.push({ key: 'solar', max: solarMax, res: solarRes, step: Math.max(point.solar / 2, solarLevels[1] / 2 || solarRes) });
-      if (sizeBattery) axes.push({ key: 'battery', max: batteryMax, res: batteryRes, step: Math.max(point.battery / 2, batteryLevels[1] / 2 || batteryRes) });
-      while (axes.some(axis => axis.step >= axis.res) && evaluations + reserve <= startShare) {
-        let improved = false;
-        for (const axis of axes) {
-          if (axis.step < axis.res) continue;
-          for (const sign of [1, -1]) {
-            if (evaluations + reserve > startShare) break;
-            const value = Math.min(axis.max, Math.max(0, roundTo(point[axis.key] + sign * axis.step, axis.res)));
-            if (value === point[axis.key]) continue;
-            const trial = { ...point, [axis.key]: value };
-            const { best: candidate, minUnits } = bestForPoint(trial.solar, trial.battery, connection, hint);
-            if (isBetterCandidate(candidate, localBest)) {
-              localBest = candidate;
-              point = trial;
-              hint = { minUnits, units: candidate.units };
-              improved = true;
-              break;
+      const tryPoint = trial => {
+        const { best: candidate, minUnits } = bestForPoint(trial, connection, hint);
+        if (!isBetterCandidate(candidate, localBest)) return false;
+        localBest = candidate;
+        point = trial;
+        hint = { minUnits, units: candidate.units };
+        return true;
+      };
+      const steps = [];
+      if (durations.length > 1) steps.push({ key: 'duration', values: durations });
+      if (unitSizes.length > 1) steps.push({ key: 'unitSize', values: unitSizes });
+      // Compass search: continuous steps on solar and battery, halved when no
+      // move improves; with `discrete`, also the next shorter / longer
+      // duration and unit size whenever no continuous move improved.
+      const compass = discrete => {
+        const axes = [];
+        if (sizeSolar) axes.push({ key: 'solar', max: solarMax, res: solarRes, step: Math.max(point.solar / 2, solarLevels[1] / 2 || solarRes) });
+        if (sizeBattery) axes.push({ key: 'battery', max: batteryMax, res: batteryRes, step: Math.max(point.battery / 2, batteryLevels[1] / 2 || batteryRes) });
+        while (axes.some(axis => axis.step >= axis.res) && evaluations + reserve <= startShare) {
+          let improved = false;
+          for (const axis of axes) {
+            if (axis.step < axis.res) continue;
+            for (const sign of [1, -1]) {
+              if (evaluations + reserve > startShare) break;
+              const value = Math.min(axis.max, Math.max(0, roundTo(point[axis.key] + sign * axis.step, axis.res)));
+              if (value === point[axis.key]) continue;
+              const next = { ...point, [axis.key]: value };
+              if (tryPoint(pointOf(next.solar, next.battery, next.duration, next.unitSize))) { improved = true; break; }
             }
           }
+          for (const step of improved || !discrete ? [] : steps) {
+            const index = step.values.indexOf(point[step.key]);
+            for (const offset of [1, -1]) {
+              const value = step.values[index + offset];
+              if (value === undefined || evaluations + reserve > startShare) continue;
+              const next = { ...point, [step.key]: value };
+              if (tryPoint(pointOf(next.solar, next.battery, next.duration, next.unitSize))) { improved = true; break; }
+            }
+            if (improved) break;
+          }
+          if (!improved) axes.forEach(axis => { axis.step /= 2; });
         }
-        if (!improved) axes.forEach(axis => { axis.step /= 2; });
+      };
+      // First at the start's own duration and unit size (as without the
+      // thorough search, so it can only add), then every duration x unit size
+      // at the refined point, then the search again with discrete steps.
+      compass(false);
+      if (steps.length) {
+        const here = point;
+        durations.forEach(duration => unitSizes.forEach(unitSize => {
+          if (evaluations + reserve <= startShare) tryPoint(pointOf(here.solar, here.battery, duration, unitSize));
+        }));
+        compass(true);
       }
       if (isBetterCandidate(localBest, best)) best = localBest;
     });
@@ -377,19 +473,21 @@ function optimizeFrom(startState, referenceState, options = {}) {
     if (isBetterCandidate(best, overall)) overall = best;
   });
 
-  if (!overall) overall = bestForPoint(start.solarSizeMWdc, start.batteryCapacityMWh, connections[0], { units: base.firm.units }).best;
+  if (quick && isBetterCandidate(quick.best, overall)) overall = { ...quick.best, design: { ...quick.best.design } };
+  if (!overall) overall = bestForPoint(pointOf(start.solarSizeMWdc, start.batteryCapacityMWh), connections[0], { units: base.firm.units }).best;
   // The winning design as a full state and a patch against the user's state.
   const bestState = normalizeDatacenterState(stateFor(overall.design));
   const bestResult = calculateDatacenterScenario(bestState, { fastMode: true });
   const patch = diffDatacenterState(reference, bestState);
   DESIGN_KEYS.forEach(key => { patch[key] = bestState[key]; });
   const best = { ...summarize(bestResult, overall.design), patch };
-  const winning = perConnection.find(entry => entry.best === overall) || perConnection[0];
+  const winning = perConnection.find(entry => entry.best === overall)
+    || perConnection.find(entry => entry.connection === overall.design.connection) || perConnection[0];
 
   const corners = [];
   if (sizeSolar && best.solarMWdc >= solarMax - solarRes / 2) corners.push('solar');
   if (sizeBattery && best.batteryMWh >= batteryMax - batteryRes / 2) corners.push('battery');
-  if (sizeFirm && !contract && best.units >= unitsMax) corners.push('units');
+  if (sizeFirm && !contract && best.units >= unitsMaxFor(overall.design.unitSize ?? unitSizeMW)) corners.push('units');
 
   const notes = [];
   if (!best.feasible) {
@@ -417,7 +515,10 @@ function optimizeFrom(startState, referenceState, options = {}) {
     feasible: best.feasible,
     candidatesEvaluated: evaluations,
     budget,
-    bounds: { solarMaxMWdc: solarMax, batteryMaxMWh: batteryMax, unitsMax, unitSizeMW, firmFamily, peakMW, boundsScale: scale },
+    bounds: {
+      solarMaxMWdc: solarMax, batteryMaxMWh: batteryMax, unitsMax, unitSizeMW, firmFamily, peakMW, boundsScale: scale,
+      thorough, durationsHours: durations, unitSizesMW: unitSizes, solarLevels: solarLevels.length, batteryLevels: batteryLevels.length, refineStarts,
+    },
     sized: { solar: sizeSolar, battery: sizeBattery, firm: sizeFirm, gridConnection: connections.length > 1 },
     corners,
     frontier: {

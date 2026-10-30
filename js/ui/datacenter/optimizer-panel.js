@@ -46,7 +46,7 @@ export function optimizerColumns(run) {
 
 function firmText(s) {
   if (!s.units || s.firmFamily === 'none') return 'None';
-  return `${fixed(s.units, 0)}×${fixed(s.unitSizeMW, s.unitSizeMW >= 10 ? 0 : 1)} MW`;
+  return `${fixed(s.units, 0)}×${fixed(s.unitSizeMW, s.unitSizeMW >= 10 ? 0 : s.unitSizeMW % 0.5 ? 2 : 1)} MW`;
 }
 
 /** Notes per optimized column: infeasible, at an upper bound, and the optimizer's own notes. */
@@ -86,7 +86,7 @@ export function renderOptimizerResults(run) {
   const rows = [
     row('Architecture', s => ({ text: shortArch(s.architecture), hint: archLabel(s.architecture) })),
     row('Solar', s => ({ text: s.solarMWdc > 0 ? formatMW(s.solarMWdc) : 'None' }), 'Solar array size, MW DC'),
-    row('Battery', s => ({ text: s.batteryMWh > 0 ? formatStorageMWh(s.batteryMWh) : 'None' })),
+    row('Battery', s => ({ text: s.batteryMWh > 0 ? `${formatStorageMWh(s.batteryMWh)}${s.batteryDurationHours ? ` (${fixed(s.batteryDurationHours, s.batteryDurationHours % 1 ? 1 : 0)} h)` : ''}` : 'None' })),
     row('Firm units', s => ({ text: firmText(s), hint: s.units > 0 ? `${s.firmLabel}: ${formatMW(s.firmCapacityMW)} in all` : '' }), 'Units × unit size of the selected gas or nuclear type'),
     row('Grid', s => ({ text: s.gridConnection ? (s.gridConnection === 'flexible' ? 'Flexible' : 'Firm') : 'None' })),
     row('Uptime', s => ({ text: formatUptime(s.uptimePercent), cls: s.feasible ? 'positive' : 'negative' }), `Target ${formatUptime(current.targetPercent)}`),
@@ -155,7 +155,10 @@ export const datacenterOptimizerMethods = {
         sizeBattery: checked(OPTION_INPUTS.sizeBattery),
         sizeFirm: checked(OPTION_INPUTS.sizeFirm),
         sizeGridConnection: checked(OPTION_INPUTS.sizeGridConnection),
+        // Wider search: doubled bounds and the thorough search (denser grid, more
+        // starts, battery duration and unit size; optimizer.js THOROUGH_SEARCH).
         boundsScale: checked(OPTION_INPUTS.wide) ? 2 : 1,
+        thorough: checked(OPTION_INPUTS.wide),
       },
     };
   },

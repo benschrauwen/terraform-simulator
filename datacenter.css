@@ -713,6 +713,11 @@ body.datacenter-app [hidden] {
   font-weight: 500 !important;
 }
 
+.dc-opt-hint {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
 .dc-opt-actions {
   display: flex;
   flex-wrap: wrap;

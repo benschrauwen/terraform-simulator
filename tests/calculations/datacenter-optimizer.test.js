@@ -13,6 +13,7 @@ import {
   getArchitectureStartState,
   isBetterCandidate,
   optimizeDatacenterDesign,
+  THOROUGH_SEARCH,
 } from '../../js/model/datacenter/optimizer.js';
 
 // Reciprocating gas engines (the islanded and hybrid cases below need gas cheaper than the grid);
@@ -194,4 +195,26 @@ test('two basins: the optimizer finds the small-battery design a coarse halving 
   assert.ok(result.best.feasible);
   assert.ok(result.best.npv >= best.npv - 0.005 * Math.abs(best.npv), `optimizer ${result.best.npv} vs brute force ${best.npv} (${JSON.stringify(best)})`);
   assert.ok(result.best.batteryMWh > 0, 'the optimizer lands in the battery basin');
+});
+
+test('thorough (wider) search: its configuration, and never worse than the default search', () => {
+  // Configuration: dense levels, five starts, battery durations and the type's unit sizes.
+  assert.deepEqual([...THOROUGH_SEARCH.durationsHours], [1, 2, 4, 8]);
+  assert.equal(THOROUGH_SEARCH.refineStarts, 5);
+  const start = { ...getArchitectureStartState(DATACENTER_DEFAULT_STATE, 'hybrid'), batteryCostPerKWh: 150, batteryPowerCostPerKW: 0 };
+  const bounds = { solarMaxMWdc: 300, batteryMaxMWh: 200, unitsMax: 40 };
+  const quick = optimizeDatacenterDesign(start, { bounds });
+  const wide = optimizeDatacenterDesign(start, { bounds, thorough: true });
+  assert.equal(wide.bounds.thorough, true);
+  assert.deepEqual(wide.bounds.durationsHours, [1, 2, 4, 8]);
+  assert.deepEqual(wide.bounds.unitSizesMW, [2.5, 3, 3.25]); // standby diesel: min, default, max
+  assert.ok(wide.bounds.solarLevels >= 15 && wide.bounds.batteryLevels >= 15, `${wide.bounds.solarLevels} x ${wide.bounds.batteryLevels}`);
+  assert.ok(quick.bounds.solarLevels <= 7 && quick.bounds.batteryLevels <= 9);
+  // Each start is refined as in the default search before durations and unit sizes are tried.
+  assert.ok(wide.best.feasible);
+  assert.ok(wide.best.npv >= quick.best.npv - 1e-6 * Math.abs(quick.best.npv), `${wide.best.npv} < ${quick.best.npv}`);
+  // The patch carries the searched duration and unit size, and reproduces the reported NPV.
+  assert.ok(Object.hasOwn(wide.best.patch, 'batteryDurationHours') && Object.hasOwn(wide.best.patch, 'gasUnitSizeMW'));
+  const applied = calculateDatacenterScenario({ ...start, ...wide.best.patch }, { fastMode: true });
+  assert.ok(Math.abs(applied.economics.npv - wide.best.npv) < 1e-6 * Math.abs(wide.best.npv));
 });

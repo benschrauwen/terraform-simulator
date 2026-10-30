@@ -1,17 +1,25 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
-const DIST = path.join(ROOT, 'dist');
-const BUILD_ID = 'test-build';
-const ASSET_DIR = `assets/${BUILD_ID}`;
 
-function exists(relativePath) {
-  return fs.existsSync(path.join(DIST, relativePath));
+// Every build goes to a fresh temp directory so tests never touch (or race) the real dist/.
+function build(t, env = {}) {
+  const dist = fs.mkdtempSync(path.join(os.tmpdir(), 'ti-build-test-'));
+  t.after(() => fs.rmSync(dist, { recursive: true, force: true }));
+  const { BUILD_ID: _ignored, ...baseEnv } = process.env;
+  execFileSync(process.execPath, ['scripts/build.mjs'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    env: { ...baseEnv, DIST_DIR: dist, ...env },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  return dist;
 }
 
 function listFiles(directory, prefix = '') {
@@ -23,13 +31,11 @@ function listFiles(directory, prefix = '') {
   });
 }
 
-test('production build ships an allowlisted, versioned asset tree', () => {
-  execFileSync(process.execPath, ['scripts/build.mjs'], {
-    cwd: ROOT,
-    encoding: 'utf8',
-    env: { ...process.env, BUILD_ID },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+test('production build ships an allowlisted, versioned asset tree', t => {
+  const BUILD_ID = 'test-build';
+  const ASSET_DIR = `assets/${BUILD_ID}`;
+  const dist = build(t, { BUILD_ID });
+  const exists = relativePath => fs.existsSync(path.join(dist, relativePath));
 
   [
     'index.html',
@@ -50,7 +56,7 @@ test('production build ships an allowlisted, versioned asset tree', () => {
     assert.equal(exists(relativePath), true, `Expected ${relativePath} in dist.`);
   });
 
-  const files = listFiles(DIST);
+  const files = listFiles(dist);
   files.forEach(relativePath => {
     assert.ok(
       ['index.html', 'README.md', 'LICENSE'].includes(relativePath) || relativePath.startsWith(`${ASSET_DIR}/`),
@@ -64,7 +70,7 @@ test('production build ships an allowlisted, versioned asset tree', () => {
     assert.doesNotMatch(relativePath, /^(?:node_modules|scripts|tests|package(?:-lock)?\.json|vercel\.json)/);
   });
 
-  const html = fs.readFileSync(path.join(DIST, 'index.html'), 'utf8');
+  const html = fs.readFileSync(path.join(dist, 'index.html'), 'utf8');
   const urls = [...html.matchAll(/<(?:script|link)\b[^>]*\b(?:src|href)="([^"]+)"/g)].map(match => match[1]);
   assert.ok(urls.length >= 6);
   urls.forEach(url => {
@@ -72,4 +78,14 @@ test('production build ships an allowlisted, versioned asset tree', () => {
     assert.equal(exists(url), true, `Expected ${url} to resolve inside dist.`);
   });
   assert.match(html, new RegExp(`<script type="module" src="${ASSET_DIR}/js/main\\.js"></script>`));
+});
+
+test('the asset version is a content hash, identical for identical sources', t => {
+  // A commit SHA in the environment must not decide the version: a dirty tree or
+  // CLI deploy would reuse it for different bytes under an immutable cache header.
+  const first = fs.readdirSync(path.join(build(t, { VERCEL_GIT_COMMIT_SHA: 'aaaaaaaaaaaa' }), 'assets'));
+  const second = fs.readdirSync(path.join(build(t, { VERCEL_GIT_COMMIT_SHA: 'bbbbbbbbbbbb' }), 'assets'));
+  assert.equal(first.length, 1);
+  assert.match(first[0], /^[0-9a-f]{12}$/);
+  assert.deepEqual(second, first);
 });

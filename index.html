@@ -357,6 +357,20 @@
                 </div>
               </div>
               <div id="supportedModuleList"></div>
+              <div class="process-card" id="feedBufferCostControl">
+                <div class="module-note-title">Feed buffer storage</div>
+                <label>H2 buffer cost ($/kg working capacity)
+                  <input type="range" id="h2BufferCostPerKg" min="0" max="3000" step="25" value="750">
+                  <span class="range-value" id="h2BufferCostPerKgValue">$750/kg H2</span>
+                </label>
+                <label>CO2 buffer cost ($/t working capacity)
+                  <input type="range" id="co2BufferCostPerTon" min="0" max="3000" step="25" value="1000">
+                  <span class="range-value" id="co2BufferCostPerTonValue">$1,000/t CO2</span>
+                </label>
+                <div class="field-note compact-note">
+                  Buffered modules run at a constant rate, so they hold up to peak-day feed x (1 - operating hours / cycle hours) of H2 and CO2. That inventory is priced here (assumptions: low-pressure steel H2 vessels ~$500-1,000/kg; refrigerated liquid CO2 tanks ~$500-1,500/t), carries process O&amp;M and is replaced every 20 years.
+                </div>
+              </div>
             </div>
             <div class="module-group">
               <div class="module-group-title">Exploratory industrial modules</div>

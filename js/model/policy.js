@@ -92,6 +92,7 @@ function getEligibleCapexBreakdown(basis, capex = {}) {
       dac: capex.dac || 0,
       sabatier: capex.sabatier || 0,
       methanol: capex.methanol || 0,
+      feedBuffers: capex.feedBuffers || 0,
       exploratory: capex.exploratory || 0,
     };
   }

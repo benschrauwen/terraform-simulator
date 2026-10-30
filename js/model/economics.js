@@ -101,6 +101,7 @@ export const economicsMethods = {
     const {
       solar, storage, chemicalSupply, ai, electrolyzer, dac, sabatier, methanol,
       exploratoryModules, lifetimeEnergy, h2Surplus = 0, co2Surplus = 0,
+      feedBuffers = { capex: 0 },
     } = context;
 
     const rate = state.discountRate / 100;
@@ -155,6 +156,13 @@ export const economicsMethods = {
       { key: 'dac', label: 'DAC', capex: dac.capex, lifeYears: state.dacAssetLife, active: true },
       { key: 'sabatier', label: 'Methane reactor', capex: sabatier.capex, lifeYears: state.sabatierAssetLife, active: true },
       { key: 'methanol', label: 'Methanol reactor', capex: methanol.capex, lifeYears: state.methanolAssetLife, active: true },
+      {
+        key: 'feedBuffers',
+        label: 'Feed buffer storage',
+        capex: feedBuffers.capex || 0,
+        lifeYears: MODEL_ASSUMPTIONS.feedBufferAssetLifeYears,
+        active: true,
+      },
     ];
     const capex = {
       ...Object.fromEntries(coreAssets.map(asset => [asset.key, asset.capex])),
@@ -228,7 +236,7 @@ export const economicsMethods = {
     const annualOM = solar.annualSolarOm +
       (storage.capex * batteryOmFrac) +
       (ai.annualOM || 0) +
-      ((electrolyzer.capex + dac.capex + sabatier.capex + methanol.capex) * processOmFrac) +
+      ((electrolyzer.capex + dac.capex + sabatier.capex + methanol.capex + (feedBuffers.capex || 0)) * processOmFrac) +
       exploratoryAnnualOM;
 
     const methaneSalePrice = state.methanePrice;
@@ -526,6 +534,7 @@ export const economicsMethods = {
       costPerKgH2: electrolyzer.enabled && electrolyzer.h2AnnualKg > 0 ? annualCost / electrolyzer.h2AnnualKg : 0,
       costPerTonCO2: dac.enabled && dac.co2AnnualTons > 0 ? annualCost / dac.co2AnnualTons : 0,
       costPerMCF: sabatier.enabled && sabatier.ch4AnnualMCF > 0 ? annualCost / sabatier.ch4AnnualMCF : 0,
+      feedBuffers,
       exploratoryDetails,
       modeledExploratoryModules: exploratoryDetails.map(module => module.label),
       excludedModules: [],

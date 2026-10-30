@@ -286,6 +286,15 @@ function buildCostRows({ r, e, state }) {
   ].forEach(([key, label]) => {
     if (e.capex[key] > 0) rows.push(econRow(label, money(e.capex[key])));
   });
+  if ((e.capex.feedBuffers || 0) > 0) {
+    const buffers = e.feedBuffers || {};
+    rows.push(econRow(
+      'Feed buffer storage',
+      money(e.capex.feedBuffers),
+      '',
+      `Working inventory of buffered modules: ${FormatNumbers.fixed(buffers.h2WorkingKg || 0, 1)} kg H2 and ${FormatNumbers.fixed(buffers.co2WorkingTons || 0, 2)} t CO2.`
+    ));
+  }
   exploratoryDetails.forEach(module => {
     if (module.capex <= 0) return;
     rows.push(econRow(`${module.label} (${module.routeLabel})`, money(module.capex)));

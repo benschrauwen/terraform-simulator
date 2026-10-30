@@ -72,8 +72,11 @@ test('salvage lands in the final year cash flow and is discounted in NPV', () =>
   close(last.netCashFlow, last.operatingCashFlow - last.replacementOutflow + last.salvageValue, 1e-9);
   assert.ok(economics.yearlyCashFlows.slice(0, -1).every(entry => entry.salvageValue === 0));
   // Default 30 years: electrolyzer, DAC, Sabatier (7-yr lives, last replaced in year 28)
-  // return 5/7 of their cost; land returns at cost.
-  const expected = economics.capex.land + (5 / 7) * (economics.capex.electrolyzer + economics.capex.dac + economics.capex.sabatier);
+  // return 5/7 of their cost; feed buffers (20-yr life, replaced in year 20)
+  // return 10/20; land returns at cost.
+  const expected = economics.capex.land +
+    (5 / 7) * (economics.capex.electrolyzer + economics.capex.dac + economics.capex.sabatier) +
+    (10 / 20) * economics.capex.feedBuffers;
   close(economics.salvageValue, expected, 1e-6);
   assert.equal(economics.cashFlowTimeline.salvageValue.at(-1), economics.salvageValue);
 });

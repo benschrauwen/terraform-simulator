@@ -106,6 +106,11 @@ export const CORE_STATE_FIELDS = [
   { key: 'methanePrice', type: 'number', min: 0, max: 1e9, defaultValue: 20 },
   { key: 'methanolPrice', type: 'number', min: 0, max: 1e9, defaultValue: 600 },
   { key: 'exploratoryOmPercent', type: 'number', min: 0, max: 20, defaultValue: 4 },
+  // Feed-buffer storage cost per unit of working capacity (assumptions:
+  // low-pressure steel H2 vessels ~$500-1,000/kg H2; refrigerated liquid
+  // CO2 tanks ~$500-1,500/t CO2).
+  { key: 'h2BufferCostPerKg', type: 'number', min: 0, max: 5000, defaultValue: 750 },
+  { key: 'co2BufferCostPerTon', type: 'number', min: 0, max: 5000, defaultValue: 1000 },
 
   ...POLICY_INPUT_FIELDS,
 

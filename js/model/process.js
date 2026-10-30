@@ -63,10 +63,19 @@ function sizeTwoFeedReactor({
     ? Math.min(1, averageGrossFeedKgPerHour / designFeedKgPerHour)
     : 0;
 
+  // Buffered reactors run at a constant rate across the cycle while feed
+  // arrives only during operating hours. With feed flat over opHours, the
+  // largest inventory is the peak-day feed x (1 - opHours / cycleHours).
+  const bufferFraction = bufferEnabled && cycleHours > 0
+    ? Math.max(0, Math.min(1, 1 - (opHours / cycleHours)))
+    : 0;
+
   return {
     productFromH2,
     productFromCO2,
     dailyKg,
+    bufferH2Kg: sizingPeakH2DailyKg * bufferFraction,
+    bufferCO2Kg: sizingPeakCO2DailyKg * bufferFraction,
     designH2FeedKgPerHour,
     designCO2FeedKgPerHour,
     designFeedKgPerHour,
@@ -408,6 +417,8 @@ export const processMethods = {
         designHourlyRate: 0,
         averageUtilization: 0,
         operatingUtilization: 0,
+        bufferH2Kg: 0,
+        bufferCO2Kg: 0,
         capex: 0,
       };
     }
@@ -456,6 +467,8 @@ export const processMethods = {
       designHourlyRate: reactor.designHourlyOutputKg / c.ch4PerMCF,
       averageUtilization: reactor.averageUtilization,
       operatingUtilization: reactor.operatingUtilization,
+      bufferH2Kg: reactor.bufferH2Kg,
+      bufferCO2Kg: reactor.bufferCO2Kg,
       capex: state.sabatierCapex * designOutputKW,
     };
   },
@@ -500,6 +513,8 @@ export const processMethods = {
         designHourlyOutputKg: 0,
         averageUtilization: 0,
         operatingUtilization: 0,
+        bufferH2Kg: 0,
+        bufferCO2Kg: 0,
         capex: 0,
       };
     }
@@ -550,6 +565,8 @@ export const processMethods = {
       designHourlyOutputKg: reactor.designHourlyOutputKg,
       averageUtilization: reactor.averageUtilization,
       operatingUtilization: reactor.operatingUtilization,
+      bufferH2Kg: reactor.bufferH2Kg,
+      bufferCO2Kg: reactor.bufferCO2Kg,
       capex: state.methanolCapex * reactor.designFeedKgPerHour,
     };
   },
@@ -586,6 +603,22 @@ export const processMethods = {
       outputs: { sabatier, methanol },
       h2Remaining: Math.max(0, (materialFlows.h2DailyKg || 0) - (sabatier.h2Consumed || 0) - (methanol.h2Consumed || 0)),
       co2Remaining: Math.max(0, (materialFlows.co2DailyKg || 0) - (sabatier.co2Consumed || 0) - (methanol.co2Consumed || 0)),
+    };
+  },
+
+  /* Feed-buffer storage: working H2 (kg) and CO2 (t) inventory of every
+     buffered consumer, priced per unit of working capacity. */
+  calculateFeedBufferStorage(state, consumers = []) {
+    const h2WorkingKg = consumers.reduce((sum, consumer) => sum + (consumer?.bufferH2Kg || 0), 0);
+    const co2WorkingTons = consumers.reduce((sum, consumer) => sum + (consumer?.bufferCO2Kg || 0), 0) / 1000;
+    const h2Capex = h2WorkingKg * Math.max(0, Number(state.h2BufferCostPerKg) || 0);
+    const co2Capex = co2WorkingTons * Math.max(0, Number(state.co2BufferCostPerTon) || 0);
+    return {
+      h2WorkingKg,
+      co2WorkingTons,
+      h2Capex,
+      co2Capex,
+      capex: h2Capex + co2Capex,
     };
   },
 
@@ -656,6 +689,7 @@ export const processMethods = {
       peakSizingKW = 0,
       effectiveDailyKWh = 0,
       peakDailyKWh = 0,
+      opHours = 0,
     } = context;
     const body = this.getBodyConfig(state.body || 'earth');
     const cyclesPerYear = body.cyclesPerEarthYear;
@@ -716,6 +750,11 @@ export const processMethods = {
         const realizedCapacityFactor = capexSizingOutputUnitsPerHour > 0 && cycleHours > 0
           ? Math.max(0, Math.min(1, outputDailyUnits / (capexSizingOutputUnitsPerHour * cycleHours)))
           : 0;
+        // H2/CO2 inventory a buffered route holds (see sizeTwoFeedReactor);
+        // methanol is a liquid and its tankage is treated as negligible.
+        const bufferFraction = enabled && bufferEnabled && cycleHours > 0
+          ? Math.max(0, Math.min(1, 1 - (opHours / cycleHours)))
+          : 0;
         const h2Consumed = outputDailyUnits * (routeConfig?.feedstocks?.h2Kg || 0);
         const co2Consumed = outputDailyUnits * (routeConfig?.feedstocks?.co2Kg || 0);
         const methanolConsumed = outputDailyUnits * (routeConfig?.feedstocks?.methanolKg || 0);
@@ -753,6 +792,8 @@ export const processMethods = {
           h2Consumed,
           co2Consumed,
           methanolConsumed,
+          bufferH2Kg: peakDayAllocations.h2Kg * bufferFraction,
+          bufferCO2Kg: peakDayAllocations.co2Kg * bufferFraction,
           diagramInputs: {
             electricity: true,
             ...(routeConfig?.diagramInputs || module.diagramInputs || {}),

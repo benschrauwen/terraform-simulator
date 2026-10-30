@@ -142,6 +142,7 @@ export const scenarioMethods = {
       methanol.annualTons = methanol.exportAnnualTons;
       methanol.dailyLiters = exportedDailyKg / CHEMISTRY.methanol.density;
     }
+    const feedBuffers = this.calculateFeedBufferStorage(normalizedState, [sabatier, methanol, ...exploratoryModules]);
     const h2Surplus = Math.max(0, (electrolyzer.h2DailyKg || 0) - (sabatier.h2Consumed || 0) - (methanol.h2Consumed || 0) - exploratoryH2Consumed);
     const co2Surplus = Math.max(0, (dac.co2DailyKg || 0) - (sabatier.co2Consumed || 0) - (methanol.co2Consumed || 0) - exploratoryCo2Consumed);
 
@@ -157,6 +158,7 @@ export const scenarioMethods = {
       h2Surplus,
       co2Surplus,
       exploratoryModules,
+      feedBuffers,
       lifetimeEnergy,
     });
     const environmental = includeEnvironmental
@@ -180,6 +182,7 @@ export const scenarioMethods = {
       methanol,
       supportedModules: includeSupportedModules ? [sabatier, methanol] : [],
       exploratoryModules,
+      feedBuffers,
       economics,
       environmental,
       h2Surplus,

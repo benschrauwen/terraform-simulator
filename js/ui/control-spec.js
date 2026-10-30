@@ -116,6 +116,8 @@ export const CONTROL_SPECS = Object.freeze([
   { type: 'range', id: 'methanePrice', format: value => `$${fixed(2)(value)}/MCF` },
   { type: 'range', id: 'methanolPrice', format: value => `$${intFixed(0)(value)}/ton` },
   { type: 'range', id: 'exploratoryOmPercent', format: formatExploratoryOmPercent },
+  { type: 'range', id: 'h2BufferCostPerKg', format: value => `$${intFixed(0)(value)}/kg H2` },
+  { type: 'range', id: 'co2BufferCostPerTon', format: value => `$${intFixed(0)(value)}/t CO2` },
   {
     type: 'select',
     id: 'policyMode',

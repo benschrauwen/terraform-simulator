@@ -93,7 +93,7 @@ The current implementation makes several deliberate assumptions that should stay
 - `siteYieldMwhPerMwdcYear` is treated as a base annual yield for the reference mounting (fixed optimal tilt; vertical sun-tracking at the lunar pole). Mounting effects are applied on top of that base yield rather than asking the user for a fully mounting-adjusted number.
 - With AI compute enabled, the model builds an annual dispatch path and serves AI first; the chemical plant and battery charging use residual solar after the AI load.
 - `chemicalSizingPercent` scales the full-capture chemical peak and allows intentional clipping of the highest-solar hours.
-- Feed buffers, when enabled, are treated as part of the process block and are not costed or modeled as standalone storage assets.
+- Feed buffers, when enabled, let a reactor run at a constant rate across the cycle; the H2 and CO2 inventory they hold (peak-day feed x (1 - operating hours / cycle hours), a flat-supply upper bound) is costed per kg H2 / t CO2 of working capacity ($750/kg and $1,000/t by default, both assumptions), carries process O&M and is replaced every 20 years. At the default $50/kW-CH4 reactor cost, buffering the Sabatier reactor costs more in storage than it saves in reactor size.
 - Supported products and exploratory routes share H2, CO2, methanol, and power through an auto-balanced weighted allocation rather than a user-entered process-flow sheet.
 - Panel efficiency affects panel area and land use, not annual energy yield, because the model is framed around user-set fixed MWdc nameplate rather than auto-resizing solar capacity to a target output.
 - Earth-site acreage and solar BOS keep the user-selected installed MWdc fixed, then apply location-aware layout heuristics on top of the mounting baseline instead of solving a new required MWdc for each site.
@@ -235,6 +235,9 @@ Buffered gas-fed routes can size from the most active modeled day without chasin
 
 ```text
 buffered_peak_feed_kg_per_hour = peak_day_feed_kg / cycle_hours
+
+buffer_working_kg = peak_day_feed_kg * (1 - op_hours / cycle_hours)
+buffer_capex = h2_working_kg * h2_buffer_cost_per_kg + co2_working_t * co2_buffer_cost_per_t
 ```
 
 For methane, methanol, and the exploratory routes that expose the buffer toggle, this buffered rate replaces the instantaneous peak-feed rate for nameplate CAPEX sizing when the checkbox is on.

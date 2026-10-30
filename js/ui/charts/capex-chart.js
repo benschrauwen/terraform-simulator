@@ -45,6 +45,7 @@ function capexSlices(e) {
     ['DAC', e.capex.dac, '#8b5cf6'],
     ['Methane', e.capex.sabatier, '#10b981'],
     ['Methanol', e.capex.methanol, '#f97316'],
+    ['Feed buffers', e.capex.feedBuffers || 0, '#a3a3a3'],
   ].filter(([, value]) => value > 0);
 }
 

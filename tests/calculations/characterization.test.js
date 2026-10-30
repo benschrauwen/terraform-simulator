@@ -2,8 +2,13 @@
  * Characterization snapshot of the full calculation output.
  *
  * Pins the complete result tree for a matrix of scenarios so structural
- * refactors can prove they are behaviour-preserving. When a model change is
- * intentional, regenerate the fixture and review the diff:
+ * refactors can prove they are behaviour-preserving. It is a change
+ * detector, not a correctness check: what the numbers must satisfy lives in
+ * invariants.test.js and the golden / physics tests.
+ *
+ * When a model change is intentional, regenerate the fixture in the same
+ * commit and review the diff (only the scenarios you meant to move should
+ * change):
  *
  *   UPDATE_CHARACTERIZATION=1 node --test tests/calculations/characterization.test.js
  */

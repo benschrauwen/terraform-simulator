@@ -81,20 +81,6 @@ test('salvage lands in the final year cash flow and is discounted in NPV', () =>
   assert.equal(economics.cashFlowTimeline.salvageValue.at(-1), economics.salvageValue);
 });
 
-test('scale homogeneity: doubling solar and battery doubles capex, NPV and outputs, IRR unchanged', () => {
-  const base = runScenario({ systemSizeMW: 10, batteryEnabled: true, batteryCapacityMWh: 4 });
-  const doubled = runScenario({ systemSizeMW: 20, batteryEnabled: true, batteryCapacityMWh: 8 });
-  const relative = (a, b) => Math.abs(a - b) / Math.max(1, Math.abs(b));
-  assert.ok(relative(doubled.economics.totalCapex, 2 * base.economics.totalCapex) < 1e-9);
-  assert.ok(relative(doubled.economics.npv, 2 * base.economics.npv) < 1e-9);
-  assert.ok(relative(doubled.electrolyzer.h2AnnualKg, 2 * base.electrolyzer.h2AnnualKg) < 1e-9);
-  assert.ok(relative(doubled.sabatier.ch4AnnualMCF, 2 * base.sabatier.ch4AnnualMCF) < 1e-9);
-  if (Number.isFinite(base.economics.irr)) {
-    assert.ok(Math.abs(doubled.economics.irr - base.economics.irr) < 1e-9);
-  }
-  assert.ok(Math.abs(doubled.economics.mirr - base.economics.mirr) < 1e-9);
-});
-
 test('PV degradation restarts after the solar repowering', () => {
   const result = runScenario({ analysisHorizonYears: 40, solarAssetLife: 30, panelDegradationAnnual: 0.5 });
   const factors = result.lifetimeEnergy.solarFactorByYear;

@@ -175,7 +175,9 @@ export const moduleControlMethods = {
     const capexKey = `${module.id}CapexBasis`;
     const capexControl = Calc.getModuleCapexControlConfig(module.id, route);
     const capexValue = this.state[capexKey] ?? capexControl.defaultValue;
-    const priorityControl = `
+    // MTG takes no shared H2 / CO2: its throughput (and power) follows the
+    // methanol diverted to it, so it has no pool priority.
+    const priorityControl = module.id === 'mtg' ? '' : `
       <label>Shared Pool Priority
         <input type="range" id="${priorityKey}" min="0" max="100" step="5" value="${this.state[priorityKey] ?? 100}">
         <span class="range-value" id="${priorityKey}Value">${formatExploratoryPriorityWeight(this.state[priorityKey] ?? 100)}</span>
@@ -210,7 +212,10 @@ export const moduleControlMethods = {
           ${priorityControl}
           ${extraControls}
           <div class="field-note compact-note">
-            Shared power and modeled feedstock pools normalize from the active exploratory priority sliders. Active exploratory outputs now carry route CAPEX, O&amp;M, and sale-price assumptions into ROI.
+            ${module.id === 'mtg'
+              ? 'MTG throughput, and the power it draws, follow the methanol diverted to it.'
+              : 'Each route gets power and H2/CO2 in proportion to its priority (product units) x its per-unit needs.'}
+            Active exploratory outputs carry route CAPEX, O&amp;M, and sale-price assumptions into ROI.
           </div>
           <div class="missing-assumptions">
             <div class="module-note-title">Key missing assumptions</div>

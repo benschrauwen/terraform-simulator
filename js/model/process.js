@@ -161,9 +161,18 @@ export const processMethods = {
         const route = state[`${module.id}Route`] || ModuleCatalog.getDefaultRoute(module) || 'unspecified';
         const routeConfig = this.getModuleRouteConfig(module.id, route);
         const priorityWeight = this.getExploratoryPriorityWeight(state, module.id);
+        // MTG competes for no H2 or CO2: its throughput is the methanol
+        // diverted to it, so its weight is those product units (methanol
+        // weight x reactor conversion x diverted share / kg MeOH per unit),
+        // not a priority. Weighting it by priority handed it power for up to
+        // ~6x the gasoline its methanol can make.
+        const methanolKgPerUnit = routeConfig?.feedstocks?.methanolKg || 0;
         const effectivePriorityWeight = enabled
           ? module.id === 'mtg'
-            ? priorityWeight * mtgMethanolSplit
+            ? (methanolKgPerUnit > 0
+                ? (supported.methanol * (clampNumber(state.methanolEfficiency, 0, 100, DEFAULT_STATE.methanolEfficiency) / 100) *
+                  mtgMethanolSplit * 1000) / methanolKgPerUnit
+                : 0)
             : priorityWeight
           : 0;
 
@@ -180,7 +189,6 @@ export const processMethods = {
     const h2Consumers = [];
     const co2Consumers = [];
     const exploratoryPowerDemandProxies = {};
-    const exploratoryPowerWeightEntries = [];
 
     if (supported.sabatier > 0 && state.sabatierEnabled) {
       h2Consumers.push({
@@ -232,10 +240,6 @@ export const processMethods = {
       }
 
       exploratoryPowerDemandProxies[module.id] = module.effectivePriorityWeight * (routeConfig.electricityKwhPerUnit || 0);
-      exploratoryPowerWeightEntries.push({
-        id: module.id,
-        weight: module.effectivePriorityWeight,
-      });
     });
 
     // A consumer's weight is a share of gross product units, so its feed
@@ -258,10 +262,13 @@ export const processMethods = {
     );
     const exploratoryPowerDemand = Object.values(exploratoryPowerDemandProxies).reduce((sum, value) => sum + value, 0);
     const totalPowerDemand = h2PowerDemand + co2PowerDemand + exploratoryPowerDemand;
-    const exploratoryPoolShare = totalPowerDemand > 0 ? exploratoryPowerDemand / totalPowerDemand : 0;
-    const exploratoryWithinPoolShares = this.buildWeightedShareMap(exploratoryPowerWeightEntries);
+    // Each route's power share is its own demand (weight x kWh per unit),
+    // the same product its feed shares use, so power and feeds limit its
+    // output at the same point. Splitting the route pool by weight alone
+    // gave low-intensity routes power they had no feed for and starved
+    // high-intensity ones, stranding their H2 / CO2.
     const exploratoryPowerShares = exploratoryModules.reduce((shares, module) => {
-      shares[module.id] = exploratoryPoolShare * (exploratoryWithinPoolShares[module.id] || 0);
+      shares[module.id] = totalPowerDemand > 0 ? (exploratoryPowerDemandProxies[module.id] || 0) / totalPowerDemand : 0;
       return shares;
     }, {});
 

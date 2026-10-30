@@ -1,8 +1,150 @@
 /* ============================================
-   System Diagram — Registry driven renderer
+   System Diagram — SVG flow diagram of the modeled plant
+   (cards laid out row by row, then power/feedstock connections)
    ============================================ */
 
 import { FormatNumbers } from './format-numbers.js';
+
+const branchOffset = (from, to, amount) => {
+  if (!from || !to) return 0;
+  if (to.cx < from.cx) return -amount;
+  if (to.cx > from.cx) return amount;
+  return 0;
+};
+
+/**
+ * Row-by-row card placement for the diagram. Each `place*` call reserves the next row
+ * (or block of rows) below the previous one and appends positioned nodes to `nodes`.
+ */
+function createDiagramLayout(width, makeNode) {
+  const nodes = [];
+  const marginX = 22;
+  const marginY = 22;
+  const rowGap = 24;
+  const stackGap = 10;
+  const availableWidth = Math.max(320, width - marginX * 2);
+  const narrow = availableWidth < 520;
+  const singleWidth = Math.max(150, Math.min(200, availableWidth - 56));
+  const pairGap = 20;
+  const centerX = width / 2;
+  const largeHeight = 68;
+  const smallHeight = 56;
+  let cursorTop = marginY;
+
+  const reserveRow = blockHeight => {
+    const top = cursorTop;
+    cursorTop += blockHeight + rowGap;
+    return top;
+  };
+
+  const addNode = (item, cx, top, w, h) => {
+    nodes.push(makeNode(item.id, cx, top + h / 2, w, h, item.icon || '', item.title, item.value, item.subtitle, item.color, item.active !== false));
+  };
+
+  // Most columns that fit, avoiding a lone card on the last row.
+  const chooseColumns = (count, maxColumns, minWidth) => {
+    if (narrow) return 1;
+    const fitColumns = Math.max(1, Math.floor((availableWidth + pairGap) / (minWidth + pairGap)));
+    const upperBound = Math.min(count, maxColumns, fitColumns);
+    for (let columns = upperBound; columns >= 1; columns -= 1) {
+      const remainder = count % columns;
+      if (remainder !== 1 || count <= columns) return columns;
+    }
+    return 1;
+  };
+
+  const placeGrid = (items, {
+    cardHeight = smallHeight,
+    singleCardWidth = singleWidth,
+    wideMinWidth = 138,
+    wideMaxWidth = 178,
+    maxColumns = 3,
+  } = {}) => {
+    if (!items.length) return;
+
+    const columns = chooseColumns(items.length, maxColumns, wideMinWidth);
+    const cardWidth = columns === 1
+      ? singleCardWidth
+      : Math.max(wideMinWidth, Math.min(wideMaxWidth, (availableWidth - pairGap * (columns - 1)) / columns));
+    const rows = Math.ceil(items.length / columns);
+    const blockHeight = rows * cardHeight + (rows - 1) * stackGap;
+    const top = reserveRow(blockHeight);
+
+    for (let row = 0; row < rows; row += 1) {
+      const rowItems = items.slice(row * columns, row * columns + columns);
+      const rowWidth = rowItems.length * cardWidth + (rowItems.length - 1) * pairGap;
+      const startX = centerX - rowWidth / 2 + cardWidth / 2;
+
+      rowItems.forEach((item, index) => {
+        addNode(item, startX + index * (cardWidth + pairGap), top + row * (cardHeight + stackGap), cardWidth, cardHeight);
+      });
+    }
+  };
+
+  // One row whose cards sit as close as possible to the requested x centres without overlapping.
+  const placeAnchoredRow = (items, centers, {
+    cardHeight = smallHeight,
+    cardWidth = Math.max(138, Math.min(178, singleWidth)),
+    fallbackMaxColumns = 3,
+  } = {}) => {
+    if (!items.length) return;
+
+    const resolvedCenters = centers.filter(center => Number.isFinite(center));
+    if (resolvedCenters.length < items.length) {
+      placeGrid(items, {
+        cardHeight,
+        singleCardWidth: cardWidth,
+        wideMinWidth: Math.min(cardWidth, 138),
+        wideMaxWidth: cardWidth,
+        maxColumns: fallbackMaxColumns,
+      });
+      return;
+    }
+
+    const minCenter = marginX + cardWidth / 2;
+    const maxCenter = width - marginX - cardWidth / 2;
+    const minCenterGap = cardWidth + pairGap;
+    const anchored = items.map((item, index) => ({
+      item,
+      center: Math.max(minCenter, Math.min(maxCenter, resolvedCenters[index])),
+    }));
+
+    for (let index = 1; index < anchored.length; index += 1) {
+      anchored[index].center = Math.max(anchored[index].center, anchored[index - 1].center + minCenterGap);
+    }
+
+    const overflow = anchored[anchored.length - 1].center - maxCenter;
+    if (overflow > 0) {
+      anchored.forEach(entry => {
+        entry.center -= overflow;
+      });
+    }
+
+    for (let index = anchored.length - 2; index >= 0; index -= 1) {
+      anchored[index].center = Math.min(anchored[index].center, anchored[index + 1].center - minCenterGap);
+    }
+
+    if (anchored[0].center < minCenter) {
+      const shift = minCenter - anchored[0].center;
+      anchored.forEach(entry => {
+        entry.center += shift;
+      });
+    }
+
+    const top = reserveRow(cardHeight);
+    anchored.forEach(({ item, center }) => addNode(item, center, top, cardWidth, cardHeight));
+  };
+
+  return {
+    nodes,
+    smallHeight,
+    largeHeight,
+    singleWidth,
+    placeGrid,
+    placeAnchoredRow,
+    height: () => Math.max(360, cursorTop - rowGap + marginY),
+  };
+}
 
 export const Diagram = {
   colors: {
@@ -62,156 +204,149 @@ export const Diagram = {
   },
 
   buildNodes(r, width) {
-    const nodes = [];
-    const marginX = 22;
-    const marginY = 22;
-    const rowGap = 24;
-    const stackGap = 10;
-    const availableWidth = Math.max(320, width - marginX * 2);
-    const narrow = availableWidth < 520;
-    const singleWidth = Math.max(150, Math.min(200, availableWidth - 56));
-    const pairGap = 20;
-    const centerX = width / 2;
-    const largeHeight = 68;
-    const smallHeight = 56;
-    let cursorTop = marginY;
-
-    const reserveRow = blockHeight => {
-      const top = cursorTop;
-      cursorTop += blockHeight + rowGap;
-      return top;
-    };
-
-    const addNode = (id, cx, top, w, h, icon, title, value, subtitle, color, active) => {
-      nodes.push(this.node(id, cx, top + h / 2, w, h, icon, title, value, subtitle, color, active));
-    };
-
-    const chooseColumns = (count, maxColumns, minWidth) => {
-      if (narrow) return 1;
-      const fitColumns = Math.max(1, Math.floor((availableWidth + pairGap) / (minWidth + pairGap)));
-      const upperBound = Math.min(count, maxColumns, fitColumns);
-      for (let columns = upperBound; columns >= 1; columns -= 1) {
-        const remainder = count % columns;
-        if (remainder !== 1 || count <= columns) return columns;
-      }
-      return 1;
-    };
-
-    const placeGrid = (items, {
-      cardHeight = smallHeight,
-      singleCardWidth = singleWidth,
-      wideMinWidth = 138,
-      wideMaxWidth = 178,
-      maxColumns = 3,
-    } = {}) => {
-      if (!items.length) return;
-
-      const columns = chooseColumns(items.length, maxColumns, wideMinWidth);
-      const cardWidth = columns === 1
-        ? singleCardWidth
-        : Math.max(wideMinWidth, Math.min(wideMaxWidth, (availableWidth - pairGap * (columns - 1)) / columns));
-      const rows = Math.ceil(items.length / columns);
-      const blockHeight = rows * cardHeight + (rows - 1) * stackGap;
-      const top = reserveRow(blockHeight);
-
-      for (let row = 0; row < rows; row += 1) {
-        const rowItems = items.slice(row * columns, row * columns + columns);
-        const rowWidth = rowItems.length * cardWidth + (rowItems.length - 1) * pairGap;
-        const startX = centerX - rowWidth / 2 + cardWidth / 2;
-
-        rowItems.forEach((item, index) => {
-          addNode(
-            item.id,
-            startX + index * (cardWidth + pairGap),
-            top + row * (cardHeight + stackGap),
-            cardWidth,
-            cardHeight,
-            item.icon || '',
-            item.title,
-            item.value,
-            item.subtitle,
-            item.color,
-            item.active !== false
-          );
-        });
-      }
-    };
-
-    const placeAnchoredRow = (items, centers, {
-      cardHeight = smallHeight,
-      cardWidth = Math.max(138, Math.min(178, singleWidth)),
-      fallbackMaxColumns = 3,
-    } = {}) => {
-      if (!items.length) return;
-
-      const resolvedCenters = centers.filter(center => Number.isFinite(center));
-      if (resolvedCenters.length < items.length) {
-        placeGrid(items, {
-          cardHeight,
-          singleCardWidth: cardWidth,
-          wideMinWidth: Math.min(cardWidth, 138),
-          wideMaxWidth: cardWidth,
-          maxColumns: fallbackMaxColumns,
-        });
-        return;
-      }
-
-      const minCenter = marginX + cardWidth / 2;
-      const maxCenter = width - marginX - cardWidth / 2;
-      const minCenterGap = cardWidth + pairGap;
-      const anchored = items.map((item, index) => ({
-        item,
-        center: Math.max(minCenter, Math.min(maxCenter, resolvedCenters[index])),
-      }));
-
-      for (let index = 1; index < anchored.length; index += 1) {
-        anchored[index].center = Math.max(anchored[index].center, anchored[index - 1].center + minCenterGap);
-      }
-
-      const overflow = anchored[anchored.length - 1].center - maxCenter;
-      if (overflow > 0) {
-        anchored.forEach(entry => {
-          entry.center -= overflow;
-        });
-      }
-
-      for (let index = anchored.length - 2; index >= 0; index -= 1) {
-        anchored[index].center = Math.min(anchored[index].center, anchored[index + 1].center - minCenterGap);
-      }
-
-      if (anchored[0].center < minCenter) {
-        const shift = minCenter - anchored[0].center;
-        anchored.forEach(entry => {
-          entry.center += shift;
-        });
-      }
-
-      const top = reserveRow(cardHeight);
-      anchored.forEach(({ item, center }) => {
-        addNode(
-          item.id,
-          center,
-          top,
-          cardWidth,
-          cardHeight,
-          item.icon || '',
-          item.title,
-          item.value,
-          item.subtitle,
-          item.color,
-          item.active !== false
-        );
-      });
-    };
-
+    const layout = createDiagramLayout(width, (...args) => this.node(...args));
     const exploratoryCards = r.exploratoryModules
       .filter(module => module.enabled)
       .map(module => ({
         ...module,
         diagramInputs: this.getExploratoryDiagramInputs(module),
       }));
+    const exploratoryCardsWhere = predicate => exploratoryCards
+      .filter(module => predicate(module.diagramInputs))
+      .map(module => this.makeExploratoryCard(module, r));
+    const { smallHeight, largeHeight, singleWidth } = layout;
+    const singleSolarRow = { cardHeight: largeHeight, singleCardWidth: singleWidth, wideMinWidth: 150, wideMaxWidth: 200, maxColumns: 1 };
 
-    const makeExploratoryCard = module => ({
+    // Rows top to bottom: sun, array, battery, power consumers, downstream products, product-fed routes, outputs.
+    layout.placeGrid([this.makeSunCard(r)], singleSolarRow);
+    layout.placeGrid([this.makeArrayCard(r)], singleSolarRow);
+
+    if (r.storage.enabled) {
+      layout.placeGrid([this.makeBatteryCard(r)], {
+        cardHeight: smallHeight,
+        singleCardWidth: Math.min(singleWidth, 182),
+        wideMinWidth: 150,
+        wideMaxWidth: 182,
+        maxColumns: 1,
+      });
+    }
+
+    layout.placeGrid([
+      ...this.makeCoreProcessCards(r),
+      ...exploratoryCardsWhere(inputs => !inputs.h2 && !inputs.co2 && !inputs.methanol),
+    ], {
+      cardHeight: largeHeight,
+      maxColumns: 4,
+    });
+
+    layout.placeGrid([
+      ...this.makeSupportedProductCards(r),
+      ...exploratoryCardsWhere(inputs => inputs.h2 || inputs.co2),
+    ], {
+      cardHeight: smallHeight,
+      maxColumns: 3,
+    });
+
+    layout.placeGrid(exploratoryCardsWhere(inputs => inputs.methanol && !inputs.h2 && !inputs.co2), {
+      cardHeight: smallHeight,
+      maxColumns: 3,
+    });
+
+    this.placeOutputCards(layout, this.makeOutputCards(r));
+
+    return {
+      nodes: layout.nodes,
+      height: layout.height(),
+    };
+  },
+
+  makeSunCard(r) {
+    return {
+      id: 'sun',
+      title: 'Solar resource',
+      value: `${FormatNumbers.fixed(r.solar.baseYield, 0)} MWh/MWdc-yr`,
+      subtitle: `${FormatNumbers.fixed(r.solar.ghi, 0)} kWh/m²/yr  ·  ${FormatNumbers.fixed(r.solar.sunHours, 1)} ${r.solar.hoursPerCycleLabel}`,
+      color: this.colors.solar,
+      active: true,
+    };
+  },
+
+  makeArrayCard(r) {
+    return {
+      id: 'array',
+      title: 'Solar array',
+      value: this.formatSolarSystemSize(r.solar.peakPowerKW),
+      subtitle: this.formatAnnualEnergy(r.solar.annualMWh),
+      color: this.colors.solar,
+      active: true,
+    };
+  },
+
+  makeBatteryCard(r) {
+    return {
+      id: 'battery',
+      title: 'Battery',
+      value: `${r.storage.battCapKWh.toLocaleString()} kWh`,
+      subtitle: `${this.formatPowerMagnitude(r.chemicalSupply.processPowerKW)} firmed chem cap`,
+      color: this.colors.battery,
+      active: true,
+    };
+  },
+
+  /** AI, electrolyzer and DAC: the loads fed directly by the array. */
+  makeCoreProcessCards(r) {
+    const cards = [];
+    if (r.ai.enabled) {
+      cards.push({
+        id: 'ai',
+        title: 'AI datacenter',
+        value: this.formatInstalledPowerKW(r.ai.designLoadKW),
+        subtitle: `${FormatNumbers.fixed(r.ai.utilization * 100, 2)}% delivered · ${FormatNumbers.fixed(r.ai.fullPowerReliability * 100, 2)}% full-rate`,
+        color: this.colors.ai,
+        active: true,
+      });
+    }
+    if (r.electrolyzer.enabled) {
+      cards.push({
+        id: 'electrolyzer',
+        title: 'Electrolyzer',
+        value: this.formatInstalledPowerKW(r.electrolyzer.allocKW),
+        subtitle: this.formatAnnualMass(r.electrolyzer.h2AnnualKg, 'H2'),
+        color: this.colors.h2,
+        active: true,
+      });
+    }
+    if (r.dac.enabled) {
+      cards.push({
+        id: 'dac',
+        title: 'DAC',
+        value: this.formatInstalledPowerKW(r.dac.allocKW),
+        subtitle: this.formatAnnualMass(r.dac.co2AnnualKg, 'CO2'),
+        color: this.colors.co2,
+        active: true,
+      });
+    }
+    return cards;
+  },
+
+  makeSupportedProductCards(r) {
+    return r.supportedModules
+      .filter(module => module.enabled && module.modeled)
+      .map(module => ({
+        id: module.id,
+        icon: '',
+        title: module.title || module.label,
+        value: this.formatMassRate(module.designHourlyOutputKg),
+        subtitle: module.id === 'methanol'
+          ? this.formatAnnualMass(module.annualKg)
+          : this.formatAnnualMass(module.ch4AnnualKg, 'CH4'),
+        color: module.id === 'methanol' ? this.colors.methanol : this.colors.methane,
+        active: module.active !== false,
+      }));
+  },
+
+  makeExploratoryCard(module, r) {
+    return {
       id: `exp-${module.id}`,
       icon: '',
       title: module.label,
@@ -221,131 +356,10 @@ export const Diagram = {
       subtitle: module.feedstockSummary || 'Needs power',
       color: this.colors.exploratory,
       active: true,
-    });
+    };
+  },
 
-    placeGrid([{
-      id: 'sun',
-      title: 'Solar resource',
-      value: `${FormatNumbers.fixed(r.solar.baseYield, 0)} MWh/MWdc-yr`,
-      subtitle: `${FormatNumbers.fixed(r.solar.ghi, 0)} kWh/m²/yr  ·  ${FormatNumbers.fixed(r.solar.sunHours, 1)} ${r.solar.hoursPerCycleLabel}`,
-      color: this.colors.solar,
-      active: true,
-    }], {
-      cardHeight: largeHeight,
-      singleCardWidth: singleWidth,
-      wideMinWidth: 150,
-      wideMaxWidth: 200,
-      maxColumns: 1,
-    });
-
-    placeGrid([{
-      id: 'array',
-      title: 'Solar array',
-      value: this.formatSolarSystemSize(r.solar.peakPowerKW),
-      subtitle: this.formatAnnualEnergy(r.solar.annualMWh),
-      color: this.colors.solar,
-      active: true,
-    }], {
-      cardHeight: largeHeight,
-      singleCardWidth: singleWidth,
-      wideMinWidth: 150,
-      wideMaxWidth: 200,
-      maxColumns: 1,
-    });
-
-    if (r.storage.enabled) {
-      placeGrid([{
-        id: 'battery',
-        title: 'Battery',
-        value: `${r.storage.battCapKWh.toLocaleString()} kWh`,
-        subtitle: `${this.formatPowerMagnitude(r.chemicalSupply.processPowerKW)} firmed chem cap`,
-        color: this.colors.battery,
-        active: true,
-      }], {
-        cardHeight: smallHeight,
-        singleCardWidth: Math.min(singleWidth, 182),
-        wideMinWidth: 150,
-        wideMaxWidth: 182,
-        maxColumns: 1,
-      });
-    }
-
-    const coreProcessCards = [
-      ...(r.ai.enabled
-        ? [{
-            id: 'ai',
-            title: 'AI datacenter',
-            value: this.formatInstalledPowerKW(r.ai.designLoadKW),
-            subtitle: `${FormatNumbers.fixed(r.ai.utilization * 100, 2)}% delivered · ${FormatNumbers.fixed(r.ai.fullPowerReliability * 100, 2)}% full-rate`,
-            color: this.colors.ai,
-            active: true,
-          }]
-        : []),
-      ...(r.electrolyzer.enabled
-        ? [{
-            id: 'electrolyzer',
-            title: 'Electrolyzer',
-            value: this.formatInstalledPowerKW(r.electrolyzer.allocKW),
-            subtitle: this.formatAnnualMass(r.electrolyzer.h2AnnualKg, 'H2'),
-            color: this.colors.h2,
-            active: true,
-          }]
-        : []),
-      ...(r.dac.enabled
-        ? [{
-            id: 'dac',
-            title: 'DAC',
-            value: this.formatInstalledPowerKW(r.dac.allocKW),
-            subtitle: this.formatAnnualMass(r.dac.co2AnnualKg, 'CO2'),
-            color: this.colors.co2,
-            active: true,
-          }]
-        : []),
-      ...exploratoryCards
-        .filter(module => !module.diagramInputs.h2 && !module.diagramInputs.co2 && !module.diagramInputs.methanol)
-        .map(makeExploratoryCard),
-    ];
-
-    placeGrid(coreProcessCards, {
-      cardHeight: largeHeight,
-      maxColumns: 4,
-    });
-
-    const supported = r.supportedModules.filter(module => module.enabled && module.modeled);
-    const supportedCards = supported.map(module => {
-      const color = module.id === 'methanol' ? this.colors.methanol : this.colors.methane;
-      const value = this.formatMassRate(module.designHourlyOutputKg);
-      const subtitle = module.id === 'methanol'
-        ? this.formatAnnualMass(module.annualKg)
-        : this.formatAnnualMass(module.ch4AnnualKg, 'CH4');
-      return {
-        id: module.id,
-        icon: '',
-        title: module.title || module.label,
-        value,
-        subtitle,
-        color,
-        active: module.active !== false,
-      };
-    });
-    const primaryFeedstockExploratoryCards = exploratoryCards
-      .filter(module => module.diagramInputs.h2 || module.diagramInputs.co2)
-      .map(makeExploratoryCard);
-    const productFeedstockExploratoryCards = exploratoryCards
-      .filter(module => module.diagramInputs.methanol && !module.diagramInputs.h2 && !module.diagramInputs.co2)
-      .map(makeExploratoryCard);
-    const downstreamCards = [...supportedCards, ...primaryFeedstockExploratoryCards];
-
-    placeGrid(downstreamCards, {
-      cardHeight: smallHeight,
-      maxColumns: 3,
-    });
-
-    placeGrid(productFeedstockExploratoryCards, {
-      cardHeight: smallHeight,
-      maxColumns: 3,
-    });
-
+  makeOutputCards(r) {
     const outputs = [];
     if (r.ai.enabled) {
       outputs.push({
@@ -388,51 +402,56 @@ export const Diagram = {
         color: this.colors.exploratory,
       });
     });
+    return outputs;
+  },
+
+  /**
+   * With AI on and at most two product outputs, keep each output under its source
+   * (AI under the datacenter, products under electrolyzer/DAC); otherwise use a plain grid.
+   */
+  placeOutputCards(layout, outputs) {
     const aiOutput = outputs.find(output => output.id === 'out-ai');
     const productOutputs = outputs.filter(output => output.id !== 'out-ai');
-    const getNodeById = id => nodes.find(node => node.id === id);
+    const outputGrid = { cardHeight: layout.smallHeight, maxColumns: 3 };
 
-    if (aiOutput) {
-      const outputCards = [aiOutput];
-      const outputCenters = [getNodeById('ai')?.cx];
-
-      if (productOutputs.length === 1) {
-        outputCards.push(productOutputs[0]);
-        outputCenters.push(getNodeById('dac')?.cx ?? getNodeById('electrolyzer')?.cx);
-      } else if (productOutputs.length === 2) {
-        outputCards.push(productOutputs[0], productOutputs[1]);
-        outputCenters.push(getNodeById('electrolyzer')?.cx, getNodeById('dac')?.cx);
-      } else if (productOutputs.length > 2) {
-        placeGrid(outputs, {
-          cardHeight: smallHeight,
-          maxColumns: 3,
-        });
-        return {
-          nodes,
-          height: Math.max(360, cursorTop - rowGap + marginY),
-        };
-      }
-
-      placeAnchoredRow(outputCards, outputCenters, {
-        cardHeight: smallHeight,
-        cardWidth: Math.min(singleWidth, 178),
-        fallbackMaxColumns: 3,
-      });
-    } else {
-      placeGrid(outputs, {
-        cardHeight: smallHeight,
-        maxColumns: 3,
-      });
+    if (!aiOutput || productOutputs.length > 2) {
+      layout.placeGrid(outputs, outputGrid);
+      return;
     }
 
-    return {
-      nodes,
-      height: Math.max(360, cursorTop - rowGap + marginY),
-    };
+    const centerOf = id => layout.nodes.find(node => node.id === id)?.cx;
+    const outputCards = [aiOutput, ...productOutputs];
+    const outputCenters = [centerOf('ai')];
+    if (productOutputs.length === 1) {
+      outputCenters.push(centerOf('dac') ?? centerOf('electrolyzer'));
+    } else if (productOutputs.length === 2) {
+      outputCenters.push(centerOf('electrolyzer'), centerOf('dac'));
+    }
+
+    layout.placeAnchoredRow(outputCards, outputCenters, {
+      cardHeight: layout.smallHeight,
+      cardWidth: Math.min(layout.singleWidth, 178),
+      fallbackMaxColumns: 3,
+    });
   },
 
   buildConnections(nodes, r) {
     const get = id => nodes.find(node => node.id === id);
+    const cycleHours = Number.isFinite(r?.solar?.cycleHours) && r.solar.cycleHours > 0
+      ? r.solar.cycleHours
+      : 24;
+    const context = { r, get, cycleHours };
+
+    return [
+      ...this.buildPowerConnections(context),
+      ...this.buildSupportedProductConnections(context),
+      ...this.buildAiOutputConnections(context),
+      ...this.buildExploratoryConnections(context),
+    ];
+  },
+
+  /** Sun -> array -> battery / AI / electrolyzer / DAC. */
+  buildPowerConnections({ r, get, cycleHours }) {
     const connections = [];
     const sun = get('sun');
     const array = get('array');
@@ -440,21 +459,6 @@ export const Diagram = {
     const ai = get('ai');
     const electrolyzer = get('electrolyzer');
     const dac = get('dac');
-    const cycleHours = Number.isFinite(r?.solar?.cycleHours) && r.solar.cycleHours > 0
-      ? r.solar.cycleHours
-      : 24;
-    const branchOffset = (from, to, amount = 42) => {
-      if (!from || !to) return 0;
-      if (to.cx < from.cx) return -amount;
-      if (to.cx > from.cx) return amount;
-      return 0;
-    };
-    const branchLabelOffset = (from, to, amount = 34) => {
-      if (!from || !to) return 0;
-      if (to.cx < from.cx) return -amount;
-      if (to.cx > from.cx) return amount;
-      return 0;
-    };
 
     if (sun && array) {
       connections.push(this.conn(sun, array, this.colors.solar, '', true, {
@@ -478,11 +482,11 @@ export const Diagram = {
         ),
         true,
         {
-        width: 2.2,
-        route: 'vertical',
-        fromOffsetX: branchOffset(array, ai, 46),
-        labelOffsetX: branchLabelOffset(array, ai, 38),
-        labelOffsetY: ai.cx === array.cx ? -10 : -2,
+          width: 2.2,
+          route: 'vertical',
+          fromOffsetX: branchOffset(array, ai, 46),
+          labelOffsetX: branchOffset(array, ai, 38),
+          labelOffsetY: ai.cx === array.cx ? -10 : -2,
         }
       ));
     }
@@ -504,7 +508,7 @@ export const Diagram = {
           width: 2,
           route: 'vertical',
           fromOffsetX: branchOffset(array, electrolyzer, 46),
-          labelOffsetX: branchLabelOffset(array, electrolyzer, 38),
+          labelOffsetX: branchOffset(array, electrolyzer, 38),
           labelOffsetY: electrolyzer.cx === array.cx ? -10 : -2,
         }
       ));
@@ -520,33 +524,24 @@ export const Diagram = {
           width: 2,
           route: 'vertical',
           fromOffsetX: branchOffset(array, dac, 46),
-          labelOffsetX: branchLabelOffset(array, dac, 38),
+          labelOffsetX: branchOffset(array, dac, 38),
           labelOffsetY: dac.cx === array.cx ? 10 : -2,
         }
       ));
     }
+    return connections;
+  },
+
+  /** H2 + CO2 feeds into methane/methanol reactors, and each reactor to its output card. */
+  buildSupportedProductConnections({ get, r, cycleHours }) {
+    const connections = [];
+    const electrolyzer = get('electrolyzer');
+    const dac = get('dac');
 
     r.supportedModules.filter(module => module.enabled && module.modeled).forEach(module => {
       const node = get(module.id);
       if (!node) return;
-      if (module.id === 'sabatier') {
-        connections.push(this.conn(electrolyzer, node, this.colors.h2, this.formatAverageMassFlow(module.h2Consumed, cycleHours, 'H2'), true, {
-          width: 2,
-          route: 'vertical',
-          fromOffsetX: branchOffset(electrolyzer, node, 28),
-          toOffsetX: -18,
-          labelOffsetX: -24,
-          labelOffsetY: -8,
-        }));
-        connections.push(this.conn(dac, node, this.colors.co2, this.formatAverageMassFlow(module.co2Consumed, cycleHours, 'CO2'), true, {
-          width: 2,
-          route: 'vertical',
-          fromOffsetX: branchOffset(dac, node, 28),
-          toOffsetX: 18,
-          labelOffsetX: 24,
-          labelOffsetY: 8,
-        }));
-      } else if (module.id === 'methanol') {
+      if (module.id === 'sabatier' || module.id === 'methanol') {
         connections.push(this.conn(electrolyzer, node, this.colors.h2, this.formatAverageMassFlow(module.h2Consumed, cycleHours, 'H2'), true, {
           width: 2,
           route: 'vertical',
@@ -573,14 +568,25 @@ export const Diagram = {
         }));
       }
     });
+    return connections;
+  },
 
+  buildAiOutputConnections({ get }) {
+    const ai = get('ai');
     const aiOutput = get('out-ai');
-    if (ai && aiOutput) {
-      connections.push(this.conn(ai, aiOutput, this.colors.ai, '', true, {
-        width: 2.5,
-        route: 'vertical',
-      }));
-    }
+    if (!ai || !aiOutput) return [];
+    return [this.conn(ai, aiOutput, this.colors.ai, '', true, {
+      width: 2.5,
+      route: 'vertical',
+    })];
+  },
+
+  /** Power and feedstock lines into each exploratory route, and route to output. */
+  buildExploratoryConnections({ get, r, cycleHours }) {
+    const connections = [];
+    const array = get('array');
+    const electrolyzer = get('electrolyzer');
+    const dac = get('dac');
 
     r.exploratoryModules.filter(module => module.enabled).forEach(module => {
       const node = get(`exp-${module.id}`);
@@ -638,7 +644,6 @@ export const Diagram = {
         }));
       }
     });
-
     return connections;
   },
 
@@ -880,9 +885,5 @@ export const Diagram = {
 
   trunc(text, max) {
     return text.length > max ? `${text.slice(0, max - 1)}…` : text;
-  },
-
-  formatMoney(val) {
-    return FormatNumbers.formatMoney(val);
   },
 };

@@ -4,12 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Solar Chemical/AI Plant Builder — Terraform Industries Calculator</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
+  <link rel="stylesheet" href="node_modules/leaflet/dist/leaflet.css">
   <link rel="stylesheet" href="style.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" integrity="sha384-NrKB+u6Ts6AtkIhwPixiKTzgSKNblyhlk0Sohlgar9UHUBzai/sgnNNWWd291xqt" crossorigin="anonymous"></script>
-  <script src="js/asset-paths.js"></script>
-  <script src="js/format-numbers.js"></script>
-  <script src="js/solar-geometry.js"></script>
+  <script src="node_modules/chart.js/dist/chart.umd.js"></script>
 </head>
 <body>
   <header class="app-header">
@@ -33,11 +30,11 @@
         <span class="metric-value" id="metricCapex">$0</span>
       </div>
       <div class="metric">
-        <span class="metric-label tooltip-label" data-tooltip="Expected money earned in a typical year from products and any modeled support.">Annual Revenue</span>
+        <span class="metric-label tooltip-label" data-tooltip="Revenue in the first operating year from products and any annual support. Later years follow degraded energy and time-limited support ends; see the levelized figures in Economics.">Year-1 Revenue</span>
         <span class="metric-value" id="metricRevenue">$0</span>
       </div>
       <div class="metric">
-        <span class="metric-label tooltip-label" data-tooltip="Years until cumulative net cash first turns positive.">Payback</span>
+        <span class="metric-label tooltip-label" data-tooltip="Years until cumulative operating cash flow, after replacement CAPEX, recovers net CAPEX at close. Final-year salvage is not counted.">Payback</span>
         <span class="metric-value" id="metricPayback">—</span>
       </div>
       <div class="metric">
@@ -45,7 +42,7 @@
         <span class="metric-value" id="metricIRR">—</span>
       </div>
       <div class="metric viability" id="metricViability">
-        <span class="metric-label tooltip-label" data-tooltip="Quick viability flag based mainly on whether NPV is positive and payback fits inside the analysis horizon.">Status</span>
+        <span class="metric-label tooltip-label" data-tooltip="Viable: NPV is positive and operating cash pays back the investment inside the analysis horizon (salvage not counted). Marginal: only one of the two holds.">Status</span>
         <span class="metric-value" id="metricViabilityValue">Awaiting input</span>
       </div>
     </div>
@@ -75,21 +72,34 @@
           <span class="chevron">▾</span>
         </h2>
         <div class="section-body">
-          <div class="day-mode-tabs" id="dayModeTabs">
-            <button class="day-tab active" data-mode="average">Annual Average</button>
-            <button class="day-tab" data-mode="specific">Specific Day</button>
+          <div class="day-mode-tabs" id="dayModeTabs" role="group" aria-label="Analysis cycle mode">
+            <button
+              type="button"
+              class="day-tab active"
+              data-mode="average"
+              aria-pressed="true"
+              aria-controls="daySpecificControls"
+            >Annual Average</button>
+            <button
+              type="button"
+              class="day-tab"
+              data-mode="specific"
+              aria-pressed="false"
+              aria-controls="daySpecificControls"
+              aria-disabled="false"
+            >Specific Day</button>
           </div>
           <div class="field-note compact-note" id="dayModeNote"></div>
-          <div class="day-specific-controls" id="daySpecificControls" style="display:none;">
+          <div class="day-specific-controls" id="daySpecificControls" hidden aria-hidden="true">
             <label>Day of Year
               <input type="range" id="dayOfYear" min="1" max="365" step="1" value="172">
-              <span class="range-value" id="dayOfYearValue">Jun 21 (Summer Solstice)</span>
+              <span class="range-value" id="dayOfYearValue">Jun 20 (Summer Solstice)</span>
             </label>
             <div class="day-presets">
-              <button class="day-preset" data-day="80">Mar 21</button>
-              <button class="day-preset" data-day="172">Jun 21</button>
-              <button class="day-preset" data-day="266">Sep 23</button>
-              <button class="day-preset" data-day="355">Dec 21</button>
+              <button type="button" class="day-preset" data-day="80">Mar 21</button>
+              <button type="button" class="day-preset" data-day="172">Jun 21</button>
+              <button type="button" class="day-preset" data-day="266">Sep 23</button>
+              <button type="button" class="day-preset" data-day="355">Dec 21</button>
             </div>
             <div class="day-info">
               <span>Sunrise: <strong id="sunriseTime">—</strong></span>
@@ -120,14 +130,14 @@
           <p class="field-note compact-note" id="customSiteLabelNote" hidden></p>
           <div class="input-row">
             <label>Latitude
-              <input type="number" id="latitude" value="34.05" min="-90" max="90" step="0.1">
+              <input type="number" id="latitude" value="35.05" min="-90" max="90" step="0.1">
             </label>
             <label>Longitude
-              <input type="number" id="longitude" value="-118.24" min="-180" max="180" step="0.1">
+              <input type="number" id="longitude" value="-117.60" min="-180" max="180" step="0.1">
             </label>
           </div>
-          <label>Annual Yield (MWh / MWdc / year)
-            <input type="number" id="siteYield" value="2050" min="500" max="3500" step="10">
+          <label><span class="tooltip-label" data-tooltip="Annual PV output per MWdc of the reference mounting: a fixed, equator-facing array at its optimal tilt (vertical sun-tracking panels at the lunar pole). Other mountings scale it by the modeled mounting multiplier.">Annual Yield (MWh / MWdc / year)</span>
+            <input type="number" id="siteYield" value="1974" min="0" max="10000" step="10">
           </label>
           <div class="field-note" id="siteYieldNote">
             This is the long-run annual PV output per MWdc. For a more accurate site-specific number, use a
@@ -167,23 +177,18 @@
             <span class="range-value" id="panelCostValue">$0.20/W</span>
           </label>
           <label>Annual Panel Degradation (%/yr)
-            <input type="range" id="panelDegradationAnnual" min="0.5" max="0.8" step="0.05" value="0.65">
+            <input type="range" id="panelDegradationAnnual" min="0.4" max="0.8" step="0.05" value="0.65">
             <span class="range-value" id="panelDegradationAnnualValue">0.65%/yr</span>
           </label>
           <div class="field-note compact-note">
-            Multi-year economics fade solar-linked output by the selected annual PV degradation rate.
+            Multi-year economics re-dispatch the fixed plant design on the degraded array each year (degradation restarts after a solar replacement).
           </div>
           <label>Mounting Type
-            <select id="mountingType">
-              <option value="fixed">Fixed Tilt (baseline)</option>
-              <option value="ew" selected>East-West Fixed (2.5x density)</option>
-              <option value="single">Single-Axis Tracker (+25%)</option>
-              <option value="dual">Dual-Axis Tracker (+35%)</option>
-            </select>
+            <select id="mountingType"></select>
           </label>
           <label><span class="tooltip-label" data-tooltip="Balance of system: the non-panel parts of the solar installation, such as mounting structure, inverters, wiring, and installation labor.">Structure + Installation BOS ($/W)</span>
-            <input type="range" id="bosCost" min="0.05" max="1.00" step="0.01" value="0.20">
-            <span class="range-value" id="bosCostValue">$0.20/W</span>
+            <input type="range" id="bosCost" min="0.05" max="1.00" step="0.01" value="0.12">
+            <span class="range-value" id="bosCostValue">$0.12/W</span>
           </label>
           <label>Land Cost ($/acre)
             <input type="range" id="landCost" min="0" max="50000" step="500" value="5000">
@@ -194,9 +199,14 @@
             <span class="range-value" id="sitePrepCostValue">$15,000/acre</span>
           </label>
           <div class="info-row">
-            <span class="tooltip-label" data-tooltip="Modeled yearly solar output per MWdc before multiplying by plant size.">Base Yield:</span>
+            <span class="tooltip-label" data-tooltip="Site yield of the reference mounting (named below), per MWdc, before the mounting multiplier and plant size.">Base Yield:</span>
             <span id="baseYieldValue" class="highlight">— MWh/MWdc-yr</span>
           </div>
+          <div class="info-row">
+            <span class="tooltip-label" data-tooltip="Selected mounting's annual yield relative to the reference mounting, from the model's sun geometry with the site's diffuse-light share (Hay-Davies sky, trackers limited to ±60° with backtracking).">Mounting Multiplier:</span>
+            <span id="mountingYieldMultValue" class="highlight">—</span>
+          </div>
+          <div class="field-note compact-note" id="solarYieldWarning" hidden></div>
           <div class="info-row">
             <span class="tooltip-label" data-tooltip="Total electricity the solar array generates in a typical year.">Annual Production:</span>
             <span id="annualProduction" class="highlight">— MWh</span>
@@ -206,11 +216,11 @@
             <span id="capacityFactor" class="highlight">— %</span>
           </div>
           <div class="info-row">
-            <span class="tooltip-label" data-tooltip="Levelized cost of energy from the solar plant alone.">LCOE:</span>
+            <span class="tooltip-label" data-tooltip="Levelized cost of energy from the solar plant alone, gross of incentives (before any ITC or grant), with energy levelized over the solar asset life.">LCOE (pre-incentive):</span>
             <span id="lcoe" class="highlight">— $/MWh</span>
           </div>
           <div class="info-row">
-            <span class="tooltip-label" data-tooltip="Upfront installed solar cost, including modules, BOS, land, and site prep.">Solar Install CAPEX:</span>
+            <span class="tooltip-label" data-tooltip="Upfront installed solar cost, including modules, BOS, site prep, and land (land is not depreciated or replaced).">Solar Install CAPEX:</span>
             <span id="solarInstallCapex" class="highlight">—</span>
           </div>
         </div>
@@ -236,12 +246,12 @@
                   type="button"
                   class="inline-optimize-button"
                   id="optimizeBatteryCapacity"
-                  title="Set battery capacity to the best IRR found"
+                  title="Set battery capacity to the best IRR found (ranked by MIRR at the discount rate if IRR is undefined anywhere in the range)"
                 >optimize</button>
               </span>
             </div>
             <label>Cost ($/kWh)
-              <input type="range" id="batteryCost" min="50" max="400" step="10" value="150">
+              <input type="range" id="batteryCost" min="50" max="400" step="1" value="150">
               <span class="range-value" id="batteryCostValue">$150/kWh</span>
             </label>
             <label>Round-trip Efficiency (%)
@@ -252,6 +262,10 @@
               <input type="range" id="batteryCycles" min="1000" max="10000" step="500" value="4000">
               <span class="range-value" id="batteryCyclesValue">4,000</span>
             </label>
+            <label><span class="tooltip-label" data-tooltip="Energy-to-power ratio. The battery charges or discharges at most capacity ÷ duration per hour (a 4 h battery is a 0.25C system).">Duration (hours at full power)</span>
+              <input type="range" id="batteryDurationHours" min="0.5" max="12" step="0.5" value="4">
+              <span class="range-value" id="batteryDurationHoursValue">4.0 h</span>
+            </label>
             <div class="info-row">
               <span id="effectiveCFLabel" class="tooltip-label" data-tooltip="Average utilization of the chemical plant after storage smooths solar output.">Effective CF:</span>
               <span id="effectiveCF" class="highlight">— %</span>
@@ -261,7 +275,7 @@
               <span id="dailyOpHours" class="highlight">— hrs</span>
             </div>
             <div class="info-row">
-              <span class="tooltip-label" data-tooltip="Cost per MWh of delivered electricity after adding battery costs and storage losses.">Buffered LCOE:</span>
+              <span class="tooltip-label" data-tooltip="Cost per MWh of delivered electricity after adding battery costs, storage losses and clipping, gross of incentives like the solar LCOE. Delivered energy is levelized over the analysis horizon with its year-by-year dispatch.">Buffered LCOE (pre-incentive):</span>
               <span id="bufferedElectricityCost" class="highlight">— $/MWh</span>
             </div>
           </div>
@@ -276,13 +290,37 @@
         </h2>
         <div class="section-body">
           <div class="load-config-tabs" id="loadConfigTabs" role="tablist" aria-label="Site load configuration">
-            <button type="button" class="load-config-tab active" data-load-tab="chemicals" aria-selected="true">Chemical</button>
-            <button type="button" class="load-config-tab" data-load-tab="ai" aria-selected="false">AI Compute</button>
+            <button
+              type="button"
+              class="load-config-tab active"
+              id="loadTabChemicals"
+              data-load-tab="chemicals"
+              role="tab"
+              aria-controls="loadPanelChemicals"
+              aria-selected="true"
+              tabindex="0"
+            >Chemical</button>
+            <button
+              type="button"
+              class="load-config-tab"
+              id="loadTabAi"
+              data-load-tab="ai"
+              role="tab"
+              aria-controls="loadPanelAi"
+              aria-selected="false"
+              tabindex="-1"
+            >AI Compute</button>
           </div>
 
-          <div class="load-config-panel active" data-load-panel="chemicals">
+          <div
+            class="load-config-panel active"
+            id="loadPanelChemicals"
+            data-load-panel="chemicals"
+            role="tabpanel"
+            aria-labelledby="loadTabChemicals"
+          >
             <div class="range-control">
-              <label for="chemicalSizingPercent">Chemical peak sizing</label>
+              <label for="chemicalSizingPercent"><span class="tooltip-label" data-tooltip="100% is the smallest constant process capacity that clips no solar in the modeled year. That year repeats the clear-sky day shape scaled to the annual yield, so its peak is low at cloudy sites (Berlin, fixed tilt: 0.50 MW per MWdc). Real clear days there would exceed it and clip: 100% clips nothing within the model only.">Chemical peak sizing</span></label>
               <input type="range" id="chemicalSizingPercent" min="0" max="100" step="1" value="100">
               <span class="range-control-footer">
                 <span class="range-value" id="chemicalSizingPercentValue">100% of full-capture peak</span>
@@ -290,7 +328,7 @@
                   type="button"
                   class="inline-optimize-button"
                   id="optimizeChemicalSizing"
-                  title="Set chemical peak sizing to the best IRR found"
+                  title="Set chemical peak sizing to the best IRR found (ranked by MIRR at the discount rate if IRR is undefined anywhere in the range)"
                 >optimize</button>
               </span>
             </div>
@@ -299,10 +337,10 @@
             </div>
             <div class="module-group">
               <div class="module-group-title">Supported modules</div>
-              <div id="productMixControl" class="process-card product-mix-card" style="display:none;">
+              <div id="productMixControl" class="process-card product-mix-card" hidden>
                 <div class="module-note-title">Shared feedstock split</div>
                 <div class="range-control">
-                  <label for="methaneFeedstockSplit">Methane share of downstream feedstock demand</label>
+                  <label for="methaneFeedstockSplit">Methane share of the methane + methanol product slate (by mass)</label>
                   <input type="range" id="methaneFeedstockSplit" min="0" max="100" step="1" value="50">
                   <span class="range-control-footer">
                     <span class="range-value" id="methaneFeedstockSplitValue">50% methane / 50% methanol</span>
@@ -310,15 +348,29 @@
                       type="button"
                       class="inline-optimize-button"
                       id="optimizeMethaneFeedstockSplit"
-                      title="Set the methane and methanol split to the best IRR found"
+                      title="Set the methane and methanol split to the best IRR found (ranked by MIRR at the discount rate if IRR is undefined anywhere in the range)"
                     >optimize</button>
                   </span>
                 </div>
                 <div class="field-note" id="productMixNote">
-                  Shared H2 and CO2 production auto-balance from the combined methane and methanol demand.
+                  H2 and CO2 production are sized to the stoichiometric feed of this split, so only reactor conversion losses go unused.
                 </div>
               </div>
               <div id="supportedModuleList"></div>
+              <div class="process-card" id="feedBufferCostControl">
+                <div class="module-note-title">Feed buffer storage</div>
+                <label>H2 buffer cost ($/kg working capacity)
+                  <input type="range" id="h2BufferCostPerKg" min="0" max="3000" step="25" value="750">
+                  <span class="range-value" id="h2BufferCostPerKgValue">$750/kg H2</span>
+                </label>
+                <label>CO2 buffer cost ($/t working capacity)
+                  <input type="range" id="co2BufferCostPerTon" min="0" max="3000" step="25" value="1000">
+                  <span class="range-value" id="co2BufferCostPerTonValue">$1,000/t CO2</span>
+                </label>
+                <div class="field-note compact-note">
+                  Buffered modules run at a constant rate, so they hold up to peak-day feed x (1 - operating hours / cycle hours) of H2 and CO2. That inventory is priced here (assumptions: low-pressure steel H2 vessels ~$500-1,000/kg; refrigerated liquid CO2 tanks ~$500-1,500/t), carries process O&amp;M and is replaced every 20 years.
+                </div>
+              </div>
             </div>
             <div class="module-group">
               <div class="module-group-title">Exploratory industrial modules</div>
@@ -327,7 +379,15 @@
             </div>
           </div>
 
-          <div class="load-config-panel" data-load-panel="ai">
+          <div
+            class="load-config-panel"
+            id="loadPanelAi"
+            data-load-panel="ai"
+            role="tabpanel"
+            aria-labelledby="loadTabAi"
+            aria-hidden="true"
+            hidden
+          >
             <div class="process-card ai-compute-card">
               <div class="process-header">
                 <label class="toggle-label">
@@ -343,6 +403,10 @@
                 <div class="field-note">
                   The AI load is auto-sized from the current solar plus battery system to satisfy the selected full-rate uptime target. The chemical plant then ramps up and down only on the residual energy left after AI load and battery charging.
                 </div>
+                <div class="field-note compact-note">
+                  Reliability is clear-sky-equivalent: every modeled day has the clear-sky shape scaled to the site's annual yield, so multi-day cloudy spells are not modeled and real-world uptime at the same battery size will be lower. AI sizing needs storage; with the battery at 0, one of 1 MWh per GWh/yr of solar is added automatically.
+                </div>
+                <div class="field-note compact-note" id="aiBatterySeedNote" hidden></div>
                 <div class="field-note compact-note">
                   GPU CAPEX is modeled on a direct-current datacenter framing ($/kW installed IT load).
                 </div>
@@ -371,8 +435,12 @@
                   <span id="aiUtilizationValue" class="highlight">—</span>
                 </div>
                 <div class="info-row">
-                  <span class="tooltip-label" data-tooltip="Share of time the AI load can run at full target output.">Full-rate reliability:</span>
+                  <span class="tooltip-label" data-tooltip="Share of hours the AI load runs at full design output in year 1, on a clear-sky-equivalent year (no multi-day weather).">Full-rate reliability (clear-sky eq.):</span>
                   <span id="aiFullRateValue" class="highlight">—</span>
+                </div>
+                <div class="info-row">
+                  <span class="tooltip-label" data-tooltip="Lowest yearly full-rate reliability over the analysis horizon: the year-1 design load re-dispatched on the degraded array (degradation restarts after a solar replacement).">Late-life reliability:</span>
+                  <span id="aiLateLifeReliabilityValue" class="highlight">—</span>
                 </div>
                 <div class="info-row">
                   <span class="tooltip-label" data-tooltip="Total yearly AI tokens produced and sold in the model.">Annual tokens:</span>
@@ -398,15 +466,7 @@
             </div>
             <div id="methaneMarketWrap">
               <label>Methane Market Preset
-                <select id="methaneMarketPreset">
-                  <option value="terraform_commodity">Commodity gas / whitepaper-style case</option>
-                  <option value="premium_green_methane">Premium synthetic / green methane</option>
-                  <optgroup label="Country-Specific Europe">
-                    <option value="germany_biomethane_eeg">Germany biomethane auction / EEG</option>
-                    <option value="netherlands_sdepp">Netherlands renewable gas / SDE++</option>
-                    <option value="denmark_green_gas_tender">Denmark green gas tender</option>
-                  </optgroup>
-                </select>
+                <select id="methaneMarketPreset"></select>
               </label>
               <div class="market-summary">
                 <div class="market-summary-row">
@@ -434,7 +494,7 @@
               <span class="range-value" id="methanolPriceValue">$600/ton</span>
             </label>
             <div id="exploratoryMarketControls"></div>
-            <div id="productMarketEmptyState" class="field-note compact-note" style="display:none;">
+            <div id="productMarketEmptyState" class="field-note compact-note" hidden>
               Enable a product route that actually generates output to expose its market-price control.
             </div>
           </div>
@@ -466,7 +526,7 @@
               <summary>US policy caveats</summary>
               <div class="market-disclosure-body">
                 <div class="field-note compact-note">
-                  Older Terraform materials sometimes discuss US electricity-side support using `45E` language. For current solar scenarios this app now maps the power-side incentive discussion to `45Y` and `48E`.
+                  Terraform's whitepaper calls the green-electricity production credit `45E`. The relevant Internal Revenue Code sections are `§45` (for projects that began construction before 2025) and its successors `§45Y` (production credit) and `§48E` (investment credit), which this app models; IRC `§45E` is an unrelated small-employer pension credit. Credit amounts and deadlines are as of Oct 2026 (see each scheme's note).
                 </div>
                 <div class="field-note compact-note">
                   This panel still models one named program or framework at a time unless you choose `Custom mixed support`. In real US projects, solar-side and product-side incentives can interact through ownership, transferability, and tax structure, so treat the result as a TEA simplification rather than legal advice.
@@ -489,7 +549,7 @@
             </label>
             <label>Discount Rate (%)
               <input type="range" id="discountRate" min="0" max="20" step="0.5" value="8">
-              <span class="range-value" id="discountRateValue">8%</span>
+              <span class="range-value" id="discountRateValue">8.0%</span>
             </label>
           </div>
         </div>
@@ -515,7 +575,7 @@
           <div class="field-note compact-note">
             <strong>Headline return:</strong> <span id="financingHeadlineValue" class="highlight">Project IRR (unlevered)</span><br>
             <strong>Debt scope:</strong> <span id="financingScopeValue" class="highlight">Debt disabled; project cash flows stay unlevered</span><br>
-            <strong>Term cap:</strong> <span id="financingTermCapValue" class="highlight">Max 30 years from the analysis horizon</span>
+            <strong>Term:</strong> <span id="financingTermCapValue" class="highlight">Up to 30 years; a term past the horizon ends in a balloon repayment</span>
           </div>
           <div class="field-note compact-note">
             When enabled, the headline IRR switches to sponsor equity IRR. Project NPV and payback remain unlevered, and debt only funds upfront CAPEX.
@@ -723,6 +783,9 @@
           <div id="impactGrid" class="production-grid">
             <!-- Filled by JS -->
           </div>
+          <div class="field-note">
+            Captured CO₂ is either bound in products or vented. Fuel carbon returns to the air when burned, so capture is not removal: net avoided counts only the fossil combustion CO₂ that the methane, methanol and MTG fuels displace (methane at 0.0528 t CO₂/MCF, pure CH₄ at 19.25 kg/MCF), excluding upstream emissions and methane leakage. Nothing is stored permanently.
+          </div>
         </div>
       </section>
     </aside>
@@ -734,29 +797,8 @@
     View the source on <a href="https://github.com/benschrauwen/terraform-simulator" target="_blank" rel="noreferrer">GitHub</a>.</p>
   </footer>
 
-  <script src="js/policy-model.js"></script>
-  <script src="js/reference-data.js"></script>
-  <script src="js/saved-site-presets.js"></script>
-  <script src="js/module-catalog.js"></script>
-  <script src="js/state-schema.js"></script>
-  <script src="js/slider-markers.js"></script>
   <script src="node_modules/lz-string/libs/lz-string.min.js"></script>
-  <script src="js/share-state.js"></script>
-  <script src="js/calculations/calculations-core.js"></script>
-  <script src="js/calculations/calculations-solar.js"></script>
-  <script src="js/calculations/calculations-battery.js"></script>
-  <script src="js/calculations/calculations-series-ai.js"></script>
-  <script src="js/calculations/calculations-process.js"></script>
-  <script src="js/calculations/calculations-economics.js"></script>
-  <script src="js/diagram.js"></script>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
-  <script src="js/app.js"></script>
-  <script src="js/app-share-state.js"></script>
-  <script src="js/app-controls.js"></script>
-  <script src="js/app-optimizer.js"></script>
-  <script src="js/app-ui-state.js"></script>
-  <script src="js/app-site-map.js"></script>
-  <script src="js/app-renderers.js"></script>
-  <script src="js/app-charts.js"></script>
+  <script src="node_modules/leaflet/dist/leaflet.js"></script>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>

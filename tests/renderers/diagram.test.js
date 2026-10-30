@@ -1,38 +1,9 @@
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const test = require('node:test');
-const vm = require('node:vm');
+import assert from 'node:assert/strict';
+import test from 'node:test';
 
-const ROOT = path.resolve(__dirname, '..', '..');
-const DIAGRAM_PATH = path.join(ROOT, 'js', 'diagram.js');
-const DIAGRAM_SOURCE = fs.readFileSync(DIAGRAM_PATH, 'utf8');
-
-function loadDiagram() {
-  const context = {
-    FormatNumbers: {
-      fixed(value, digits = 0) {
-        const numeric = Number(value);
-        if (!Number.isFinite(numeric)) return 'N/A';
-        return numeric.toLocaleString('en-US', {
-          minimumFractionDigits: digits,
-          maximumFractionDigits: digits,
-        });
-      },
-      formatMoney(value) {
-        return `$${value}`;
-      },
-    },
-  };
-
-  vm.createContext(context);
-  vm.runInContext(DIAGRAM_SOURCE, context, { filename: 'js/diagram.js' });
-  return vm.runInContext('Diagram', context);
-}
+import { Diagram } from '../../js/ui/diagram.js';
 
 test('diagram formats process cards and connector labels with peak and average hourly rates', () => {
-  const Diagram = loadDiagram();
-
   assert.equal(Diagram.formatInstalledPowerKW(106981), 'Peak 107 MW');
   assert.equal(Diagram.formatMassRate(5732), 'Peak 5.7 t/h');
   assert.equal(

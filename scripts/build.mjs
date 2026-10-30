@@ -1,125 +1,74 @@
-import { execSync } from 'node:child_process';
-import { promises as fs } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { cpSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const ROOT = path.resolve(__dirname, '..');
-const DIST = path.join(ROOT, 'dist');
-const BUILD_ID = getBuildId();
-const BUILD_TOKEN = '__APP_BUILD_ID__';
-const EXTRA_COPY_FILES = ['node_modules/lz-string/libs/lz-string.min.js'];
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
+// DIST_DIR lets tests build into a throwaway directory instead of the real dist/.
+const DIST = path.resolve(ROOT, process.env.DIST_DIR || 'dist');
 
-const EXCLUDED_PATH_PREFIXES = ['.git', 'dist', 'node_modules', 'scripts', 'tests'];
-const EXCLUDED_ROOT_FILES = new Set(['.gitignore', 'package.json', 'package-lock.json', 'vercel.json']);
-const TEXT_FILE_EXTENSIONS = new Set(['.css', '.html', '.js', '.json', '.md', '.svg', '.txt']);
+// Allowlist: nothing outside these paths reaches dist/. Versioned assets live under
+// dist/assets/<buildId>/ so relative ES-module imports and the worker URL inherit the
+// version, and only index.html needs rewriting.
+const ROOT_FILES = ['README.md', 'LICENSE'];
+const ASSETS = {
+  // dist path (under ASSET_DIR) -> source path
+  'style.css': 'style.css',
+  'js': 'js',
+  'vendor/chart.umd.js': 'node_modules/chart.js/dist/chart.umd.js',
+  'vendor/leaflet/leaflet.js': 'node_modules/leaflet/dist/leaflet.js',
+  'vendor/leaflet/leaflet.css': 'node_modules/leaflet/dist/leaflet.css',
+  'vendor/leaflet/images': 'node_modules/leaflet/dist/images',
+  'vendor/lz-string.min.js': 'node_modules/lz-string/libs/lz-string.min.js',
+};
 
-await fs.rm(DIST, { recursive: true, force: true });
-await fs.mkdir(DIST, { recursive: true });
-await copyProjectTree(ROOT, DIST, '');
-await copyExtraFiles(ROOT, DIST, EXTRA_COPY_FILES);
-await rewriteDistFiles(DIST);
+const isShipped = file => !path.basename(file).startsWith('.');
+const ASSET_DIR = `assets/${getBuildId()}`;
 
-console.log(`Built dist/ with asset version ${BUILD_ID}`);
+rmSync(DIST, { recursive: true, force: true });
+ROOT_FILES.forEach(file => cpSync(path.join(ROOT, file), path.join(DIST, file)));
+Object.entries(ASSETS).forEach(([target, source]) => {
+  cpSync(path.join(ROOT, source), path.join(DIST, ASSET_DIR, target), { recursive: true, filter: isShipped });
+});
 
-function getBuildId() {
-  const envBuildId = (
-    process.env.BUILD_ID ||
-    process.env.VERCEL_GIT_COMMIT_SHA ||
-    process.env.GITHUB_SHA ||
-    ''
-  ).trim();
-
-  if (envBuildId) return envBuildId.slice(0, 12);
-
-  try {
-    return execSync('git rev-parse --short HEAD', {
-      cwd: ROOT,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-  } catch {
-    return new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
-  }
-}
-
-function shouldSkip(relativePath) {
-  const normalized = relativePath.split(path.sep).join('/');
-  if (!normalized) return false;
-
-  const pathParts = normalized.split('/');
-  if (EXCLUDED_PATH_PREFIXES.includes(pathParts[0])) return true;
-  if (pathParts.length === 1 && EXCLUDED_ROOT_FILES.has(pathParts[0])) return true;
-
-  return false;
-}
-
-async function copyProjectTree(sourceDir, targetDir, relativePath) {
-  const entries = await fs.readdir(sourceDir, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const entryRelativePath = relativePath ? path.join(relativePath, entry.name) : entry.name;
-    if (shouldSkip(entryRelativePath)) continue;
-
-    const sourcePath = path.join(sourceDir, entry.name);
-    const targetPath = path.join(targetDir, entry.name);
-
-    if (entry.isDirectory()) {
-      await fs.mkdir(targetPath, { recursive: true });
-      await copyProjectTree(sourcePath, targetPath, entryRelativePath);
-      continue;
-    }
-
-    await fs.copyFile(sourcePath, targetPath);
-  }
-}
-
-async function copyExtraFiles(sourceRoot, targetRoot, relativePaths) {
-  for (const relativePath of relativePaths) {
-    const sourcePath = path.join(sourceRoot, relativePath);
-    const targetPath = path.join(targetRoot, relativePath);
-    await fs.mkdir(path.dirname(targetPath), { recursive: true });
-    await fs.copyFile(sourcePath, targetPath);
-  }
-}
-
-async function rewriteDistFiles(directory) {
-  const entries = await fs.readdir(directory, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const entryPath = path.join(directory, entry.name);
-
-    if (entry.isDirectory()) {
-      await rewriteDistFiles(entryPath);
-      continue;
-    }
-
-    if (!TEXT_FILE_EXTENSIONS.has(path.extname(entry.name))) continue;
-
-    const original = await fs.readFile(entryPath, 'utf8');
-    let updated = original.replaceAll(BUILD_TOKEN, BUILD_ID);
-
-    if (path.extname(entry.name) === '.html') {
-      updated = rewriteLocalAssetUrls(updated, BUILD_ID);
-    }
-
-    if (updated !== original) {
-      await fs.writeFile(entryPath, updated);
-    }
-  }
-}
-
-function rewriteLocalAssetUrls(html, buildId) {
-  return html.replace(/\b(src|href)=(["'])([^"']+)\2/g, (match, attribute, quote, url) => {
-    if (!shouldVersionAssetUrl(url)) return match;
-    const separator = url.includes('?') ? '&' : '?';
-    return `${attribute}=${quote}${url}${separator}v=${buildId}${quote}`;
+const html = readFileSync(path.join(ROOT, 'index.html'), 'utf8')
+  .replace(/\b(src|href)="([^"]+)"/g, (match, attribute, url) => {
+    if (/^(?:[a-z]+:|\/\/|#)/i.test(url)) return match;
+    const entry = Object.entries(ASSETS).find(([, source]) => url === source || url.startsWith(`${source}/`));
+    if (!entry) throw new Error(`index.html references ${url}, which is not in the build allowlist.`);
+    return `${attribute}="${ASSET_DIR}/${entry[0]}${url.slice(entry[1].length)}"`;
   });
+writeFileSync(path.join(DIST, 'index.html'), html);
+
+console.log(`Built ${DIST} with assets under ${ASSET_DIR}/`);
+
+/**
+ * /assets/* is served immutable, so the version must change whenever any shipped
+ * byte changes and stay the same when nothing did. Hash every asset file (dist path
+ * and contents) instead of using the commit SHA, which a dirty tree or a CLI deploy
+ * would reuse for different content. BUILD_ID overrides it (tests use a fixed id).
+ */
+function getBuildId() {
+  const envBuildId = (process.env.BUILD_ID || '').trim().replace(/[^\w.-]/g, '');
+  if (envBuildId) return envBuildId.slice(0, 32);
+  const hash = createHash('sha256');
+  Object.entries(ASSETS).forEach(([target, source]) => {
+    const sourcePath = path.join(ROOT, source);
+    listShippedFiles(sourcePath).forEach(file => {
+      const relative = path.relative(sourcePath, file).split(path.sep).join('/');
+      hash.update(`${target}/${relative}\0`);
+      hash.update(readFileSync(file));
+      hash.update('\0');
+    });
+  });
+  return hash.digest('hex').slice(0, 12);
 }
 
-function shouldVersionAssetUrl(url) {
-  if (/^(?:[a-z]+:)?\/\//i.test(url)) return false;
-  if (/^(?:data:|mailto:|tel:|#)/i.test(url)) return false;
-  return /\.(?:css|js)(?:$|[?#])/i.test(url);
+function listShippedFiles(source) {
+  if (!statSync(source).isDirectory()) return [source];
+  return readdirSync(source, { withFileTypes: true })
+    .filter(entry => isShipped(entry.name))
+    .map(entry => entry.name)
+    .sort()
+    .flatMap(name => listShippedFiles(path.join(source, name)));
 }

@@ -1,16 +1,19 @@
 {
   "name": "terraform-industries",
   "private": true,
+  "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "node scripts/build.mjs",
     "preview": "node scripts/dev.mjs dist",
-    "test": "node --test tests/calculations/calculations.test.js tests/renderers/diagram.test.js tests/renderers/production.test.js tests/share-state/share-state.test.js tests/saved-site-presets/saved-site-presets.test.js"
+    "test": "node --test"
   },
   "dependencies": {
+    "chart.js": "4.4.4",
+    "leaflet": "1.9.4",
     "lz-string": "^1.5.0"
   }
 }

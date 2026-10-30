@@ -142,6 +142,11 @@ function summarize(r, design = {}) {
 }
 
 const roundTo = (value, resolution) => Math.round(value / resolution) * resolution;
+const millions = value => `${value < 0 ? '-' : ''}$${Math.abs(value / 1e6).toFixed(0)}M`;
+
+// Decision fields every patch carries, so applying one design after another
+// never leaves the previous design's sizing behind.
+const DESIGN_KEYS = ['architecture', 'gridConnection', 'solarSizeMWdc', 'batteryCapacityMWh', 'firmFamily', 'firmSizingMode', 'firmUnits'];
 const resolutionFor = max => (max >= 100 ? 1 : max >= 10 ? 0.1 : 0.01);
 
 /** Coarse levels: 0 plus max, max/2, ... (rounded, distinct, ascending). */
@@ -306,7 +311,9 @@ function optimizeFrom(startState, referenceState, options = {}) {
   // The winning design as a full state and a patch against the user's state.
   const bestState = normalizeDatacenterState(stateFor(overall.design));
   const bestResult = calculateDatacenterScenario(bestState, { fastMode: true });
-  const best = { ...summarize(bestResult, overall.design), patch: diffDatacenterState(reference, bestState) };
+  const patch = diffDatacenterState(reference, bestState);
+  DESIGN_KEYS.forEach(key => { patch[key] = bestState[key]; });
+  const best = { ...summarize(bestResult, overall.design), patch };
   const winning = perConnection.find(entry => entry.best === overall) || perConnection[0];
 
   const corners = [];
@@ -326,7 +333,7 @@ function optimizeFrom(startState, referenceState, options = {}) {
   if (perConnection.length > 1) {
     perConnection.forEach(entry => {
       if (entry !== winning && entry.best) {
-        notes.push(`Best with a ${entry.connection} connection: NPV ${(entry.best.npv / 1e6).toFixed(0)} M$${entry.best.feasible ? '' : ' (misses the target)'}.`);
+        notes.push(`Best with a ${entry.connection} connection: NPV ${millions(entry.best.npv)}${entry.best.feasible ? '' : ' (misses the target)'}.`);
       }
     });
   }

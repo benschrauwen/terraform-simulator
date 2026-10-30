@@ -268,7 +268,14 @@ Core formulas:
 co2_tons = dac_input_kwh / dac_kwh_per_tco2
 
 co2_kg = co2_tons * 1000
+
+dac_capex = dac_capex_per_tpy * dac_peak_kw * 8760 * 0.25 / dac_kwh_per_tco2
 ```
+
+DAC CAPEX is entered per t-CO2/yr of capacity at a 25% reference solar
+utilization (the basis of Terraform's whitepaper 2.0 figure of $40.35/t-yr)
+and applied to the DAC's nameplate power, so the same hardware costs the same
+at a sunny and a cloudy site.
 
 Current reference preset:
 
@@ -524,7 +531,7 @@ The current default state is roughly a `1 MW` Mojave-style methane scenario:
 - Battery: off by default (`0 MWh`), with `$150/kWh` storage cost and a `4 h` duration (power = capacity / 4 h) when enabled
 - Chemical peak sizing: `100%`
 - Electrolyzer: `79 kWh/kg H2`, `$100/kW`
-- DAC: `3440 kWh/t-CO2`, `$450/kW`
+- DAC: `3440 kWh/t-CO2`, `$450 per t-CO2/yr of capacity at 25% utilization` (applied to nameplate: `$450 x 8760 x 0.25 / 3440 = $286/kW` of DAC power)
 - Sabatier conversion: `95%`
 - Sabatier reactor CAPEX: `$50/kW CH4`
 - Feed buffers: on by default for methane and methanol, and default on for exploratory modules whenever the selected route supports buffered gas-feed sizing

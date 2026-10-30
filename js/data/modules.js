@@ -119,7 +119,9 @@ export const MODULE_DEFINITIONS = [
     defaultPreset: 'terraform-default',
     configs: [
       { key: 'dacEnergy', label: 'Efficiency (kWh/t-CO2)', type: 'range', min: 500, max: 5000, step: 5, unit: 'kWh/t', defaultValue: 3440 },
-      { key: 'dacCapex', label: 'CAPEX ($/ton capture capacity/yr)', type: 'range', min: 50, max: 20000, step: 50, unit: '$/t-yr', defaultValue: 450, scale: 'log' },
+      // $ per t-CO2/yr of capacity at 25% reference utilization, applied to
+      // nameplate (see MODEL_ASSUMPTIONS.dacCapexReferenceUtilization).
+      { key: 'dacCapex', label: 'CAPEX ($ per t-CO2/yr capacity at 25% utilization)', type: 'range', min: 25, max: 20000, step: 5, unit: '$/t-yr', defaultValue: 450, scale: 'log' },
     ],
   },
   {

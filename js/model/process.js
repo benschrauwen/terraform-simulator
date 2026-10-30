@@ -5,6 +5,7 @@
    supported H2 + CO2 reactors (Sabatier methane, methanol), and the generic
    exploratory routes driven by data/modules.js. */
 
+import { MODEL_ASSUMPTIONS } from '../data/assumptions.js';
 import { CHEMISTRY } from '../data/reference-data.js';
 import { DEFAULT_STATE } from '../state/schema.js';
 import { ModuleCatalog } from './module-catalog.js';
@@ -345,6 +346,7 @@ export const processMethods = {
         co2DailyKg: 0,
         co2AnnualKg: 0,
         co2AnnualTons: 0,
+        referenceCapacityTpy: 0,
         capex: 0,
       };
     }
@@ -354,6 +356,9 @@ export const processMethods = {
     const co2DailyKg = (dailyDACKWh / state.dacEnergy) * 1000;
     const co2AnnualKg = co2DailyKg * cyclesPerYear;
     const co2AnnualTons = co2AnnualKg / 1000;
+    // Hardware is priced on nameplate (DAC peak kW), expressed as t/yr at the
+    // reference utilization, not on the site's realized output.
+    const referenceCapacityTpy = (allocKW * 8760 * MODEL_ASSUMPTIONS.dacCapexReferenceUtilization) / state.dacEnergy;
 
     return {
       enabled: true,
@@ -363,7 +368,8 @@ export const processMethods = {
       co2DailyKg,
       co2AnnualKg,
       co2AnnualTons,
-      capex: co2AnnualTons * state.dacCapex,
+      referenceCapacityTpy,
+      capex: referenceCapacityTpy * state.dacCapex,
     };
   },
 

@@ -217,7 +217,9 @@ test('solar acreage and BOS respond to location while keeping installed MW fixed
   );
 });
 
-test('dac capex is sized from annual capture capacity', () => {
+// Was: CAPEX on realized annual tonnes. Now nameplate at the 25% reference
+// utilization, so hardware cost no longer depends on the site's sunshine.
+test('dac capex is sized from nameplate capacity at the 25% reference utilization', () => {
   const allocation = { dac: 0.4 };
   const lessEfficient = Calc.calculateDAC(
     createState({ dacEnabled: true, dacCapex: 450, dacEnergy: 4000 }),
@@ -233,16 +235,23 @@ test('dac capex is sized from annual capture capacity', () => {
   );
 
   assert.ok(Math.abs(lessEfficient.allocKW - 50) <= 1e-9, `Expected 50 kW of DAC allocation, got ${lessEfficient.allocKW}.`);
-  assert.ok(Math.abs(lessEfficient.co2AnnualTons - 109.5) <= 1e-9, `Expected 109.5 tons/year of DAC capture, got ${lessEfficient.co2AnnualTons}.`);
-  assert.ok(Math.abs(lessEfficient.capex - 49275) <= 1e-9, `Expected DAC CAPEX of $49,275, got ${lessEfficient.capex}.`);
-  assert.ok(
-    moreEfficient.co2AnnualTons > lessEfficient.co2AnnualTons,
-    'Expected a lower DAC energy intensity to increase annual CO2 capture at the same allocated power.'
+  // Realized: 3000 kWh/day x 0.4 / 4000 kWh/t x 365 = 109.5 t/yr.
+  assert.ok(Math.abs(lessEfficient.co2AnnualTons - 109.5) <= 1e-9);
+  // Nameplate: 50 kW x 8760 h x 0.25 / 4000 kWh/t = 27.375 t/yr -> x $450 = $12,318.75.
+  assert.ok(Math.abs(lessEfficient.referenceCapacityTpy - 27.375) <= 1e-9);
+  assert.ok(Math.abs(lessEfficient.capex - 12318.75) <= 1e-9, `Expected DAC CAPEX of $12,318.75, got ${lessEfficient.capex}.`);
+  // Halving kWh/t doubles the tonnes the same kW captures, and so the CAPEX.
+  assert.ok(Math.abs(moreEfficient.capex - 24637.5) <= 1e-9);
+
+  // Same DAC power at a cloudier site: same hardware cost, fewer tonnes.
+  const cloudier = Calc.calculateDAC(
+    createState({ dacEnabled: true, dacCapex: 450, dacEnergy: 4000 }),
+    125,
+    1500,
+    allocation
   );
-  assert.ok(
-    Math.abs(moreEfficient.capex - 98550) <= 1e-9,
-    `Expected lower DAC energy intensity to size CAPEX from 219 tons/year of capture, got ${moreEfficient.capex}.`
-  );
+  assert.equal(cloudier.capex, lessEfficient.capex);
+  assert.ok(cloudier.co2AnnualTons < lessEfficient.co2AnnualTons);
 });
 
 test('exploratory capex controls spell out annual output capacity units', () => {

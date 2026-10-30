@@ -30,6 +30,13 @@ export const MODEL_ASSUMPTIONS = {
   // A process block counts as operating in a step when it runs at or above
   // this fraction of its capacity.
   processOperatingThresholdFraction: 0.05,
+  // DAC CAPEX is quoted per t-CO2/yr of capacity at this reference solar
+  // utilization and applied to nameplate: capex = $/t-yr x DAC kW x 8760 h x
+  // 0.25 / kWh-per-t, so the same hardware costs the same at any site.
+  // Basis: Terraform Industries whitepaper 2.0 (2023-01-09) quotes DAC cost
+  // per ton-year as capex over output at 25% utilization ("331 kg CO2/day
+  // (25% utilization)", "$14700/T-day" = $40.35/T-year).
+  dacCapexReferenceUtilization: 0.25,
   // Exploratory route asset life (years) when the route defines none.
   exploratoryAssetLifeYears: 10,
   // tCO2 avoided per MCF of fossil natural gas displaced.

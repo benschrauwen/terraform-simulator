@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { promises as fs } from 'node:fs';
+import { promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,14 +24,56 @@ export const MIME_TYPES = {
 
 export const DEFAULT_HOST = '127.0.0.1';
 
+// Always applied last, so dev never caches (vercel.json's immutable /assets/* rule is dropped).
 const BASE_HEADERS = {
   'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff',
 };
 
-export function createStaticServer(root) {
+const VERCEL_CONFIG_PATH = path.join(__dirname, '..', 'vercel.json');
+
+/**
+ * Turn vercel.json `headers` entries into { pattern, headers } rules so the dev server
+ * sends the production CSP and security headers and violations show up locally.
+ * Only literal paths with `(.*)` wildcards (e.g. `/(.*)`, `/assets/(.*)`) are supported.
+ */
+export function parseHeaderRules(config) {
+  return (config?.headers || []).map(({ source, headers }) => {
+    if (typeof source !== 'string' || !/^\/(?:[\w./-]|\(\.\*\))*$/.test(source)) {
+      throw new Error(`Unsupported vercel.json header source pattern: ${source}`);
+    }
+    const regex = source.split('(.*)')
+      .map(literal => literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('.*');
+    return {
+      pattern: new RegExp(`^${regex}$`),
+      headers: Object.fromEntries((headers || []).map(({ key, value }) => [key, value])),
+    };
+  });
+}
+
+export function loadHeaderRules(configPath = VERCEL_CONFIG_PATH) {
+  return parseHeaderRules(JSON.parse(readFileSync(configPath, 'utf8')));
+}
+
+/** Headers for a request path: every matching rule in order, then BASE_HEADERS. */
+export function headersForPath(pathname, headerRules = []) {
+  const headers = {};
+  headerRules.forEach(rule => {
+    if (rule.pattern.test(pathname)) Object.assign(headers, rule.headers);
+  });
+  return { ...headers, ...BASE_HEADERS };
+}
+
+let defaultHeaderRules = null;
+function getDefaultHeaderRules() {
+  defaultHeaderRules ??= loadHeaderRules();
+  return defaultHeaderRules;
+}
+
+export function createStaticServer(root, { headerRules = getDefaultHeaderRules() } = {}) {
   return http.createServer((request, response) => {
-    serveStaticRequest(request, response, root).catch(() => {
+    serveStaticRequest(request, response, root, headerRules).catch(() => {
       if (!response.headersSent) {
         writeTextResponse(response, 400, 'Bad request');
       } else {
@@ -68,7 +110,7 @@ export async function startStaticServer({
   return { server, root, host, port: actualPort };
 }
 
-export async function serveStaticRequest(request, response, root) {
+export async function serveStaticRequest(request, response, root, headerRules = getDefaultHeaderRules()) {
   const host = request.headers?.host;
   if (host !== undefined && !isValidHostHeader(host)) {
     writeTextResponse(response, 400, 'Bad request');
@@ -85,26 +127,27 @@ export async function serveStaticRequest(request, response, root) {
     return;
   }
 
+  const headers = headersForPath(requestUrl.pathname, headerRules);
   const resolvedPath = resolveStaticPath(root, requestUrl.pathname);
 
   if (resolvedPath.status === 400) {
-    writeTextResponse(response, 400, 'Bad request');
+    writeTextResponse(response, 400, 'Bad request', headers);
     return;
   }
 
   if (resolvedPath.status === 403) {
-    writeTextResponse(response, 403, 'Forbidden');
+    writeTextResponse(response, 403, 'Forbidden', headers);
     return;
   }
 
   if (resolvedPath.status === 404) {
-    writeTextResponse(response, 404, 'Not found');
+    writeTextResponse(response, 404, 'Not found', headers);
     return;
   }
 
   const filePath = await resolveFilePath(resolvedPath.candidatePath);
   if (!filePath || !(await isRealPathInsideRoot(root, filePath))) {
-    writeTextResponse(response, 404, 'Not found');
+    writeTextResponse(response, 404, 'Not found', headers);
     return;
   }
 
@@ -112,12 +155,12 @@ export async function serveStaticRequest(request, response, root) {
   try {
     contents = await fs.readFile(filePath);
   } catch {
-    writeTextResponse(response, 404, 'Not found');
+    writeTextResponse(response, 404, 'Not found', headers);
     return;
   }
 
   response.writeHead(200, {
-    ...BASE_HEADERS,
+    ...headers,
     'Content-Type': getContentType(filePath),
   });
   response.end(contents);
@@ -198,8 +241,8 @@ export async function resolveFilePath(candidatePath) {
   }
 }
 
-function writeTextResponse(response, statusCode, body) {
-  response.writeHead(statusCode, { ...BASE_HEADERS, 'Content-Type': 'text/plain; charset=utf-8' });
+function writeTextResponse(response, statusCode, body, headers = BASE_HEADERS) {
+  response.writeHead(statusCode, { ...headers, 'Content-Type': 'text/plain; charset=utf-8' });
   response.end(body);
 }
 

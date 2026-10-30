@@ -125,6 +125,8 @@ test('the app boots in headless Chrome, renders CAPEX and logs no errors', {
       // Map tiles come from the internet; their failures are not app errors.
       const url = params.entry.url || '';
       if (params.entry.source === 'network' && url && !url.startsWith(origin)) return;
+      // The app ships no favicon; Chrome's automatic probe races page load.
+      if (params.entry.source === 'network' && url === `${origin}/favicon.ico`) return;
       errors.push(`log: ${params.entry.text} ${url}`);
     }
   });

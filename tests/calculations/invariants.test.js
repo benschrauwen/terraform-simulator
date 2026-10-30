@@ -52,6 +52,8 @@ const SCENARIOS = {
   },
   financing70: { financingEnabled: true, debtSharePercent: 70 },
   financing90: { financingEnabled: true, debtSharePercent: 90 },
+  debtPastHorizon: { financingEnabled: true, debtTermYears: 25, analysisHorizonYears: 20 },
+  horizon40: { analysisHorizonYears: 40, methanolEnabled: true },
   us48e: { policyMode: 'us_48e_solar' },
   us45y: { policyMode: 'us_45y_solar' },
   ukCfd: { policyMode: 'uk_cfd_solar_ar7' },

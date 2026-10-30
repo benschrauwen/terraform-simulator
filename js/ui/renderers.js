@@ -3,6 +3,7 @@
 import { SolarGeometry } from '../model/solar-geometry.js';
 import { Diagram } from './diagram.js';
 import { FormatNumbers } from './format-numbers.js';
+import { formatIrr, formatSystemSizeMW } from './formatters.js';
 
 const APP_EDUCATIONAL_TOOLTIPS = Object.freeze({
   projectIrr: 'Internal rate of return on project cash flows before debt financing.',
@@ -24,7 +25,7 @@ export const rendererMethods = {
     document.getElementById('lcoe').textContent = `$${FormatNumbers.fixed(r.solar.lcoe, 2)}/MWh`;
     const solarInstallCapex = document.getElementById('solarInstallCapex');
     if (solarInstallCapex) {
-      solarInstallCapex.textContent = this.formatMoney(r.solar.totalSolarCapex);
+      solarInstallCapex.textContent = FormatNumbers.formatMoney(r.solar.totalSolarCapex);
     }
 
     const effectiveCfLabel = document.getElementById('effectiveCFLabel');
@@ -71,7 +72,7 @@ export const rendererMethods = {
     const aiFullRateValue = document.getElementById('aiFullRateValue');
     const aiTokensAnnualValue = document.getElementById('aiTokensAnnualValue');
     if (aiDesignLoadValue) {
-      aiDesignLoadValue.textContent = r.ai.enabled ? this.formatSystemSizeMW(r.ai.designLoadKW / 1000) : 'Off';
+      aiDesignLoadValue.textContent = r.ai.enabled ? formatSystemSizeMW(r.ai.designLoadKW / 1000) : 'Off';
     }
     if (aiUtilizationValue) {
       aiUtilizationValue.textContent = r.ai.enabled ? `${FormatNumbers.fixed(r.ai.utilization * 100, 2)}%` : '—';
@@ -93,8 +94,8 @@ export const rendererMethods = {
 
   updateHeaderMetrics(r) {
     const e = r.economics;
-    document.getElementById('metricCapex').textContent = this.formatMoney(e.totalCapex);
-    document.getElementById('metricRevenue').textContent = `${this.formatMoney(e.totalAnnualRevenue)}/yr`;
+    document.getElementById('metricCapex').textContent = FormatNumbers.formatMoney(e.totalCapex);
+    document.getElementById('metricRevenue').textContent = `${FormatNumbers.formatMoney(e.totalAnnualRevenue)}/yr`;
     document.getElementById('metricPayback').textContent = Number.isFinite(e.paybackYears) ? `${FormatNumbers.fixed(e.paybackYears, 1)} yrs` : 'No payback';
     const irrLabel = document.getElementById('metricIrrLabel');
     if (irrLabel) {
@@ -104,7 +105,7 @@ export const rendererMethods = {
         e.financing.enabled ? APP_EDUCATIONAL_TOOLTIPS.equityIrr : APP_EDUCATIONAL_TOOLTIPS.projectIrr
       );
     }
-    document.getElementById('metricIRR').textContent = this.formatIrr(e.irr);
+    document.getElementById('metricIRR').textContent = formatIrr(e.irr);
 
     const financingHeadlineValue = document.getElementById('financingHeadlineValue');
     if (financingHeadlineValue) {
@@ -266,44 +267,44 @@ export const rendererMethods = {
     summaryMetrics.push(
       econMetric(
         'Total CAPEX',
-        this.formatMoney(e.totalCapex),
+        FormatNumbers.formatMoney(e.totalCapex),
         '',
         'Installed build cost',
         'All upfront installed project cost before any upfront incentive support.'
       ),
       econMetric(
         'Annual revenue',
-        this.formatMoney(e.totalAnnualRevenue),
+        FormatNumbers.formatMoney(e.totalAnnualRevenue),
         e.totalAnnualRevenue >= 0 ? 'positive' : 'negative',
         'Product sales plus any annual operating support',
         'Expected yearly revenue from products plus any modeled operating support.'
       ),
       econMetric(
         'Levelized cost',
-        this.formatMoney(e.annualCost),
+        FormatNumbers.formatMoney(e.annualCost),
         'negative',
         'CRF capital + O&M',
         'Equivalent yearly cost combining annualized capital charges and fixed O&M.'
       ),
       econMetric(
         'Annual profit',
-        this.formatMoney(e.annualProfit),
+        FormatNumbers.formatMoney(e.annualProfit),
         e.annualProfit >= 0 ? 'positive' : 'negative',
         'Revenue minus levelized cost',
         'Annual revenue minus total levelized annual cost.'
       ),
       econMetric(
         projectNpvLabel,
-        this.formatMoney(e.npv),
+        FormatNumbers.formatMoney(e.npv),
         e.npv >= 0 ? 'positive' : 'negative',
         e.totalReplacementOutflows > 0
-          ? `Includes ${this.formatMoney(e.totalReplacementOutflows)} replacements`
+          ? `Includes ${FormatNumbers.formatMoney(e.totalReplacementOutflows)} replacements`
           : 'Discounted project cash flow',
         'Discounted value of project cash flows over the selected analysis horizon.'
       ),
       econMetric(
         projectIrrLabel,
-        this.formatIrr(e.projectIrr),
+        formatIrr(e.projectIrr),
         Number.isFinite(e.projectIrr) ? (e.projectIrr >= 0 ? 'positive' : 'negative') : '',
         `${projectPaybackLabel}: ${formatPaybackShort(e.paybackYears)}`,
         APP_EDUCATIONAL_TOOLTIPS.projectIrr
@@ -314,7 +315,7 @@ export const rendererMethods = {
       summaryMetrics.push(
         econMetric(
           'Equity IRR',
-          this.formatIrr(e.equityIrr),
+          formatIrr(e.equityIrr),
           Number.isFinite(e.equityIrr) ? (e.equityIrr >= 0 ? 'positive' : 'negative') : '',
           `Equity payback: ${formatPaybackShort(e.equityPaybackYears)}`,
           APP_EDUCATIONAL_TOOLTIPS.equityIrr
@@ -325,19 +326,19 @@ export const rendererMethods = {
     returnsRows.push(
       this.econRow(
         'Annual profit (levelized)',
-        this.formatMoney(e.annualProfit),
+        FormatNumbers.formatMoney(e.annualProfit),
         e.annualProfit >= 0 ? 'positive' : 'negative',
         'Revenue minus total levelized annual cost (capital recovery + O&M).'
       ),
       this.econRow(
         projectNpvLabel,
-        this.formatMoney(e.npv),
+        FormatNumbers.formatMoney(e.npv),
         e.npv >= 0 ? 'positive' : 'negative',
         'Discounted cash flows: gross upfront CAPEX less any close-date policy support in year 0, then yearly revenue minus O&M and any scheduled replacement CAPEX. CRF capital recovery is not repeated as a cash outflow.'
       ),
       this.econRow(
         projectIrrLabel,
-        this.formatIrr(e.projectIrr),
+        formatIrr(e.projectIrr),
         Number.isFinite(e.projectIrr) ? (e.projectIrr >= 0 ? 'positive' : 'negative') : '',
         'Internal rate of return on the same net-cash path as NPV after O&M, close-date policy support, and scheduled replacements.'
       )
@@ -347,7 +348,7 @@ export const rendererMethods = {
       returnsRows.push(
         this.econRow(
           'Equity IRR',
-          this.formatIrr(e.equityIrr),
+          formatIrr(e.equityIrr),
           Number.isFinite(e.equityIrr) ? (e.equityIrr >= 0 ? 'positive' : 'negative') : '',
           'IRR on sponsor equity cash flows: upfront equity plus financing fees in year 0, then project net cash after scheduled debt service.'
         )
@@ -403,7 +404,7 @@ export const rendererMethods = {
       returnsRows.push(
         this.econRow(
           'Scheduled replacements',
-          this.formatMoney(e.totalReplacementOutflows),
+          FormatNumbers.formatMoney(e.totalReplacementOutflows),
           'negative',
           'Full equipment replacement CAPEX that lands inside the selected analysis horizon and is included in NPV, IRR, ROI, and payback.'
         )
@@ -414,66 +415,66 @@ export const rendererMethods = {
       this.econRow('Annualized cost build', '', 'header'),
       this.econRow(
         'Capital recovery',
-        this.formatMoney(e.annualizedCapexTotal),
+        FormatNumbers.formatMoney(e.annualizedCapexTotal),
         'negative',
         `Upfront CAPEX x capital recovery factor at ${FormatNumbers.fixed(this.state.discountRate, 1)}% and each asset's book life. This is the economic annual capital charge, not straight-line depreciation.`
       )
     );
     if (r.ai.enabled && r.ai.annualOM > 0) {
-      costRows.push(this.econRow('AI fixed O&M', this.formatMoney(r.ai.annualOM), 'negative'));
+      costRows.push(this.econRow('AI fixed O&M', FormatNumbers.formatMoney(r.ai.annualOM), 'negative'));
     }
     (e.exploratoryDetails || []).forEach(module => {
       if (module.annualOM <= 0) return;
-      costRows.push(this.econRow(`${module.label} O&M`, this.formatMoney(module.annualOM), 'negative'));
+      costRows.push(this.econRow(`${module.label} O&M`, FormatNumbers.formatMoney(module.annualOM), 'negative'));
     });
     costRows.push(
-      this.econRow('Total O&M', this.formatMoney(e.annualOM), 'negative'),
-      this.econRow('Total levelized annual cost', this.formatMoney(e.annualCost), 'total')
+      this.econRow('Total O&M', FormatNumbers.formatMoney(e.annualOM), 'negative'),
+      this.econRow('Total levelized annual cost', FormatNumbers.formatMoney(e.annualCost), 'total')
     );
 
     costRows.push(
       this.econRow('Installed CAPEX', '', 'header'),
-      this.econRow('Solar modules', this.formatMoney(solarBreakdown.solarModules || 0)),
+      this.econRow('Solar modules', FormatNumbers.formatMoney(solarBreakdown.solarModules || 0)),
       this.econRow(
         'Solar structure + install BOS',
-        this.formatMoney(solarBreakdown.solarBos || 0),
+        FormatNumbers.formatMoney(solarBreakdown.solarBos || 0),
         '',
         'Balance of system: the non-panel parts of the solar installation, such as mounting structure, inverters, wiring, and installation labor.'
       )
     );
-    if ((solarBreakdown.solarLand || 0) > 0) costRows.push(this.econRow('Land acquisition', this.formatMoney(solarBreakdown.solarLand)));
-    if ((solarBreakdown.solarSitePrep || 0) > 0) costRows.push(this.econRow('Site prep', this.formatMoney(solarBreakdown.solarSitePrep)));
-    costRows.push(this.econRow('Total solar installation', this.formatMoney(e.capex.solar)));
-    if (e.capex.battery > 0) costRows.push(this.econRow('Battery', this.formatMoney(e.capex.battery)));
-    if (e.capex.ai > 0) costRows.push(this.econRow('AI datacenter', this.formatMoney(e.capex.ai)));
-    if (e.capex.electrolyzer > 0) costRows.push(this.econRow('Electrolyzer', this.formatMoney(e.capex.electrolyzer)));
-    if (e.capex.dac > 0) costRows.push(this.econRow('DAC', this.formatMoney(e.capex.dac)));
-    if (e.capex.sabatier > 0) costRows.push(this.econRow('Methane reactor', this.formatMoney(e.capex.sabatier)));
-    if (e.capex.methanol > 0) costRows.push(this.econRow('Methanol reactor', this.formatMoney(e.capex.methanol)));
+    if ((solarBreakdown.solarLand || 0) > 0) costRows.push(this.econRow('Land acquisition', FormatNumbers.formatMoney(solarBreakdown.solarLand)));
+    if ((solarBreakdown.solarSitePrep || 0) > 0) costRows.push(this.econRow('Site prep', FormatNumbers.formatMoney(solarBreakdown.solarSitePrep)));
+    costRows.push(this.econRow('Total solar installation', FormatNumbers.formatMoney(e.capex.solar)));
+    if (e.capex.battery > 0) costRows.push(this.econRow('Battery', FormatNumbers.formatMoney(e.capex.battery)));
+    if (e.capex.ai > 0) costRows.push(this.econRow('AI datacenter', FormatNumbers.formatMoney(e.capex.ai)));
+    if (e.capex.electrolyzer > 0) costRows.push(this.econRow('Electrolyzer', FormatNumbers.formatMoney(e.capex.electrolyzer)));
+    if (e.capex.dac > 0) costRows.push(this.econRow('DAC', FormatNumbers.formatMoney(e.capex.dac)));
+    if (e.capex.sabatier > 0) costRows.push(this.econRow('Methane reactor', FormatNumbers.formatMoney(e.capex.sabatier)));
+    if (e.capex.methanol > 0) costRows.push(this.econRow('Methanol reactor', FormatNumbers.formatMoney(e.capex.methanol)));
     (e.exploratoryDetails || []).forEach(module => {
       if (module.capex <= 0) return;
-      costRows.push(this.econRow(`${module.label} (${module.routeLabel})`, this.formatMoney(module.capex)));
+      costRows.push(this.econRow(`${module.label} (${module.routeLabel})`, FormatNumbers.formatMoney(module.capex)));
     });
-    costRows.push(this.econRow('Total CAPEX', this.formatMoney(e.totalCapex), 'total'));
+    costRows.push(this.econRow('Total CAPEX', FormatNumbers.formatMoney(e.totalCapex), 'total'));
     if (Math.abs(e.policy.upfrontSupport || 0) > 1e-9) {
       costRows.push(
         this.econRow(
           'Upfront incentive support',
-          this.formatMoney(e.policy.upfrontSupport),
+          FormatNumbers.formatMoney(e.policy.upfrontSupport),
           'positive',
           'Applied at close as a reduction to eligible upfront CAPEX only. Replacement CAPEX later in life is not automatically subsidized in the current model.'
         ),
-        this.econRow('Net CAPEX at close', this.formatMoney(e.netCapexAtClose), 'total')
+        this.econRow('Net CAPEX at close', FormatNumbers.formatMoney(e.netCapexAtClose), 'total')
       );
     }
 
-    if (e.revenue.ai > 0) revenueRows.push(this.econRow('AI token revenue', this.formatMoney(e.revenue.ai), 'positive'));
+    if (e.revenue.ai > 0) revenueRows.push(this.econRow('AI token revenue', FormatNumbers.formatMoney(e.revenue.ai), 'positive'));
     if (e.revenue.methane > 0) {
       revenueRows.push(
-        this.econRow(`Methane sales @ $${FormatNumbers.fixed(e.methaneSalePrice, 2)}/MCF`, this.formatMoney(e.revenue.methane), 'positive')
+        this.econRow(`Methane sales @ $${FormatNumbers.fixed(e.methaneSalePrice, 2)}/MCF`, FormatNumbers.formatMoney(e.revenue.methane), 'positive')
       );
     }
-    if (e.revenue.methanol > 0) revenueRows.push(this.econRow('Methanol sales', this.formatMoney(e.revenue.methanol), 'positive'));
+    if (e.revenue.methanol > 0) revenueRows.push(this.econRow('Methanol sales', FormatNumbers.formatMoney(e.revenue.methanol), 'positive'));
     (e.exploratoryDetails || []).forEach(module => {
       if (module.annualRevenue <= 0) return;
       const priceDigits = module.outputUnit === 'm3' ? 2 : 0;
@@ -481,7 +482,7 @@ export const rendererMethods = {
       revenueRows.push(
         this.econRow(
           `${module.label} sales @ $${FormatNumbers.fixed(module.unitPrice, priceDigits)}/${unitSuffix}`,
-          this.formatMoney(module.annualRevenue),
+          FormatNumbers.formatMoney(module.annualRevenue),
           'positive'
         )
       );
@@ -490,24 +491,24 @@ export const rendererMethods = {
       revenueRows.push(
         this.econRow(
           e.policy.label,
-          this.formatMoney(e.revenue.policyCredits),
+          FormatNumbers.formatMoney(e.revenue.policyCredits),
           e.revenue.policyCredits >= 0 ? 'positive' : 'negative'
         )
       );
     }
-    revenueRows.push(this.econRow('Total revenue', this.formatMoney(e.totalAnnualRevenue), 'total'));
+    revenueRows.push(this.econRow('Total revenue', FormatNumbers.formatMoney(e.totalAnnualRevenue), 'total'));
 
     if (e.financing.enabled) {
       financingRows.push(
         this.econRow('Debt share', `${FormatNumbers.fixed(e.financing.debtSharePercent, 0)}% of upfront CAPEX`),
-        this.econRow('Debt-funded at close', this.formatMoney(e.financing.debtAmount), 'positive'),
-        this.econRow('Equity-funded CAPEX', this.formatMoney(e.financing.equityCapex), 'negative')
+        this.econRow('Debt-funded at close', FormatNumbers.formatMoney(e.financing.debtAmount), 'positive'),
+        this.econRow('Equity-funded CAPEX', FormatNumbers.formatMoney(e.financing.equityCapex), 'negative')
       );
       if (e.financing.upfrontFee > 0) {
-        financingRows.push(this.econRow('Upfront financing fee', this.formatMoney(e.financing.upfrontFee), 'negative'));
+        financingRows.push(this.econRow('Upfront financing fee', FormatNumbers.formatMoney(e.financing.upfrontFee), 'negative'));
       }
       financingRows.push(
-        this.econRow('Total sponsor cash at close', this.formatMoney(e.financing.equityUpfront), 'negative'),
+        this.econRow('Total sponsor cash at close', FormatNumbers.formatMoney(e.financing.equityUpfront), 'negative'),
         this.econRow('Debt coupon', `${FormatNumbers.fixed(e.financing.debtInterestRate, 2)}%`),
         this.econRow('Debt term', `${FormatNumbers.fixed(e.financing.debtTermYears, 0)} years`)
       );
@@ -515,11 +516,11 @@ export const rendererMethods = {
         financingRows.push(
           this.econRow(
             'Annual debt service',
-            this.formatMoney(e.financing.annualDebtService),
+            FormatNumbers.formatMoney(e.financing.annualDebtService),
             'negative',
             'Modeled as a level-payment amortizing loan over the selected debt term.'
           ),
-          this.econRow('Total debt interest', this.formatMoney(e.financing.totalInterest), 'negative')
+          this.econRow('Total debt interest', FormatNumbers.formatMoney(e.financing.totalInterest), 'negative')
         );
       }
       if (!e.financing.canFullyCoverDebtService && e.financing.sponsorSupportTotal > 0) {
@@ -527,8 +528,8 @@ export const rendererMethods = {
           ? '1 year'
           : `${FormatNumbers.fixed(e.financing.uncoveredDebtServiceYearCount, 0)} years`;
         const peakSupportLabel = e.financing.peakSponsorSupportYear
-          ? `${this.formatMoney(e.financing.peakSponsorSupport)} in year ${FormatNumbers.fixed(e.financing.peakSponsorSupportYear, 0)}`
-          : this.formatMoney(e.financing.peakSponsorSupport);
+          ? `${FormatNumbers.formatMoney(e.financing.peakSponsorSupport)} in year ${FormatNumbers.fixed(e.financing.peakSponsorSupportYear, 0)}`
+          : FormatNumbers.formatMoney(e.financing.peakSponsorSupport);
         financingRows.push(
           this.econRow(
             'Financing warning',
@@ -538,7 +539,7 @@ export const rendererMethods = {
           ),
           this.econRow(
             'Additional sponsor cash support',
-            this.formatMoney(e.financing.sponsorSupportTotal),
+            FormatNumbers.formatMoney(e.financing.sponsorSupportTotal),
             'warning',
             'Total additional sponsor cash assumed to cover debt-service shortfalls after O&M over the selected analysis horizon.'
           ),
@@ -571,7 +572,7 @@ export const rendererMethods = {
         this.econRow('AI token price', `$${FormatNumbers.fixed(this.state.aiTokenPricePerM, 2)} / 1M tokens`),
         this.econRow('AI throughput', `${Math.round(this.state.aiMillionTokensPerMWh).toLocaleString()} M tokens/MWh`),
         this.econRow('AI tokens sold', `${FormatNumbers.fixed(r.ai.annualTokensM / 1000, 2)}B /yr`),
-        this.econRow('AI load auto-sized', this.formatSystemSizeMW(r.ai.designLoadKW / 1000)),
+        this.econRow('AI load auto-sized', formatSystemSizeMW(r.ai.designLoadKW / 1000)),
         this.econRow('Served-energy utilization', `${FormatNumbers.fixed(r.ai.utilization * 100, 2)}%`),
         this.econRow('Full-rate reliability', `${FormatNumbers.fixed(r.ai.fullPowerReliability * 100, 2)}%`)
       );
@@ -599,10 +600,10 @@ export const rendererMethods = {
         );
       }
       if ((e.policy.eligibleCapex || 0) > 0) {
-        contextRows.push(this.econRow(e.policy.eligibleCapexLabel, this.formatMoney(e.policy.eligibleCapex)));
+        contextRows.push(this.econRow(e.policy.eligibleCapexLabel, FormatNumbers.formatMoney(e.policy.eligibleCapex)));
       }
       if (Math.abs(e.policy.upfrontSupport || 0) > 1e-9) {
-        contextRows.push(this.econRow('Upfront support at close', this.formatMoney(e.policy.upfrontSupport), 'positive'));
+        contextRows.push(this.econRow('Upfront support at close', FormatNumbers.formatMoney(e.policy.upfrontSupport), 'positive'));
       }
       (e.policy.inputValues || []).forEach(input => {
         contextRows.push(this.econRow(input.label, input.formattedValue));
@@ -648,19 +649,19 @@ export const rendererMethods = {
     let html = `<div class="econ-summary-grid">${summaryMetrics.join('')}</div>`;
     html += econGroup(
       'Project returns',
-      `${projectIrrLabel} ${this.formatIrr(e.projectIrr)}`,
+      `${projectIrrLabel} ${formatIrr(e.projectIrr)}`,
       returnsRows.join(''),
       'Discounted returns and payback metrics'
     );
     html += econGroup(
       'Cost breakdown',
-      `${this.formatMoney(e.annualCost)} /yr`,
+      `${FormatNumbers.formatMoney(e.annualCost)} /yr`,
       costRows.join(''),
       'Annualized cost stack and installed CAPEX'
     );
     html += econGroup(
       'Revenue breakdown',
-      `${this.formatMoney(e.totalAnnualRevenue)} /yr`,
+      `${FormatNumbers.formatMoney(e.totalAnnualRevenue)} /yr`,
       revenueRows.join(''),
       'Annual revenue sources by product and operating-support regime'
     );
@@ -782,28 +783,5 @@ export const rendererMethods = {
       this.prodItem('h2', '💧', 'Net Water Needed', `${FormatNumbers.fixed(env.netWaterDaily, 0)}`, `L/${cycleUnit}`),
     ];
     document.getElementById('impactGrid').innerHTML = html.join('');
-  },
-
-  formatConfigValue(unit, value) {
-    const numeric = parseFloat(value);
-    if (unit === '%') return `${FormatNumbers.fixed(numeric, numeric % 1 ? 1 : 0)}%`;
-    if (unit === '$') return `$${FormatNumbers.fixed(Math.round(numeric), 0)}`;
-    if (unit === '$/W') return `$${FormatNumbers.fixed(numeric, 2)}/W`;
-    if (unit === '$/kW') return `$${FormatNumbers.fixed(Math.round(numeric), 0)}/kW`;
-    if (unit === '$/kW-CH4') return `$${FormatNumbers.fixed(Math.round(numeric), 0)}/kW CH4`;
-    if (unit === '$/t-yr') return `$${FormatNumbers.fixed(Math.round(numeric), 0)}/ton/yr`;
-    if (unit === '$/kg-feed-hr') return `$${FormatNumbers.fixed(Math.round(numeric), 0)}/(kg/h feed)`;
-    if (unit === 'kWh/kg') return `${FormatNumbers.fixed(Math.round(numeric), 0)} kWh/kg`;
-    if (unit === 'kWh/t') return `${FormatNumbers.fixed(Math.round(numeric), 0)} kWh/t`;
-    return `${FormatNumbers.fixed(numeric, Number.isInteger(numeric) ? 0 : 2)}`;
-  },
-
-  formatMoney(val) {
-    return FormatNumbers.formatMoney(val);
-  },
-
-  formatIrr(val) {
-    if (!Number.isFinite(val) || val <= -99.9) return 'N/A';
-    return `${FormatNumbers.fixed(val, 1)}%`;
   },
 };

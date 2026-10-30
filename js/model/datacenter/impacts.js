@@ -4,8 +4,10 @@
    Post-processing of a settled dispatch:
    - facility energy split into IT, cooling and electrical overhead, served
      share only (an unserved hour sheds IT, cooling and overhead alike);
-   - CO2: grid imports x grid intensity + gas fuel x 52.91 kg/MMBtu (EIA,
-     power.js GAS_DEFAULTS); nuclear, solar and batteries emit none here
+   - CO2: grid imports x grid intensity + on-site fuel x its factor:
+     natural gas 52.91 kg/MMBtu (EIA, power.js GAS_DEFAULTS), diesel 73.96
+     kg/MMBtu (40 CFR 98 Table C-1, DIESEL_DEFAULTS); nuclear, solar and
+     batteries emit none here
      (combustion only, like eGRID; no upstream or embodied emissions);
    - water: cooling WUE(h) x served IT energy (withdrawn), split into
      evaporated and blowdown by the technology's shares, plus on-site gas or
@@ -25,7 +27,7 @@ import { SQUARE_METERS_PER_ACRE } from '../../data/assumptions.js';
 import { LATENT_HEAT_KWH_PER_LITRE } from '../../data/datacenter/cooling.js';
 import { FACILITY_DEFAULTS } from '../../data/datacenter/facility.js';
 import { DATACENTER_MODEL_ASSUMPTIONS as A } from '../../data/datacenter/model-assumptions.js';
-import { GAS_DEFAULTS, GRID_DEFAULTS, ONSITE_SUBSTATION } from '../../data/datacenter/power.js';
+import { getGensetFuel, GRID_DEFAULTS, ONSITE_SUBSTATION } from '../../data/datacenter/power.js';
 import { HOURS_PER_YEAR } from './climate.js';
 
 export const FLOW_NODE_LABELS = Object.freeze({
@@ -73,10 +75,15 @@ export function splitFacilityEnergy({ itKW, cooling, tech, loadKW, unservedKW })
   return out;
 }
 
-/** CO2 in tonnes/yr: { gridT, gasT, totalT, kgPerMWhServed }. */
-export function calculateEmissions(state, totals, facilityServedKWh) {
+/**
+ * CO2 in tonnes/yr: { gridT, gasT (on-site fuel: natural gas or diesel),
+ * totalT, kgPerMWhServed, gridCo2KgPerMWh, gasCo2KgPerMMBtu (the fuel's
+ * factor), fuel (label) }. `firm` gives the fuel (default natural gas).
+ */
+export function calculateEmissions(state, totals, facilityServedKWh, firm = null) {
+  const fuel = getGensetFuel(firm?.family === 'gas' ? firm.typeData : null);
   const gridT = (totals.gridKWh / 1000) * state.gridCo2KgPerMWh / 1000;
-  const gasT = totals.fuelMMBtu * GAS_DEFAULTS.co2KgPerMMBtu / 1000;
+  const gasT = totals.fuelMMBtu * fuel.co2KgPerMMBtu / 1000;
   const totalT = gridT + gasT;
   return {
     gridT,
@@ -84,7 +91,8 @@ export function calculateEmissions(state, totals, facilityServedKWh) {
     totalT,
     kgPerMWhServed: facilityServedKWh > 0 ? (totalT * 1000) / (facilityServedKWh / 1000) : 0,
     gridCo2KgPerMWh: state.gridCo2KgPerMWh,
-    gasCo2KgPerMMBtu: GAS_DEFAULTS.co2KgPerMMBtu,
+    gasCo2KgPerMMBtu: fuel.co2KgPerMMBtu,
+    fuel: fuel.label,
   };
 }
 
@@ -155,13 +163,20 @@ function flow(from, to, value, unit) {
 
 const positive = list => list.filter(entry => entry.value > 1e-9);
 
-/** Flows for the Sankey views: { labels, electricity, heat, water, co2, unservedMWh }. */
-export function buildFlows({ totals, energy, water, heat, emissions, batteryLossesKWh }) {
+/**
+ * Flows for the Sankey views: { labels, electricity, heat, water, co2,
+ * unservedMWh }. `firm` names the on-site generation node by its fuel
+ * (gas or diesel).
+ */
+export function buildFlows({ totals, energy, water, heat, emissions, batteryLossesKWh, firm = null }) {
   const MWh = 'MWh/yr';
   const m3 = 'm3/yr';
   const mwh = kWh => kWh / 1000;
+  const fuel = firm?.family === 'gas' ? getGensetFuel(firm.typeData) : null;
   return {
-    labels: FLOW_NODE_LABELS,
+    labels: fuel && fuel.generationLabel !== FLOW_NODE_LABELS.gas
+      ? { ...FLOW_NODE_LABELS, gas: fuel.generationLabel, gasPlant: `${fuel.label} plant` }
+      : FLOW_NODE_LABELS,
     electricity: positive([
       flow('solar', 'facility', mwh(totals.solarToLoadKWh), MWh),
       flow('solar', 'battery', mwh(totals.solarToBatteryKWh), MWh),

@@ -77,7 +77,7 @@ test('default site: PUE is the energy ratio and sits between the calibration cli
 });
 
 test('CO2 = gas fuel x 52.91 kg/MMBtu + grid imports x grid intensity', () => {
-  for (const overrides of [{}, ARCHITECTURES.hybrid, ARCHITECTURES.islandedGasOnly, { gridConnection: 'flexible' }]) {
+  for (const overrides of [{ gasType: 'recip' }, { ...ARCHITECTURES.hybrid, gasType: 'recip' }, ARCHITECTURES.islandedGasOnly, { gridConnection: 'flexible', gasType: 'recip' }]) {
     const r = calculateDatacenterScenario(overrides, { fastMode: true });
     const a = r.dispatch.annual;
     const expected = (a.fuelMMBtu * 52.91 + a.gridMWh * r.state.gridCo2KgPerMWh) / 1000;
@@ -191,11 +191,11 @@ test('utility outages: a firm connection fails N hours a year; flexible curtailm
 
 test('hybrid dispatch orders grid and gas by marginal cost', () => {
   // Recip at $4/MMBtu: 7.8 x 4 + 7.4 = $38.6/MWh < grid $67.7 -> gas first.
-  const cheapGas = calculateDatacenterScenario({ architecture: 'hybrid' }, { fastMode: true });
+  const cheapGas = calculateDatacenterScenario({ architecture: 'hybrid', gasType: 'recip' }, { fastMode: true });
   assert.equal(cheapGas.firm.marginalCostPerMWh, 7.8 * 4 + 7.4);
   assert.equal(cheapGas.dispatch.order, 'firm-first');
   assert.equal(cheapGas.dispatch.annual.gridMWh, 0);
-  const dearGas = calculateDatacenterScenario({ architecture: 'hybrid', gasFuelPricePerMMBtu: 9 }, { fastMode: true });
+  const dearGas = calculateDatacenterScenario({ architecture: 'hybrid', gasType: 'recip', gasFuelPricePerMMBtu: 9 }, { fastMode: true });
   assert.equal(dearGas.dispatch.order, 'grid-first');
   // Gas runs only while the utility is out (it used to never run here).
   assert.equal(dearGas.dispatch.annual.gasRunHours, dearGas.grid.outageHours);
@@ -224,8 +224,8 @@ test('energization = the slowest required path, from the lead-time data', () => 
   assert.equal(r.schedule.energizationMonth, Math.max(...r.schedule.paths.filter(p => p.required).map(p => p.durationMonths)));
   r.schedule.paths.forEach(path => assert.equal(path.slackMonths, r.schedule.energizationMonth - path.durationMonths));
   assert.equal(r.schedule.energizationDate.label, '2031-07'); // NTP 2027-01 + 54 months
-  // Standby gas on a firm grid is optional: it does not set first power.
-  assert.equal(r.schedule.paths.find(p => p.id === 'gas-recip').required, false);
+  // Standby diesel on a firm grid is optional: it does not set first power.
+  assert.equal(r.schedule.paths.find(p => p.id === 'diesel-standby').required, false);
   const high = calculateDatacenterScenario({ scheduleCase: 'high' });
   assert.equal(high.schedule.energizationMonth, Math.max(
     firm.permittingMonths.high + firm.procurementMonths.high + firm.constructionMonths.high,

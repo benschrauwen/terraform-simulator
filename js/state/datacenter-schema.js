@@ -25,8 +25,8 @@
    Default scenario (judgment, see each field): a new 100 MW-IT AI datacenter
    at Abilene, TX, liquid-cooled with dry coolers, on a firm grid connection
    at the site's all-in year-to-date industrial price (demand charge 0, so
-   it is not counted twice), with N+1 reciprocating gas engines as standby
-   generation, renting GB300 NVL72 GPUs by the hour, 8% discount rate over
+   it is not counted twice), with standby diesel generators sized for the
+   uptime target plus one spare (N+1), renting GB300 NVL72 GPUs by the hour, 8% discount rate over
    20 years. */
 
 import { getSolarCostPresetValues, MOUNTING_TYPES } from '../data/reference-data.js';
@@ -40,8 +40,8 @@ import {
   DEFAULT_ARCHITECTURE,
   DEFAULT_GAS_GENSET_TYPE,
   DEFAULT_NUCLEAR_TYPE,
-  GAS_DEFAULTS,
   GAS_GENSET_TYPES,
+  getGensetFuel,
   GRID_DEFAULTS,
   NUCLEAR_TYPES,
   ONSITE_SUBSTATION,
@@ -179,10 +179,10 @@ export const DATACENTER_STATE_FIELDS = [
   { key: 'batteryOmPercent', type: 'number', min: 0, max: 100, defaultValue: DEFAULT_STATE.batteryOmPercent },
 
   /* ---------- Firm generation: one family at a time ---------- */
-  // Default 'gas' as STANDBY generation: Tier III sites carry on-site
-  // standby, and facility.js prices it in power.js (its all-in check adds
+  // Default 'gas' family with the standby-diesel type as STANDBY generation:
+  // Tier III sites carry on-site standby (facility.js's all-in check adds
   // "HV substation/standby generation ~$2,000-3,500/kW"). On a firm grid it
-  // only adds capex and fixed O&M; it runs when the grid is short.
+  // mostly adds capex and fixed O&M; it runs when the grid is short.
   { key: 'firmFamily', type: 'enum', options: ['none', 'gas', 'nuclear'], defaultValue: 'gas' },
   // 'auto': gas = the fewest units with which the hourly dispatch meets the
   // uptime target given the grid, solar and battery (model/datacenter/
@@ -205,7 +205,9 @@ export const DATACENTER_STATE_FIELDS = [
   { key: 'gasVariableOmPerMWh', type: 'number', min: 0, max: 500, derive: state => gasType(state).variableOmPerMWh },
   { key: 'gasHeatRateMMBtuPerMWh', type: 'number', min: 3.412, max: 20, derive: state => gasType(state).heatRateMMBtuPerMWh.default },
   { key: 'gasAvailabilityPercent', type: 'number', min: 50, max: 100, derive: state => gasType(state).availabilityPercent },
-  { key: 'gasFuelPricePerMMBtu', type: 'number', min: 0, max: 100, defaultValue: GAS_DEFAULTS.fuelPricePerMMBtu },
+  // Delivered fuel price ($/MMBtu HHV) of the selected type's fuel: natural
+  // gas (GAS_DEFAULTS) or, for standby diesel, diesel (DIESEL_DEFAULTS).
+  { key: 'gasFuelPricePerMMBtu', type: 'number', min: 0, max: 100, derive: state => getGensetFuel(gasType(state)).fuelPricePerMMBtu },
 
   { key: 'nuclearType', type: 'enum', getOptions: () => Object.keys(NUCLEAR_TYPES), defaultValue: DEFAULT_NUCLEAR_TYPE },
   { key: 'nuclearUnitSizeMW', type: 'number', min: 1, max: 2500, derive: state => nuclearType(state).unitSizeMWe.default },
@@ -249,7 +251,7 @@ const DERIVED_BY_SELECTION = {
   coolingTechnology: ['coolingCapexPerKWIT', 'coolingOmPercent'],
   gpuPlatform: ['gpuRentalPricePerHour', 'gpuItKWPerGpu', 'gpuCapexPerGpu'],
   mountingType: ['panelCostPerW', 'bosCostPerW'],
-  gasType: ['gasUnitSizeMW', 'gasCapexPerKW', 'gasFixedOmPerKWYear', 'gasVariableOmPerMWh', 'gasHeatRateMMBtuPerMWh', 'gasAvailabilityPercent'],
+  gasType: ['gasUnitSizeMW', 'gasCapexPerKW', 'gasFixedOmPerKWYear', 'gasVariableOmPerMWh', 'gasHeatRateMMBtuPerMWh', 'gasAvailabilityPercent', 'gasFuelPricePerMMBtu'],
   nuclearType: ['nuclearUnitSizeMW', 'nuclearCapexPerKW', 'nuclearFixedOmPerKWYear', 'nuclearVariableOmPerMWh', 'nuclearFuelPerMWh', 'nuclearCapacityFactorPercent', 'nuclearPpaPricePerMWh'],
 };
 
@@ -303,7 +305,9 @@ export function applyDatacenterPresetDefaults(state, selectionKey) {
 /** State fields a starting design sets (applyArchitectureDefaults). */
 export const ARCHITECTURE_DESIGN_KEYS = Object.freeze([
   'architecture', 'gridConnection', 'solarSizeMWdc', 'batteryCapacityMWh', 'batteryDurationHours',
-  'firmFamily', 'firmSizingMode', 'firmSpareUnits', 'firmUnits',
+  'firmFamily', 'firmSizingMode', 'firmSpareUnits', 'firmUnits', 'gasType',
+  // Reset with the gas type when the design changes it (DERIVED_BY_SELECTION.gasType).
+  ...DERIVED_BY_SELECTION.gasType,
 ]);
 
 /**
@@ -311,13 +315,20 @@ export const ARCHITECTURE_DESIGN_KEYS = Object.freeze([
  * 'islanded'): the supply side is reset to that architecture's starting
  * design (ARCHITECTURE_STARTING_DESIGNS in data/datacenter/power.js, where
  * the sizes are justified); everything else (site, IT, cooling, prices, the
- * gas type and its unit size, the solar mounting) is kept. Pure.
+ * solar mounting) is kept. Pure.
  *
- * - grid: firm connection, no solar or battery, gas auto-sized for the
- *   uptime target + 1 spare: exactly DATACENTER_DEFAULT_STATE's supply side.
+ * - grid: firm connection, no solar or battery, standby diesel auto-sized
+ *   for the uptime target + 1 spare: exactly DATACENTER_DEFAULT_STATE's
+ *   supply side.
  * - hybrid: flexible connection, solar = 2 MWdc per MW IT, a 4-hour battery
- *   of 4 h x IT MW, gas auto-sized for the uptime target + 1 spare.
- * - islanded: no solar or battery, gas auto-sized + 2 spares.
+ *   of 4 h x IT MW, standby diesel auto-sized for the uptime target + 1 spare.
+ * - islanded: no solar or battery, reciprocating gas engines (prime power)
+ *   auto-sized + 2 spares.
+ *
+ * The design sets the generator type; when that changes the type, the
+ * type's own costs, unit size, heat rate, availability and fuel price are
+ * applied (as a type selection would); with the same type the user's values
+ * are kept.
  *
  * 'auto' gas is the fewest units with which the dispatch meets the uptime
  * target (model/datacenter/firm-sizing.js), so it follows the battery,
@@ -331,8 +342,13 @@ export function applyArchitectureDefaults(state, architecture) {
   if (!design) return base;
   const itMW = base.itCapacityMW;
   const roundTo = (value, step) => Math.round(value / step) * step;
+  const typeChanged = design.gasType && design.gasType !== base.gasType;
+  const kept = typeChanged
+    ? Object.fromEntries(Object.entries(base).filter(([key]) => !DERIVED_BY_SELECTION.gasType.includes(key)))
+    : base;
   return normalizeDatacenterState({
-    ...base,
+    ...kept,
+    gasType: design.gasType || base.gasType,
     architecture,
     gridConnection: design.gridConnection || base.gridConnection,
     solarSizeMWdc: roundTo(design.solarMWdcPerMWIT * itMW, 5),
@@ -343,4 +359,18 @@ export function applyArchitectureDefaults(state, architecture) {
     firmSpareUnits: design.gasSpareUnits,
     firmUnits: DATACENTER_DEFAULT_STATE.firmUnits,
   });
+}
+
+/**
+ * A share-link diff from before standby diesel became the default
+ * generator type. Share links always carry the preset-derived fields
+ * (DATACENTER_DERIVED_KEYS) and, since then, the gas type; an older link
+ * carries the derived gas fields (unit size, costs) but no type, because its
+ * type was the then-default reciprocating engine. Restore that type so the
+ * link decodes to the design it was made with. Pure; returns a new object.
+ */
+export function migrateDatacenterShareDiff(diff) {
+  if (!diff || typeof diff !== 'object') return diff;
+  if (!Object.hasOwn(diff, 'gasType') && Object.hasOwn(diff, 'gasUnitSizeMW')) return { ...diff, gasType: 'recip' };
+  return diff;
 }

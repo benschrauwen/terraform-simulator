@@ -46,10 +46,13 @@ test('the hybrid starting design follows its sizing rule (hand-derived at Abilen
   const r = designs.hybrid.result;
   const base = r.firm.sizingBasis.minUnits;
   assert.equal(r.firm.units, base > 0 ? base + 1 : 0);
-  // The battery's full power covers at least as much as the old rule credited it with, so the
-  // uptime-sized base count never exceeds ceil((design peak - battery MW) / unit size).
-  const batteryMW = s.batteryCapacityMWh / s.batteryDurationHours;
-  assert.ok(base <= Math.ceil((designPeakMW - batteryMW) / s.gasUnitSizeMW));
+  // Standby diesel (EPA emergency engines) as backup, as on the grid design.
+  assert.equal(s.gasType, 'standby-diesel');
+  assert.equal(r.firm.standbyOnly, true);
+  assert.ok(base > 0 && base * s.gasUnitSizeMW >= r.firm.requiredMW);
+  // Some curtailment the battery cannot carry alone is left to the diesel, but it stays far
+  // below the design peak (the battery's 100 MW does most of the work).
+  assert.ok(r.firm.requiredMW < designPeakMW - 0.5 * s.batteryCapacityMWh / s.batteryDurationHours);
 });
 
 test('the islanded starting design is gas-only with N+2 redundancy', () => {
@@ -80,13 +83,22 @@ test('a switch keeps everything outside the supply design', () => {
     });
     assert.equal(next.firmFamily, 'gas', `${architecture}: gas is the starting firm generation`);
   });
-  // Hybrid sizes scale with the IT capacity and keep the gas unit size: 250 MW IT -> 500 MWdc,
-  // 1,000 MWh; aero units (50 MW), auto-sized.
+  // Hybrid sizes scale with the IT capacity: 250 MW IT -> 500 MWdc, 1,000 MWh, auto-sized. The
+  // design sets its generator type (standby diesel; islanded: recip engines) with that type's
+  // unit size and costs, replacing the custom aero turbines.
   const hybrid = applyArchitectureDefaults(custom, 'hybrid', { designPeakMW: 300 });
   assert.equal(hybrid.solarSizeMWdc, 500);
   assert.equal(hybrid.batteryCapacityMWh, 1000);
-  assert.equal(hybrid.gasUnitSizeMW, 50);
   assert.equal(hybrid.firmSizingMode, 'auto');
+  assert.equal(hybrid.gasType, 'standby-diesel');
+  assert.equal(hybrid.gasUnitSizeMW, GAS_GENSET_TYPES['standby-diesel'].unitSizeMW.default);
+  assert.equal(hybrid.gasFuelPricePerMMBtu, 33);
+  const islanded = applyArchitectureDefaults(custom, 'islanded');
+  assert.equal(islanded.gasType, 'recip');
+  assert.equal(islanded.gasCapexPerKW, GAS_GENSET_TYPES.recip.capexPerKW.default);
+  // The same type keeps the user's own values.
+  const tuned = { ...DATACENTER_DEFAULT_STATE, gasCapexPerKW: 1234 };
+  assert.equal(applyArchitectureDefaults(tuned, 'hybrid').gasCapexPerKW, 1234);
 });
 
 test('every starting design meets the uptime target at the default site without top-up', () => {
@@ -120,11 +132,13 @@ test('switching architecture changes the result and the footprint as the design 
   assert.equal(areas('grid').solarField, 0);
   assert.ok(areas('hybrid').solarField > 0 && areas('hybrid').battery > 0);
   assert.equal(areas('islanded').battery, 0);
-  // Gas plant area is proportional to the installed gas capacity (footprint m2 per MW x MW).
+  // Generator plant area is proportional to the installed capacity (footprint m2 per MW x MW);
+  // grid and hybrid carry standby diesel, islanded gas engines.
   ['grid', 'hybrid', 'islanded'].forEach(key => {
     const perMW = areas(key).gasPlant / r[key].firm.capacityMW;
-    assert.ok(Math.abs(perMW - GAS_GENSET_TYPES.recip.footprintM2PerMW) < 1e-9, `${key} gas m2/MW`);
+    assert.ok(Math.abs(perMW - GAS_GENSET_TYPES[r[key].state.gasType].footprintM2PerMW) < 1e-9, `${key} gas m2/MW`);
   });
+  assert.deepEqual(['grid', 'hybrid', 'islanded'].map(key => r[key].state.gasType), ['standby-diesel', 'standby-diesel', 'recip']);
   // Switchyard: 40 m2 per MW of import cap (power.js GRID_DEFAULTS), 130.8 MW -> 5,232 m2.
   assert.ok(Math.abs(areas('grid').utilitySwitchyard - 40 * r.grid.grid.importCapMW) < 1e-6);
 });

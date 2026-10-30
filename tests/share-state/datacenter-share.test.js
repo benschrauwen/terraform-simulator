@@ -43,9 +43,26 @@ test('a link keeps a user price that equals the default site\'s after the site c
   assert.deepEqual(parsed.state, normalizeDatacenterState(state));
   assert.equal(parsed.state.gridEnergyPricePerMWh, abilenePrice);
 
-  // Every derived key travels in the payload.
-  const { d } = ShareStateCodec.decodePayload(hash.slice('#s='.length), { lzString: LZString });
+  // Every derived key, and the gas type, travels in the payload (read through the hash parser:
+  // the payload is URL-encoded, so slicing the raw hash breaks on a '+').
+  const { d } = ShareStateCodec.parseHash(hash, { lzString: LZString }).payload;
   DATACENTER_DERIVED_KEYS.forEach(key => assert.ok(Object.hasOwn(d, key), `${key} in the link`));
+  assert.equal(d.gasType, 'standby-diesel');
+});
+
+test('a link from before standby diesel became the default keeps its gas engines', () => {
+  // An older link: the derived gas fields of the then-default reciprocating engines, no gas type
+  // (it equalled the default) and no fuel price (a plain field at its default then).
+  const old = { itCapacityMW: 250, gasUnitSizeMW: 10, gasCapexPerKW: 2000, gasFixedOmPerKWYear: 45, gasVariableOmPerMWh: 7.4, gasHeatRateMMBtuPerMWh: 7.8, gasAvailabilityPercent: 97 };
+  const payload = ShareStateCodec.encodePayload({ v: ShareStateCodec.VERSION, d: old }, { lzString: LZString });
+  const parsed = parseDatacenterHash(`#s=${encodeURIComponent(payload)}`, LZString);
+  assert.equal(parsed.error, null);
+  assert.equal(parsed.state.gasType, 'recip');
+  assert.equal(parsed.state.gasFuelPricePerMMBtu, 4);
+  assert.equal(parsed.state.gasUnitSizeMW, 10);
+  // A current link with diesel round-trips as diesel.
+  const current = normalizeDatacenterState({ itCapacityMW: 250 });
+  assert.equal(parseDatacenterHash(serializeDatacenterHash(current, LZString), LZString).state.gasType, 'standby-diesel');
 });
 
 test('round trips across architectures, families and GPU platforms', () => {

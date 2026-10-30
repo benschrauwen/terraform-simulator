@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { calculateDatacenterScenario, DATACENTER_DEFAULT_STATE, normalizeDatacenterState } from '../../js/model/datacenter/index.js';
+import {
+  applyDatacenterPresetDefaults,
+  calculateDatacenterScenario,
+  DATACENTER_DEFAULT_STATE,
+  normalizeDatacenterState,
+} from '../../js/model/datacenter/index.js';
 import {
   compareArchitectures,
   findMinimumUnits,
@@ -10,7 +15,9 @@ import {
   optimizeDatacenterDesign,
 } from '../../js/model/datacenter/optimizer.js';
 
-const BASE = { ...DATACENTER_DEFAULT_STATE };
+// Reciprocating gas engines (the islanded and hybrid cases below need gas cheaper than the grid);
+// standby diesel became the default type later.
+const BASE = applyDatacenterPresetDefaults({ ...DATACENTER_DEFAULT_STATE, gasType: 'recip' }, 'gasType');
 const ISLANDED = { ...BASE, architecture: 'islanded' };
 
 /** The state the optimizer evaluates for a design (units 0 = no firm plant). */

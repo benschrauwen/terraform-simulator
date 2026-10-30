@@ -29,6 +29,15 @@ export function buildWarnings(result, { designPeakKW }) {
   if (firm.family === 'gas' && state.firmSizingMode === 'manual' && firm.capacityMW * 1000 < designPeakKW - 1e-6 && (state.architecture === 'islanded' || state.gridConnection === 'flexible')) {
     add('gas-below-peak', `Gas capacity (${fmt(firm.capacityMW, 1)} MW) is below the design facility peak (${fmt(designPeakKW / 1000, 1)} MW).`);
   }
+  // EPA emergency stationary engines (40 CFR 60.4211(f), 63.6640(f); power.js
+  // 'standby-diesel'): at most 100 h/yr of testing, maintenance and
+  // non-emergency use, of which 50 h non-emergency. The model's runs outside
+  // utility outages are non-emergency; testing is an assumed allowance.
+  const engine = firm.emergencyEngine;
+  if (engine && (engine.nonEmergencyRunHours > engine.maxNonEmergencyHoursPerYear
+    || engine.nonEmergencyRunHours + engine.testingHoursPerYear > engine.maxHoursPerYear)) {
+    add('standby-run-hours', `The standby diesel generators run ${fmt(engine.nonEmergencyRunHours)} h a year outside utility outages (${state.architecture === 'islanded' ? 'as the site\'s own supply' : 'grid curtailments or limits'}). EPA limits emergency engines to ${fmt(engine.maxHoursPerYear)} h/yr of testing (~${fmt(engine.testingHoursPerYear)} h assumed) and non-emergency use, at most ${fmt(engine.maxNonEmergencyHoursPerYear)} h of it non-emergency; beyond that they need Tier 4 non-emergency engines and a different air permit. Use gas generation, more battery or a firm connection instead.`);
+  }
   if (state.architecture === 'islanded' && dispatch.batteryRole === 'reserve' && firm.family !== 'gas') {
     add('battery-idle', 'With no solar, nuclear or gas on an islanded site, nothing can charge the battery.');
   }

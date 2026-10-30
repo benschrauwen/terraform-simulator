@@ -14,7 +14,10 @@
       cap; gas up to its available capacity after planned outages. 'grid'
       architecture is grid-first (gas is backup); 'hybrid' orders grid and
       gas by marginal cost (gas fuel x heat rate + VOM vs grid energy
-      price); 'islanded' has no grid. What is left is unserved.
+      price), except that a standby-only type (standby diesel) is always
+      after the grid; 'islanded' has no grid. What is left is unserved.
+      Gas run hours in utility-outage hours are counted apart (EPA
+      emergency use, warnings.js).
    3. Battery role. With a surplus source on site (solar or nuclear) the
       battery SHIFTS that surplus: it charges only from surplus and
       discharges first into any deficit. Without one it is a RESERVE: it is
@@ -46,7 +49,9 @@ const SERIES_KEYS = ['solarKW', 'nuclearKW', 'gridKW', 'gasKW', 'batteryDischarg
 
 /** Deficit order for the architecture: 'grid-first' or 'firm-first'. */
 export function getDispatchOrder(state, firm) {
-  if (state.architecture === 'hybrid' && firm.family === 'gas' && firm.marginalCostPerMWh < state.gridEnergyPricePerMWh) {
+  // Standby (emergency) generators are last-resort backup: never dispatched
+  // on cost against an available grid, however their price compares.
+  if (state.architecture === 'hybrid' && firm.family === 'gas' && !firm.typeData?.standbyOnly && firm.marginalCostPerMWh < state.gridEnergyPricePerMWh) {
     return 'firm-first';
   }
   return state.architecture === 'islanded' ? 'firm-first' : 'grid-first';
@@ -72,7 +77,7 @@ function runPass(inputs, startSocKWh, capture) {
     exportKWh: 0, curtailedKWh: 0, unservedKWh: 0, gridToBatteryKWh: 0, gasToBatteryKWh: 0,
     solarToLoadKWh: 0, solarToBatteryKWh: 0, solarExportKWh: 0, solarCurtailedKWh: 0,
     nuclearToLoadKWh: 0, nuclearToBatteryKWh: 0, nuclearExportKWh: 0, nuclearCurtailedKWh: 0,
-    fuelMMBtu: 0, gasRunHours: 0, gridImportHours: 0, servedHours: 0, unservedHours: 0, maxUnservedKW: 0,
+    fuelMMBtu: 0, gasRunHours: 0, gasOutageRunHours: 0, gridImportHours: 0, servedHours: 0, unservedHours: 0, maxUnservedKW: 0,
     longestUnservedStreakHours: 0, peakGridKW: 0, peakExportKW: 0,
   };
   const monthlyPeakGridKW = new Array(12).fill(0);
@@ -177,6 +182,7 @@ function runPass(inputs, startSocKWh, capture) {
     if (gasKW > 0) {
       t.fuelMMBtu += gasFuelMMBtu(gasKW, inputs.firm);
       t.gasRunHours += 1;
+      if (grid.outage?.[h]) t.gasOutageRunHours += 1;
     }
     if (gridKW > 0) t.gridImportHours += 1;
     if (gridKW > monthlyPeakGridKW[MONTH_OF_HOUR[h]]) monthlyPeakGridKW[MONTH_OF_HOUR[h]] = gridKW;

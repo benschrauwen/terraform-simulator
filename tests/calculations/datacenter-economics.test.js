@@ -188,9 +188,12 @@ test('preset-derived defaults follow their selection unless given', () => {
   assert.equal(phoenix.gridEnergyPricePerMWh, 79.4); // EIA AZ YTD 7.94 c/kWh
   assert.equal(phoenix.gridCo2KgPerMWh, 319.2);
   assert.equal(normalizeDatacenterState({ siteId: 'phoenix-az', gridEnergyPricePerMWh: 50 }).gridEnergyPricePerMWh, 50);
-  const aero = applyDatacenterPresetDefaults({ ...DATACENTER_DEFAULT_STATE, gasCapexPerKW: 999, gasFuelPricePerMMBtu: 6 }, 'gasType');
-  assert.equal(aero.gasCapexPerKW, 2000); // recip default restored
-  assert.equal(aero.gasFuelPricePerMMBtu, 6); // not derived: kept
+  const diesel = applyDatacenterPresetDefaults({ ...DATACENTER_DEFAULT_STATE, gasCapexPerKW: 999, gasFuelPricePerMMBtu: 6 }, 'gasType');
+  assert.equal(diesel.gasCapexPerKW, 1000); // standby-diesel default restored
+  // The fuel price follows the type's fuel (was a plain field before diesel was added).
+  assert.equal(diesel.gasFuelPricePerMMBtu, 33);
+  assert.equal(normalizeDatacenterState({ gasType: 'recip' }).gasFuelPricePerMMBtu, 4);
+  assert.equal(normalizeDatacenterState({ gasType: 'recip', gasFuelPricePerMMBtu: 6 }).gasFuelPricePerMMBtu, 6);
   const switched = applyDatacenterPresetDefaults({ ...DATACENTER_DEFAULT_STATE, gasType: 'aero' }, 'gasType');
   assert.equal(switched.gasCapexPerKW, 2275);
   assert.equal(switched.gasUnitSizeMW, 50);

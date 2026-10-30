@@ -269,7 +269,12 @@ export const DATACENTER_SECTIONS = {
       range: state => unitSizeRange(nuclearType(state).unitSizeMWe),
     },
     { block: 'firmSizing', visible: state => state.firmFamily !== 'none' },
-    { type: 'range', id: 'gasFuelPricePerMMBtu', label: 'Delivered gas price', min: 0, max: 15, step: 0.05, format: per(2, 'MMBtu'), visible: state => state.firmFamily === 'gas' },
+    {
+      type: 'range', id: 'gasFuelPricePerMMBtu', label: 'Delivered fuel price', format: per(2, 'MMBtu'), visible: state => state.firmFamily === 'gas',
+      // Natural gas $0-15; diesel (standby type) up to $60/MMBtu (~$8.30/gal).
+      range: state => (gasType(state).fuel === 'diesel' ? { min: 0, max: 60, step: 0.5 } : { min: 0, max: 15, step: 0.05 }),
+      tooltip: 'HHV basis. Natural gas: Henry Hub plus delivery. Diesel: untaxed (dyed, off-road) price per gallon / 0.138 MMBtu.',
+    },
     { type: 'range', id: 'nuclearPpaPricePerMWh', label: 'PPA price', min: 0, max: 250, step: 1, format: per(0, 'MWh'), visible: state => state.firmFamily === 'nuclear' && isContractedNuclear(state), tooltip: 'Take-or-pay on all available output.' },
     {
       details: 'Gas plant costs and performance',

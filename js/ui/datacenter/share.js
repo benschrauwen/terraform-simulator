@@ -1,10 +1,12 @@
 /* Share links for the datacenter page: the non-default state in the URL hash (#s=...), using
-   the shared ShareStateCodec. Preset-derived fields (DATACENTER_DERIVED_KEYS) always travel
-   with a non-empty diff, so a link that changes the site keeps any price the user set. */
+   the shared ShareStateCodec. Preset-derived fields (DATACENTER_DERIVED_KEYS) and the gas type
+   always travel with a non-empty diff, so a link that changes the site keeps any price the user
+   set, and links from before the default generator type changed decode as made. */
 
 import {
   DATACENTER_DEFAULT_STATE,
   DATACENTER_DERIVED_KEYS,
+  migrateDatacenterShareDiff,
   normalizeDatacenterState,
 } from '../../state/datacenter-schema.js';
 import { ShareStateCodec } from '../../state/share-codec.js';
@@ -17,7 +19,9 @@ const URL_SYNC_DELAY_MS = 150;
 export function serializeDatacenterHash(state, lzString) {
   return ShareStateCodec.serializeHashFromState(normalizeDatacenterState(state), DATACENTER_DEFAULT_STATE, {
     excludeKeys: [],
-    alwaysIncludeKeys: DATACENTER_DERIVED_KEYS,
+    // The gas type travels too, so a link without it is recognisably older
+    // (migrateDatacenterShareDiff).
+    alwaysIncludeKeys: [...DATACENTER_DERIVED_KEYS, 'gasType'],
     lzString,
   });
 }
@@ -27,7 +31,7 @@ export function parseDatacenterHash(hash, lzString) {
   try {
     const parsed = ShareStateCodec.parseHash(hash, { lzString });
     if (parsed.ignored) return { state: null, hasShareState: false, ignored: true, error: null };
-    return { state: normalizeDatacenterState(parsed.hasState ? parsed.diff : {}), hasShareState: parsed.hasState, ignored: false, error: null };
+    return { state: normalizeDatacenterState(parsed.hasState ? migrateDatacenterShareDiff(parsed.diff) : {}), hasShareState: parsed.hasState, ignored: false, error: null };
   } catch (error) {
     return { state: normalizeDatacenterState({}), hasShareState: false, ignored: false, error };
   }

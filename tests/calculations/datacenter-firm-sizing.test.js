@@ -10,10 +10,17 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { allowedUnservedHours } from '../../js/model/datacenter/firm-sizing.js';
-import { buildStartingDesign, calculateDatacenterScenario, DATACENTER_DEFAULT_STATE } from '../../js/model/datacenter/index.js';
+import {
+  applyDatacenterPresetDefaults,
+  buildStartingDesign,
+  calculateDatacenterScenario,
+  DATACENTER_DEFAULT_STATE,
+} from '../../js/model/datacenter/index.js';
 import { findMinimumUnits, optimizeDatacenterDesign } from '../../js/model/datacenter/optimizer.js';
 
 const BASE = { ...DATACENTER_DEFAULT_STATE };
+// Reciprocating gas engines ($4/MMBtu: cheaper than the default grid price).
+const RECIP = applyDatacenterPresetDefaults({ ...BASE, gasType: 'recip' }, 'gasType');
 const run = state => calculateDatacenterScenario(state, { fastMode: true });
 const manual = (state, units) => run({ ...state, firmFamily: units > 0 ? 'gas' : 'none', firmSizingMode: 'manual', firmUnits: units });
 
@@ -59,7 +66,7 @@ test('auto sizing is exact on the non-separable designs too (reserve battery aft
   const islanded = assertMinimal({ ...BASE, architecture: 'islanded', batteryCapacityMWh: 200 }, 'islanded reserve battery');
   assert.equal(islanded.firm.sizingBasis.method, 'bisection');
   // Hybrid, gas cheaper than the grid (firm-first), reserve battery.
-  const hybrid = assertMinimal({ ...BASE, architecture: 'hybrid', gridConnection: 'flexible', gasFuelPricePerMMBtu: 1, batteryCapacityMWh: 100 }, 'hybrid firm-first reserve');
+  const hybrid = assertMinimal({ ...RECIP, architecture: 'hybrid', gridConnection: 'flexible', batteryCapacityMWh: 100 }, 'hybrid firm-first reserve');
   assert.equal(hybrid.dispatch.order, 'firm-first');
   assert.equal(hybrid.firm.sizingBasis.method, 'bisection');
   // A grid-first reserve battery is exact from one zero-gas run.

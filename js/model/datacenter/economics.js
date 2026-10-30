@@ -107,11 +107,12 @@ export function buildOpexLines(state, { totals, monthlyPeakGridKW, water, firm }
   // Contract: take-or-pay on all available output. Own reactor: fuel and
   // variable O&M on the energy it delivers (it backs down instead of curtailing).
   const nuclearMWh = contracted ? totals.nuclearKWh / 1000 : onSiteNuclearMWh(totals);
+  const diesel = firm.family === 'gas' && firm.typeData?.fuel === 'diesel';
   const lines = [
     { key: 'gridEnergy', label: 'Grid energy', energy: true, annual: (totals.gridKWh / 1000) * state.gridEnergyPricePerMWh },
     { key: 'gridDemand', label: 'Grid demand charges', energy: true, annual: monthlyPeakGridKW.reduce((sum, kW) => sum + kW, 0) * state.gridDemandChargePerKWMonth },
-    { key: 'gasFuel', label: 'Gas fuel', energy: true, annual: totals.fuelMMBtu * state.gasFuelPricePerMMBtu },
-    { key: 'gasVariableOm', label: 'Gas variable O&M', energy: true, annual: firm.family === 'gas' ? gasMWh * state.gasVariableOmPerMWh : 0 },
+    { key: 'gasFuel', label: diesel ? 'Diesel fuel' : 'Gas fuel', energy: true, annual: totals.fuelMMBtu * state.gasFuelPricePerMMBtu },
+    { key: 'gasVariableOm', label: diesel ? 'Diesel generator variable O&M' : 'Gas variable O&M', energy: true, annual: firm.family === 'gas' ? gasMWh * state.gasVariableOmPerMWh : 0 },
     { key: 'nuclearVariable', label: 'Nuclear fuel + variable O&M', energy: true, annual: firm.family === 'nuclear' && !contracted ? nuclearMWh * (state.nuclearFuelPerMWh + state.nuclearVariableOmPerMWh) : 0 },
     { key: 'nuclearPpa', label: 'Nuclear PPA', energy: true, annual: contracted ? nuclearMWh * state.nuclearPpaPricePerMWh : 0 },
     { key: 'water', label: 'Water', energy: false, annual: water.withdrawnM3 * state.waterPricePerM3 },

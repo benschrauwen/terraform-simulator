@@ -32,6 +32,9 @@
             itLoadFraction, marketIndex, ownerTcoPerGpuHour, gpuHoursSoldPerYear },
      firm: { family, type, label, units, unitSizeMW, capacityMW, mustTake, onSite,
              availabilityFraction, outageHoursPerUnit, marginalCostPerMWh, sizing,
+             fuel ('natural-gas' | 'diesel' | null), standbyOnly (EPA emergency engine),
+             emergencyEngine (standby diesel: { maxHoursPerYear, maxNonEmergencyHoursPerYear,
+               testingHoursPerYear, emergencyRunHours, nonEmergencyRunHours } or null),
              requiredMW (gas: firm MW the uptime target needs, every unit available),
              sizingBasis (gas, firm-sizing.js: { method, minUnits (before spares), spareUnits,
                reachable, allowedUnservedHours, hoursShortWithoutFirm, requiredMW, maxShortfallMW,
@@ -41,7 +44,7 @@
        annual: { loadMWh, servedMWh, solarMWh, nuclearMWh, gridMWh, gasMWh,
                  batteryDischargeMWh, batteryChargeMWh, exportMWh, curtailedMWh, unservedMWh,
                  solarToLoadMWh, nuclearToLoadMWh, gridToLoadMWh, gasToLoadMWh,
-                 gridToBatteryMWh, gasToBatteryMWh, fuelMMBtu, gasRunHours, gridImportHours,
+                 gridToBatteryMWh, gasToBatteryMWh, fuelMMBtu, gasRunHours, gasOutageRunHours, gridImportHours,
                  peakGridMW, monthlyPeakGridMW[12], peakExportMW,
                  sharesOfServed: { solar, nuclear, grid, gas, battery } },
        battery: { capacityMWh, powerMW, equivalentFullCyclesPerYear, lifetimeYears,
@@ -54,7 +57,7 @@
      reliability: { uptimePercent (hours fully served), servedEnergyPercent, unservedHours,
                     unservedMWh, maxUnservedMW, longestOutageHours, targetPercent, meetsTarget },
      energy: { itDemandMWh, itServedMWh, coolingMWh, electricalLossesMWh, facilityServedMWh },
-     emissions: { gridT, gasT, totalT, kgPerMWhServed, gridCo2KgPerMWh, gasCo2KgPerMMBtu },
+     emissions: { gridT, gasT, totalT, kgPerMWhServed, gridCo2KgPerMWh, gasCo2KgPerMMBtu (of the fuel), fuel },
      water: { withdrawnM3, evaporatedM3, dischargedM3, wueLPerKWhIT,
               cooling|gas|nuclear: { withdrawnM3, evaporatedM3, dischargedM3 } },
      heat: { itMWh, coolingPowerMWh, electricalLossesMWh, facilityMWh, latentMWh, sensibleMWh,
@@ -189,10 +192,10 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
   const batteryLossesKWh = totals.batteryChargeKWh - totals.batteryDischargeKWh - (run.battery.endSocKWh - run.battery.startSocKWh);
 
   const energy = splitFacilityEnergy({ itKW, cooling, tech, loadKW, unservedKW: run.unservedKW });
-  const emissions = calculateEmissions(state, totals, energy.facilityServedKWh);
+  const emissions = calculateEmissions(state, totals, energy.facilityServedKWh, firm);
   const water = calculateWater(state, { tech, energy, totals, firm });
   const heat = calculateHeat({ tech, energy, water, totals, firm, batteryLossesKWh });
-  const flows = buildFlows({ totals, energy, water, heat, emissions, batteryLossesKWh });
+  const flows = buildFlows({ totals, energy, water, heat, emissions, batteryLossesKWh, firm });
   const substationKW = getSubstationKW(designPeakKW, totals);
   const footprint = calculateFootprint(state, { tech, solar, firm, substationKW, gridCapKW: grid.connected ? grid.capKW : 0 });
   const schedule = buildSchedule(state, { firm, solarEnabled: solar.enabled });
@@ -229,6 +232,8 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
       gasToBatteryMWh: mwh(totals.gasToBatteryKWh),
       fuelMMBtu: totals.fuelMMBtu,
       gasRunHours: totals.gasRunHours,
+      // Of which in utility-outage hours (EPA emergency operation).
+      gasOutageRunHours: totals.gasOutageRunHours,
       gridImportHours: totals.gridImportHours,
       peakGridMW: mwh(totals.peakGridKW),
       monthlyPeakGridMW: run.monthlyPeakGridKW.map(mwh),
@@ -345,6 +350,16 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
       sizing: firm.sizing,
       // Gas: what the uptime target needs (firm-sizing.js); null for nuclear
       // and for a manual gas count in fast mode.
+      fuel: firm.family === 'gas' ? (firm.typeData.fuel || 'natural-gas') : null,
+      standbyOnly: Boolean(firm.typeData?.standbyOnly),
+      // EPA emergency engine (standby diesel): run hours in utility outages are
+      // emergency use; every other hour (curtailments, islanded or economic
+      // operation) counts against the non-emergency allowance (warnings.js).
+      emergencyEngine: firm.typeData?.emergencyEngine && firm.units > 0 ? {
+        ...firm.typeData.emergencyEngine,
+        emergencyRunHours: totals.gasOutageRunHours,
+        nonEmergencyRunHours: totals.gasRunHours - totals.gasOutageRunHours,
+      } : null,
       requiredMW: sizing ? sizing.requiredMW : null,
       sizingBasis: sizing ? {
         ...sizing,

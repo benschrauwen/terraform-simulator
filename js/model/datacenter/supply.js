@@ -190,7 +190,8 @@ export function selectGridOutageHours(hours) {
 
 /**
  * Grid supply: { connected, connection, capKW, available (Uint8Array 1/0
- * per hour, null when not connected), unavailableHours (outages +
+ * per hour, null when not connected), outage (Uint8Array 1 in utility-outage
+ * hours, null when not connected), unavailableHours (outages +
  * curtailments), outageHours, curtailmentHours, events [{ startHour,
  * hours, kind: 'outage' | 'curtailment' }] }. Import cap 0 = the design
  * facility peak. Every connection has the utility outages
@@ -200,7 +201,7 @@ export function selectGridOutageHours(hours) {
 export function buildGridSupply(state, loadKW, designPeakKW) {
   const connected = state.architecture !== 'islanded';
   if (!connected) {
-    return { connected: false, connection: null, capKW: 0, available: null, unavailableHours: HOURS_PER_YEAR, outageHours: 0, curtailmentHours: 0, events: [] };
+    return { connected: false, connection: null, capKW: 0, available: null, outage: null, unavailableHours: HOURS_PER_YEAR, outageHours: 0, curtailmentHours: 0, events: [] };
   }
   const capKW = state.gridImportCapMW > 0 ? state.gridImportCapMW * 1000 : designPeakKW;
   const outages = selectGridOutageHours(state.firmGridOutageHoursPerYear);
@@ -217,7 +218,7 @@ export function buildGridSupply(state, loadKW, designPeakKW) {
   }
   const events = [...outages.events, ...curtailments.events].sort((a, b) => a.startHour - b.startHour);
   return {
-    connected, connection: state.gridConnection, capKW, available,
+    connected, connection: state.gridConnection, capKW, available, outage: outages.unavailable,
     unavailableHours: outageHours + curtailmentHours, outageHours, curtailmentHours, events,
   };
 }

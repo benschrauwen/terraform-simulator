@@ -217,9 +217,63 @@ export const GAS_DEFAULTS = {
   // https://www.eia.gov/environment/emissions/co2_vol_mass.php (retrieved 2026-10)
   co2KgPerMMBtu: 52.91,
   // judgment: methane leakage upstream is not counted (combustion only, like eGRID).
+  label: 'Natural gas',
+  generationLabel: 'Gas generation',
 };
 
-/* On-site gas generation types. Per type:
+/* ---------- Diesel (standby generators) ----------
+   Fuel of the 'standby-diesel' genset type below. Prices are $/MMBtu HHV
+   like natural gas so the same state field (gasFuelPricePerMMBtu, the
+   "delivered fuel price") carries either; it follows the selected type's
+   fuel. */
+export const DIESEL_DEFAULTS = {
+  label: 'Diesel',
+  generationLabel: 'Diesel generation',
+  // 40 CFR 98 Subpart C Table C-1, Distillate Fuel Oil No. 2: 0.138
+  // mmBtu/gallon (HHV) and 73.96 kg CO2/mmBtu. EIA: diesel 137,381 Btu/gal;
+  // distillate 163.45 lb (74.14 kg) CO2/MMBtu, 22.45 lb/gal.
+  // https://www.ecfr.gov/current/title-40/chapter-I/subchapter-C/part-98/subpart-C/appendix-Table%20C-1%20to%20Subpart%20C%20of%20Part%2098
+  // https://www.law.cornell.edu/cfr/text/40/appendix-Table_C-1_to_subpart_C_of_part_98
+  // https://www.eia.gov/energyexplained/units-and-calculators/
+  // https://www.eia.gov/environment/emissions/co2_vol_mass.php (all retrieved 2026-10)
+  mmbtuPerGallon: 0.138,
+  co2KgPerMMBtu: 73.96,
+  // EIA STEO (Oct 6, 2026): US retail diesel $5.19/gal 2026 average ($6.29
+  // in September; ~$4.50 in 2027). EIA weekly: $6.352/gal on 2026-10-26.
+  // EIA FAQ: federal diesel tax 24.4 c/gal, state average 35.5 c/gal (Jan
+  // 2026); dyed off-road diesel for a stationary generator is exempt from
+  // the federal tax (IRS Pub 510; $0.001 LUST tax remains) and, in most
+  // states, from the road tax (not verified state by state).
+  // https://www.eia.gov/outlooks/steo/
+  // https://www.eia.gov/petroleum/gasdiesel/
+  // https://www.eia.gov/tools/faqs/faq.php?id=10&t=10
+  // https://www.irs.gov/publications/p510 (all retrieved 2026-10)
+  retailPricePerGallon2026: 5.19,
+  roadTaxPerGallon: 0.244 + 0.355,
+  // (5.19 - 0.599) / 0.138 = $33.3/MMBtu, rounded; retail still includes the
+  // retail margin, so bulk deliveries can be lower (judgment).
+  fuelPricePerMMBtu: 33,
+  // judgment: low = 2027 STEO ~$4.50/gal untaxed less a bulk discount; high =
+  // the Sep-Oct 2026 retail level untaxed ((6.35 - 0.60) / 0.138 = 41.7).
+  fuelPriceRangePerMMBtu: { low: 25, high: 42 },
+};
+
+/* Fuels of the on-site generation types (GAS_GENSET_TYPES[type].fuel). */
+export const GENSET_FUELS = { 'natural-gas': GAS_DEFAULTS, diesel: DIESEL_DEFAULTS };
+
+/** The fuel defaults ({ label, fuelPricePerMMBtu, co2KgPerMMBtu, ... }) of a genset type entry. */
+export function getGensetFuel(type) {
+  return GENSET_FUELS[type?.fuel] || GAS_DEFAULTS;
+}
+
+/* On-site generation types of the 'gas' firm family (the name predates the
+   diesel entry: the family is fuel-burning or fuel-cell generation on
+   site). Per type:
+     fuel                  'natural-gas' (default) or 'diesel' (GENSET_FUELS:
+                           price, CO2 per MMBtu)
+     standbyOnly           emergency standby: never dispatched on cost against
+                           the grid (dispatch.js), EPA run-hour limits apply
+                           (emergencyEngine)
      unitSizeMW            { min, default, max } per unit
      heatRateMMBtuPerMWh   full-load HHV heat rate (default) and range
      partLoad              heat-rate penalty at 50% unit load (fraction) and
@@ -244,6 +298,7 @@ export const GAS_DEFAULTS = {
 export const GAS_GENSET_TYPES = {
   recip: {
     label: 'Reciprocating gas engines',
+    fuel: 'natural-gas',
     examples: 'Wärtsilä 34SG / 50SG, INNIO Jenbacher J920 FleXtra, Caterpillar G3520',
     // Wärtsilä 34SG 5.8-10.8 MW, 50SG 18.4-18.9 MW; Jenbacher J920 10.6 MW;
     // Cat G3520 2.5 MW (search index).
@@ -280,6 +335,7 @@ export const GAS_GENSET_TYPES = {
   },
   aero: {
     label: 'Aeroderivative gas turbines',
+    fuel: 'natural-gas',
     examples: 'GE Vernova LM2500XPRESS / LM6000, Siemens Energy SGT-A35, Mitsubishi FT8 MOBILEPAC',
     // LM2500XPRESS up to 34 MW; LM6000 PF+ Sprint 56.9 MW; SGT-A35
     // 31.8-38.1 MW; FT8 MOBILEPAC 30.9 MW (60 Hz).
@@ -314,6 +370,7 @@ export const GAS_GENSET_TYPES = {
   },
   'industrial-sc': {
     label: 'Industrial / heavy-duty simple-cycle turbines',
+    fuel: 'natural-gas',
     examples: 'Siemens Energy SGT-800, Solar Turbines Titan 130/250, GE Vernova 7HA in simple cycle',
     // SGT-800 45.3-62.5 MW; Titan 130 16.5 MW (search index); 7HA.03 SC 430 MW.
     // https://www.siemens-energy.com/global/en/home/products-services/product/sgt-800.html
@@ -344,6 +401,7 @@ export const GAS_GENSET_TYPES = {
   },
   ccgt: {
     label: 'Combined cycle (F/H-class CCGT)',
+    fuel: 'natural-gas',
     examples: 'GE Vernova 7HA.02/.03 1x1, Siemens Energy SGT6-9000HL, Mitsubishi M501JAC',
     // EIA AEO2026: single-shaft 627 MW, multi-shaft 1,227 MW.
     unitSizeMW: { min: 250, default: 627, max: 1227 },
@@ -375,6 +433,7 @@ export const GAS_GENSET_TYPES = {
   },
   sofc: {
     label: 'Solid-oxide fuel cells',
+    fuel: 'natural-gas',
     examples: 'Bloom Energy Server 6.5',
     // Bloom datasheet (Feb 2026): 325 kW net AC per server.
     // https://www.bloomenergy.com/wp-content/uploads/bloom-energy-server-datasheet-feb-2026.pdf (retrieved 2026-10)
@@ -406,6 +465,7 @@ export const GAS_GENSET_TYPES = {
   },
   bridge: {
     label: 'Mobile / trailer-mounted bridge turbines',
+    fuel: 'natural-gas',
     examples: 'Solar Turbines SMT-130, Mitsubishi FT8 MOBILEPAC (e.g. xAI Colossus, Memphis)',
     // Shelby County permit (2025-07-02): 15 Solar SMT-130 units "up to 247
     // megawatts" (~16.5 MW each); FT8 MOBILEPAC 31 MW.
@@ -429,9 +489,83 @@ export const GAS_GENSET_TYPES = {
     leadTimeKey: 'gas-bridge',
     tradeOff: 'Fastest path to on-site power (months) and easy to remove later; least efficient, highest emissions per MWh, and contested air permits.',
   },
+  'standby-diesel': {
+    label: 'Standby diesel generators',
+    fuel: 'diesel',
+    standbyOnly: true,
+    examples: 'Caterpillar 3516C / 3516E, Cummins QSK95 (C3000 / C3500), MTU 20V4000 (DS3000)',
+    // Datacenter standby units are 2.5-3.25 MW: Cat 3516C 2,500 ekW standby
+    // (60 Hz datasheet LEHE1377-04); Cat 3516E 3,000 ekW standby (cat.com);
+    // MTU 20V4000 DS3000 3,000 kWe standby (60 Hz); Cummins QSK95 C3500D5e
+    // 2,800 kWe standby (50 Hz, AWS Frankfurt permit appendix), C3000D6e listed
+    // at 3,250 kW standby (60 Hz). Default judgment: the 3 MW class of 2025-26 builds.
+    // https://www.hanovercounty.gov/DocumentCenter/View/5983/CAT-3516C-2500KW-Cut
+    // https://www.cat.com/en_US/products/new/power-systems/electric-power/diesel-generator-sets/1000033111.html
+    // https://www.globalpwr.com/wp-content/uploads/cut-sheets/gps-mtu-3000-kw-spec-sheet.pdf
+    // https://consult.environment-agency.gov.uk/psc/sl0-9ee-amazon-data-services-uk-limited/supporting_documents/application-bespoke-appendix-a-typical-generator-specifications-sheet-aws-c3500d5e-qsk95-g5-nominal-emissions-epr-mp3824mg-a001-020326pdf
+    // (all retrieved 2026-10)
+    unitSizeMW: { min: 2.5, default: 3, max: 3.25 },
+    // Fuel at 100% standby load x 0.138 MMBtu/gal (DIESEL_DEFAULTS, HHV):
+    // Cat 3516C 175.3 gal/h / 2.5 MW = 9.68; MTU DS3000 207 gal/h / 3.0 MW =
+    // 9.52; QSK95 C3500D5e 725 L/h (191.5 gal) / 2.8 MW = 9.44 MMBtu/MWh (sheets above).
+    heatRateMMBtuPerMWh: { default: 9.55, low: 9.44, high: 9.68 },
+    // judgment: ~10% higher heat rate at 50% load; below ~30% load diesel
+    // engines wet-stack, so the plant commits fewer units instead.
+    partLoad: { heatRatePenaltyAt50Percent: 0.1, minStableLoadPercent: 30 },
+    // Installed (genset, enclosure, belly tank, switchgear share, install):
+    // NREL ~$1,000/kW (June 2025, via Latitude Media, 2026-03-09); Better Data
+    // Center Project (Mar 2026): gensets "commonly estimated at $350-$500/kW",
+    // enclosures, noise attenuation and fuel tanks "over $200/kW" more, NREL
+    // (2014) $800-1,100/kW all-in. High: judgment for 2026 shortage pricing
+    // and paralleling switchgear.
+    // https://www.latitudemedia.com/news/the-data-center-boom-is-a-diesel-generator-boom/
+    // https://betterdatacenterproject.com/wp-content/uploads/2026/03/Diesel-Generators-at-Data-Centers-Status-Impacts-and-Protective-Practices.pdf
+    capexPerKW: { default: 1000, low: 550, high: 1300 },
+    // PNNL O&M best practices: $8,000-10,500/yr for a 300 kW standby unit
+    // under 200 h/yr (~$27-35/kW-yr), monthly tests and an annual load-bank
+    // test. Default judgment for 2.5-3 MW fleets (scale), incl. fuel polishing.
+    // https://www.pnnl.gov/projects/om-best-practices/standby-generators
+    fixedOmPerKWYear: 15,
+    variableOmPerMWh: 10, // judgment: few run hours; wear parts and oil per MWh
+    // NFPA 110 Type 10: power restored within 10 s; the Cat 3516C and MTU
+    // DS3000 sheets: accepts 100% (rated) load in one step per NFPA 110.
+    // https://www.csemag.com/role-of-nfpa-110-and-interaction-with-other-codes/
+    startMinutes: 10 / 60,
+    rampPercentPerMinute: 100, // one-step block load (sheets above); capped at 100%/min here
+    availabilityPercent: 99, // judgment: a few days of planned maintenance a year
+    forcedOutageRatePercent: 2, // judgment (fail-to-start/run on demand)
+    water: { consumptionLPerMWh: 0, withdrawalLPerMWh: 0 }, // radiator-cooled
+    footprintM2PerMW: 40, // judgment: 40-ft enclosures with belly tanks in a generator yard, with access
+    leadTimeKey: 'diesel-standby',
+    // EPA emergency stationary engines (40 CFR 60.4211(f), Subpart IIII;
+    // 63.6640(f), Subpart ZZZZ): emergency operation is unlimited; maintenance
+    // checks, readiness testing and non-emergency operation are limited to
+    // 100 h per calendar year, of which at most 50 h non-emergency (no peak
+    // shaving, no non-emergency demand response, no supply to the grid under
+    // a financial arrangement). Emergency engines over 2,237 kW need Tier 2
+    // (60.4202(b)(2)); non-emergency engines Tier 4 (60.4204(b), 60.4201(c)).
+    // Testing hours: judgment, ~1 h monthly plus an annual load-bank test
+    // (PNNL above).
+    // https://www.ecfr.gov/current/title-40/section-60.4211
+    // https://www.ecfr.gov/current/title-40/section-63.6640
+    // https://www.law.cornell.edu/cfr/text/40/60.4211
+    // https://www.law.cornell.edu/cfr/text/40/63.6640
+    // https://www.law.cornell.edu/cfr/text/40/60.4202
+    // https://www.law.cornell.edu/cfr/text/40/60.4201 (all retrieved 2026-10)
+    emergencyEngine: { maxHoursPerYear: 100, maxNonEmergencyHoursPerYear: 50, testingHoursPerYear: 20 },
+    // On-site fuel: Uptime Institute requires at least 12 h for every Tier;
+    // operators store 24-96 h (e.g. QTS belly tanks: 48 h at 100% load).
+    // Not costed separately (in the installed $/kW).
+    // https://journal.uptimeinstitute.com/fuel-system-design-reliability/
+    fuelStorageHours: { minimum: 12, typical: 48 },
+    emissionsNote: 'EPA Tier 2 (emergency); Tier 4 Final with SCR for any non-emergency use.',
+    tradeOff: 'The standard datacenter standby: cheapest firm kW and 10-second starts. Diesel costs ~8x natural gas per MMBtu and emits 40% more CO2 per MMBtu, and EPA limits emergency engines to 100 h/yr of testing and non-emergency use, so it is backup for utility outages, not prime power.',
+  },
 };
 
-export const DEFAULT_GAS_GENSET_TYPE = 'recip';
+// Default for a grid-connected site's standby (the default design); the
+// islanded starting design uses reciprocating gas engines as prime power.
+export const DEFAULT_GAS_GENSET_TYPE = 'standby-diesel';
 
 /* Redundancy guidance for sizing gas units (units x unit size). */
 export const GAS_REDUNDANCY_GUIDANCE = {
@@ -449,7 +583,7 @@ export const GAS_REDUNDANCY_GUIDANCE = {
   // for outages and diesel black-start sets.
   // https://www.power-eng.com/onsite-power/onsite-gas-turbines-reciprocating-engines-to-power-meta-data-center/ (retrieved 2026-10)
   islanded: { spareUnits: 2, defaultGensetType: 'recip' },
-  backup: { spareUnits: 1, defaultGensetType: 'aero' },
+  backup: { spareUnits: 1, defaultGensetType: 'standby-diesel' },
 };
 
 /* ---------- Nuclear ---------- */
@@ -795,27 +929,32 @@ export const DEFAULT_ARCHITECTURE = 'grid';
    battery (model/datacenter/firm-sizing.js), plus spare units, so each
    design meets the target by construction (tested in
    tests/calculations/datacenter-architecture.test.js).
-   - grid: the default design. Firm utility service carries the load; gas
-     covers the utility outages the target does not allow, plus one spare
-     unit (GAS_REDUNDANCY_GUIDANCE backup). No solar or battery.
+   - grid: the default design. Firm utility service carries the load;
+     standby diesel generators (the common datacenter backup, EPA emergency
+     engines) cover the utility outages the target does not allow, plus one
+     spare unit (GAS_REDUNDANCY_GUIDANCE backup). No solar or battery.
    - hybrid: the flexible-connection design of the Camus / encoord /
      Princeton study (GRID_DEFAULTS): a curtailable grid connection, on-site
      solar, a 4-hour battery (the study's batteries were 4-hour, and the
-     model's curtailment events last 4 h) and gas for what the battery and
-     solar cannot cover during outages and curtailments, plus one spare.
+     model's curtailment events last 4 h) and standby diesel for what the
+     battery and solar cannot cover during outages and curtailments, plus
+     one spare. Diesel running through a curtailment is non-emergency use
+     under EPA rules (a warning flags it beyond the 50 h/yr allowance).
      Solar = 2 MWdc per MW IT, east-west (judgment: it supplies roughly a
      third of the facility energy at Abilene with little curtailment,
      leaving the grid and gas as the balance). Battery power = the IT
-     nameplate, so energy = 4 h x IT MW. In the hybrid merit order the gas
-     still runs whenever it is cheaper than the grid.
-   - islanded: gas engines alone with N+2 redundancy (GAS_REDUNDANCY_GUIDANCE
-     islanded); solar is optional and off, because gas-only is the common
+     nameplate, so energy = 4 h x IT MW. A gas type chosen instead (e.g.
+     engines) runs in the hybrid merit order whenever it is cheaper than the
+     grid; standby diesel never does.
+   - islanded: reciprocating gas engines alone as prime power with N+2
+     redundancy (GAS_REDUNDANCY_GUIDANCE islanded); solar is optional and off, because gas-only is the common
      real off-grid build (Socrates, GW Ranch's core). */
 export const ARCHITECTURE_STARTING_DESIGNS = {
   grid: {
     gridConnection: 'firm',
     solarMWdcPerMWIT: 0,
     batteryHoursOfIT: 0,
+    gasType: GAS_REDUNDANCY_GUIDANCE.backup.defaultGensetType,
     gasSpareUnits: GAS_REDUNDANCY_GUIDANCE.backup.spareUnits,
   },
   hybrid: {
@@ -823,11 +962,13 @@ export const ARCHITECTURE_STARTING_DESIGNS = {
     solarMWdcPerMWIT: 2,
     batteryDurationHours: 4,
     batteryHoursOfIT: 4,
+    gasType: GAS_REDUNDANCY_GUIDANCE.backup.defaultGensetType,
     gasSpareUnits: GAS_REDUNDANCY_GUIDANCE.backup.spareUnits,
   },
   islanded: {
     solarMWdcPerMWIT: 0,
     batteryHoursOfIT: 0,
+    gasType: GAS_REDUNDANCY_GUIDANCE.islanded.defaultGensetType,
     gasSpareUnits: GAS_REDUNDANCY_GUIDANCE.islanded.spareUnits,
   },
 };
@@ -917,6 +1058,21 @@ export const POWER_LEAD_TIMES = {
     // Lazard v19: 24-month construction; EIA AEO2026 lead time 3 years
     // (pre-crunch). Work left after turbine delivery: judgment.
     constructionMonths: { low: 12, typical: 18, high: 24 },
+  },
+  'diesel-standby': {
+    label: 'Standby diesel generators',
+    // judgment: emergency engines usually get a minor-source or general
+    // permit; a large fleet can need a full air permit (high case).
+    permittingMonths: { low: 2, typical: 4, high: 9 },
+    // Global Power Supply (2026-05-11): 1,250-3,250 kW standby diesel
+    // generators 52-70 weeks; Caterpillar (Q2 2026 call, search summary):
+    // diesel genset lead times "extended into 2028", a little shorter than
+    // gas prime power. Order-to-delivery 12 / 16 / 24 months less the
+    // permitting overlap.
+    // https://globalpwr.com/blog/generator-lead-times-in-2026
+    // https://gurufocus.com/news/9002976/ (retrieved 2026-10)
+    procurementMonths: { low: 10, typical: 12, high: 18 },
+    constructionMonths: { low: 2, typical: 3, high: 6 }, // judgment: set on pads, fuel, cabling, commissioning
   },
   'gas-sofc': {
     label: 'Solid-oxide fuel cells',

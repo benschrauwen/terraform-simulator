@@ -27,6 +27,7 @@
       <a href="#gpu">GPUs &amp; rental prices</a>
       <a href="#grid">Grid &amp; electricity prices</a>
       <a href="#gas">Gas generation</a>
+      <a href="#diesel">Standby diesel</a>
       <a href="#nuclear">Nuclear</a>
       <a href="#solar">Solar &amp; storage</a>
       <a href="#sites">Sites &amp; weather</a>
@@ -163,7 +164,7 @@
       <ul class="source-list">
         <li><a href="https://www.eia.gov/outlooks/steo/archives/oct26.pdf" target="_blank" rel="noreferrer">EIA Short-Term Energy Outlook, October 2026</a> — Henry Hub $3.48/MMBtu (2026) and $3.16 (2027F), power-sector delivered gas $3.94 (the delivered adder); also wholesale hub prices behind the export price and the 2026 industrial price forecast.</li>
         <li><a href="https://www.eia.gov/outlooks/steo/report/natgas.php" target="_blank" rel="noreferrer">EIA STEO natural gas</a> (Oct 2026) — January 2026 Henry Hub at $7.72 after winter storm Fern; the top of the fuel price range.</li>
-        <li><a href="https://www.eia.gov/environment/emissions/co2_vol_mass.php" target="_blank" rel="noreferrer">EIA carbon dioxide emissions coefficients</a> — natural gas 52.91 kg CO₂ per MMBtu.</li>
+        <li><a href="https://www.eia.gov/environment/emissions/co2_vol_mass.php" target="_blank" rel="noreferrer">EIA carbon dioxide emissions coefficients</a> — natural gas 52.91 kg CO₂ per MMBtu; distillate (diesel) 74.14 kg (163.45 lb), against EPA's 73.96 kg used for diesel.</li>
         <li><a href="https://www.eia.gov/outlooks/aeo/assumptions/pdf/EMM_Assumptions.pdf" target="_blank" rel="noreferrer">EIA AEO2026 Electricity Market Module assumptions</a> (2025$) — capex, O&amp;M and heat rates for aeroderivative, industrial-frame, combined-cycle and fuel-cell plants; nuclear and SMR costs; lead times for PV, batteries and fuel cells.</li>
         <li><a href="https://www.eia.gov/analysis/studies/powerplants/capitalcost/pdf/capital_cost_AEO2020.pdf" target="_blank" rel="noreferrer">EIA Capital Cost and Performance Characteristics, AEO2020</a> — reciprocating-engine plant at $1,810/kW, 8,295 Btu/kWh, fixed O&amp;M $35.16/kW-yr, variable $5.69/MWh (escalated for 2026).</li>
         <li><a href="https://www.nyiso.com/documents/20142/40204141/2%202025-2029%20DCR%20-%20BMcD%20Presentation%2009262023%20ICAPWG.pdf/c82642e7-0705-d1dd-7316-f2406b539c3e" target="_blank" rel="noreferrer">NYISO 2025–2029 demand curve reset, Burns &amp; McDonnell screening</a> (2023-09-26) — Wärtsilä 18V50SG at ~$1,700/kW (not opened; search index).</li>
@@ -183,6 +184,37 @@
         <li><a href="https://www.williams.com/wp-content/uploads/sites/8/2025/08/1355-Socrates-North-Fact-Sheet_v6.pdf" target="_blank" rel="noreferrer">Williams, Socrates North fact sheet</a> (2025-08) — permit in Jun 2025 to service targeted Q3 2026; a check on the gas-engine lead time.</li>
         <li><a href="https://www.law.cornell.edu/uscode/text/42/7475" target="_blank" rel="noreferrer">42 U.S.C. § 7475 (Clean Air Act § 165)</a> — PSD permits must be decided within one year of a complete application; frames the air-permit duration.</li>
         <li>Owner analysis (Oct 2026) — illustrative dispatch cost at $5/MMBtu: combined cycle ~3.65 ¢/kWh, simple cycle or engines ~5.35 ¢/kWh (arithmetic, no external source).</li>
+      </ul>
+    </section>
+
+    <section id="diesel">
+      <h2>Standby diesel generation</h2>
+      <p class="doc-note">Diesel heat rates are datasheet fuel volumes at 100% standby load × 0.138 MMBtu/gal (HHV). Prices are untaxed (dyed, off-road) diesel per MMBtu.</p>
+      <ul class="source-list">
+        <li><a href="https://www.hanovercounty.gov/DocumentCenter/View/5983/CAT-3516C-2500KW-Cut" target="_blank" rel="noreferrer">Caterpillar 3516C 2,500 ekW standby generator set datasheet (LEHE1377-04)</a> — 175.3 gal/h at 100% standby load (heat rate 9.68 MMBtu/MWh at 0.138 MMBtu/gal), accepts 100% block load in one step per NFPA 110, Tier 2 emergency rating.</li>
+        <li><a href="https://www.cat.com/en_US/products/new/power-systems/electric-power/diesel-generator-sets/1000033111.html" target="_blank" rel="noreferrer">Caterpillar 3516E diesel generator set</a> — 3,000 ekW standby rating (fuel table not public).</li>
+        <li><a href="https://www.globalpwr.com/wp-content/uploads/cut-sheets/gps-mtu-3000-kw-spec-sheet.pdf" target="_blank" rel="noreferrer">MTU 20V4000 DS3000 spec sheet (dealer copy)</a> — 3,000 kWe standby at 60 Hz, 207 gal/h at 100% (9.52 MMBtu/MWh), rated load in one step, EPA Tier 2.</li>
+        <li><a href="https://consult.environment-agency.gov.uk/psc/sl0-9ee-amazon-data-services-uk-limited/supporting_documents/application-bespoke-appendix-a-typical-generator-specifications-sheet-aws-c3500d5e-qsk95-g5-nominal-emissions-epr-mp3824mg-a001-020326pdf" target="_blank" rel="noreferrer">Cummins QSK95 C3500D5e specification (AWS permit application, Environment Agency)</a> — 2,800 kWe standby (50 Hz), 725 L/h at 100% load (9.44 MMBtu/MWh).</li>
+        <li><a href="https://www.law.cornell.edu/cfr/text/40/appendix-Table_C-1_to_subpart_C_of_part_98" target="_blank" rel="noreferrer">40 CFR Part 98, Subpart C, Table C-1 (Cornell LII)</a> — Distillate Fuel Oil No. 2: 0.138 mmBtu/gallon and 73.96 kg CO₂/mmBtu, the diesel heat content and CO₂ factor.</li>
+        <li><a href="https://www.ecfr.gov/current/title-40/chapter-I/subchapter-C/part-98/subpart-C/appendix-Table%20C-1%20to%20Subpart%20C%20of%20Part%2098" target="_blank" rel="noreferrer">40 CFR Part 98, Table C-1 (eCFR)</a> — the same table on the official eCFR.</li>
+        <li><a href="https://www.eia.gov/energyexplained/units-and-calculators/" target="_blank" rel="noreferrer">EIA Units and calculators</a> — diesel fuel 137,381 Btu per gallon (cross-check of the 0.138 MMBtu/gal).</li>
+        <li><a href="https://www.eia.gov/petroleum/gasdiesel/" target="_blank" rel="noreferrer">EIA Gasoline and Diesel Fuel Update</a> — US on-highway diesel $6.352/gal in the week of 2026-10-26; the top of the diesel price range.</li>
+        <li><a href="https://www.eia.gov/outlooks/steo/" target="_blank" rel="noreferrer">EIA Short-Term Energy Outlook (Oct 6, 2026)</a> — retail diesel $5.19/gal 2026 average, $6.29 in September, ~$4.50 in 2027; the default diesel price after road taxes.</li>
+        <li><a href="https://www.eia.gov/tools/faqs/faq.php?id=10&amp;t=10" target="_blank" rel="noreferrer">EIA FAQ: taxes on gasoline and diesel</a> — federal diesel tax 24.4 ¢/gal, state average 35.5 ¢/gal (January 2026), removed for untaxed off-road diesel.</li>
+        <li><a href="https://www.irs.gov/publications/p510" target="_blank" rel="noreferrer">IRS Publication 510, Excise Taxes</a> — the $0.244/gal diesel tax and the dyed-fuel exemption for nontaxable use.</li>
+        <li><a href="https://www.latitudemedia.com/news/the-data-center-boom-is-a-diesel-generator-boom/" target="_blank" rel="noreferrer">Latitude Media: the data center boom is a diesel generator boom</a> — (2026-03-09) standby generators at around $1,000/kW (NREL, June 2025); the default installed cost.</li>
+        <li><a href="https://betterdatacenterproject.com/wp-content/uploads/2026/03/Diesel-Generators-at-Data-Centers-Status-Impacts-and-Protective-Practices.pdf" target="_blank" rel="noreferrer">Better Data Center Project: Diesel Generators at Data Centers</a> — (Mar 2026) gensets $350–500/kW plus over $200/kW for enclosures and tanks, NREL $800–1,100/kW all-in; operators store 24–96 h of fuel.</li>
+        <li><a href="https://www.pnnl.gov/projects/om-best-practices/standby-generators" target="_blank" rel="noreferrer">PNNL O&amp;M best practices: standby generators</a> — $8,000–10,500 a year for a 300 kW unit under 200 h/yr, monthly tests and an annual load-bank test; the fixed O&amp;M and testing-hours basis.</li>
+        <li><a href="https://www.csemag.com/role-of-nfpa-110-and-interaction-with-other-codes/" target="_blank" rel="noreferrer">Consulting-Specifying Engineer: the role of NFPA 110</a> — Type 10 = power restored within 10 seconds; the standby start time.</li>
+        <li><a href="https://www.ecfr.gov/current/title-40/section-60.4211" target="_blank" rel="noreferrer">40 CFR 60.4211 (eCFR)</a> — emergency stationary engines: 100 h per calendar year for maintenance, testing and non-emergency use, of which up to 50 h non-emergency; the run-hour warning.</li>
+        <li><a href="https://www.law.cornell.edu/cfr/text/40/60.4211" target="_blank" rel="noreferrer">40 CFR 60.4211(f) (Cornell LII)</a> — the same limits, quoted.</li>
+        <li><a href="https://www.ecfr.gov/current/title-40/section-63.6640" target="_blank" rel="noreferrer">40 CFR 63.6640 (eCFR)</a> — the RICE NESHAP (Subpart ZZZZ) emergency-engine limits.</li>
+        <li><a href="https://www.law.cornell.edu/cfr/text/40/63.6640" target="_blank" rel="noreferrer">40 CFR 63.6640(f) (Cornell LII)</a> — the same 100 h / 50 h limits, no peak shaving or non-emergency demand response.</li>
+        <li><a href="https://www.law.cornell.edu/cfr/text/40/60.4202" target="_blank" rel="noreferrer">40 CFR 60.4202 (Cornell LII)</a> — emergency engines above 2,237 kW: Tier 2 standards.</li>
+        <li><a href="https://www.law.cornell.edu/cfr/text/40/60.4201" target="_blank" rel="noreferrer">40 CFR 60.4201 (Cornell LII)</a> — non-emergency engines: Tier 4 standards of 40 CFR 1039.</li>
+        <li><a href="https://journal.uptimeinstitute.com/fuel-system-design-reliability/" target="_blank" rel="noreferrer">Uptime Institute Journal: fuel system design</a> — at least 12 h of on-site fuel for every Tier.</li>
+        <li><a href="https://globalpwr.com/blog/generator-lead-times-in-2026" target="_blank" rel="noreferrer">Global Power Supply: generator lead times in 2026</a> — (2026-05-11) 1,250–3,250 kW standby diesel generators 52–70 weeks; the diesel procurement lead time.</li>
+        <li><a href="https://gurufocus.com/news/9002976/" target="_blank" rel="noreferrer">GuruFocus: Caterpillar Q2 2026 earnings call</a> — diesel genset lead times extended into 2028, a little shorter than gas prime power (not opened; search summary); the high case.</li>
       </ul>
     </section>
 

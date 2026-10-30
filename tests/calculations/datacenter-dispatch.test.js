@@ -96,7 +96,7 @@ test('cooling water = WUE(h) x IT energy, split by the evaporated / blowdown sha
   const r = calculateDatacenterScenario({ siteId: 'phoenix-az', coolingTechnology: 'dlc-cooling-tower' }, { fastMode: true });
   const tech = COOLING_TECHNOLOGIES['dlc-cooling-tower'];
   const site = getDatacenterSite('phoenix-az');
-  const itKW = r.state.itCapacityMW * 1000 * r.state.itUtilizationPercent / 100;
+  const itKW = r.load.itLoadMW * 1000;
   let litres = 0;
   site.dryBulbC.forEach((row, month) => row.forEach(t => {
     litres += interpolateCurve(tech.water.litresPerKWhITAt, t) * itKW * MONTH_DAYS[month];

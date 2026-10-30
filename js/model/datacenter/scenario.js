@@ -20,11 +20,14 @@
      site,                       sites.js preset (name, lat, lon, climate, grid region, ...)
      cooling: { technology, label, annualPue, peakPue, wueLPerKWhIT,
                 monthlyPue[12], pueTable[12][24], wueTable[12][24] },
-     load: { itCapacityMW, itLoadMW (average), meanFacilityMW,
+     load: { itCapacityMW, itLoadMW (average), itLoadFraction (average IT draw / nameplate), meanFacilityMW,
              peakFacilityMW (dispatch year), designPeakMW (IT nameplate x peak PUE) },
      solar: { enabled, sizeMWdc, annualMWh, capacityFactor, siteYield, yieldMultiplier, areaM2, acres, lcoe,
               dailyVariability (TMY day-to-day factor applied), reachable },
      grid: { connected, connection, importCapMW, unavailableHours, events[{ startHour, hours }] },
+     gpu: { enabled (revenueBasis 'gpu-rental'), platform, label, count (fractional), itKWPerGpu,
+            capexPerGpu, rentalPricePerHour, occupancyPercent, priceDeclinePercentPerYear, lifeYears,
+            itLoadFraction, marketIndex, ownerTcoPerGpuHour, gpuHoursSoldPerYear },
      firm: { family, type, label, units, unitSizeMW, capacityMW, mustTake, onSite,
              availabilityFraction, outageHoursPerUnit, marginalCostPerMWh, sizing },
      dispatch: {
@@ -60,11 +63,12 @@
      economics: plant-builder shape (npv, irr, projectIrrAnalysis, mirr, paybackYears,
                  sustainedPaybackYears, roi, yearlyCashFlows[], cashFlowTimeline, financing,
                  capexItems[{ key, label, capex, group, paidAtYear, parts? }], totalCapex,
-                 netCapexAtClose, annualOM, revenue{ tokens, colocation, powerPassThrough, export,
-                 policyCredits }, totalAnnualRevenue, levelizedAnnualCost, levelizedAnnualProfit,
+                 netCapexAtClose, annualOM, revenue{ gpuRental, tokens, colocation, powerPassThrough,
+                 export, policyCredits } (full year; GPU rental at the new-GPU price), yearlyCashFlows[]
+                 also carry operatingFraction, rentalPriceFactor, deferredCapexOutflow, totalAnnualRevenue, levelizedAnnualCost, levelizedAnnualProfit,
                  discountRatePercent) plus opexLines[], fixedOmLines[], deferredCapex,
-                 energizationYears, levelized{ costOfPowerPerMWh, costPerMWhIT, costPerMToken,
-                 revenuePerMWhIT }, breakEven{ paramKey, label, unit, currentPrice,
+                 energizationYears, annualGpuHoursSold, annualTokensM, levelized{ costOfPowerPerMWh,
+                 costPerMWhIT, costPerMToken, costPerGpuHour, revenuePerMWhIT }, breakEven{ paramKey, label, unit, currentPrice,
                  breakEvenPrice, npvPerUnitPrice, ratioToCurrent },
      warnings: [{ key, message }],
    }
@@ -85,6 +89,7 @@ import {
   getSubstationKW,
   splitFacilityEnergy,
 } from './impacts.js';
+import { getGpuFleet, getItLoadFraction } from './gpu.js';
 import { buildSchedule } from './schedule.js';
 import { buildFirmSupply, buildGridSupply, buildSolarSupply } from './supply.js';
 import { buildWarnings } from './warnings.js';
@@ -99,7 +104,7 @@ function getCoolingProfile(site, tech) {
 // State fields the hourly dispatch depends on (prices and costs excluded,
 // except through the hybrid merit order, which is part of the key).
 const DISPATCH_KEYS = [
-  'siteId', 'itCapacityMW', 'itUtilizationPercent', 'coolingTechnology', 'architecture', 'gridConnection', 'gridImportCapMW',
+  'siteId', 'itCapacityMW', 'itUtilizationPercent', 'revenueBasis', 'gpuOccupancyPercent', 'coolingTechnology', 'architecture', 'gridConnection', 'gridImportCapMW',
   'gridUnavailableHoursPerYear', 'gridExportEnabled', 'solarSizeMWdc', 'mountingType', 'siteYieldMwhPerMwdcYear',
   'batteryCapacityMWh', 'batteryDurationHours', 'batteryEfficiency', 'firmFamily', 'firmSizingMode', 'firmSpareUnits', 'firmUnits',
   'gasType', 'gasUnitSizeMW', 'gasHeatRateMMBtuPerMWh', 'gasAvailabilityPercent',
@@ -122,7 +127,9 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
   const tech = COOLING_TECHNOLOGIES[state.coolingTechnology];
   const cooling = getCoolingProfile(site, tech);
 
-  const itKW = state.itCapacityMW * 1000 * state.itUtilizationPercent / 100;
+  // Average IT draw: utilization, or (GPU rental) the occupancy-driven draw.
+  const itLoadFraction = getItLoadFraction(state);
+  const itKW = state.itCapacityMW * 1000 * itLoadFraction;
   const loadKW = new Float64Array(HOURS_PER_YEAR);
   let peakLoadKW = 0;
   for (let h = 0; h < HOURS_PER_YEAR; h++) {
@@ -276,6 +283,7 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
     load: {
       itCapacityMW: state.itCapacityMW,
       itLoadMW: itKW / 1000,
+      itLoadFraction,
       meanFacilityMW: meanLoadKW / 1000,
       peakFacilityMW: peakLoadKW / 1000,
       designPeakMW: designPeakKW / 1000,
@@ -314,6 +322,7 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
       marginalCostPerMWh: firm.marginalCostPerMWh,
       sizing: firm.sizing,
     },
+    gpu: { ...getGpuFleet(state), gpuHoursSoldPerYear: economics.annualGpuHoursSold },
     dispatch,
     reliability,
     energy: {

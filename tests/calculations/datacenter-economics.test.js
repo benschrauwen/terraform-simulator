@@ -23,6 +23,7 @@ const close = (a, b, rel = 1e-9, abs = 1e-6) => Math.abs(a - b) <= Math.max(abs,
 
 const SCENARIOS = {
   default: {},
+  tokens: { revenueBasis: 'tokens' },
   colocation: { revenueBasis: 'colocation' },
   hybrid: { architecture: 'hybrid', solarSizeMWdc: 200, batteryCapacityMWh: 400 },
   financed: { financingEnabled: true },
@@ -49,7 +50,8 @@ for (const [name, overrides] of Object.entries(SCENARIOS)) {
 }
 
 test('operations and revenue start at energization; capex at notice-to-proceed', () => {
-  const r = calculateDatacenterScenario({});
+  // Token revenue has no price decline, so year 5 is exactly half a year.
+  const r = calculateDatacenterScenario({ revenueBasis: 'tokens' });
   const e = r.economics;
   // 54 months to first power: years 1-4 earn nothing, year 5 half, year 6 on full.
   assert.equal(r.schedule.energizationMonth, 54);
@@ -96,7 +98,7 @@ test('scale homogeneity: 2x IT and 2x every capacity -> 2x capex, revenue and NP
 });
 
 test('break-even revenue price: two runs agree with the analytic root, and NPV is 0 there', () => {
-  for (const overrides of [{}, { revenueBasis: 'colocation' }, SCENARIOS.hybrid]) {
+  for (const overrides of [{}, SCENARIOS.tokens, { revenueBasis: 'colocation' }, SCENARIOS.hybrid]) {
     const base = calculateDatacenterScenario(overrides, { fastMode: true });
     const twoRun = calculateDatacenterBreakEven(overrides, { baseResult: base });
     assert.ok(close(twoRun.breakEvenPrice, base.economics.breakEven.breakEvenPrice, 1e-9));
@@ -106,7 +108,7 @@ test('break-even revenue price: two runs agree with the analytic root, and NPV i
 });
 
 test('colocation excludes IT capex and passes energy costs through to the tenant', () => {
-  const tokens = calculateDatacenterScenario({}, { fastMode: true }).economics;
+  const tokens = calculateDatacenterScenario({ revenueBasis: 'tokens' }, { fastMode: true }).economics;
   const colo = calculateDatacenterScenario({ revenueBasis: 'colocation' }, { fastMode: true }).economics;
   assert.ok(!colo.capexItems.some(item => item.key === 'it'));
   assert.ok(close(tokens.totalCapex - colo.totalCapex, tokens.capex.it));

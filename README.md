@@ -71,10 +71,10 @@ js/util.js    dependency-free numeric helpers (clamps, step precision), usable b
 Imports run one way, top to bottom: a layer imports its own files, lower layers and `util.js`, never a higher layer. `tests/architecture/import-direction.test.js` enforces it.
 
 - `js/data/`: `reference-data.js` (bodies, `LOCATION_PRESETS`, `MOUNTING_TYPES`, `CHEMISTRY`, `METHANE_MARKET_PRESETS`, AI defaults), `assumptions.js` (`MODEL_ASSUMPTIONS`, the GHI/cloudiness heuristics and `SOLAR_LAYOUT_REFERENCE`), `modules.js` (supported and exploratory process modules), `module-catalog.js` (`ModuleCatalog`: normalizes `modules.js` into frozen modules and answers route, preset, market, buffer and capex-slider questions), `policies.js` (incentive schemes and picker groups), `market-ladders.js` (Terraform's methane and methanol market tiers), `sensitivity-variables.js` (the inputs the NPV tornado moves and their low/high bounds).
-- `js/data/datacenter/`: the datacenter simulator's sourced data: `sites.js` (site presets with PVGIS yield and 12 x 24 typical-day dry/wet-bulb temperatures, grid price and CO2), `cooling.js` (PUE and water curves per cooling technology), `facility.js` (building, IT, colocation, water, lead times), `power.js` (grid, gas gensets, nuclear types, architectures, power lead times), `model-assumptions.js` (constants the data files do not give, each derived or marked judgment) and `sensitivity-variables.js` (its tornado inputs).
+- `js/data/datacenter/`: the datacenter simulator's sourced data: `gpu.js` (GPU platforms for the default GPU-rental business), `sites.js` (site presets with PVGIS yield and 12 x 24 typical-day dry/wet-bulb temperatures, grid price and CO2), `cooling.js` (PUE and water curves per cooling technology), `facility.js` (building, IT, colocation, water, lead times), `power.js` (grid, gas gensets, nuclear types, architectures, power lead times), `model-assumptions.js` (constants the data files do not give, each derived or marked judgment) and `sensitivity-variables.js` (its tornado inputs).
 - `js/state/`: `schema.js` is the single source of state fields and defaults; `datacenter-schema.js` is the datacenter simulator's (fields, `DATACENTER_DEFAULT_STATE`, `normalizeDatacenterState`, preset-derived defaults).
 - `js/model/`: one file per concern: `solar.js` + `solar-geometry.js` (resource, sky model, mountings), `annual-series.js` (hourly year), `battery.js` (storage + chemical dispatch), `ai-compute.js`, `lifetime-energy.js`, `process.js` (allocation, electrolyzer, DAC, reactors, exploratory routes, buffers), `economics.js`, `finance.js`, `policy.js`, `optimizer-search.js`, `break-even.js` (NPV = 0 sale prices), `cash-flow-table.js` (yearly cash-flow rows + CSV), `scenario.js` (the pipeline), and two pure helpers the UI imports directly: `market-ladder.js` and `tornado.js` (one-at-a-time NPV sensitivity).
-- `js/model/datacenter/`: the datacenter engine, one file per concern (`climate.js`, `supply.js`, `dispatch.js`, `impacts.js`, `schedule.js`, `economics.js`, `warnings.js`, `tornado.js`), assembled by `scenario.js` (`calculateDatacenterScenario`, result shape documented at its top) and exported from `index.js`. It reuses the plant builder's solar model, battery primitives, `finance.js`, `summarizeReturns`, the tornado bounds and the cash-flow table. See [Datacenter model](#datacenter-model).
+- `js/model/datacenter/`: the datacenter engine, one file per concern (`climate.js`, `gpu.js`, `supply.js`, `dispatch.js`, `impacts.js`, `schedule.js`, `economics.js`, `warnings.js`, `tornado.js`), assembled by `scenario.js` (`calculateDatacenterScenario`, result shape documented at its top) and exported from `index.js`. It reuses the plant builder's solar model, battery primitives, `finance.js`, `summarizeReturns`, the tornado bounds and the cash-flow table. See [Datacenter model](#datacenter-model).
 - `js/ui/`: `app.js` plus mixins, `control-spec.js` + `controls.js`, `module-controls.js`, `renderers/`, `charts/` (one module per chart, registered in `charts/index.js`), `diagram.js`, `site-map.js`, `share.js`, `optimizer-client.js`, `formatters.js`.
 - `scripts/`: `dev.mjs` (hardened static server that also applies the `vercel.json` routes: headers, CSP included, and host-based page routing) and `build.mjs`.
 
@@ -445,7 +445,7 @@ The Abundance Stack page (`datacenter.html`) runs `js/model/datacenter/`: one ye
 ### Load and cooling (`climate.js`)
 
 ```text
-IT(h)        = IT capacity x utilization                      # constant; no AI load swings
+IT(h)        = IT capacity x utilization                      # constant (GPU rental: occupancy-driven draw)
 PUE(h)       = 1 + overhead + cooling(T(h))                   # cooling.js curves
 cooling(T)   = free-cooling fraction                if T < changeover
              = interpolate(mechanical curve, T)     otherwise
@@ -492,22 +492,37 @@ Each component is a parallel path from notice-to-proceed (January 2027, judgment
 
 ```text
 t0           = energization month / 12;   f_y = clamp(y - t0, 0, 1)
-capex        = facility (x tier) + land + cooling + IT (tokens only) + substation
+capex        = facility (x tier) + land + cooling + IT + substation
                + grid interconnection + solar + battery + gas or nuclear
                paid at close; GPUs at energization by default (year floor(t0))
 replacements = every life after energization, year ceil(t0 + k x life); salvage straight-line at N
 opex         = fixed O&M (facility, cooling, IT, solar, battery, firm $/kW-yr) + grid energy
                + demand (monthly peak import x $/kW-month) + fuel + variable O&M
                + nuclear fuel or PPA + water
-revenue      = tokens: served IT MWh x M tokens/MWh-IT x $/M
+revenue      = GPU rental (default): GPUs x 8760 x occupancy x served share x $/GPU-hr x (1 - decline)^fleet age
+               tokens: served IT MWh x M tokens/MWh-IT x $/M
                colocation: $/kW-month x IT kW x 12 x served share (+ energy costs passed through)
                + export MWh x export price
 cf_y         = f_y x (revenue - opex) - replacements_y - deferred capex_y + [y = N] salvage
 ```
 
-NPV, IRR/MIRR verdicts, payback, debt and the cash-flow timeline come from `finance.js` and `summarizeReturns`, so `economics` has the plant builder's shape and the shared cash-flow table works on it; the last cumulative discounted cash flow equals NPV and levelized profit equals NPV x CRF. Levelized cost of power ($/MWh delivered) is the present value of power-side capex and opex less exports over the present value of served facility energy. The site prices from EIA are all-in averages, so the demand charge defaults to 0 (a warning flags double counting). Tokens per IT MWh = the plant builder's per-facility-MWh throughput x PUE 1.14 (Epoch's build), so a better PUE lowers cost, not revenue. Colocation tenants supply the IT, so IT capex drops out.
+**GPU cloud rental** (the default business model, `gpu.js`): the operator owns the GPUs and rents them by the hour. Per platform (`js/data/datacenter/gpu.js`: H100, H200, B200, GB200 NVL72, GB300 NVL72, default GB300 NVL72 as the 2026 mainstream) the data give the rated IT kW per GPU (server or rack maximum / GPUs, +10% for scale-out network and storage), the all-in capex per GPU and a rental price (default: SemiAnalysis's retail rate per GPU-hour, below 2026 spot indexes because a large fleet rents mostly on term contracts).
 
-NPV is linear in the revenue price, so the break-even token price or colocation rate is `p0 - NPV / V` (two fast runs, cross-checked with the analytic `V`). The datacenter tornado swings each input in `js/data/datacenter/sensitivity-variables.js`, including the schedule (`scheduleScalePercent`), by the chosen ±% with the plant builder's bounds logic; a fast path reuses the cached dispatch when only prices or costs move (~1 ms per run).
+```text
+GPUs        = IT capacity kW / IT kW per GPU            (fractional, so results scale linearly)
+IT draw     = nameplate x (occupancy x 0.8 + (1 - occupancy) x 0.2)   # LBNL rented vs idle draw; replaces utilization
+IT capex    = GPUs x capex per GPU, replaced every GPU life (5 yr)
+price_y     = price x (1 - decline)^age_y               # default decline 15%/yr
+age_y       = age at mid-operation of year y of the fleet in service; the first fleet is bought at
+              energization (or at NTP with itCapexTiming 'ntp'); each replacement buys the then-current
+              generation at the same $/GPU and rents at the new-GPU price again (age resets)
+```
+
+The decline default (15%/yr, judgment) sits between the within-tier H100 declines (~6-10%/yr, Silicon Data 2023-2026), the B200 12-month forward (12% below spot) and the ~30%/yr cross-tier fall from 2023's $7-10/hr. Occupancy (default 85%) is judgment. The break-even is the rental $/GPU-hour at NPV = 0; `economics.levelized.costPerGpuHour` is the all-in cost per GPU-hour sold.
+
+NPV, IRR/MIRR verdicts, payback, debt and the cash-flow timeline come from `finance.js` and `summarizeReturns`, so `economics` has the plant builder's shape and the shared cash-flow table works on it; the last cumulative discounted cash flow equals NPV and levelized profit equals NPV x CRF. Levelized cost of power ($/MWh delivered) is the present value of power-side capex and opex less exports over the present value of served facility energy. The site prices from EIA are all-in averages, so the demand charge defaults to 0 (a warning flags double counting). With token revenue, tokens per IT MWh = the plant builder's per-facility-MWh throughput x PUE 1.14 (Epoch's build), so a better PUE lowers cost, not revenue. Colocation tenants supply the IT, so IT capex drops out.
+
+NPV is linear in the revenue price, so the break-even rental price, token price or colocation rate is `p0 - NPV / V` (two fast runs, cross-checked with the analytic `V`). The datacenter tornado swings each input in `js/data/datacenter/sensitivity-variables.js`, including the schedule (`scheduleScalePercent`), by the chosen ±% with the plant builder's bounds logic; a fast path reuses the cached dispatch when only prices or costs move (~1 ms per run).
 
 ### Datacenter limitations
 
@@ -517,6 +532,7 @@ NPV is linear in the revenue price, so the break-even token price or colocation 
 - Solar degradation is not modeled in the dispatch (year-1 output every year); prices are constant real values with no taxes.
 - One firm-generation family per design; the battery cannot arbitrage grid prices.
 - The schedule treats paths as independent and the dispatch runs every component from energization.
+- GPU rental: occupancy is a fixed share (no ramp-up after first power, no contract book); each replacement fleet is assumed to rent at today's new-GPU price in real terms.
 
 ## Defaults
 

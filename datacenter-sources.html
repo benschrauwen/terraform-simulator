@@ -24,6 +24,7 @@
       <a href="#industry">Industry context &amp; projects</a>
       <a href="#cooling">Cooling &amp; water</a>
       <a href="#facility">Facility, IT &amp; construction</a>
+      <a href="#gpu">GPUs &amp; rental prices</a>
       <a href="#grid">Grid &amp; electricity prices</a>
       <a href="#gas">Gas generation</a>
       <a href="#nuclear">Nuclear</a>
@@ -104,6 +105,29 @@
         <li><a href="https://www.bisnow.com/news/national/data-center-development/ai-boom-keeps-data-center-supply-chains-stretched-to-the-breaking-point" target="_blank" rel="noreferrer">Bisnow: AI boom keeps data center supply chains stretched</a> (2026-10-25) — chillers and cooling components 12–18 months, switchgear 12–18 months; the cooling-plant and in-building equipment lead times.</li>
         <li><a href="https://epoch.ai/data-insights/data-centers-buildout-speeds" target="_blank" rel="noreferrer">Epoch AI: data center buildout speeds</a> (2025-11-10) — construction start to first power from ~6.7 months (Colossus 2 retrofit) to ~32.6 (Fairwater), median ~20.6; the building construction range.</li>
         <li><a href="https://www.trendforce.com/presscenter/news/20260828-13204.html" target="_blank" rel="noreferrer">TrendForce: GB300 racks as NVIDIA's main 2026 product</a> (2026-08-28) — context for the GPU delivery lead time (no public order-to-delivery figure).</li>
+      </ul>
+    </section>
+
+    <section id="gpu">
+      <h2>GPUs &amp; rental prices</h2>
+      <p class="doc-note">The default business model rents GPUs by the hour: rated IT power, all-in capex and rental price per GPU, and the yearly rental-price decline (<code>js/data/datacenter/gpu.js</code>).</p>
+      <ul class="source-list">
+        <li><a href="https://inferencex.semianalysis.com/chips/h100" target="_blank" rel="noreferrer">SemiAnalysis InferenceX: NVIDIA H100 SXM</a> — 700 W TDP, ~1.37 kW all-in per chip; AI Cloud TCO model $1.17/hr owning at hyperscale, $2.00/hr retail (the H100 default rental price).</li>
+        <li><a href="https://inferencex.semianalysis.com/chips/h200" target="_blank" rel="noreferrer">SemiAnalysis InferenceX: NVIDIA H200 SXM</a> — 700 W TDP, ~1.37 kW all-in; $1.22/hr owning, $2.90/hr retail.</li>
+        <li><a href="https://inferencex.semianalysis.com/chips/b200" target="_blank" rel="noreferrer">SemiAnalysis InferenceX: NVIDIA B200</a> — 1,000 W TDP, ~1.71 kW all-in incl. host CPU, NICs and cooling share; $1.73/hr owning, $3.70/hr retail.</li>
+        <li><a href="https://inferencex.semianalysis.com/chips/gb200-nvl72" target="_blank" rel="noreferrer">SemiAnalysis InferenceX: NVIDIA GB200 NVL72</a> — 1,200 W TDP, ~1.87 kW all-in; $1.86/hr owning, $4.00/hr retail.</li>
+        <li><a href="https://inferencex.semianalysis.com/chips/gb300-nvl72" target="_blank" rel="noreferrer">SemiAnalysis InferenceX: NVIDIA GB300 NVL72</a> — 1,400 W TDP, ~2.12 kW all-in; $2.31/hr owning, $5.00/hr retail (the default rental price).</li>
+        <li><a href="https://www.silicondata.com/blog/b200-rental-price-august-2026-update" target="_blank" rel="noreferrer">Silicon Data: B200 rental price, August 2026 update</a> — B200 index $5.62/GPU-hr entering September, $5.69 spot on 2026-09-07 with a 12-month forward of $5.03 (backwardated); H200 $3.29 and H100 $2.63 the same day.</li>
+        <li><a href="https://www.silicondata.com/blog/h200-vs-h100-rental-prices-may-july-2026" target="_blank" rel="noreferrer">Silicon Data: H200 vs H100 rental prices, May–July 2026</a> — Neocloud H200 $2.70–3.10 and H100 $2.57–2.79 per GPU-hour over the window.</li>
+        <li><a href="https://www.silicondata.com/blog/h100-rental-price-over-time" target="_blank" rel="noreferrer">Silicon Data: H100 rental price over time</a> — Hyperscaler H100 median $7.76/GPU-hr (Aug–Dec 2023) to $6.26 (H2 2025); neocloud median $2.99 (H2 2024); early prices $7–10. Evidence for the price-decline default.</li>
+        <li><a href="https://docs.nvidia.com/dgx/dgxh100-user-guide/introduction-to-dgxh100.html" target="_blank" rel="noreferrer">NVIDIA DGX H100/H200 user guide</a> — 10.2 kW max per 8-GPU system, the basis of the H100/H200 IT kW per GPU.</li>
+        <li><a href="https://docs.nvidia.com/dgx/dgxb200-user-guide/introduction-to-dgxb200.html" target="_blank" rel="noreferrer">NVIDIA DGX B200 user guide</a> — 14.3 kW max for 8 x B200, the basis of the B200 IT kW per GPU.</li>
+        <li><a href="https://semianalysis.substack.com/p/gb200-hardware-architecture-and-component" target="_blank" rel="noreferrer">SemiAnalysis: GB200 hardware architecture and component supply chain</a> — ~123.6 kW per GB200 NVL72 rack including AC-DC losses (read from a search extract).</li>
+        <li><a href="https://www.hpe.com/us/en/collaterals/collateral.a50009244enw.html" target="_blank" rel="noreferrer">HPE: GB300 NVL72 rack specifications</a> — 132 kW nominal rack TDP, ~155 kW peak (read from a search extract).</li>
+        <li><a href="https://www.wing.vc/content/how-much-does-an-nvidia-nvl72-cost" target="_blank" rel="noreferrer">Wing VC: How much does an NVIDIA NVL72 cost?</a> — (Aug 2026) GB300 NVL72 purchase orders just under $5.0M per rack (~$69K per GPU slot) plus several hundred thousand dollars of network attach; GB200 NVL72 ~$3M per rack.</li>
+        <li><a href="https://intuitionlabs.ai/articles/data-center-gpu-pricing-2026" target="_blank" rel="noreferrer">IntuitionLabs: Data center GPU pricing 2026</a> — (updated 2026-10-11) 8-GPU DGX H100 $300–460k and DGX H200 ~$400–500k (Q1–Q2 2026); B200 card $30–50k.</li>
+        <li><a href="https://www.amcompute.com/gpu-cloud-prices/gb200" target="_blank" rel="noreferrer">AmCompute: GB200 cloud prices</a> — (Oct 2026) on-demand $6.50–10.50 per GPU-hour, median $8.00 across 6 providers (read from a search extract).</li>
+        <li><a href="https://www.amcompute.com/gpu-cloud-prices/gb300" target="_blank" rel="noreferrer">AmCompute: GB300 cloud prices</a> — (Oct 2026) on-demand from $6.50 per GPU-hour, median $11.59 across 3 providers (read from a search extract).</li>
       </ul>
     </section>
 

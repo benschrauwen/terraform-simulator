@@ -43,6 +43,9 @@ const SCENARIOS = {
   nuclearContracted: { firmFamily: 'nuclear' },
   nuclearSmrIslanded: { architecture: 'islanded', firmFamily: 'nuclear', nuclearType: 'bwrx-300', batteryCapacityMWh: 100 },
   colocation: { revenueBasis: 'colocation' },
+  tokens: { revenueBasis: 'tokens' },
+  gpuB200AtNtp: { gpuPlatform: 'b200', itCapexTiming: 'ntp' },
+  gpuH100Flat: { gpuPlatform: 'h100-sxm', gpuPriceDeclinePercentPerYear: 0, gpuOccupancyPercent: 70 },
   financed: { financingEnabled: true },
   scheduleHigh: { scheduleCase: 'high' },
   itCapexAtNtp: { itCapexTiming: 'ntp' },
@@ -68,7 +71,7 @@ function computeSnapshot() {
     snapshot[`cooling:${id}`] = digest({ cooling: r.cooling, water: r.water, economics: { npv: r.economics.npv, totalCapex: r.economics.totalCapex } });
   }
   snapshot.tornado = digest(runDatacenterTornado(SCENARIOS.hybridSolarBatteryGas).bars.map(({ variable, ...bar }) => bar));
-  snapshot.breakEven = digest([{}, SCENARIOS.colocation].map(overrides => calculateDatacenterBreakEven(overrides)));
+  snapshot.breakEven = digest([{}, SCENARIOS.tokens, SCENARIOS.colocation].map(overrides => calculateDatacenterBreakEven(overrides)));
   return snapshot;
 }
 

@@ -12,7 +12,7 @@
    every path's slack = energization - its duration (negative: an optional
    component that arrives after first power). Required components:
      always            building + fit-out, cooling plant, HV substation
-     tokens revenue    GPU / IT delivery (colocation tenants bring their own)
+     GPU rental/tokens GPU / IT delivery (colocation tenants bring their own)
      grid / hybrid     the grid connection (firm or flexible)
      flexible grid     the on-site firm generation and battery that cover the
                        unavailable hours ("bring your own capacity")
@@ -50,7 +50,7 @@ export function listScheduleComponents(state, { firm, solarEnabled }) {
     { id: 'cooling', label: `Cooling plant (${tech.label})`, leadTimes: tech.leadTimes, required: true },
     { id: 'substation', label: POWER_LEAD_TIMES.substation.label, leadTimes: POWER_LEAD_TIMES.substation, required: true },
   ];
-  if (state.revenueBasis === 'tokens') {
+  if (state.revenueBasis !== 'colocation') {
     components.push({ id: 'it-delivery', label: FACILITY_LEAD_TIMES['it-delivery'].label, leadTimes: FACILITY_LEAD_TIMES['it-delivery'], required: true });
   }
   if (!islanded) {

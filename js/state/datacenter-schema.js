@@ -11,7 +11,8 @@
 
    Preset-derived fields. Some defaults depend on a selection: the site sets
    the grid price, grid CO2 and solar yield; the cooling technology its capex
-   and O&M; the mounting the solar cost; the gas and nuclear types their
+   and O&M; the GPU platform its rental price, IT kW and capex per GPU; the
+   mounting the solar cost; the gas and nuclear types their
    unit size, costs, heat rate and availability. Those fields carry
    `derive(state)`. normalizeDatacenterState uses the input value when one is
    given and otherwise derives it from the (normalized) selection, so a share
@@ -25,11 +26,13 @@
    at Abilene, TX, liquid-cooled with dry coolers, on a firm grid connection
    at the site's all-in year-to-date industrial price (demand charge 0, so
    it is not counted twice), with N+1 reciprocating gas engines as standby
-   generation, selling AI tokens, 8% discount rate over 20 years. */
+   generation, renting GB300 NVL72 GPUs by the hour, 8% discount rate over
+   20 years. */
 
 import { getSolarCostPresetValues, MOUNTING_TYPES } from '../data/reference-data.js';
 import { COOLING_TECHNOLOGIES, DEFAULT_COOLING_TECHNOLOGY } from '../data/datacenter/cooling.js';
 import { FACILITY_DEFAULTS } from '../data/datacenter/facility.js';
+import { DEFAULT_GPU_PLATFORM, GPU_PLATFORMS, GPU_RENTAL_DEFAULTS } from '../data/datacenter/gpu.js';
 import { DATACENTER_MODEL_ASSUMPTIONS } from '../data/datacenter/model-assumptions.js';
 import {
   ARCHITECTURES,
@@ -61,6 +64,7 @@ export function getDatacenterSite(siteId) {
 
 const gasType = state => GAS_GENSET_TYPES[state.gasType] || GAS_GENSET_TYPES[DEFAULT_GAS_GENSET_TYPE];
 const nuclearType = state => NUCLEAR_TYPES[state.nuclearType] || NUCLEAR_TYPES[DEFAULT_NUCLEAR_TYPE];
+const gpuPlatform = state => GPU_PLATFORMS[state.gpuPlatform] || GPU_PLATFORMS[DEFAULT_GPU_PLATFORM];
 const coolingTech = state => COOLING_TECHNOLOGIES[state.coolingTechnology] || COOLING_TECHNOLOGIES[DEFAULT_COOLING_TECHNOLOGY];
 const solarCost = state => getSolarCostPresetValues(DATACENTER_SOLAR_COST_PRESET, state.mountingType);
 
@@ -75,6 +79,8 @@ export const DATACENTER_STATE_FIELDS = [
   // judgment: a mid-size new AI campus phase (Abilene's first two buildings
   // were ~200 MW IT, facility.js).
   { key: 'itCapacityMW', type: 'number', min: 0.1, max: 20000, defaultValue: 100 },
+  // Average IT draw / IT nameplate for 'tokens' and 'colocation'; with
+  // 'gpu-rental' the draw follows GPU occupancy instead (model/datacenter/gpu.js).
   { key: 'itUtilizationPercent', type: 'number', min: 1, max: 100, defaultValue: FACILITY_DEFAULTS.itUtilization.default * 100 },
   // Legacy Tier III availability (facility.js uptimeTiers); the model
   // reports the achieved supply adequacy against it.
@@ -92,11 +98,25 @@ export const DATACENTER_STATE_FIELDS = [
   { key: 'waterPricePerM3', type: 'number', min: 0, max: 50, defaultValue: FACILITY_DEFAULTS.waterPricePerM3.default },
 
   /* ---------- IT hardware and revenue ---------- */
-  // 'tokens' (default): an owner-operated AI datacenter that buys the GPUs
-  // and sells tokens, using the plant builder's AI defaults. 'colocation':
-  // a wholesale lease of powered space; the tenant supplies the IT, so IT
-  // capex and IT O&M drop out (facility.js).
-  { key: 'revenueBasis', type: 'enum', options: ['tokens', 'colocation'], defaultValue: 'tokens' },
+  // 'gpu-rental' (default, owner decision): the operator owns the GPUs and
+  // rents them by the GPU-hour (data/datacenter/gpu.js). 'tokens': it buys
+  // IT at $/kW and sells tokens, using the plant builder's AI defaults.
+  // 'colocation': a wholesale lease of powered space; the tenant supplies
+  // the IT, so IT capex and IT O&M drop out (facility.js).
+  { key: 'revenueBasis', type: 'enum', options: ['gpu-rental', 'tokens', 'colocation'], defaultValue: 'gpu-rental' },
+
+  // GPU rental (revenueBasis 'gpu-rental'). GPUs = IT capacity / IT kW per
+  // GPU; IT capex = GPUs x capex per GPU (replaces itCapexPerKW); the
+  // average IT draw follows occupancy (itUtilizationPercent is not used).
+  { key: 'gpuPlatform', type: 'enum', getOptions: () => Object.keys(GPU_PLATFORMS), defaultValue: DEFAULT_GPU_PLATFORM },
+  { key: 'gpuRentalPricePerHour', type: 'number', min: 0, max: 100, derive: state => gpuPlatform(state).rentalPricePerGpuHour },
+  { key: 'gpuItKWPerGpu', type: 'number', min: 0.1, max: 20, derive: state => gpuPlatform(state).itKWPerGpu },
+  { key: 'gpuCapexPerGpu', type: 'number', min: 0, max: 1e6, derive: state => gpuPlatform(state).capexPerGpu },
+  { key: 'gpuOccupancyPercent', type: 'number', min: 0, max: 100, defaultValue: GPU_RENTAL_DEFAULTS.occupancyPercent },
+  { key: 'gpuPriceDeclinePercentPerYear', type: 'number', min: 0, max: 90, defaultValue: GPU_RENTAL_DEFAULTS.priceDeclinePercentPerYear },
+  { key: 'gpuLifeYears', type: 'integer', min: 1, max: 20, defaultValue: GPU_RENTAL_DEFAULTS.lifeYears },
+
+  // $/kW-IT IT hardware for 'tokens' (gpu-rental prices GPUs per unit).
   { key: 'itCapexPerKW', type: 'number', min: 0, max: 200000, defaultValue: FACILITY_DEFAULTS.itCapexPerKW.default },
   { key: 'itAssetLifeYears', type: 'integer', min: 1, max: 20, defaultValue: FACILITY_DEFAULTS.itAssetLifeYears },
   { key: 'itOmPercent', type: 'number', min: 0, max: 20, defaultValue: FACILITY_DEFAULTS.itOmPercent },
@@ -215,6 +235,7 @@ export const DATACENTER_DERIVED_KEYS = Object.freeze(DERIVED_FIELDS.map(field =>
 const DERIVED_BY_SELECTION = {
   siteId: ['siteYieldMwhPerMwdcYear', 'gridEnergyPricePerMWh', 'gridCo2KgPerMWh'],
   coolingTechnology: ['coolingCapexPerKWIT', 'coolingOmPercent'],
+  gpuPlatform: ['gpuRentalPricePerHour', 'gpuItKWPerGpu', 'gpuCapexPerGpu'],
   mountingType: ['panelCostPerW', 'bosCostPerW'],
   gasType: ['gasUnitSizeMW', 'gasCapexPerKW', 'gasFixedOmPerKWYear', 'gasVariableOmPerMWh', 'gasHeatRateMMBtuPerMWh', 'gasAvailabilityPercent'],
   nuclearType: ['nuclearUnitSizeMW', 'nuclearCapexPerKW', 'nuclearFixedOmPerKWYear', 'nuclearVariableOmPerMWh', 'nuclearFuelPerMWh', 'nuclearCapacityFactorPercent', 'nuclearPpaPricePerMWh'],
@@ -258,7 +279,7 @@ export function normalizeDatacenterState(rawState = {}) {
 
 /**
  * State after the user changes `selectionKey` (siteId, coolingTechnology,
- * mountingType, gasType or nuclearType): the fields that selection drives
+ * gpuPlatform, mountingType, gasType or nuclearType): the fields that selection drives
  * are reset to the new selection's defaults; everything else is kept.
  */
 export function applyDatacenterPresetDefaults(state, selectionKey) {

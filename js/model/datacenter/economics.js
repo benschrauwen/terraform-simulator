@@ -17,7 +17,8 @@
      replacements   every asset life after energization, paid in year
                     ceil(t0 + k x life) (finance.js schedule, shifted)
      salvage        straight-line book value at the horizon N (land at cost)
-     cf_y = f_y x (revenue - opex) - replacements_y - deferred capex_y + [y = N] salvage
+     cf_y = f_y x (revenue x price factor_y - opex) - replacements_y - deferred capex_y + [y = N] salvage
+     (price factor_y = GPU rental decline, 1 for tokens and colocation)
      NPV  = -capex_close + sum_y cf_y / (1 + r)^y
 
    Opex lines (full year): fixed O&M (facility, cooling, IT, solar, battery,
@@ -25,7 +26,9 @@
    import x $/kW-month), gas fuel, gas variable O&M, nuclear fuel + variable
    O&M on delivered output (an own reactor backs down) or the contracted PPA
    (take-or-pay on all available output), water.
-   Revenue: tokens = served IT MWh x M tokens/MWh-IT x $/M tokens;
+   Revenue: GPU rental (default, model/datacenter/gpu.js) = GPUs x 8760 x
+   occupancy x served share x $/GPU-hour x (1 - decline)^fleet age;
+   tokens = served IT MWh x M tokens/MWh-IT x $/M tokens;
    colocation = $/kW-month x IT kW x 12 x served share of IT energy, plus
    (if colocationPowerPassThrough) the energy opex recovered at cost from
    the tenant; export = exported MWh x export price. Pure; no DOM. */
@@ -34,6 +37,7 @@ import { COOLING_TECHNOLOGIES } from '../../data/datacenter/cooling.js';
 import { FACILITY_DEFAULTS } from '../../data/datacenter/facility.js';
 import { DATACENTER_MODEL_ASSUMPTIONS as A } from '../../data/datacenter/model-assumptions.js';
 import { summarizeReturns } from '../economics.js';
+import { getGpuFleet, getRentalPriceFactor } from './gpu.js';
 import { onSiteNuclearMWh } from './impacts.js';
 import { buildFinancingModel, buildReplacementSchedule, crf } from '../finance.js';
 
@@ -44,17 +48,20 @@ export function buildDatacenterAssets(state, { solar, battery, firm, gridCapKW, 
   const itKW = state.itCapacityMW * 1000;
   const tech = COOLING_TECHNOLOGIES[state.coolingTechnology];
   const tierMultiplier = FACILITY_DEFAULTS.tierCapexMultiplier[state.facilityTier] ?? 1;
-  const ownsIt = state.revenueBasis === 'tokens';
+  const fleet = getGpuFleet(state);
   const facilityCapex = state.facilityCapexPerKWIT * tierMultiplier * itKW;
   const coolingCapex = state.coolingCapexPerKWIT * itKW;
-  const itCapex = ownsIt ? state.itCapexPerKW * itKW : 0;
+  // GPU rental: GPUs x $/GPU; tokens: $/kW-IT; colocation: the tenant's.
+  const itCapex = fleet.enabled ? fleet.count * fleet.capexPerGpu
+    : state.revenueBasis === 'tokens' ? state.itCapexPerKW * itKW : 0;
+  const itLife = fleet.enabled ? fleet.lifeYears : state.itAssetLifeYears;
   const firmKW = firm.capacityMW * 1000;
   const assets = [
     { key: 'facility', label: 'Datacenter building + electrical', group: 'facility', capex: facilityCapex, lifeYears: state.facilityAssetLifeYears, annualFixedOm: facilityCapex * state.facilityOmPercent / 100 },
     { key: 'land', label: 'Land', group: 'facility', capex: state.landCapexPerKWIT * itKW, lifeYears: Infinity, perpetual: true, salvageAtCost: true, annualFixedOm: 0 },
     { key: 'cooling', label: 'Cooling plant', group: 'facility', capex: coolingCapex, lifeYears: tech.assetLifeYears, annualFixedOm: coolingCapex * state.coolingOmPercent / 100 },
     {
-      key: 'it', label: 'IT hardware (GPUs, network)', group: 'it', capex: itCapex, lifeYears: state.itAssetLifeYears,
+      key: 'it', label: fleet.enabled ? `GPU servers (${fleet.label})` : 'IT hardware (GPUs, network)', group: 'it', capex: itCapex, lifeYears: itLife,
       timing: state.itCapexTiming === 'energization' ? 'energization' : 'close', annualFixedOm: itCapex * state.itOmPercent / 100,
     },
     { key: 'substation', label: 'HV substation', group: 'power', capex: state.substationCapexPerKW * substationKW, lifeYears: A.assetLifeYears.substation, annualFixedOm: 0 },
@@ -104,14 +111,25 @@ export function buildOpexLines(state, { totals, monthlyPeakGridKW, water, firm }
   return lines;
 }
 
+/* GPU-hours sold per full year: GPUs x 8760 x occupancy x served share. */
+export function getGpuHoursSold(state, energy) {
+  const fleet = getGpuFleet(state);
+  if (!fleet.enabled) return 0;
+  const servedShare = energy.itDemandKWh > 0 ? energy.itServedKWh / energy.itDemandKWh : 0;
+  return fleet.count * 8760 * (fleet.occupancyPercent / 100) * servedShare;
+}
+
 /* Revenue per full year of operation, by stream. */
 export function buildRevenue(state, { energy, totals, opexLines }) {
   const itServedMWh = energy.itServedKWh / 1000;
   const servedShare = energy.itDemandKWh > 0 ? energy.itServedKWh / energy.itDemandKWh : 0;
   const energyOpex = opexLines.filter(line => line.energy).reduce((sum, line) => sum + line.annual, 0);
   const colocation = state.revenueBasis === 'colocation';
+  const fleet = getGpuFleet(state);
   return {
-    tokens: colocation ? 0 : itServedMWh * state.millionTokensPerMWhIT * state.tokenPricePerM,
+    // Full year at the new-GPU price; the yearly cash flows apply the decline.
+    gpuRental: fleet.enabled ? getGpuHoursSold(state, energy) * state.gpuRentalPricePerHour : 0,
+    tokens: state.revenueBasis === 'tokens' ? itServedMWh * state.millionTokensPerMWhIT * state.tokenPricePerM : 0,
     colocation: colocation ? state.colocationLeasePerKWMonth * state.itCapacityMW * 1000 * 12 * servedShare : 0,
     powerPassThrough: colocation && state.colocationPowerPassThrough ? energyOpex : 0,
     export: state.gridExportEnabled ? (totals.exportKWh / 1000) * state.gridExportPricePerMWh : 0,
@@ -178,12 +196,15 @@ export function calculateDatacenterEconomics(state, ctx) {
   let npv = -capexAtClose;
   let equityNpv = -financing.equityUpfront;
   let pvOperatingYears = 0;
+  let pvRentalYears = 0;
   let pvOpex = 0;
   for (let year = 1; year <= horizonYears; year++) {
     const f = operatingFraction(year);
     pvOperatingYears += f * discount(year);
-    const yearlyRevenue = Object.fromEntries(Object.entries(revenue).map(([key, value]) => [key, value * f]));
-    const totalRevenue = totalAnnualRevenue * f;
+    const priceFactor = getRentalPriceFactor(state, year, t0);
+    pvRentalYears += f * priceFactor * discount(year);
+    const yearlyRevenue = Object.fromEntries(Object.entries(revenue).map(([key, value]) => [key, value * f * (key === 'gpuRental' ? priceFactor : 1)]));
+    const totalRevenue = Object.values(yearlyRevenue).reduce((sum, value) => sum + value, 0);
     const operatingCost = annualOM * f;
     pvOpex += operatingCost * discount(year);
     const operatingCashFlow = totalRevenue - operatingCost;
@@ -199,6 +220,7 @@ export function calculateDatacenterEconomics(state, ctx) {
     yearlyCashFlows.push({
       year,
       operatingFraction: f,
+      rentalPriceFactor: priceFactor,
       degradationFactor: 1,
       policyDurationFactor: 0,
       revenue: yearlyRevenue,
@@ -269,14 +291,21 @@ export function calculateDatacenterEconomics(state, ctx) {
   const pvItMWh = (ctx.energy.itServedKWh / 1000) * pvOperatingYears;
   const pvAllCost = pvCapital + pvOpex;
   const annualTokensM = state.revenueBasis === 'tokens' ? (ctx.energy.itServedKWh / 1000) * state.millionTokensPerMWhIT : 0;
+  const annualGpuHoursSold = getGpuHoursSold(state, ctx.energy);
 
   // NPV is linear in the revenue price (nothing else reads it):
   // NPV(p) = NPV(p0) + (p - p0) x V, V = revenue per unit price x PV of operating years.
-  const colocation = state.revenueBasis === 'colocation';
+  const basis = state.revenueBasis;
   const servedShare = ctx.energy.itDemandKWh > 0 ? ctx.energy.itServedKWh / ctx.energy.itDemandKWh : 0;
-  const revenuePerUnitPrice = colocation ? state.itCapacityMW * 1000 * 12 * servedShare : annualTokensM;
-  const npvPerUnitPrice = revenuePerUnitPrice * pvOperatingYears;
-  const currentPrice = colocation ? state.colocationLeasePerKWMonth : state.tokenPricePerM;
+  const npvPerUnitPrice = basis === 'gpu-rental' ? annualGpuHoursSold * pvRentalYears
+    : basis === 'colocation' ? state.itCapacityMW * 1000 * 12 * servedShare * pvOperatingYears
+      : annualTokensM * pvOperatingYears;
+  const BREAK_EVEN = {
+    'gpu-rental': { paramKey: 'gpuRentalPricePerHour', label: 'GPU rental price', unit: '$/GPU-hour' },
+    tokens: { paramKey: 'tokenPricePerM', label: 'Token price', unit: '$/M tokens' },
+    colocation: { paramKey: 'colocationLeasePerKWMonth', label: 'Colocation lease', unit: '$/kW-month' },
+  }[basis];
+  const currentPrice = state[BREAK_EVEN.paramKey];
   const breakEvenPrice = npvPerUnitPrice > 0 ? currentPrice - npv / npvPerUnitPrice : null;
 
   return {
@@ -314,16 +343,18 @@ export function calculateDatacenterEconomics(state, ctx) {
     energizationYears: t0,
     operatingYearsPresentValue: pvOperatingYears,
     annualTokensM,
+    annualGpuHoursSold,
+    gpuFleet: getGpuFleet(state),
     levelized: {
       costOfPowerPerMWh: pvFacilityMWh > 0 ? pvPowerCost / pvFacilityMWh : 0,
       costPerMWhIT: pvItMWh > 0 ? pvAllCost / pvItMWh : 0,
       costPerMToken: annualTokensM > 0 ? pvAllCost / (annualTokensM * pvOperatingYears) : 0,
+      // Cost per GPU-hour sold (all costs; before the rental-price decline).
+      costPerGpuHour: annualGpuHoursSold > 0 ? pvAllCost / (annualGpuHoursSold * pvOperatingYears) : 0,
       revenuePerMWhIT: ctx.energy.itServedKWh > 0 ? totalAnnualRevenue / (ctx.energy.itServedKWh / 1000) : 0,
     },
     breakEven: {
-      paramKey: colocation ? 'colocationLeasePerKWMonth' : 'tokenPricePerM',
-      label: colocation ? 'Colocation lease' : 'Token price',
-      unit: colocation ? '$/kW-month' : '$/M tokens',
+      ...BREAK_EVEN,
       currentPrice,
       breakEvenPrice,
       npvPerUnitPrice,

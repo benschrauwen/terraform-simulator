@@ -11,6 +11,7 @@
 
    Adding a variable: append an entry here; the runner and tests pick it up. */
 
+const rentsGpus = state => state.revenueBasis === 'gpu-rental';
 const sellsTokens = state => state.revenueBasis === 'tokens';
 const leases = state => state.revenueBasis === 'colocation';
 const usesGrid = (state, result) => Boolean(result?.grid?.connected) && (result?.dispatch?.annual?.gridMWh || 0) > 0;
@@ -20,12 +21,17 @@ const hasSolar = state => state.solarSizeMWdc > 0;
 const hasBattery = state => state.batteryCapacityMWh > 0;
 
 export const DATACENTER_SENSITIVITY_VARIABLES = Object.freeze([
+  { id: 'gpuRentalPrice', stateKey: 'gpuRentalPricePerHour', label: 'GPU rental price', format: { prefix: '$', suffix: '/GPU-hr', digits: 2 }, appliesTo: rentsGpus },
+  { id: 'gpuPriceDecline', stateKey: 'gpuPriceDeclinePercentPerYear', label: 'GPU rental price decline', format: { suffix: '%/yr', digits: 1 }, appliesTo: rentsGpus },
+  { id: 'gpuOccupancy', stateKey: 'gpuOccupancyPercent', label: 'GPU occupancy', format: { suffix: '%', digits: 0 }, appliesTo: rentsGpus },
+  { id: 'gpuCapex', stateKey: 'gpuCapexPerGpu', label: 'Capex per GPU', format: { prefix: '$', suffix: '/GPU', digits: 0 }, appliesTo: rentsGpus },
+  { id: 'gpuLife', stateKey: 'gpuLifeYears', label: 'GPU life', format: { suffix: ' yr', digits: 0 }, appliesTo: rentsGpus },
   { id: 'tokenPrice', stateKey: 'tokenPricePerM', label: 'Token price', format: { prefix: '$', suffix: '/M tokens', digits: 2 }, appliesTo: sellsTokens },
   { id: 'tokenThroughput', stateKey: 'millionTokensPerMWhIT', label: 'Token throughput', format: { suffix: ' M tokens/MWh-IT', digits: 0 }, appliesTo: sellsTokens },
   { id: 'colocationLease', stateKey: 'colocationLeasePerKWMonth', label: 'Colocation lease', format: { prefix: '$', suffix: '/kW-month', digits: 0 }, appliesTo: leases },
   { id: 'itCapex', stateKey: 'itCapexPerKW', label: 'IT hardware capex', format: { prefix: '$', suffix: '/kW', digits: 0 }, appliesTo: sellsTokens },
   { id: 'itLife', stateKey: 'itAssetLifeYears', label: 'IT hardware life', format: { suffix: ' yr', digits: 0 }, appliesTo: sellsTokens },
-  { id: 'utilization', stateKey: 'itUtilizationPercent', label: 'IT utilization', format: { suffix: '%', digits: 0 }, appliesTo: () => true },
+  { id: 'utilization', stateKey: 'itUtilizationPercent', label: 'IT utilization', format: { suffix: '%', digits: 0 }, appliesTo: state => !rentsGpus(state) },
   { id: 'facilityCapex', stateKey: 'facilityCapexPerKWIT', label: 'Building + electrical capex', format: { prefix: '$', suffix: '/kW-IT', digits: 0 }, appliesTo: () => true },
   { id: 'coolingCapex', stateKey: 'coolingCapexPerKWIT', label: 'Cooling plant capex', format: { prefix: '$', suffix: '/kW-IT', digits: 0 }, appliesTo: () => true },
   { id: 'gridPrice', stateKey: 'gridEnergyPricePerMWh', label: 'Grid energy price', format: { prefix: '$', suffix: '/MWh', digits: 1 }, appliesTo: usesGrid },

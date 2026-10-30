@@ -5,6 +5,7 @@
    and levelized cost metrics for a computed scenario. */
 
 import { MODEL_ASSUMPTIONS } from '../data/assumptions.js';
+import { CHEMISTRY } from '../data/reference-data.js';
 import { DEFAULT_STATE } from '../state/schema.js';
 import {
   analyzeIRR,
@@ -506,24 +507,45 @@ export const economicsMethods = {
     };
   },
 
-  calculateEnvironmental(solar, dac, sabatier, methanol, electrolyzer) {
+  /* CO2 accounting without double counting. Captured CO2 is either bound
+     in products or vented; carbon bound in a fuel returns to air when the
+     fuel is burned, so capture itself is not avoidance. Net avoided is the
+     fossil combustion CO2 the fuels displace (methane at 0.0528 t/MCF, i.e.
+     19.25 kg CH4 x 44/16; methanol and MTG hydrocarbons by their carbon),
+     excluding upstream emissions and methane leakage. Nothing is stored
+     permanently in this plant. Exploratory non-fuel routes are reported in
+     "bound" but not credited as avoided. */
+  calculateEnvironmental(solar, dac, sabatier, methanol, electrolyzer, context = {}) {
+    const { exploratoryModules = [], co2Surplus = 0 } = context;
+    const cyclesPerYear = solar?.cyclesPerYear || 0;
+    const toTonsPerYear = dailyKg => (dailyKg * cyclesPerYear) / 1000;
     const co2Captured = dac.enabled ? dac.co2AnnualTons : 0;
-    const co2Displaced = sabatier.enabled
+    const exploratoryCo2DailyKg = exploratoryModules.reduce((sum, module) => sum + (module.co2Consumed || 0), 0);
+    const co2BoundInProducts = toTonsPerYear((sabatier.co2Consumed || 0) + (methanol.co2Consumed || 0) + exploratoryCo2DailyKg);
+    const co2Vented = dac.enabled ? toTonsPerYear(co2Surplus) : 0;
+    const methaneDisplaced = sabatier.enabled
       ? sabatier.ch4AnnualMCF * MODEL_ASSUMPTIONS.fossilGasEmissionsPerMCF
       : 0;
+    // All methanol carbon (exported, or converted to MTG hydrocarbons)
+    // displaces the same fossil carbon: 1.374 t CO2 per t methanol.
+    const methanolDisplaced = methanol.enabled
+      ? toTonsPerYear((methanol.grossDailyKg ?? methanol.dailyKg ?? 0) * CHEMISTRY.methanol.co2MassPerKgMeOH)
+      : 0;
+    const co2NetAvoided = methaneDisplaced + methanolDisplaced;
     const waterConsumedDaily = electrolyzer.enabled ? electrolyzer.waterDailyKg : 0;
     const waterProducedDaily = (sabatier.waterProducedDaily || 0) + (methanol.waterProducedDaily || 0);
 
     return {
       co2Captured,
-      co2Displaced,
-      totalCO2Benefit: co2Captured + co2Displaced,
+      co2BoundInProducts,
+      co2Vented,
+      co2Displaced: co2NetAvoided,
+      co2NetAvoided,
       waterConsumedDaily,
       waterRecycledDaily: waterProducedDaily,
       waterProducedDaily,
       netWaterDaily: Math.max(0, waterConsumedDaily - waterProducedDaily),
       landAcres: solar.acres,
-      landProductivityVsCorn: sabatier.enabled ? MODEL_ASSUMPTIONS.landProductivityVsCornFactor : 0,
     };
   },
 };

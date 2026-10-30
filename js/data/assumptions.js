@@ -39,11 +39,11 @@ export const MODEL_ASSUMPTIONS = {
   dacCapexReferenceUtilization: 0.25,
   // Exploratory route asset life (years) when the route defines none.
   exploratoryAssetLifeYears: 10,
-  // tCO2 avoided per MCF of fossil natural gas displaced.
-  fossilGasEmissionsPerMCF: 0.053,
-  // Displayed land-productivity multiple vs. corn ethanol when methane is
-  // produced (an illustrative constant, not computed from the scenario).
-  landProductivityVsCornFactor: 20,
+  // Combustion tCO2 per MCF of fossil methane displaced: pure CH4 at
+  // 19.25 kg/MCF x 44.01/16.04 = 52.8 kg (~0.053 t). EPA's ~0.055 t/MCF is
+  // for pipeline gas at ~1,036 Btu/scf (53.06 kg/MMBtu x 1.036). Upstream
+  // emissions and methane leakage of the displaced gas are excluded.
+  fossilGasEmissionsPerMCF: 0.0528,
   // Share of the lunar south-pole cycle with direct sun at a ridge site
   // (peak-of-eternal-light profile).
   lunarPolarIlluminatedFraction: 0.85,

@@ -273,8 +273,10 @@ export const rendererMethods = {
     const cycleUnit = this.getCycleRateUnit(r);
     const env = r.environmental;
     const html = [
-      prodItem('co2', '🌍', 'CO₂ Captured', `${FormatNumbers.fixed(env.co2Captured, 1)}`, 'tons/yr'),
-      prodItem('ch4', '♻️', 'CO₂ Displaced', `${FormatNumbers.fixed(env.co2Displaced, 1)}`, 'tons/yr'),
+      prodItem('co2', '🌍', 'CO₂ Captured', `${FormatNumbers.fixed(env.co2Captured, 1)}`, 't/yr'),
+      prodItem('co2', '🧱', 'CO₂ Bound in Products', `${FormatNumbers.fixed(env.co2BoundInProducts, 1)}`, 't/yr'),
+      prodItem('co2', '☁️', 'CO₂ Vented', `${FormatNumbers.fixed(env.co2Vented, 1)}`, 't/yr'),
+      prodItem('ch4', '♻️', 'Net CO₂ Avoided (fossil fuel displaced)', `${FormatNumbers.fixed(env.co2NetAvoided, 1)}`, 't/yr'),
       prodItem('solar', '📐', 'Land Use', `${FormatNumbers.fixed(env.landAcres, 1)}`, 'acres'),
       prodItem('h2', '♻️', 'Water Recycled', `${FormatNumbers.fixed(env.waterRecycledDaily, 0)}`, `L/${cycleUnit}`),
       prodItem('h2', '💧', 'Net Water Needed', `${FormatNumbers.fixed(env.netWaterDaily, 0)}`, `L/${cycleUnit}`),

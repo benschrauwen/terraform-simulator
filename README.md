@@ -103,7 +103,8 @@ The current implementation makes several deliberate assumptions that should stay
 - Named incentive schemes are non-stacked by default except in `Custom mixed support`, framework-only entries do not change cash flow, and time-limited support ends after the modeled support duration.
 - Upfront capex support is applied at close against the eligible capex basis only; later replacement CAPEX is not automatically re-subsidized in the current model.
 - Default methane volume conversion assumes `19.25 kg CH4 / MCF`.
-- Default fossil gas displacement uses `0.053 tCO2 / MCF`.
+- Fossil gas displacement uses `0.0528 tCO2 / MCF`: combustion CO2 of pure CH4 at 19.25 kg/MCF (EPA's ~0.055 t/MCF is for pipeline gas at ~1,036 Btu/scf). Upstream emissions and methane leakage of the displaced gas, and of the synthetic gas itself, are excluded.
+- Captured CO2 that ends up in a fuel returns to the air when the fuel is burned, so the plant is not a removal: net avoided CO2 is only the displaced fossil combustion CO2 of its fuels (methane, methanol, MTG hydrocarbons). Exploratory non-fuel products are counted as bound, not avoided.
 - Default low-capex Terraform-style process presets are approximate, not universal truths.
 
 ## Core Formula Summary
@@ -509,8 +510,11 @@ IRR is undefined for any value in the range (by NPV if MIRR is undefined too).
 
 ```text
 co2_captured_tpy = annual_co2_captured_kg / 1000
+co2_bound_tpy    = co2 converted into methane, methanol and exploratory products
+co2_vented_tpy   = co2_captured_tpy - co2_bound_tpy          # unconverted feed
 
-co2_displaced_tpy = annual_ch4_mcf * 0.053
+net_avoided_tpy  = annual_ch4_mcf * 0.0528                   # 19.25 kg CH4 x 44.01/16.04
+                 + annual_meoh_t * 1.374                     # methanol carbon (export + MTG feed)
 
 water_recycled_kgpd =
   ch4_daily_kg * 2.25 +

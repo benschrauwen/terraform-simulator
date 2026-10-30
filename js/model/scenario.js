@@ -160,7 +160,7 @@ export const scenarioMethods = {
       lifetimeEnergy,
     });
     const environmental = includeEnvironmental
-      ? this.calculateEnvironmental(solar, dac, sabatier, methanol, electrolyzer)
+      ? this.calculateEnvironmental(solar, dac, sabatier, methanol, electrolyzer, { exploratoryModules, co2Surplus })
       : null;
 
     return {

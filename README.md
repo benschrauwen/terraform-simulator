@@ -185,7 +185,7 @@ process_kW      = full_capture_kW * chemicalSizingPercent / 100
 
 AI mode serves solar in this order: the constant AI load, then battery charging (the battery discharges only to AI), then the chemicals. The AI load is the largest constant load whose clear-sky-equivalent full-power reliability meets the target (bisection). Chemical 100% is the peak residual power at that load. With no battery, AI mode seeds 1 MWh per GWh/yr of solar and says so. GPU CAPEX is `$/kW * load`, O&M is 4%/yr of it, and `revenue = served MWh * M tokens/MWh * $/M tokens`.
 
-Battery CAPEX is `$/kWh * capacity`. Its life is `min(12 yr, rated cycles / cycles per year)`, counting one cycle per day, sol or lunar cycle.
+Battery CAPEX is `$/kWh * capacity`. Its life is `min(12 yr, rated cycles / EFC per year)`, where equivalent full cycles per year = year-1 energy discharged (annualized to an Earth year) / capacity, in both chemical and AI dispatch.
 
 ### Lifetime energy (`lifetime-energy.js`)
 
@@ -361,7 +361,7 @@ The headline default scenario is:
 - **Feed-buffer inventory is a flat-supply upper bound,** and its $/kg and $/t costs are assumptions. Methanol tankage is ignored.
 - **Some modes are stylized fallbacks.**
   - There is no hydrogen sales line, and with no product enabled H2 and CO2 are simply vented.
-  - The battery has no capacity fade, and its life assumes one cycle per day.
+  - The battery has no capacity fade; its cycle life is consumed at the year-1 dispatch throughput (equivalent full cycles), with depth-of-discharge effects ignored.
   - AI compute is a constant-load token model, not a datacenter design.
   - Mars and Moon modes use literature-style benchmarks.
 - **Finance is minimal.**

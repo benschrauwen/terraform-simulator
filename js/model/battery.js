@@ -117,16 +117,29 @@ export function settleAnnualStartSoc(capacityKWh, runPreview, { hasInput = true 
   return { startSocKWh, settleIterations: settleIterations + 1 };
 }
 
-/* Installed battery capex and replacement life: cycle-limited, capped at the
-   nominal calendar life. */
-export function getBatteryCapexAndLife(state, cyclesPerYear) {
-  if (!hasBatteryStorage(state)) return { capex: 0, lifetimeYears: 0 };
+/* Equivalent full cycles per Earth year from a year-1 dispatch: energy
+   discharged / usable capacity, annualized from the dispatch basis (Mars
+   orbital year -> Earth year). */
+export function getEquivalentFullCyclesPerYear(state, dispatch, annualizationFactor = 1) {
+  const capacityKWh = hasBatteryStorage(state) ? Math.max(0, (state.batteryCapacityMWh || 0) * 1000) : 0;
+  if (!(capacityKWh > 0)) return 0;
+  return Math.max(0, ((dispatch?.dischargeThroughputKWh || 0) * annualizationFactor) / capacityKWh);
+}
+
+/* Installed battery capex and replacement life: rated cycles / equivalent
+   full cycles per year of the actual dispatch, capped at the nominal
+   calendar life (a battery that barely cycles still ages). Counting one
+   full cycle per day, sol or lunar cycle overstated wear for a battery that
+   is only partly used. */
+export function getBatteryCapexAndLife(state, equivalentFullCyclesPerYear) {
+  if (!hasBatteryStorage(state)) return { capex: 0, lifetimeYears: 0, equivalentFullCyclesPerYear: 0 };
+  const cycleLimitedYears = equivalentFullCyclesPerYear > 0
+    ? (state.batteryCycles || 0) / equivalentFullCyclesPerYear
+    : Infinity;
   return {
     capex: Math.max(0, (state.batteryCapacityMWh || 0) * 1000 * (state.batteryCostPerKWh || 0)),
-    lifetimeYears: Math.max(
-      1,
-      Math.min(MODEL_ASSUMPTIONS.batteryNominalLifeYears, (state.batteryCycles || 0) / Math.max(1, cyclesPerYear))
-    ),
+    lifetimeYears: Math.max(1, Math.min(MODEL_ASSUMPTIONS.batteryNominalLifeYears, cycleLimitedYears)),
+    equivalentFullCyclesPerYear: Math.max(0, equivalentFullCyclesPerYear || 0),
   };
 }
 
@@ -332,7 +345,10 @@ export const batteryMethods = {
       fullCaptureChemicalKWh,
       chemicalSizingPercent: state.chemicalSizingPercent ?? DEFAULT_STATE.chemicalSizingPercent,
     };
-    const { capex, lifetimeYears } = getBatteryCapexAndLife(state, cyclesPerYear);
+    const { capex, lifetimeYears, equivalentFullCyclesPerYear } = getBatteryCapexAndLife(
+      state,
+      getEquivalentFullCyclesPerYear(state, dispatch, annualizationFactor)
+    );
     const lifetimeEnergy = this.buildLifetimeEnergyProfile(state, {
       year1: { aiServedKWh: 0, chemicalKWh: dispatch.chemicalKWh, clippedKWh: dispatch.clippedSolarKWh, reliability: 1 },
       annualizationFactor,
@@ -347,7 +363,7 @@ export const batteryMethods = {
     });
 
     return {
-      storage: this.buildAnnualStorageSummary(state, dispatch, capex, lifetimeYears),
+      storage: this.buildAnnualStorageSummary(state, dispatch, capex, lifetimeYears, equivalentFullCyclesPerYear),
       chemicalSupply: this.buildAnnualChemicalSupplySummary(dispatch, solar, cyclesPerYear, annualizationFactor, {
         includeSeries,
       }),

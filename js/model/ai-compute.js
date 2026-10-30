@@ -16,6 +16,7 @@ import {
   createAnnualBattery,
   dischargeBattery,
   getBatteryCapexAndLife,
+  getEquivalentFullCyclesPerYear,
   settleAnnualStartSoc,
 } from './battery.js';
 import { crf } from './finance.js';
@@ -258,7 +259,7 @@ export const aiComputeMethods = {
     };
   },
 
-  buildAnnualStorageSummary(state, dispatch, batteryCapex, batteryLifeYears) {
+  buildAnnualStorageSummary(state, dispatch, batteryCapex, batteryLifeYears, equivalentFullCyclesPerYear = 0) {
     const batteryEnabled = hasBatteryStorage(state);
     return {
       enabled: batteryEnabled,
@@ -266,6 +267,7 @@ export const aiComputeMethods = {
       battCapKWh: batteryEnabled ? (state.batteryCapacityMWh || 0) * 1000 : 0,
       annualizedCapex: batteryEnabled ? batteryCapex * crf(state.discountRate / 100, batteryLifeYears) : 0,
       lifetimeYears: batteryEnabled ? batteryLifeYears : 0,
+      equivalentFullCyclesPerYear: batteryEnabled ? equivalentFullCyclesPerYear : 0,
       utilizedCapacityKWh: batteryEnabled ? (dispatch.utilizedCapacityKWh || 0) : 0,
       startBatteryKWh: batteryEnabled ? (dispatch.startSocKWh || 0) : 0,
       endBatteryKWh: batteryEnabled ? (dispatch.endSocKWh || 0) : 0,
@@ -335,7 +337,6 @@ export const aiComputeMethods = {
     const dispatchHorizonLabel = dispatchBasis.horizonLabel;
     const hours = Array.isArray(dispatchSolar?.hourlyKW) ? dispatchSolar.hourlyKW.length : 0;
     const targetReliability = Math.max(0.0001, Math.min(0.99999, (state.aiReliabilityTarget || DEFAULT_STATE.aiReliabilityTarget) / 100));
-    const { capex: batteryCapex, lifetimeYears: batteryLifeYears } = getBatteryCapexAndLife(state, cyclesPerYear);
     const sizingDispatch = loadKW => this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, loadKW, {
       captureSeries: false,
       skipOpHours: true,
@@ -411,6 +412,11 @@ export const aiComputeMethods = {
         };
       },
     });
+    const {
+      capex: batteryCapex,
+      lifetimeYears: batteryLifeYears,
+      equivalentFullCyclesPerYear: batteryCyclesPerYear,
+    } = getBatteryCapexAndLife(state, getEquivalentFullCyclesPerYear(state, finalDispatch, annualizationFactor));
     const annualAiServedKWh = finalDispatch.aiServedKWh * annualizationFactor;
     const annualChemicalKWh = finalDispatch.chemicalKWh * annualizationFactor;
     const annualTokensM = (annualAiServedKWh / 1000) * (state.aiMillionTokensPerMWh || 0);
@@ -452,7 +458,7 @@ export const aiComputeMethods = {
         includeDisplaySeries: includeDisplayDispatchSeries,
         includeSolarSummary: captureDispatchSeries || includeDisplayDispatchSeries,
       }),
-      storage: this.buildAnnualStorageSummary(state, finalDispatch, batteryCapex, batteryLifeYears),
+      storage: this.buildAnnualStorageSummary(state, finalDispatch, batteryCapex, batteryLifeYears, batteryCyclesPerYear),
       chemicalSupply: this.buildAnnualChemicalSupplySummary(finalDispatch, solar, cyclesPerYear, annualizationFactor, {
         includeSeries: captureDispatchSeries,
       }),

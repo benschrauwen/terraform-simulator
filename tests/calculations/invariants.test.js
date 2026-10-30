@@ -36,6 +36,8 @@ const SCENARIOS = {
   policyNone: { policyMode: 'none' },
   battery2: { batteryCapacityMWh: 2 },
   battery20: { batteryCapacityMWh: 20 },
+  // Cycle life binds before the 12-year calendar cap.
+  battery2LowCycles: { batteryCapacityMWh: 2, batteryCycles: 1000 },
   large100MW: { systemSizeMW: 100, batteryCapacityMWh: 24, chemicalSizingPercent: 70 },
   methanolOnly: { sabatierEnabled: false, methanolEnabled: true },
   methaneMethanolMtg: { methanolEnabled: true, mtgEnabled: true },
@@ -619,4 +621,27 @@ test('I14 power shares cover only enabled blocks and sum to 1; with no reactor t
   const co2 = (M.co2 / M.ch4) * state.dacEnergy / 1000;
   relClose(allocation.electrolyzer, h2 / (h2 + co2), 2e-3, 'methane-ratio electrolyzer share');
   assert.equal(results.dacOnly.allocation.dac, 1, 'a lone DAC takes all the power');
+});
+
+test('I15 battery life = rated cycles / equivalent full cycles of the dispatch, capped at calendar life', () => {
+  let cycleLimited = 0;
+  forEachScenario((result, name) => {
+    const storage = result.storage;
+    if (!storage.enabled) return;
+    // Earth scenarios: the dispatch basis is one Earth year (no annualization).
+    if (result.state.body !== 'earth') return;
+    const efcPerYear = storage.dischargeThroughputKWh / storage.battCapKWh;
+    relClose(storage.equivalentFullCyclesPerYear, efcPerYear, 1e-12, `${name} EFC/yr`);
+    const expected = Math.max(1, Math.min(12, result.state.batteryCycles / efcPerYear));
+    relClose(storage.lifetimeYears, expected, 1e-12, `${name} battery life`);
+    // A battery cannot do more than ~one full cycle per hour of charge at
+    // its power rating, and here it never exceeds one per day.
+    assert.ok(efcPerYear <= 366, `${name}: ${efcPerYear} cycles/yr`);
+    if (expected < 12) cycleLimited += 1;
+  });
+  // 1,000 cycles at ~176 EFC/yr (2 MWh, partly used): ~5.7 years, not the
+  // 2.7 years of one full cycle per day.
+  const low = results.battery2LowCycles.storage;
+  assert.ok(low.lifetimeYears > 1000 / 365 * 1.5 && low.lifetimeYears < 12, `cycle-limited life ${low.lifetimeYears}`);
+  assert.ok(cycleLimited >= 1);
 });

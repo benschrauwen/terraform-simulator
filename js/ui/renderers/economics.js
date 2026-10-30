@@ -1,5 +1,6 @@
 /* Economics breakdown panel: one builder per collapsible row group */
 
+import { MODEL_ASSUMPTIONS } from '../../data/assumptions.js';
 import { FormatNumbers } from '../format-numbers.js';
 import { formatIrrWithStatus, formatMirr, formatSystemSizeMW } from '../formatters.js';
 import { econGroup, econMetric, econRow, EDUCATIONAL_TOOLTIPS } from './markup.js';
@@ -539,6 +540,14 @@ function buildContextRows(context) {
       econRow('Served-energy utilization', `${FormatNumbers.fixed(r.ai.utilization * 100, 2)}%`),
       econRow('Full-rate reliability', `${FormatNumbers.fixed(r.ai.fullPowerReliability * 100, 2)}%`)
     );
+  }
+  if (r.storage?.enabled) {
+    rows.push(econRow(
+      'Battery replacement life',
+      `${FormatNumbers.fixed(r.storage.lifetimeYears, 1)} yrs (${FormatNumbers.fixed(r.storage.equivalentFullCyclesPerYear, 0)} full cycles/yr)`,
+      '',
+      `Rated cycle life / equivalent full cycles per year of the year-1 dispatch (energy discharged / capacity), capped at the ${FormatNumbers.fixed(MODEL_ASSUMPTIONS.batteryNominalLifeYears, 0)}-year calendar life. No capacity fade is modeled.`
+    ));
   }
   if (e.revenue.methane > 0) {
     rows.push(econRow('Methane market', methaneMarket.applicability));

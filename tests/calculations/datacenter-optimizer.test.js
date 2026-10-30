@@ -166,3 +166,32 @@ test('architecture comparison: one row per architecture, patches against the cur
   assert.ok(result.rows.some(row => row.architecture === result.bestArchitecture));
   assert.equal(result.candidatesEvaluated, result.rows.reduce((sum, row) => sum + row.result.candidatesEvaluated, 0));
 });
+
+test('two basins: the optimizer finds the small-battery design a coarse halving grid misses', () => {
+  // Hybrid starting design (standby diesel, flexible connection) with a cheap battery ($150/kWh,
+  // no power cost: the landscape before the energy/power split), where ~50-60 MWh of battery
+  // replaces several diesel units. Reduced brute force: solar 0-300 MWdc step 25, battery 0-200
+  // MWh step 20, the fewest feasible units by bisection (checked against a linear scan above)
+  // then up to two more. The optimizer, with the same bounds, must come within 0.5% of its NPV.
+  // (The single-start search on halvings of the bounds stopped in the no-battery basin, $150.6M
+  // with 19 units, against ~$154.7M with ~51 MWh and 12 units.)
+  const start = { ...getArchitectureStartState(DATACENTER_DEFAULT_STATE, 'hybrid'), batteryCostPerKWh: 150, batteryPowerCostPerKW: 0 };
+  const unitsMax = 40;
+  let best = null;
+  for (let solar = 0; solar <= 300; solar += 25) {
+    for (let battery = 0; battery <= 200; battery += 20) {
+      const at = units => calculateDatacenterScenario(designState(start, { solar, battery, units }), { fastMode: true });
+      const min = findMinimumUnits(units => at(units).reliability.meetsTarget, unitsMax);
+      if (min === null) continue;
+      for (let units = min; units <= Math.min(unitsMax, min + 2); units++) {
+        const r = at(units);
+        if (r.reliability.meetsTarget && (!best || r.economics.npv > best.npv)) best = { npv: r.economics.npv, solar, battery, units };
+      }
+    }
+  }
+  assert.ok(best.battery > 0, 'the brute-force optimum uses a small battery');
+  const result = optimizeDatacenterDesign(start, { bounds: { solarMaxMWdc: 300, batteryMaxMWh: 200, unitsMax } });
+  assert.ok(result.best.feasible);
+  assert.ok(result.best.npv >= best.npv - 0.005 * Math.abs(best.npv), `optimizer ${result.best.npv} vs brute force ${best.npv} (${JSON.stringify(best)})`);
+  assert.ok(result.best.batteryMWh > 0, 'the optimizer lands in the battery basin');
+});

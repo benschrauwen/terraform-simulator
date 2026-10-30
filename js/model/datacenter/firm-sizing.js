@@ -137,7 +137,11 @@ export function sizeGasForUptime(state, context) {
     // Upper bound: the residual count without the battery.
     const noBattery = { ...state, batteryCapacityMWh: 0 };
     const bound = residualSizing(dispatchYear({ ...inputs, batteryState: noBattery, firm: zero }, {}), loadKW, firm, H);
-    const runWith = units => dispatchYear({ ...inputs, firm: withUnits(firm, units) });
+    const runs = new Map();
+    const runWith = units => {
+      if (!runs.has(units)) runs.set(units, dispatchYear({ ...inputs, firm: withUnits(firm, units) }));
+      return runs.get(units);
+    };
     const zeroRun = runWith(0);
     const feasible = units => runWith(units).totals.unservedHours <= H;
     let lo = -1;

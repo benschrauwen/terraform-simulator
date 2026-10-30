@@ -578,27 +578,32 @@ NPV is linear in the revenue price, so the break-even rental price, token price 
 
 ```text
 for each (solar, battery):
-  n_min  = fewest units with uptime >= target          # bisection, bracketed from a neighbour's n_min
+  n_min  = fewest units with uptime >= target          # gas: the auto sizing without spares (firm-sizing.js,
+                                                       #   one zero-gas dispatch); nuclear or a miss: bisection
   units  = walk n_min, n_min+1, ... while NPV improves # more units pay when gas is cheaper than grid power
-coarse grid: solar, battery in {0, B/32, B/16, ..., B}  (7 x 7, B = upper bound)
-refine:      compass search around the best cell, step halved until below 1 MW / 1 MWh
+coarse grid: solar in {0, S/32, ..., S}; battery in {0, 0.25, 0.5, 1, 2 h of P} + {B/8, B/4, B/2, B}
+             (7 x 9 at the default bounds, S, B = upper bounds)
+refine:      compass search from up to 3 coarse cells (the best, then the next best that are not its
+             grid neighbours and are within 2% of its capex in NPV), step halved until below 1 MW / 1 MWh
 rank:        feasible before infeasible; then NPV; infeasible candidates by uptime
 ```
 
-Uptime cannot fall when a unit is added (every hour has at least as much available capacity), which is what the bisection relies on; the walk upwards counts and skips any count that breaks this, and `tests/calculations/datacenter-optimizer.test.js` checks the bisection against a linear scan. Each candidate is a fast-mode scenario (one hourly dispatch year, about 1-2 ms; fast mode gives the same NPV, uptime and first power as the full run, tested). A budget (default 800) caps the runs per architecture; the default site converges well inside it. The result carries the best design as a state patch (always including architecture, connection, solar, battery and firm-unit fields), the current design, runs used, the bounds, which decisions sit at an upper bound (`corners`), the coarse grid (`frontier`) and notes; when nothing within the bounds meets the target it says so and returns the highest-uptime design.
+The small battery levels and the extra starts are there because the landscape can have two basins: at the default hybrid design with a $150/kWh battery, ~50 MWh of battery riding through curtailments replaces seven diesel units ($154.7M at 196 MWdc, 51 MWh, 12 units), while halvings of the 24 h bound (3,144, 1,572, ..., 98 MWh) step over it and a single refinement from the best coarse cell stays in the no-battery basin ($150.6M, 19 units); a regression test checks the optimizer against a reduced brute force there.
 
-`compareArchitectures(state, options)` runs it for grid, hybrid and islanded. Each starts from that architecture's starting design through one function, `getArchitectureStartState` (the schema's `applyArchitectureDefaults` when it exists, otherwise the current state with the architecture switched); patches are against the current state. At the default site (Abilene, 100 MW IT, GPU rental) the full comparison takes about 0.5 s (1 s when firm vs flexible is also searched, ~950 runs) in Node or in the page's worker:
+Uptime cannot fall when a unit is added (every hour has at least as much available capacity), which is what the bisection relies on; the walk upwards counts and skips any count that breaks this, and `tests/calculations/datacenter-optimizer.test.js` checks the bisection against a linear scan, and the auto count against the bisection. Each candidate is a fast-mode scenario (one hourly dispatch year, about 1-2 ms; fast mode gives the same NPV, uptime and first power as the full run, tested). A budget (default 800) caps the runs per architecture; the default site converges well inside it. The result carries the best design as a state patch (always including architecture, connection, solar, battery and firm-unit fields), the current design, runs used, the bounds, which decisions sit at an upper bound (`corners`), the coarse grid (`frontier`) and notes; when nothing within the bounds meets the target it says so and returns the highest-uptime design.
+
+`compareArchitectures(state, options)` runs it for grid, hybrid and islanded. Each starts from that architecture's starting design through one function, `getArchitectureStartState` (the schema's `applyArchitectureDefaults` when it exists, otherwise the current state with the architecture switched); patches are against the current state. At the default site (Abilene, 100 MW IT, GPU rental) the full comparison takes about 1.4 s (~1,000 runs; ~2.1 s and ~1,770 runs when firm vs flexible is also searched) in Node or in the page's worker:
 
 | Architecture | Best design | Uptime | NPV | IRR | First power |
 | --- | --- | --- | --- | --- | --- |
-| Current (grid, N+1 standby gas) | 15 x 10 MW engines | 100% | $264M | 8.8% | Jul 2031 |
-| Grid | no on-site supply, firm connection | 100% | $581M | 10.0% | Jul 2031 |
-| Hybrid | same as grid (on-site gas is cheaper per MWh than Abilene's grid, but not by enough to pay for the plant) | 100% | $581M | 10.0% | Jul 2031 |
-| Islanded | 10 x 10 MW engines + 2 MWdc solar | 100% | $158M | 8.5% | Jan 2030 |
+| Current (grid, standby diesel N+1) | 32 x 3 MW standby diesel | 100% | -$85M | 7.7% | Jul 2031 |
+| Grid (firm) | 169 MWdc solar + 7 x 3 MW standby diesel | 99.989% | -$35M | 7.9% | Jul 2031 |
+| Hybrid (flexible) | 157 MWdc solar + 19 x 3 MW standby diesel | 99.989% | $151M | 8.5% | Jan 2030 |
+| Islanded | 10 x 10 MW engines + 2 MWdc solar | 100% | $169M | 8.6% | Jan 2030 |
 
-On a firm connection the optimizer keeps only the standby units the utility outages need for the target (none when a battery rides through them; the card then says so, since real Tier III sites keep N+1 standby). Its minimum unit count per (solar, battery) point is the auto count before spares (`firm-sizing.js`), tested to match. The islanded optimum needs only 10 engines because the dispatch-year peak (GPU occupancy) is below the 131 MW design peak and a little solar covers the hours when maintenance outages overlap.
+With the connection searched, the grid row also picks the flexible connection ($151M; firm -$35M): the flexible connection's earlier first power is worth more than its curtailments cost. Solar at the site cuts the standby fleet on a firm grid because the utility outage modeled at 15:00 in July falls in daylight. On a firm connection the optimizer keeps only the standby units the utility outages need for the target (none when a battery rides through them; the card then says so, since real Tier III sites keep N+1 standby). The islanded optimum needs only 10 engines because the dispatch-year peak (GPU occupancy) is below the 131 MW design peak and a little solar covers the hours when maintenance outages overlap.
 
-Limitations: it is a local search (coarse grid, then compass steps on two axes with the unit count chosen per point), so a narrow optimum between grid points can be missed; one TMY year decides feasibility (see below); the objective is NPV only (no CO2, water or first-power weight); one firm family at a time; battery duration (it sets the power and the power part of the battery cost), gas type and import cap are not searched: the optimizer sizes battery MWh at the user's duration. NPV is not smooth in the first-power date: the GPU rental price of each year is taken at the fleet's age at mid-year, so moving first power by a few months shifts every fleet's price step (at the default site, `scheduleScalePercent` 50 -> 60% moves NPV from +$821M to -$143M). Choices that change the schedule, such as a flexible connection or an islanded battery on the critical path, can therefore win or lose by more than their own cost.
+Limitations: it is a local search (coarse grid, then compass steps on two axes from up to three starts, with the unit count chosen per point), so a narrow optimum between grid points can still be missed; one TMY year decides feasibility (see below); the objective is NPV only (no CO2, water or first-power weight); one firm family at a time; battery duration (it sets the power and the power part of the battery cost), gas type and import cap are not searched: the optimizer sizes battery MWh at the user's duration. Choices that change the schedule, such as a flexible connection or an islanded battery on the critical path, can win or lose by more than their own cost.
 
 ### Datacenter UI
 

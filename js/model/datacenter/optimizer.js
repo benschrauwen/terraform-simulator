@@ -16,15 +16,20 @@
    type, battery duration, ...) stays as given. Each candidate is a full
    fast-mode scenario run (one hourly dispatch year, ~1-2 ms).
 
-   Method. Uptime does not fall when a firm unit is added (more available
-   capacity in every hour), so for a given (solar, battery) the fewest units
-   meeting the target is found by bisection, bracketed from a neighbouring
+   Method. For a given (solar, battery) the fewest gas units meeting the
+   target is the auto sizing without spares (firm-sizing.js, one zero-gas
+   dispatch). For nuclear, or if that count is not feasible as a manual
+   count, it is bisected instead (uptime does not fall when a unit is added:
+   more available capacity in every hour), bracketed from a neighbouring
    candidate's answer. NPV is then walked one unit at a time from there
    (more units than the minimum pay when on-site gas is cheaper than the
    grid, or when they serve hours above the target). Over (solar, battery):
-   a coarse grid (0 plus halvings down from each upper bound), then a
-   compass/pattern search around the best cell, halving the step until it
-   is below the resolution. Candidates are ranked feasible first, then by
+   a coarse grid (0 plus halvings down from each upper bound; the battery
+   axis also 0.25-2 h of the design peak, where a small battery replacing
+   firm units forms its own basin), then a compass/pattern search from up to
+   three coarse cells (the best and the next best that are not its grid
+   neighbours and come within 2% of its capex in NPV), halving the step
+   until it is below the resolution. Candidates are ranked feasible first, then by
    NPV; infeasible ones by uptime, so the search walks towards feasibility.
    The budget caps scenario evaluations per architecture (cache hits are
    free). It is a local search on one TMY year: see README "Design
@@ -48,7 +53,20 @@ export const OPTIMIZER_BOUND_FACTORS = Object.freeze({
   batteryHoursOfPeak: 24, // MWh per MW of design facility peak
   extraUnits: 3, // firm units above ceil(peak / unit size)
 });
-const COARSE_LEVELS = 6; // non-zero coarse levels per axis: max, max/2, ..., max/32
+const COARSE_LEVELS = 6; // non-zero geometric coarse levels per axis: max, max/2, ..., max/32
+// Battery levels at the small end, in hours of the design facility peak: a
+// small battery that rides through outages or curtailments can replace
+// several firm units, a basin the halvings of the upper bound step over.
+// They replace the two smallest halvings (1.5 h and 0.75 h of peak at the
+// default bounds): 0, 0.25, 0.5, 1, 2, 3, 6, 12, 24 h of peak.
+const BATTERY_PEAK_HOUR_LEVELS = Object.freeze([0.25, 0.5, 1, 2]);
+// Coarse cells the pattern search starts from (best first, then the next
+// best that are not grid neighbours of a chosen one).
+const REFINE_STARTS = 3;
+// judgment: refining could move a cell's NPV by a few % of capex (the
+// two-basin case at the default site differed by ~0.1%); further from the
+// best than this, a start is not worth its runs.
+const START_NPV_WINDOW = 0.02;
 
 /**
  * The starting design of an architecture (starting-design.js: the schema's
@@ -148,13 +166,17 @@ const millions = value => `${value < 0 ? '-' : ''}$${Math.abs(value / 1e6).toFix
 const DESIGN_KEYS = ['architecture', 'gridConnection', 'solarSizeMWdc', 'batteryCapacityMWh', 'firmFamily', 'firmSizingMode', 'firmUnits'];
 const resolutionFor = max => (max >= 100 ? 1 : max >= 10 ? 0.1 : 0.01);
 
-/** Coarse levels: 0 plus max, max/2, ... (rounded, distinct, ascending). */
-function coarseLevels(max, resolution, count = COARSE_LEVELS) {
+/** Coarse levels: 0 plus max, max/2, ... and any `extra` levels up to max (rounded, distinct, ascending). */
+function coarseLevels(max, resolution, count = COARSE_LEVELS, extra = []) {
   const levels = new Set([0]);
   for (let k = 0; k < count; k++) {
     const value = roundTo(max / 2 ** k, resolution);
     if (value > 0) levels.add(value);
   }
+  extra.forEach(level => {
+    const value = roundTo(level, resolution);
+    if (value > 0 && value <= max) levels.add(value);
+  });
   return [...levels].sort((a, b) => a - b);
 }
 
@@ -221,11 +243,37 @@ function optimizeFrom(startState, referenceState, options = {}) {
     return summary;
   };
 
+  /*
+   * Fewest gas units meeting the target at (solar, battery, connection): the
+   * auto sizing with no spares (firm-sizing.js, one zero-gas dispatch; the
+   * same count the bisection finds, tested), its run doubling as the
+   * candidate at that count. Nuclear, or a count above unitsMax: null, and
+   * the caller bisects.
+   */
+  const autoMinUnits = (solar, battery, connection) => {
+    if (firmFamily !== 'gas') return null;
+    const key = `${solar}|${battery}|auto|${connection}`;
+    if (!cache.has(key)) {
+      const r = calculateDatacenterScenario({ ...stateFor({ solar, battery, units: 1, connection }), firmSizingMode: 'auto', firmSpareUnits: 0 }, { fastMode: true });
+      evaluations += 1;
+      const basis = r.firm.sizingBasis;
+      const units = basis?.reachable ? basis.minUnits : null;
+      cache.set(key, units);
+      // The auto run is the manual design at that count (same dispatch and costs; 0 units = no plant).
+      if (units !== null && units <= unitsMax) cache.set(`${solar}|${battery}|${units}|${connection}`, summarize(r, { solar, battery, units, connection }));
+    }
+    const units = cache.get(key);
+    return units !== null && units <= unitsMax ? units : null;
+  };
+
   /** Best candidate for (solar, battery, connection): minimum feasible units, then an NPV walk. */
   const bestForPoint = (solar, battery, connection, hint = {}) => {
     const at = units => evaluate({ solar, battery, units, connection });
     if (!sizeFirm) return { best: at(unitsMax), minUnits: null };
-    const minUnits = findMinimumUnits(units => at(units).feasible, unitsMax, hint.minUnits ?? null);
+    let minUnits = autoMinUnits(solar, battery, connection);
+    if (minUnits === null || !at(minUnits).feasible) {
+      minUnits = findMinimumUnits(units => at(units).feasible, unitsMax, hint.minUnits ?? null);
+    }
     if (minUnits === null) return { best: at(unitsMax), minUnits: null }; // infeasible: highest uptime
     let n = Math.max(minUnits, Math.min(unitsMax, hint.units ?? minUnits));
     let best = at(n);
@@ -244,7 +292,9 @@ function optimizeFrom(startState, referenceState, options = {}) {
   };
 
   const solarLevels = sizeSolar ? coarseLevels(solarMax, solarRes) : [start.solarSizeMWdc];
-  const batteryLevels = sizeBattery ? coarseLevels(batteryMax, batteryRes) : [start.batteryCapacityMWh];
+  const batteryLevels = sizeBattery
+    ? coarseLevels(batteryMax, batteryRes, COARSE_LEVELS - 2, BATTERY_PEAK_HOUR_LEVELS.map(hours => hours * peakMW))
+    : [start.batteryCapacityMWh];
   const perConnection = [];
   let overall = null;
 
@@ -265,6 +315,7 @@ function optimizeFrom(startState, referenceState, options = {}) {
           solarMWdc: solar, batteryMWh: battery, units: cellBest.units, minUnits,
           npv: cellBest.npv, uptimePercent: cellBest.uptimePercent, feasible: cellBest.feasible,
         };
+        Object.defineProperty(cells[i][j], 'summary', { value: cellBest, enumerable: false });
         if (isBetterCandidate(cellBest, best)) {
           best = cellBest;
           bestHint = { minUnits, units: cellBest.units };
@@ -273,25 +324,44 @@ function optimizeFrom(startState, referenceState, options = {}) {
     });
     report('refine');
 
-    // Pattern search on (solar, battery) around the best cell.
-    if (best) {
-      let point = { solar: best.design.solar, battery: best.design.battery };
-      let hint = bestHint;
+    // Pattern search on (solar, battery) from the best coarse cells: the best
+    // one and the next best that are not its grid neighbours (another basin,
+    // e.g. a small battery replacing firm units vs more units), up to
+    // REFINE_STARTS; each start's budget share is what is left / starts left.
+    const ranked = [];
+    cells.forEach((row, i) => row.forEach((cell, j) => { if (cell) ranked.push({ i, j, cell }); }));
+    ranked.sort((a, b) => (isBetterCandidate(a.cell.summary, b.cell.summary) ? -1 : isBetterCandidate(b.cell.summary, a.cell.summary) ? 1 : 0));
+    const starts = [];
+    for (const entry of ranked) {
+      if (starts.length >= REFINE_STARTS) break;
+      if (starts.some(other => Math.abs(other.i - entry.i) <= 1 && Math.abs(other.j - entry.j) <= 1)) continue;
+      // A further start only for a feasible cell within reach of the best:
+      // NPV within START_NPV_WINDOW of the best design's capex.
+      const lead = starts[0]?.cell.summary;
+      if (lead && (!entry.cell.feasible || entry.cell.npv < lead.npv - START_NPV_WINDOW * Math.abs(lead.totalCapex))) continue;
+      starts.push(entry);
+    }
+    if (!sizeSolar && !sizeBattery) starts.length = Math.min(starts.length, 1);
+    starts.forEach((entry, startIndex) => {
+      const startShare = evaluations + Math.floor((share - evaluations) / (starts.length - startIndex));
+      let localBest = entry.cell.summary;
+      let point = { solar: localBest.design.solar, battery: localBest.design.battery };
+      let hint = { minUnits: entry.cell.minUnits, units: localBest.units };
       const axes = [];
       if (sizeSolar) axes.push({ key: 'solar', max: solarMax, res: solarRes, step: Math.max(point.solar / 2, solarLevels[1] / 2 || solarRes) });
       if (sizeBattery) axes.push({ key: 'battery', max: batteryMax, res: batteryRes, step: Math.max(point.battery / 2, batteryLevels[1] / 2 || batteryRes) });
-      while (axes.some(axis => axis.step >= axis.res) && evaluations + reserve <= share) {
+      while (axes.some(axis => axis.step >= axis.res) && evaluations + reserve <= startShare) {
         let improved = false;
         for (const axis of axes) {
           if (axis.step < axis.res) continue;
           for (const sign of [1, -1]) {
-            if (evaluations + reserve > share) break;
+            if (evaluations + reserve > startShare) break;
             const value = Math.min(axis.max, Math.max(0, roundTo(point[axis.key] + sign * axis.step, axis.res)));
             if (value === point[axis.key]) continue;
             const trial = { ...point, [axis.key]: value };
             const { best: candidate, minUnits } = bestForPoint(trial.solar, trial.battery, connection, hint);
-            if (isBetterCandidate(candidate, best)) {
-              best = candidate;
+            if (isBetterCandidate(candidate, localBest)) {
+              localBest = candidate;
               point = trial;
               hint = { minUnits, units: candidate.units };
               improved = true;
@@ -301,7 +371,8 @@ function optimizeFrom(startState, referenceState, options = {}) {
         }
         if (!improved) axes.forEach(axis => { axis.step /= 2; });
       }
-    }
+      if (isBetterCandidate(localBest, best)) best = localBest;
+    });
     perConnection.push({ connection, best, cells });
     if (isBetterCandidate(best, overall)) overall = best;
   });

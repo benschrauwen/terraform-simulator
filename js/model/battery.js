@@ -1,8 +1,20 @@
 /* Battery firming */
 
 import { MODEL_ASSUMPTIONS } from '../data/reference-data.js';
+import { DEFAULT_STATE } from '../state/schema.js';
 
 export const batteryMethods = {
+  getChemicalSizingFraction(state) {
+    return this.clampNumber(state?.chemicalSizingPercent, 0, 100, DEFAULT_STATE.chemicalSizingPercent) / 100;
+  },
+
+  getBatteryLeakageRetention(stepHours) {
+    const monthlyLeakage = Math.max(0, Math.min(0.999999, MODEL_ASSUMPTIONS.batteryMonthlyLeakage || 0));
+    if (!Number.isFinite(stepHours) || stepHours <= 0 || monthlyLeakage <= 0) return 1;
+    const averageMonthHours = (365 * 24) / 12;
+    return Math.pow(1 - monthlyLeakage, stepHours / averageMonthHours);
+  },
+
   simulateAnnualChemicalDispatch(state, annualSolar, processPowerKW, options = {}) {
     const captureSeries = options.captureSeries !== false;
     const source = Array.isArray(annualSolar?.hourlyKW) ? annualSolar.hourlyKW : [];

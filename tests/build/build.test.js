@@ -39,7 +39,7 @@ test('production build ships an allowlisted, versioned asset tree', () => {
     `${ASSET_DIR}/js/main.js`,
     `${ASSET_DIR}/js/ui/app.js`,
     `${ASSET_DIR}/js/model/index.js`,
-    `${ASSET_DIR}/js/model/core.js`,
+    `${ASSET_DIR}/js/model/scenario.js`,
     `${ASSET_DIR}/js/workers/optimizer-worker.js`,
     `${ASSET_DIR}/vendor/chart.umd.js`,
     `${ASSET_DIR}/vendor/leaflet/leaflet.js`,

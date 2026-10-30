@@ -1,18 +1,35 @@
-/* Solar resource and PV plant */
+/* ============================================
+   Solar resource and PV plant
+   ============================================
+   Site resource estimates (GHI, yield, cloudiness), mounting-dependent yield,
+   layout and BOS adjustments, plant capex/LCOE and the representative
+   cycle profile for each planetary body. */
 
 import {
-  LOCATION_PRESETS,
+  ARID_GHI_REGIONS,
+  CLOUDINESS_BY_GHI,
+  CLOUDINESS_BY_REGION,
+  GHI_ESTIMATE_RANGE,
+  GHI_LATITUDE_BANDS,
   MODEL_ASSUMPTIONS,
+  MOUNTING_YIELD_ADJUSTMENTS,
+  SOLAR_LAYOUT_REFERENCE,
+  SQUARE_METERS_PER_ACRE,
+} from '../data/assumptions.js';
+import {
+  LOCATION_PRESETS,
   MOUNTING_TYPES,
   PLANETARY_BODIES,
 } from '../data/reference-data.js';
+import { DEFAULT_STATE } from '../state/schema.js';
+import { crf, getAverageSolarDegradationFactor } from './finance.js';
 import { SolarGeometry } from './solar-geometry.js';
 
-const SOLAR_LAYOUT_REFERENCE = {
-  latitude: 35.05,
-  winterNoonElevationDeg: 31.51,
-  cloudiness: 0.05,
-};
+function isInAridRegion(lat, lon) {
+  return ARID_GHI_REGIONS.boxes.some(box =>
+    lon > box.minLon && lon < box.maxLon && lat > box.minLat && lat < box.maxLat
+  );
+}
 
 export const solarMethods = {
   getBodyConfig(bodyKey) {
@@ -32,24 +49,19 @@ export const solarMethods = {
     if (bodyKey !== 'earth') return 0;
 
     const absLat = Math.abs(lat);
-    let baseGHI;
-    if (absLat <= 10) baseGHI = 1950;
-    else if (absLat <= 20) baseGHI = 2100 + (20 - absLat) * 10;
-    else if (absLat <= 30) baseGHI = 2000 + (30 - absLat) * 10;
-    else if (absLat <= 40) baseGHI = 1700 - (absLat - 30) * 20;
-    else if (absLat <= 50) baseGHI = 1400 - (absLat - 40) * 35;
-    else if (absLat <= 60) baseGHI = 1050 - (absLat - 50) * 25;
-    else baseGHI = 800 - (absLat - 60) * 15;
+    const band = GHI_LATITUDE_BANDS.find(entry => absLat <= entry.maxAbsLatitude)
+      || GHI_LATITUDE_BANDS[GHI_LATITUDE_BANDS.length - 1];
+    let baseGHI = band.ghi0 + (absLat - band.atAbsLatitude) * band.slope;
 
-    if (absLat >= 18 && absLat <= 35) {
-      const isArid = (lon > -120 && lon < -100 && lat > 25) ||
-        (lon > -15 && lon < 50 && lat > 15 && lat < 35) ||
-        (lon > 65 && lon < 80 && lat > 22 && lat < 30) ||
-        (lon > 115 && lon < 135 && lat < -18 && lat > -28);
-      if (isArid) baseGHI *= 1.15;
+    if (
+      absLat >= ARID_GHI_REGIONS.minAbsLatitude &&
+      absLat <= ARID_GHI_REGIONS.maxAbsLatitude &&
+      isInAridRegion(lat, lon)
+    ) {
+      baseGHI *= ARID_GHI_REGIONS.multiplier;
     }
 
-    return Math.round(Math.max(600, Math.min(2900, baseGHI)));
+    return Math.round(Math.max(GHI_ESTIMATE_RANGE.min, Math.min(GHI_ESTIMATE_RANGE.max, baseGHI)));
   },
 
   estimateBaseYield(lat, lon, ghi, bodyKey = 'earth') {
@@ -69,28 +81,20 @@ export const solarMethods = {
     if (profileModel === 'lunar-pel') {
       return SolarGeometry.lunarPolarIlluminationProfile({
         cycleHours: body.cycleHours,
-        illuminatedFraction: 0.85,
+        illuminatedFraction: MODEL_ASSUMPTIONS.lunarPolarIlluminatedFraction,
         mountingKey,
       });
     } else if ((state.body || 'earth') === 'mars' || profileModel === 'mars-average') {
       solarGeo = SolarGeometry.planetaryAnnualAverageProfile({
+        ...PLANETARY_BODIES.mars.orbit,
         latitude: state.latitude,
-        orbitalDays: 668.6,
-        axialTiltDeg: 24.936,
         cycleHours: body.cycleHours,
-        solarConstant: 590,
-        diffuseFraction: 0,
-        eccentricity: 0.093377,
-        perihelionLsDeg: 248,
       });
     } else if ((state.body || 'earth') === 'moon') {
       solarGeo = SolarGeometry.planetaryAnnualAverageProfile({
+        ...PLANETARY_BODIES.moon.orbit,
         latitude: state.latitude,
-        orbitalDays: 29.53,
-        axialTiltDeg: 1.54,
         cycleHours: body.cycleHours,
-        solarConstant: 1361,
-        diffuseFraction: 0,
       });
     } else {
       solarGeo = SolarGeometry.annualAverageProfile(state.latitude, mountingKey);
@@ -113,15 +117,13 @@ export const solarMethods = {
 
   getCloudinessFactor(region, ghi, bodyKey = 'earth') {
     if (bodyKey !== 'earth') return 0;
-    if (region === 'cloudy') return 1.0;
-    if (region === 'tropical') return 0.55;
-    if (region === 'temperate') return 0.30;
-    if (region === 'desert') return 0.05;
+    if (typeof region === 'string' && Object.hasOwn(CLOUDINESS_BY_REGION, region)) {
+      return CLOUDINESS_BY_REGION[region];
+    }
 
-    if (ghi <= 1000) return 0.95;
-    if (ghi <= 1400) return 0.70;
-    if (ghi <= 1800) return 0.40;
-    return 0.10;
+    const tier = CLOUDINESS_BY_GHI.find(entry => ghi <= entry.maxGhi)
+      || CLOUDINESS_BY_GHI[CLOUDINESS_BY_GHI.length - 1];
+    return tier.cloudiness;
   },
 
   getEarthLocationFactors(state, preset, ghi, bodyKey = 'earth') {
@@ -143,19 +145,14 @@ export const solarMethods = {
     const latitudeFactor = Math.max(0, Math.min(1, (Math.abs(state.latitude) - 20) / 25));
     const cloudiness = this.getCloudinessFactor(preset?.region, ghi, state.body || 'earth');
 
-    if (state.mountingType === 'ew') {
-      return mounting.yieldMult + (cloudiness * 0.08) - (latitudeFactor * 0.02);
-    }
+    const adjustment = Object.hasOwn(MOUNTING_YIELD_ADJUSTMENTS, state.mountingType)
+      ? MOUNTING_YIELD_ADJUSTMENTS[state.mountingType]
+      : null;
+    if (!adjustment) return mounting.yieldMult;
 
-    if (state.mountingType === 'single') {
-      return mounting.yieldMult + (latitudeFactor * 0.05) - (cloudiness * 0.18);
-    }
-
-    if (state.mountingType === 'dual') {
-      return mounting.yieldMult + (latitudeFactor * 0.07) - (cloudiness * 0.15);
-    }
-
-    return mounting.yieldMult;
+    return mounting.yieldMult +
+      (latitudeFactor * adjustment.latitudeSlope) +
+      (cloudiness * adjustment.cloudinessSlope);
   },
 
   getLocationAdjustedGroundCoverageRatio(state, preset, ghi, mounting) {
@@ -238,7 +235,7 @@ export const solarMethods = {
     const coverageModel = this.getLocationAdjustedGroundCoverageRatio(state, preset, ghi, mounting);
     const groundCoverageRatio = coverageModel.groundCoverageRatio;
     const landArea = panelArea / groundCoverageRatio;
-    const acres = landArea / 4047;
+    const acres = landArea / SQUARE_METERS_PER_ACRE;
     const bosModel = this.getLocationAdjustedBosCostPerW(
       state,
       preset,
@@ -252,10 +249,10 @@ export const solarMethods = {
     const totalSolarCapex = totalPanelCost + totalBOSCost + landCapex + sitePrepCapex;
 
     const rate = state.discountRate / 100;
-    const annualizedSolar = totalSolarCapex * this.crf(rate, state.solarAssetLife);
-    const solarOmFrac = (state.solarOmPercent ?? 1.5) / 100;
+    const annualizedSolar = totalSolarCapex * crf(rate, state.solarAssetLife);
+    const solarOmFrac = (state.solarOmPercent ?? DEFAULT_STATE.solarOmPercent) / 100;
     const annualSolarOm = (totalPanelCost + totalBOSCost) * solarOmFrac;
-    const lifetimeAverageAnnualMWh = annualMWh * this.getAverageSolarDegradationFactor(
+    const lifetimeAverageAnnualMWh = annualMWh * getAverageSolarDegradationFactor(
       state.panelDegradationAnnual,
       state.solarAssetLife
     );

@@ -6,7 +6,7 @@
    chemical-plant dispatch: solar first feeds the process, the battery covers
    shortfalls, and surplus charges the battery. */
 
-import { MODEL_ASSUMPTIONS } from '../data/reference-data.js';
+import { MODEL_ASSUMPTIONS } from '../data/assumptions.js';
 import { hasBatteryStorage } from '../state/normalize.js';
 import { DEFAULT_STATE } from '../state/schema.js';
 import { crf } from './finance.js';
@@ -64,7 +64,7 @@ export function chargeBattery(battery, surplusKWh) {
    periodic (end SoC == start SoC within tolerance). `runPreview(startSocKWh)`
    must return `{ endSocKWh }`. */
 export function settleAnnualStartSoc(capacityKWh, runPreview) {
-  let startSocKWh = capacityKWh * 0.5;
+  let startSocKWh = capacityKWh * MODEL_ASSUMPTIONS.batteryStartSocFraction;
   let settleIterations = 0;
   const settleTolKWh = Math.max(1e-3, capacityKWh * 1e-6);
 
@@ -109,7 +109,7 @@ export const batteryMethods = {
     const batteryEnabled = hasBatteryStorage(state);
     const battCapKWh = createAnnualBattery(state).capacityKWh;
     const targetProcessKW = Math.max(0, Number(processPowerKW) || 0);
-    const opThresholdKW = targetProcessKW > 0 ? targetProcessKW * 0.05 : null;
+    const opThresholdKW = targetProcessKW > 0 ? targetProcessKW * MODEL_ASSUMPTIONS.processOperatingThresholdFraction : null;
 
     const runPass = (startSocKWh, includeSeries = captureSeries) => {
       const chemicalHourlyKW = includeSeries ? new Array(hours).fill(0) : [];
@@ -219,7 +219,7 @@ export const batteryMethods = {
     // size process equipment from the modeled direct-solar peak, not PV nameplate.
     const directProcessPeakKW = Math.max(...solarKW, 0);
     const directOpHours = directProcessPeakKW > 0
-      ? solarKW.reduce((sum, value) => sum + (value >= directProcessPeakKW * 0.05 ? stepHours : 0), 0)
+      ? solarKW.reduce((sum, value) => sum + (value >= directProcessPeakKW * MODEL_ASSUMPTIONS.processOperatingThresholdFraction ? stepHours : 0), 0)
       : 0;
     const directEffectiveCF = directProcessPeakKW > 0
       ? solar.dailyKWh / (directProcessPeakKW * solar.cycleHours)
@@ -267,7 +267,7 @@ export const batteryMethods = {
       const dailyAvailableKWh = hourlyKW.reduce((sum, value) => sum + (value * stepHours), 0);
       const clippedDailyKWh = clippedHourlyKW.reduce((sum, value) => sum + (value * stepHours), 0);
       const dailyOpHours = processPowerKW > 0
-        ? hourlyKW.reduce((sum, value) => sum + (value >= processPowerKW * 0.05 ? stepHours : 0), 0)
+        ? hourlyKW.reduce((sum, value) => sum + (value >= processPowerKW * MODEL_ASSUMPTIONS.processOperatingThresholdFraction ? stepHours : 0), 0)
         : 0;
       const effectiveCF = processPowerKW > 0
         ? dailyAvailableKWh / (processPowerKW * solar.cycleHours)
@@ -350,7 +350,7 @@ export const batteryMethods = {
         curtailedKWh += Math.max(0, solarAvailableKWh);
         minSocKWh = Math.min(minSocKWh, battery.socKWh);
         maxSocKWh = Math.max(maxSocKWh, battery.socKWh);
-        if (processKW > 1e-9 && (deliveredKWh / stepHours) >= (processKW * 0.05)) {
+        if (processKW > 1e-9 && (deliveredKWh / stepHours) >= (processKW * MODEL_ASSUMPTIONS.processOperatingThresholdFraction)) {
           activeProcessHours += stepHours;
         }
 

@@ -5,6 +5,7 @@
    the residual feeding the chemical plant. Sizes the largest AI load that
    meets the reliability target and summarizes storage and chemical supply. */
 
+import { MODEL_ASSUMPTIONS } from '../data/assumptions.js';
 import { AI_COMPUTE_DEFAULTS } from '../data/reference-data.js';
 import { hasBatteryStorage } from '../state/normalize.js';
 import { DEFAULT_STATE } from '../state/schema.js';
@@ -23,7 +24,7 @@ export const aiComputeMethods = {
   getAiBatteryHeuristicMWh(state) {
     if (!state?.aiComputeEnabled || hasBatteryStorage(state)) return 0;
     const annualSolarMWh = this.calculateSolar(state).annualMWh || 0;
-    return clampNumber(annualSolarMWh / 1000, 0, 1e9, 0);
+    return clampNumber((annualSolarMWh / 1000) * MODEL_ASSUMPTIONS.aiBatterySeedMWhPerSolarGWh, 0, 1e9, 0);
   },
 
   simulateAnnualDispatchPass(state, annualSolar, loadKW, startSocKWh, options = {}) {
@@ -32,7 +33,7 @@ export const aiComputeMethods = {
     const chemicalCapacityKW = Number.isFinite(options.chemicalCapacityKW) ? Math.max(0, options.chemicalCapacityKW) : null;
     const opThresholdKW = Number.isFinite(options.opThresholdKW)
       ? Math.max(0, options.opThresholdKW)
-      : (chemicalCapacityKW !== null && chemicalCapacityKW > 0 ? chemicalCapacityKW * 0.05 : null);
+      : (chemicalCapacityKW !== null && chemicalCapacityKW > 0 ? chemicalCapacityKW * MODEL_ASSUMPTIONS.processOperatingThresholdFraction : null);
     const source = Array.isArray(annualSolar?.hourlyKW) ? annualSolar.hourlyKW : [];
     const hours = source.length;
     const summaryWindowHours = Math.max(1e-6, annualSolar?.windowHours || 24);
@@ -126,7 +127,7 @@ export const aiComputeMethods = {
     const resolvedChemicalOpHours = captureSeries && opThresholdKW !== null && opThresholdKW > 1e-9
       ? chemicalHourlyKW.reduce((sum, value) => sum + (value >= opThresholdKW - 1e-6 ? 1 : 0), 0)
       : captureSeries && chemicalPeakKW > 0
-        ? chemicalHourlyKW.reduce((sum, value) => sum + (value >= chemicalPeakKW * 0.05 ? 1 : 0), 0)
+        ? chemicalHourlyKW.reduce((sum, value) => sum + (value >= chemicalPeakKW * MODEL_ASSUMPTIONS.processOperatingThresholdFraction ? 1 : 0), 0)
       : chemicalOpHours;
 
     return {
@@ -176,8 +177,8 @@ export const aiComputeMethods = {
       const resolvedOpThresholdKW = Number.isFinite(options.opThresholdKW)
         ? Math.max(0, options.opThresholdKW)
         : (chemicalCapacityKW !== null && chemicalCapacityKW > 0
-            ? chemicalCapacityKW * 0.05
-            : (dispatch.chemicalPeakKW > 0 ? dispatch.chemicalPeakKW * 0.05 : null));
+            ? chemicalCapacityKW * MODEL_ASSUMPTIONS.processOperatingThresholdFraction
+            : (dispatch.chemicalPeakKW > 0 ? dispatch.chemicalPeakKW * MODEL_ASSUMPTIONS.processOperatingThresholdFraction : null));
       if (captureSeries || resolvedOpThresholdKW === null) {
         return {
           ...dispatch,
@@ -336,7 +337,7 @@ export const aiComputeMethods = {
     const annualizationFactor = dispatchBasis.annualizationFactor;
     const dispatchHorizonLabel = dispatchBasis.horizonLabel;
     const hours = Array.isArray(dispatchSolar?.hourlyKW) ? dispatchSolar.hourlyKW.length : 0;
-    const targetReliability = Math.max(0.0001, Math.min(0.99999, (state.aiReliabilityTarget || 99.9) / 100));
+    const targetReliability = Math.max(0.0001, Math.min(0.99999, (state.aiReliabilityTarget || DEFAULT_STATE.aiReliabilityTarget) / 100));
     const { capex: batteryCapex, lifetimeYears: batteryLifeYears } = getBatteryCapexAndLife(state, cyclesPerYear);
     const disabledDispatch = this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, 0, {
       captureSeries: captureDispatchSeries,
@@ -461,7 +462,7 @@ export const aiComputeMethods = {
   buildDisabledAiSummary(state) {
     return {
       enabled: false,
-      reliabilityTarget: Math.max(0.0001, Math.min(0.99999, (state.aiReliabilityTarget || 99.9) / 100)) * 100,
+      reliabilityTarget: Math.max(0.0001, Math.min(0.99999, (state.aiReliabilityTarget || DEFAULT_STATE.aiReliabilityTarget) / 100)) * 100,
       designLoadKW: 0,
       annualTokensM: 0,
       annualRevenue: 0,

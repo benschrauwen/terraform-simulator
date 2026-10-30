@@ -4,7 +4,8 @@
    Capex, O&M, revenue, policy support, yearly cash flows, NPV/IRR/payback,
    and levelized cost metrics for a computed scenario. */
 
-import { MODEL_ASSUMPTIONS } from '../data/reference-data.js';
+import { MODEL_ASSUMPTIONS } from '../data/assumptions.js';
+import { DEFAULT_STATE } from '../state/schema.js';
 import {
   approximateIRR,
   buildCashFlowTimeline,
@@ -39,7 +40,7 @@ export const economicsMethods = {
         const marketConfig = ModuleCatalog.getMarketConfig(module.id, module.route) || {};
         const priceKey = `${module.id}Price`;
         const unitPrice = state[priceKey] ?? marketConfig.defaultValue ?? 0;
-        const assetLifeYears = module.routeConfig?.assetLifeYears || 10;
+        const assetLifeYears = module.routeConfig?.assetLifeYears || MODEL_ASSUMPTIONS.exploratoryAssetLifeYears;
         return {
           id: module.id,
           label: module.label,
@@ -135,8 +136,8 @@ export const economicsMethods = {
       exploratory: exploratoryAnnualizedCapex,
     };
 
-    const batteryOmFrac = (state.batteryOmPercent ?? 1.5) / 100;
-    const processOmFrac = (state.processOmPercent ?? 3) / 100;
+    const batteryOmFrac = (state.batteryOmPercent ?? DEFAULT_STATE.batteryOmPercent) / 100;
+    const processOmFrac = (state.processOmPercent ?? DEFAULT_STATE.processOmPercent) / 100;
     const annualOM = solar.annualSolarOm +
       (storage.capex * batteryOmFrac) +
       (ai.annualOM || 0) +
@@ -390,7 +391,7 @@ export const economicsMethods = {
       waterProducedDaily,
       netWaterDaily: Math.max(0, waterConsumedDaily - waterProducedDaily),
       landAcres: solar.acres,
-      landProductivityVsCorn: sabatier.enabled ? 20 : 0,
+      landProductivityVsCorn: sabatier.enabled ? MODEL_ASSUMPTIONS.landProductivityVsCornFactor : 0,
     };
   },
 };

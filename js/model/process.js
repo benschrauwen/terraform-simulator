@@ -8,6 +8,7 @@
 import { CHEMISTRY } from '../data/reference-data.js';
 import { DEFAULT_STATE } from '../state/schema.js';
 import { ModuleCatalog } from './module-catalog.js';
+import { clampNumber } from './util.js';
 
 /* Sizes a two-feed (H2 + CO2) catalytic reactor. `h2PerKg` / `co2PerKg` are
    the kg of each feed per kg of product and `conversion` the yield fraction.
@@ -120,7 +121,7 @@ export const processMethods = {
   },
 
   getExploratoryPriorityWeight(state, moduleId) {
-    return this.clampNumber(
+    return clampNumber(
       state?.[`${moduleId}PriorityWeight`],
       0,
       100,
@@ -141,7 +142,7 @@ export const processMethods = {
   buildProcessAllocationPlan(state) {
     const supported = this.getSupportedProductWeights(state);
     const mtgMethanolSplit = state.mtgEnabled
-      ? this.clampNumber(state.mtgMethanolSplit, 0, 100, DEFAULT_STATE.mtgMethanolSplit) / 100
+      ? clampNumber(state.mtgMethanolSplit, 0, 100, DEFAULT_STATE.mtgMethanolSplit) / 100
       : 0;
 
     const exploratoryModules = ModuleCatalog.getExploratoryModules()
@@ -727,7 +728,7 @@ export const processMethods = {
           ),
           capexBasisUnit: routeConfig?.capexUnit || 'tpa',
           capexBasis: Number.isFinite(capexBasis) ? capexBasis : (routeConfig?.capexPerAnnualUnit || 0),
-          omPercent: Number.isFinite(omPercent) ? omPercent : 4,
+          omPercent: Number.isFinite(omPercent) ? omPercent : DEFAULT_STATE.exploratoryOmPercent,
           feedstockSummary: routeConfig?.feedstockSummary || 'Needs power',
           h2Consumed,
           co2Consumed,

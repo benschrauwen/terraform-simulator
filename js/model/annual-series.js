@@ -5,6 +5,7 @@
    simulated days; Mars: seasonal sols over an orbit; Moon: repeated cycle)
    and the resampling / aggregation helpers for daily and average-cycle views. */
 
+import { PLANETARY_BODIES } from '../data/reference-data.js';
 import { SolarGeometry } from './solar-geometry.js';
 
 export const annualSeriesMethods = {
@@ -298,14 +299,9 @@ export const annualSeriesMethods = {
     const dailyProfiles = Array.from({ length: cycleCount }, (_, index) => {
       const geo = SolarGeometry.planetaryDailyProfile({
         latitude: state.latitude,
+        ...PLANETARY_BODIES.mars.orbit,
         seasonalDay: index + 1,
-        orbitalDays: 668.6,
-        axialTiltDeg: 24.936,
         cycleHours,
-        solarConstant: 590,
-        diffuseFraction: 0,
-        eccentricity: 0.093377,
-        perihelionLsDeg: 248,
         bins: binCount,
       });
       return SolarGeometry.applyMountingShape(geo.rawProfile, state.mountingType, cycleHours).rawProfile;
@@ -330,7 +326,7 @@ export const annualSeriesMethods = {
 
   buildMarsOrbitalDispatchBasis(state, solar, options = {}) {
     const body = this.getBodyConfig('mars');
-    const orbitalSols = 668.6;
+    const orbitalSols = body.orbit.orbitalDays;
     const annualizationFactor = Math.max(1e-9, Math.max(body.cyclesPerEarthYear || 0, 1) / orbitalSols);
     return {
       solar: this.buildMarsSeasonalSolarSeries(

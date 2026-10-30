@@ -1,6 +1,9 @@
 /* ============================================
    Reference data and presets
-   ============================================ */
+   ============================================
+   Planetary bodies, site presets, mounting types, chemistry constants,
+   methane market notes and AI datacenter defaults. Fixed model heuristics
+   live in data/assumptions.js. */
 
 export const PLANETARY_BODIES = {
   earth: {
@@ -24,6 +27,16 @@ export const PLANETARY_BODIES = {
     hoursPerCycleLabel: 'hrs/sol',
     chartLabelMode: 'clock',
     supportsSpecificDay: false,
+    // Orbital parameters for the seasonal irradiance model (orbitalDays is
+    // the Mars year in sols; Ls = areocentric solar longitude).
+    orbit: {
+      orbitalDays: 668.6,
+      axialTiltDeg: 24.936,
+      solarConstant: 590,
+      diffuseFraction: 0,
+      eccentricity: 0.093377,
+      perihelionLsDeg: 248,
+    },
     chartNote: 'Representative average local-sol profile; annual dispatch includes modeled Mars orbital seasonality. Annual economics remain normalized to an Earth year.',
     siteYieldNote: 'Mars presets use literature-inspired annual-yield benchmarks; Earth cloud datasets and latitude heuristics are disabled.',
   },
@@ -36,6 +49,13 @@ export const PLANETARY_BODIES = {
     hoursPerCycleLabel: 'hrs/cycle',
     chartLabelMode: 'days',
     supportsSpecificDay: false,
+    // Synodic month as the "orbit" for the generic (non-polar) lunar profile.
+    orbit: {
+      orbitalDays: 29.53,
+      axialTiltDeg: 1.54,
+      solarConstant: 1361,
+      diffuseFraction: 0,
+    },
     chartNote: 'Representative south-polar ridge profile: mostly-on illumination with terrain-shadow dips and brief outages, not a clean two-week day/night cycle. Mounting still matters because the Sun stays low on the horizon. Annual economics remain normalized to an Earth year.',
     siteYieldNote: 'Lunar presets use literature-inspired annual-yield benchmarks; Earth cloud datasets and latitude heuristics are disabled.',
   },
@@ -84,6 +104,10 @@ export const LOCATION_PRESETS = [
   { name: 'Cape Town, SA', lat: -33.93, lon: 18.42, ghi: 1950, baseYield: 1620, region: 'temperate' },
 ];
 
+/* yieldMult is the yield multiple vs. the site's fixed-tilt yield (Earth
+   sites also get MOUNTING_YIELD_ADJUSTMENTS from data/assumptions.js). The
+   spacing and BOS sensitivities scale layout and balance-of-system cost with
+   latitude and cloudiness relative to SOLAR_LAYOUT_REFERENCE. */
 export const MOUNTING_TYPES = {
   fixed: {
     label: 'Fixed Tilt',
@@ -198,13 +222,6 @@ export const METHANE_MARKET_PRESETS = {
     basis: 'Danish Energy Agency tender framework for upgraded biogas and e-methane delivered to the gas grid',
     note: 'This is a Denmark-specific bid-based support structure with long support periods, so the app leaves the methane price manual instead of inventing a single default premium.',
   },
-};
-
-export const MODEL_ASSUMPTIONS = {
-  fallbackYieldFromGhi: 0.82,
-  batteryNominalLifeYears: 12,
-  batteryMonthlyLeakage: 0.02,
-  fossilGasEmissionsPerMCF: 0.053,
 };
 
 export const AI_COMPUTE_DEFAULTS = {

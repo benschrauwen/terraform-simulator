@@ -109,8 +109,8 @@ export const CORE_STATE_FIELDS = [
   // aiLoadKW at the array's DC peak.
   { key: 'aiSizingMode', type: 'enum', options: ['max', 'fixed'], defaultValue: 'max' },
   { key: 'aiLoadKW', type: 'number', min: 1, max: 1e9, defaultValue: 100 },
-  { key: 'aiTokenPricePerM', type: 'number', min: 0, max: 1e9, defaultValue: 3.0 },
-  { key: 'aiMillionTokensPerMWh', type: 'number', min: 0, max: 1e9, defaultValue: 1000 },
+  { key: 'aiTokenPricePerM', type: 'number', min: 0, max: 1e9, defaultValue: AI_COMPUTE_DEFAULTS.tokenPricePerM },
+  { key: 'aiMillionTokensPerMWh', type: 'number', min: 0, max: 1e9, defaultValue: AI_COMPUTE_DEFAULTS.millionTokensPerMWh },
   { key: 'aiGpuCapexPerKW', type: 'number', min: 0, max: 1e9, defaultValue: AI_COMPUTE_DEFAULTS.capexPerKW },
   { key: 'aiAssetLifeYears', type: 'integer', min: 1, max: 100, defaultValue: AI_COMPUTE_DEFAULTS.assetLifeYears },
 

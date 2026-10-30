@@ -309,10 +309,32 @@ export const METHANE_MARKET_PRESETS = {
   },
 };
 
+// AI datacenter defaults (checked 2026-10). Energy is facility energy delivered to
+// the AI load (cooling included), so capex and throughput are per facility kW/MWh,
+// and tokens count input + output with a blended per-token price, as the
+// InferenceX benchmarks and Artificial Analysis price comparisons do.
 export const AI_COMPUTE_DEFAULTS = {
+  // Terraform: GPUs "currently valued at around $50,000/kW" (2026-01-30). Epoch AI's
+  // 1 GW GB200 NVL72 build is $37.9k per IT kW incl. network and facility at PUE 1.14
+  // (~$33k per facility kW); GB300 racks alone run ~$36-43k per IT kW.
+  // https://terraformindustries.wordpress.com/2026/01/30/direct-current-data-centers/
+  // https://epoch.ai/data-insights/ai-datacenter-cost-breakdown
+  // https://www.wing.vc/content/how-much-does-an-nvidia-nvl72-cost
   capexPerKW: 50000,
+  // Hyperscalers depreciate servers over ~5-5.5 years; SemiAnalysis TCO uses 4.
   assetLifeYears: 5,
-  omPercent: 4,
+  // Maintenance, staff, support contracts, spares and insurance; Epoch's hyperscale
+  // case is ~0.8%/yr of capex, a small independent site carries more per kW.
+  omPercent: 3,
+  // Blended open-weight inference price, ~8:1 input:output, uncached: DeepSeek-V3.2
+  // ~$0.27, gpt-oss-120B ~$0.20, DeepSeek-R1 ~$0.68 per M tokens (list prices 2026-10).
+  // https://deepinfra.com/pricing  https://www.together.ai/pricing
+  tokenPricePerM: 0.35,
+  // Total (input + output) tokens per facility MWh. InferenceX peak for DeepSeek-R1 on
+  // GB200 NVL72 / B200 is ~9,000-12,000 M per MWh of all-in facility power; halved for
+  // real traffic (partial batches, latency targets, cache misses), a judgment call.
+  // https://inferencex.semianalysis.com/compare/deepseek-r1-gb200-vs-h100
+  millionTokensPerMWh: 6000,
 };
 
 export const AI_RELIABILITY_OPTIONS = [

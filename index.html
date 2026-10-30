@@ -432,18 +432,21 @@
                 <div class="field-note compact-note">
                   GPU CAPEX is modeled on a direct-current datacenter framing ($/kW installed IT load).
                 </div>
-                <label>GPU CAPEX ($/kW)
+                <label>GPU CAPEX ($/kW of facility AI load)
                   <input type="range" id="aiGpuCapexPerKW" min="5000" max="150000" step="1000" value="50000">
                   <span class="range-value" id="aiGpuCapexPerKWValue">$50,000/kW</span>
                 </label>
-                <label>Token price ($ / 1M tokens)
-                  <input type="range" id="aiTokenPrice" min="0.25" max="20" step="0.25" value="3">
-                  <span class="range-value" id="aiTokenPriceValue">$3.00 / 1M tokens</span>
+                <label>Token price ($ / 1M tokens, input + output blended)
+                  <input type="range" id="aiTokenPrice" data-scale="log" min="-1.3010" max="0.6990" step="0.001" value="-0.4559319556497244">
+                  <span class="range-value" id="aiTokenPriceValue">$0.35 / 1M tokens</span>
                 </label>
-                <label>Throughput (1M tokens / MWh)
-                  <input type="range" id="aiTokensPerMWh" min="100" max="3000" step="25" value="1000">
-                  <span class="range-value" id="aiTokensPerMWhValue">1,000 M tokens/MWh</span>
+                <label>Throughput (1M tokens / facility MWh, input + output)
+                  <input type="range" id="aiTokensPerMWh" data-scale="log" min="2.4771" max="4.4771" step="0.001" value="3.7781512503836434">
+                  <span class="range-value" id="aiTokensPerMWhValue">6,000 M tokens/MWh</span>
                 </label>
+                <div class="field-note compact-note">
+                  Tokens count input plus output, as inference benchmarks and price comparisons do; price × throughput is revenue per MWh (default $2,100/MWh, close to renting the same power out as Blackwell GPUs). Energy and CAPEX are per facility kW, cooling included.
+                </div>
                 <label>GPU Asset Life (years)
                   <input type="range" id="aiAssetLifeYears" min="3" max="8" step="1" value="5">
                   <span class="range-value" id="aiAssetLifeYearsValue">5 years</span>

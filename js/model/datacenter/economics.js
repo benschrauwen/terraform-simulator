@@ -40,8 +40,9 @@
      payment spread evenly over [a, b] is that booking integrated over the
      window (splitSpreadAcrossYears). Year-0 bookings are paid at close;
      bookings past the horizon fall in its last year, so the undiscounted
-     capex is the same with either timing. Debt (financing) is sized on the
-     capex paid at close only; later capex is equity.
+     capex is the same with either timing. Debt (financing.js): a
+     construction loan drawn with the non-GPU capex and a loan per GPU
+     purchase; equity cash = project cash + draws - debt service - fees.
 
    Paybacks: paybackYears = years from notice-to-proceed until the
    cumulative project cash (salvage excluded) turns positive;
@@ -71,7 +72,8 @@ import { summarizeReturns } from '../economics.js';
 import { getGpuFleet, getRentalRevenueFactor } from './gpu.js';
 import { onSiteNuclearMWh } from './impacts.js';
 import { pricedCo2eKgPerMMBtu } from './supply.js';
-import { buildFinancingModel, buildReplacementSchedule, crf } from '../finance.js';
+import { buildReplacementSchedule, crf } from '../finance.js';
+import { buildDatacenterFinancing } from './financing.js';
 
 /* Installed assets: { key, label, capex, lifeYears, group ('facility' |
    'it' | 'power'), timing ('close' | 'energization' | 'build'), pathId and
@@ -361,11 +363,42 @@ export function calculateDatacenterEconomics(state, ctx) {
   const totalAnnualRevenue = Object.values(revenue).reduce((sum, value) => sum + value, 0);
 
   const replacementSchedule = buildShiftedReplacementSchedule(assets, horizonYears, t0);
-  const financing = buildFinancingModel(state, capexAtClose);
+  // Financing (financing.js): a construction loan on the non-GPU capex as it
+  // is paid, and a GPU loan per GPU purchase (the first fleet, each refresh).
+  const constructionByYear = {};
+  bought.filter(asset => asset.key !== 'it').forEach(asset => payments.get(asset.key).shares.forEach(({ year, share }) => {
+    constructionByYear[year] = (constructionByYear[year] || 0) + asset.capex * share;
+  }));
+  const gpuCohorts = [];
+  const itAsset = bought.find(asset => asset.key === 'it');
+  if (itAsset) {
+    const paid = payments.get('it');
+    gpuCohorts.push({ atYears: paid.from, byYear: Object.fromEntries(paid.shares.map(({ year, share }) => [year, itAsset.capex * share])) });
+  }
+  replacementSchedule.entries.forEach(entry => entry.items.filter(item => item.key === 'it').forEach(item => {
+    let cohort = gpuCohorts.find(other => Math.abs(other.atYears - item.scheduledAtYear) < 1e-9);
+    if (!cohort) gpuCohorts.push(cohort = { atYears: item.scheduledAtYear, byYear: {} });
+    cohort.byYear[entry.year] = (cohort.byYear[entry.year] || 0) + item.cost;
+  }));
+  const debt = buildDatacenterFinancing(state, { constructionByYear, gpuCohorts, t0, horizonYears, gpuLifeYears: itAsset?.lifeYears });
+  const noDebt = { draw: 0, capitalizedInterest: 0, interest: 0, principal: 0, balloon: 0, service: 0, startBalance: 0, endBalance: 0, fee: 0 };
+  const atClose = debt.byYear[0] || noDebt;
+  // Sponsor cash at close: the capex paid then, less what the loans fund, plus fees.
+  const equityUpfront = capexAtClose - atClose.draw + atClose.fee;
+  // In the shape summarizeReturns and the shared timeline read (debtAmount = funded at close).
+  const financing = {
+    ...debt,
+    debtAmount: atClose.draw,
+    equityCapex: capexAtClose - atClose.draw,
+    upfrontFee: debt.fees,
+    equityUpfront,
+    annualDebtService: debt.construction.annualPayment,
+    termExceedsHorizon: debt.enabled && debt.balloonPayment > 1e-9,
+  };
 
   const yearlyCashFlows = [];
   let npv = -capexAtClose;
-  let equityNpv = -financing.equityUpfront;
+  let equityNpv = -equityUpfront;
   let pvOperatingYears = 0;
   let pvRentalYears = 0;
   let pvOpex = 0;
@@ -388,9 +421,9 @@ export function calculateDatacenterEconomics(state, ctx) {
     const replacementOutflow = (replacementEvent ? replacementEvent.total : 0) + deferredCapexOutflow;
     const salvageValue = year === horizonYears ? replacementSchedule.salvage.total : 0;
     const netCashFlow = operatingCashFlow - replacementOutflow + salvageValue;
-    const debtEntry = financing.byYear[year] || { startingBalance: 0, endingBalance: 0, interest: 0, principalPaid: 0, debtService: 0, scheduledDebtService: 0, balloonPayment: 0 };
-    const equityCashFlow = netCashFlow - debtEntry.debtService;
-    const scheduledDebtService = debtEntry.scheduledDebtService ?? debtEntry.debtService;
+    const debtEntry = debt.byYear[year] || noDebt;
+    const equityCashFlow = netCashFlow + debtEntry.draw - debtEntry.service - debtEntry.fee;
+    const scheduledDebtService = debtEntry.service - debtEntry.balloon;
     const previous = yearlyCashFlows[yearlyCashFlows.length - 1];
     yearlyCashFlows.push({
       year,
@@ -422,17 +455,22 @@ export function calculateDatacenterEconomics(state, ctx) {
       netCashFlow,
       cumulativeOperatingCash: (previous ? previous.cumulativeOperatingCash : -capexAtClose) + operatingCashFlow,
       cumulativeNetCash: (previous ? previous.cumulativeNetCash : -capexAtClose) + netCashFlow,
-      debtStartingBalance: debtEntry.startingBalance,
-      debtEndingBalance: debtEntry.endingBalance,
+      debtStartingBalance: debtEntry.startBalance,
+      debtEndingBalance: debtEntry.endBalance,
+      debtDraw: debtEntry.draw,
+      debtCapitalizedInterest: debtEntry.capitalizedInterest,
+      debtFees: debtEntry.fee,
       debtInterest: debtEntry.interest,
-      debtPrincipal: debtEntry.principalPaid,
-      debtService: debtEntry.debtService,
-      balloonPayment: debtEntry.balloonPayment || 0,
+      debtPrincipal: debtEntry.principal,
+      debtService: debtEntry.service,
+      scheduledDebtService,
+      balloonPayment: debtEntry.balloon,
       cashAvailableForDebtService: operatingCashFlow,
-      dscr: financing.enabled && scheduledDebtService > 1e-9 ? operatingCashFlow / scheduledDebtService : null,
-      sponsorSupportNeeded: financing.enabled ? Math.max(0, -equityCashFlow) : 0,
+      // From first power: debt service never starts before it (financing.js).
+      dscr: debt.enabled && scheduledDebtService > 1e-9 ? operatingCashFlow / scheduledDebtService : null,
+      sponsorSupportNeeded: debt.enabled && year > t0 ? Math.max(0, -equityCashFlow) : 0,
       equityCashFlow,
-      cumulativeEquityCash: (previous ? previous.cumulativeEquityCash : -financing.equityUpfront) + equityCashFlow,
+      cumulativeEquityCash: (previous ? previous.cumulativeEquityCash : -equityUpfront) + equityCashFlow,
     });
     npv += netCashFlow * discount(year);
     equityNpv += equityCashFlow * discount(year);
@@ -457,6 +495,9 @@ export function calculateDatacenterEconomics(state, ctx) {
   const returns = summarizeReturns({
     rate, horizonCrf, netCapexAtClose: capexAtClose, financing, yearlyCashFlows, totalAnnualRevenue, annualCost, totalCapex: capexAtClose, policy,
   });
+  // The timeline also shows the loan draws (the shared builder has no column for them).
+  returns.cashFlowTimeline.debtDraws = [atClose.draw, ...yearlyCashFlows.map(entry => entry.debtDraw)];
+  returns.cashFlowTimeline.hasDebtDraws = debt.enabled && debt.drawn > 1e-9;
 
   // Paybacks from notice-to-proceed and from first power (salvage excluded, as summarizeReturns).
   const paybackFlows = yearlyCashFlows.map(entry => entry.netCashFlow - entry.salvageValue);

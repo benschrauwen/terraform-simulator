@@ -39,7 +39,7 @@
 import { getSolarCostPresetValues, MOUNTING_TYPES } from '../data/reference-data.js';
 import { COOLING_TECHNOLOGIES, DEFAULT_COOLING_TECHNOLOGY } from '../data/datacenter/cooling.js';
 import { FACILITY_DEFAULTS } from '../data/datacenter/facility.js';
-import { DEFAULT_GPU_PLATFORM, GPU_PLATFORMS, GPU_RENTAL_DEFAULTS } from '../data/datacenter/gpu.js';
+import { DEFAULT_GPU_PLATFORM, GPU_FINANCING, GPU_PLATFORMS, GPU_RENTAL_DEFAULTS } from '../data/datacenter/gpu.js';
 import { DATACENTER_MODEL_ASSUMPTIONS } from '../data/datacenter/model-assumptions.js';
 import {
   ARCHITECTURE_STARTING_DESIGNS,
@@ -283,6 +283,12 @@ export const DATACENTER_STATE_FIELDS = [
   { key: 'debtInterestRate', type: 'number', min: 0, max: 100, defaultValue: DEFAULT_STATE.debtInterestRate },
   { key: 'debtTermYears', type: 'integer', min: 1, max: 30, defaultValue: DEFAULT_STATE.debtTermYears },
   { key: 'debtFeePercent', type: 'number', min: 0, max: 100, defaultValue: DEFAULT_STATE.debtFeePercent },
+  // GPU debt (model/datacenter/financing.js): each GPU purchase financed at
+  // this share of its cost over the GPU life. Defaults (judgment from
+  // 2024-2026 GPU-backed loans, sources in data/datacenter/gpu.js
+  // GPU_FINANCING): 70% advance, 9.0% all-in.
+  { key: 'gpuDebtSharePercent', type: 'number', min: 0, max: 90, defaultValue: GPU_FINANCING.advanceRatePercent },
+  { key: 'gpuDebtInterestRate', type: 'number', min: 0, max: 30, defaultValue: GPU_FINANCING.allInRatePercent },
 ];
 
 const BASE_FIELDS = DATACENTER_STATE_FIELDS.filter(field => typeof field.derive !== 'function');

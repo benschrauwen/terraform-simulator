@@ -670,6 +670,11 @@ body.datacenter-app [hidden] {
 
 /* ---- Right column ---- */
 
+/* Key metrics whose label must keep its case (CO₂e, not CO₂E; results.js) */
+.dc-metric-keepcase .econ-metric-label {
+  text-transform: none;
+}
+
 .dc-warnings {
   margin-bottom: 10px;
   padding: 9px 10px;

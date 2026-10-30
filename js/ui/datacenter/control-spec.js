@@ -396,11 +396,22 @@ export const DATACENTER_SECTIONS = {
       options: () => [{ value: 'spread', label: 'Over the build, finishing at first power' }, { value: 'ntp', label: 'All at notice-to-proceed' }],
       tooltip: 'Building, cooling, substation, grid connection, generation, solar and battery. Spread: evenly over each component\'s procurement and construction, as late as its schedule allows (the grid connection over its construction only). Land is paid at notice-to-proceed either way; project debt covers only what is paid at notice-to-proceed.',
     },
-    { type: 'checkbox', id: 'financingEnabled', label: 'Project debt' },
-    { type: 'range', id: 'debtSharePercent', label: 'Debt share', min: 0, max: 90, step: 1, format: pct(0, '% of capex'), visible: state => state.financingEnabled },
-    { type: 'range', id: 'debtInterestRate', label: 'Interest rate', min: 0, max: 15, step: 0.05, format: pct(2), visible: state => state.financingEnabled },
-    { type: 'range', id: 'debtTermYears', label: 'Debt term', min: 1, max: 30, step: 1, format: years, visible: state => state.financingEnabled },
-    { type: 'range', id: 'debtFeePercent', label: 'Upfront fee', min: 0, max: 5, step: 0.1, format: pct(1, '% of debt'), visible: state => state.financingEnabled },
+    { type: 'checkbox', id: 'financingEnabled', label: 'Project debt', tooltip: 'A construction loan drawn as the non-GPU capex is paid (interest capitalized until first power, then a term loan), and a loan per GPU purchase. NPV and payback stay project-level; the equity view shows the sponsor\'s side.' },
+    {
+      type: 'range', id: 'debtSharePercent', label: 'Construction loan', min: 0, max: 90, step: 1, format: pct(0, '% of non-GPU capex'), visible: state => state.financingEnabled,
+      tooltip: 'Drawn as building, cooling, power and grid capex is paid; interest is capitalized until first power, then the balance amortizes over the term below.',
+    },
+    { type: 'range', id: 'debtInterestRate', label: 'Construction / term loan rate', min: 0, max: 15, step: 0.05, format: pct(2), visible: state => state.financingEnabled },
+    { type: 'range', id: 'debtTermYears', label: 'Term loan (from first power)', min: 1, max: 30, step: 1, format: years, visible: state => state.financingEnabled },
+    {
+      type: 'range', id: 'gpuDebtSharePercent', label: 'GPU loan', min: 0, max: 90, step: 1, format: pct(0, '% of GPU cost'), visible: state => state.financingEnabled && ownsIt(state),
+      tooltip: 'Each GPU purchase (first power and every refresh) financed at this share of its cost, repaid over the GPU life. Recent GPU-backed loans: ~65-75% of cost (up to ~90% with an investment-grade customer contract).',
+    },
+    {
+      type: 'range', id: 'gpuDebtInterestRate', label: 'GPU loan rate', min: 0, max: 20, step: 0.05, format: pct(2), visible: state => state.financingEnabled && ownsIt(state),
+      tooltip: 'All-in rate. 2025-26 GPU loans: ~6.2-6.9% with an investment-grade customer, ~8.5-9.5% without (e.g. CoreWeave DDTL 5.5 SOFR + 5.5%, Crusoe SOFR + ~5%, IREN 9% fixed), 10-14% for 2024-vintage or uncontracted risk.',
+    },
+    { type: 'range', id: 'debtFeePercent', label: 'Upfront fee', min: 0, max: 5, step: 0.1, format: pct(1, '% of each loan'), visible: state => state.financingEnabled },
   ],
 
   timelineControls: [

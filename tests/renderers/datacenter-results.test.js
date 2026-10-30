@@ -67,3 +67,26 @@ test('the cash-flow CSV carries datacenter headers and column labels and its NPV
   const plain = buildCashFlowTable(r.economics);
   assert.equal(cashFlowTableMethods.relabelCashFlowTable.call({}, plain), plain);
 });
+
+test('financing: equity metric, loan rows and debt columns appear only with debt', () => {
+  const financed = calculateDatacenterScenario({ financingEnabled: true }, { fastMode: true });
+  const metrics = renderKeyMetrics(financed);
+  assert.match(metrics, /Equity IRR/);
+  assert.ok(metrics.includes(`Equity NPV ${money(financed.economics.equityNpv)}`));
+  const groups = renderEconomicsGroups(financed);
+  ['Construction loan drawn', 'Capitalized interest', 'GPU loans (4 purchases)', 'Minimum DSCR', 'Sponsor cash at close'].forEach(text => assert.ok(groups.includes(text), text));
+  const table = buildCashFlowTable(financed.economics);
+  const keys = table.columns.map(column => column.key);
+  ['debtDraw', 'debtInterest', 'debtPrincipal', 'debtService', 'equityCashFlow'].forEach(key => assert.ok(keys.includes(key), key));
+  // Draws in the table add up to the loans drawn.
+  assert.ok(Math.abs(table.rows.reduce((sum, row) => sum + row.debtDraw, 0) - financed.economics.financing.drawn) < 1e-3);
+  // Without debt: no equity metric, no debt columns.
+  const plain = calculateDatacenterScenario({}, { fastMode: true });
+  assert.doesNotMatch(renderKeyMetrics(plain), /Equity IRR/);
+  assert.ok(!buildCashFlowTable(plain.economics).columns.some(column => column.key.startsWith('debt')));
+});
+
+test('the CO₂e label keeps its lowercase e', () => {
+  const islanded = calculateDatacenterScenario({ architecture: 'islanded', gasType: 'recip' }, { fastMode: true });
+  assert.match(renderKeyMetrics(islanded), /<div class="econ-metric dc-metric-keepcase">[\s\S]*?CO₂e/);
+});

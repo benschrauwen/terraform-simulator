@@ -3,13 +3,51 @@
    mixin that writes them into the page. */
 
 import { formatIrrWithStatus, formatMirr } from '../formatters.js';
-import { buildFinancingRows } from '../renderers/economics.js';
 import { econGroup, econMetric, econRow, escapeHtml as esc } from '../renderers/markup.js';
 import { fixed, formatM3, formatMonths, formatTonnes, formatUptime, formatYearMonth, money, midSentence } from './format.js';
 
 const signClass = value => (value >= 0 ? 'positive' : 'negative');
 const perMWh = value => (Number.isFinite(value) ? `$${fixed(value, 1)}/MWh` : '—');
 const payback = years => (Number.isFinite(years) ? `${fixed(years, 1)} yrs` : 'not within horizon');
+/** Equity view (financing on): equity IRR, equity NPV and the weakest debt cover. */
+function equityMetric(e) {
+  const f = e.financing;
+  const notes = [`Equity NPV ${money(e.equityNpv)}`];
+  if (Number.isFinite(f.minDscr)) notes.push(`min DSCR ${fixed(f.minDscr, 2)}x`);
+  return econMetric('Equity IRR', formatIrrWithStatus(e.equityIrr, e.equityIrrAnalysis), Number.isFinite(e.equityIrr) ? signClass(e.equityIrr - e.discountRatePercent) : '', notes.join(' · '),
+    'Sponsor cash flows: project cash flows plus loan draws, less debt service and fees. Equity NPV uses the project discount rate, not a separate cost of equity. NPV, IRR and payback above stay project-level (before financing).');
+}
+
+/** The Financing group: construction / term loan, GPU loans, sponsor view. */
+function financingRows(e) {
+  const f = e.financing;
+  if (!f?.enabled) return [];
+  const c = f.construction;
+  const gpuDrawn = f.gpu.reduce((sum, tranche) => sum + tranche.drawn, 0);
+  const rows = [];
+  if (c.drawn > 0) {
+    rows.push(
+      econRow('Construction loan drawn', money(c.drawn), 'positive', `${fixed(f.debtSharePercent, 0)}% of the non-GPU capex, drawn as it is paid.`),
+      econRow('Capitalized interest', money(c.capitalizedInterest), 'negative', 'Interest during construction added to the balance until first power.'),
+      econRow(`Term loan (from year ${fixed(c.conversionYear, 0)})`, `${money(c.balanceAtConversion)} · ${money(c.annualPayment)}/yr`, '', `${fixed(f.debtTermYears, 0)} years of level payments at ${fixed(f.debtInterestRate, 2)}%.`),
+    );
+  }
+  if (gpuDrawn > 0) {
+    rows.push(econRow(`GPU loans (${fixed(f.gpu.length, 0)} purchases)`, money(gpuDrawn), 'positive', `${fixed(f.gpuDebtSharePercent, 0)}% of each GPU purchase at ${fixed(f.gpuDebtInterestRate, 2)}%, repaid over the GPU life (${fixed(f.gpuDebtTermYears, 0)} years).`));
+    rows.push(econRow('First GPU loan payment', `${money(f.gpu[0].annualPayment)}/yr`));
+  }
+  if (f.fees > 0) rows.push(econRow('Upfront fees', money(f.fees), 'negative'));
+  rows.push(
+    econRow('Sponsor cash at close', money(f.equityUpfront), 'negative'),
+    econRow('Equity NPV', money(e.equityNpv), signClass(e.equityNpv), `Sponsor cash flows discounted at the ${fixed(e.discountRatePercent, 1)}% project rate.`),
+    econRow('Equity IRR', formatIrrWithStatus(e.equityIrr, e.equityIrrAnalysis)),
+  );
+  if (Number.isFinite(f.minDscr)) rows.push(econRow('Minimum DSCR', `${fixed(f.minDscr, 2)}x (year ${fixed(f.minDscrYear, 0)})`, f.minDscr < 1 ? 'warning' : '', 'Operating cash flow / scheduled debt service, from first power.'));
+  if (f.sponsorSupportTotal > 0) rows.push(econRow('Sponsor support after first power', money(f.sponsorSupportTotal), 'warning', 'Equity injected in operating years when cash after debt service is negative (often a GPU refresh: the equity share of the new fleet).'));
+  if (f.balloonPayment > 0) rows.push(econRow(`Balloon repayment (year ${fixed(f.balloonYear, 0)})`, money(f.balloonPayment), 'negative', 'Loans still owed at the horizon (e.g. the last GPU refresh) are repaid then.'));
+  return rows;
+}
+
 /** CO2, or CO2e when on-site generation slips methane (shown apart with its GWP). */
 function co2Metric(r, e) {
   const em = r.emissions;
@@ -17,7 +55,8 @@ function co2Metric(r, e) {
   const notes = [`${fixed(slip ? em.kgCo2ePerMWhServed : em.kgPerMWhServed, 0)} kg/MWh served`];
   if (slip) notes.push(`incl. ${formatTonnes(em.methaneCo2eT)} methane slip (GWP${r.state.methaneGwpHorizon})`);
   if (carbonCost(e) > 0) notes.push(`carbon price ${money(carbonCost(e))}/yr`);
-  return econMetric(slip ? 'CO₂e' : 'CO₂', `${formatTonnes(slip ? em.totalCo2eT : em.totalT)}/yr`, '', notes.join(' · '),
+  // 'dc-metric-keepcase': the labels are capitalized by CSS, which would turn CO₂e into CO₂E.
+  return econMetric(slip ? 'CO₂e' : 'CO₂', `${formatTonnes(slip ? em.totalCo2eT : em.totalT)}/yr`, 'dc-metric-keepcase', notes.join(' · '),
     'Grid imports x grid intensity plus fuel burned on site x 52.91 kg/MMBtu (diesel 73.96), combustion only; plus unburned methane from on-site engines as CO₂e (GWP100 29.8 or GWP20 82.5, IPCC AR6). The carbon price applies to the on-site CO₂ only (and the methane if you tick it), not to grid imports.');
 }
 
@@ -59,6 +98,7 @@ export function renderKeyMetrics(r) {
     econMetric(e.financing?.enabled ? 'Project NPV' : 'NPV', money(e.npv), signClass(e.npv), `at ${fixed(e.discountRatePercent, 1)}% over ${fixed(e.analysisHorizonYears, 0)} yrs`, 'Discounted project cash flows from notice-to-proceed, including the build years without revenue.'),
     econMetric(e.financing?.enabled ? 'Project IRR' : 'IRR', formatIrrWithStatus(e.projectIrr, e.projectIrrAnalysis), Number.isFinite(e.projectIrr) ? signClass(e.projectIrr - e.discountRatePercent) : '', 'Project, before financing', e.projectIrrAnalysis?.reason || 'Internal rate of return on project cash flows before financing.'),
     econMetric('MIRR', formatMirr(e.mirr), Number.isFinite(e.mirr) ? signClass(e.mirr - e.discountRatePercent) : '', `Finance + reinvest at ${fixed(e.discountRatePercent, 1)}%`, 'Modified IRR: always unique; above the discount rate exactly when NPV is positive.'),
+    e.financing?.enabled ? equityMetric(e) : '',
     econMetric('Project payback', payback(e.paybackYears), '', Number.isFinite(e.paybackYears) ? `from start · ${afterFirstPower(e)}` : '', PROJECT_PAYBACK_TIP),
     gpuPaybackText(e) ? econMetric('GPU payback', gpuPaybackText(e), '', 'GPU only, from its first rental hour', GPU_PAYBACK_TIP) : '',
   ].join('')}</div>`;
@@ -115,13 +155,13 @@ function unitRows(e) {
 
 export function renderEconomicsGroups(r) {
   const e = r.economics;
-  const financing = buildFinancingRows({ e });
+  const financing = financingRows(e);
   return [
     econGroup('Capital cost', money(e.totalCapex), capexRows(e, r)),
     econGroup('Operating cost', `${money(e.annualOM)}/yr`, opexRows(e), 'Full operating year'),
     econGroup('Revenue', `${money(e.totalAnnualRevenue)}/yr`, revenueRows(e, r), 'Full operating year'),
     econGroup('Unit economics', perMWh(e.levelized?.costOfPowerPerMWh), unitRows(e)),
-    financing.length ? econGroup('Financing', `${fixed(e.financing.debtSharePercent, 0)}% debt`, financing.join('')) : '',
+    financing.length ? econGroup('Financing', `${money(e.financing.drawn)} drawn`, financing.join('')) : '',
   ].join('');
 }
 

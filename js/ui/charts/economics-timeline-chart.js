@@ -98,6 +98,9 @@ function buildTimelineDatasets(timeline, text = DEFAULT_TIMELINE_TEXT) {
     ...(timeline.hasSalvage
       ? [cashBar('Salvage value', timeline.salvageValue, 'rgba(132, 204, 22, 0.55)', '#84cc16')]
       : []),
+    ...(timeline.hasDebtDraws && timeline.debtDraws
+      ? [cashBar('Debt drawn', timeline.debtDraws, 'rgba(165, 180, 252, 0.5)', '#a5b4fc')]
+      : []),
     ...(timeline.hasDebtService
       ? [cashBar('Debt service', negate(timeline.annualDebtService), 'rgba(95, 127, 184, 0.6)', '#5f7fb8')]
       : []),
@@ -137,6 +140,7 @@ function timelineTooltipFooter(timeline, items) {
 
   lines.push(`Project cash: ${money(timeline.projectCashFlow[index])}`);
   if (timeline.financed) {
+    if ((timeline.debtDraws?.[index] || 0) > 1e-9) lines.push(`Debt drawn: ${money(timeline.debtDraws[index])}`);
     lines.push(`Equity cash: ${money(timeline.equityCashFlow[index])}`);
     const sponsorSupport = timeline.sponsorSupportNeeded[index] || 0;
     if (sponsorSupport > 1e-9) {

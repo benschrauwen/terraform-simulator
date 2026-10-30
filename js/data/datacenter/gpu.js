@@ -35,6 +35,40 @@
    https://www.silicondata.com/blog/b200-rental-price-august-2026-update
    https://www.silicondata.com/blog/h200-vs-h100-rental-prices-may-july-2026 */
 
+/* GPU-backed debt (state gpuDebtSharePercent, gpuDebtInterestRate;
+   model/datacenter/financing.js): each GPU purchase financed over the GPU
+   life. Recent facilities (all-in at SOFR 3.94% on 2026-10-29, NY Fed):
+   - CoreWeave DDTL 2.0 (May 2024, $7.6B): Term SOFR + 6.00-6.50% for
+     investment-grade (IG) customers, + 13.00% otherwise; 10.53% charged at
+     2024-12-31; each loan matures 5 years after funding; 1.5% upfront fee;
+     advance rates redacted (S-1, 2025).
+   - CoreWeave DDTL 4.0 (Mar 2026, $8.5B, IG customer): SOFR + 2.25% (~6.2%);
+     90% loan-to-cost during installation.
+   - CoreWeave DDTL 5.5 (Aug 2026, $2.6B, Ba2/BB+): SOFR + 5.50% (~9.4%), ~5 yr.
+   - Crusoe $509M delayed-draw loan (Sep 2026 price talk): SOFR + 4.75-5.00%
+     at 98.5, sized at the lower of 75% loan-to-cost or 1.30x DSCR.
+   - IREN / Blue Owl and PIMCO $2.4B (Aug 2026): 9% fixed, ~90% of GPU cost
+     (secondary report).
+   - Lambda $1.0B (Oct 2026, two IG offtakers): 6.78% fixed, fully amortizing.
+   - Apollo / Valor $3.5B for xAI GB200 servers (Jan 2026): ~65% of the
+     $5.4B purchase (implied; rate not disclosed).
+   Defaults (judgment): 70% of GPU cost, 9.0% all-in, the cluster of recent
+   deals without an investment-grade customer (8.5-9.5%); an IG take-or-pay
+   contract supports ~85-90% at ~6.5%, uncontracted capacity ~60% at 11-13%.
+   https://markets.newyorkfed.org/api/rates/secured/sofr/last/10.json
+   https://www.sec.gov/Archives/edgar/data/1769628/000119312525044231/d899798ds1.htm
+   https://s205.q4cdn.com/133937190/files/doc_presentations/2026/Mar/2026-03-DDTL-4-Overview.pdf
+   https://investors.coreweave.com/news/news-details/2026/CoreWeave-Closes-2-6-Billion-Loan-Facility-Expanding-Financing-Flexibility-for-AI-Infrastructure/default.aspx
+   https://octus.com/resources/articles/primary-crusoe-launches-509m-senior-secured-ddtl-due-november-2030-to-finance-gpu-capital-expenditures/
+   https://business-news-today.com/iren-secures-2-4bn-gpu-financing-at-9-as-ai-cloud-arr-reaches-1bn/
+   https://lambda.ai/blog/lambda-closes-1-billion-senior-secured-fixed-rate-financing
+   https://ir.apollo.com/news-events/press-releases/detail/599/apollo-backs-5-4-billion-valor-and-xai-data-center-compute
+   (all retrieved 2026-10-30) */
+export const GPU_FINANCING = {
+  advanceRatePercent: 70,
+  allInRatePercent: 9,
+};
+
 export const GPU_RENTAL_DEFAULTS = {
   // judgment: scale-out network (spine/leaf switches, optics), storage and
   // management power outside the GPU server or rack, +10% of rated power.

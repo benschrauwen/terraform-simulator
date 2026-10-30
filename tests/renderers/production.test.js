@@ -46,7 +46,7 @@ test('production summary keeps AI scenarios focused on outputs', () => {
     electrolyzer: { enabled: true, h2DailyKg: 2861.9 },
     dac: { enabled: true, co2DailyKg: 20805.7 },
     sabatier: { enabled: false, ch4DailyMCF: 0 },
-    methanol: { enabled: true, dailyLiters: 15295.4 },
+    methanol: { enabled: true, exportDailyKg: 12098.7, dailyLiters: 15295.4 },
     h2Surplus: 572.4,
     co2Surplus: 4161.1,
   };
@@ -74,7 +74,7 @@ test('production summary omits disabled process rows', () => {
     electrolyzer: { enabled: false, h2DailyKg: 0 },
     dac: { enabled: false, co2DailyKg: 0 },
     sabatier: { enabled: false, ch4DailyMCF: 0 },
-    methanol: { enabled: false, dailyLiters: 0 },
+    methanol: { enabled: false, exportDailyKg: 0, dailyLiters: 0 },
     h2Surplus: 0,
     co2Surplus: 0,
   };

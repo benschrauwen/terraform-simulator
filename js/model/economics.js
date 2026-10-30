@@ -434,7 +434,7 @@ export const economicsMethods = {
       costPerKgH2: perUnit(h2AnnualCost, electrolyzer.enabled ? electrolyzer.h2AnnualKg : 0),
       costPerTonCO2: perUnit(co2AnnualCost, dac.enabled ? dac.co2AnnualTons : 0),
       costPerMCF: perUnit(sabatierAnnualCost, sabatier.enabled ? sabatier.ch4AnnualMCF : 0),
-      costPerTonMethanol: perUnit(methanolAnnualCost, methanol.enabled ? (methanol.reactorAnnualTons ?? methanol.annualTons) : 0),
+      costPerTonMethanol: perUnit(methanolAnnualCost, methanol.enabled ? methanol.reactorAnnualTons : 0),
     };
   },
 
@@ -657,7 +657,7 @@ export const economicsMethods = {
     // All methanol carbon (exported, or converted to MTG hydrocarbons)
     // displaces the same fossil carbon: 1.374 t CO2 per t methanol.
     const methanolDisplaced = methanol.enabled
-      ? toTonsPerYear((methanol.reactorDailyKg ?? methanol.dailyKg ?? 0) * CHEMISTRY.methanol.co2MassPerKgMeOH)
+      ? toTonsPerYear(methanol.reactorDailyKg * CHEMISTRY.methanol.co2MassPerKgMeOH)
       : 0;
     const co2NetAvoided = methaneDisplaced + methanolDisplaced;
     // Feed water incl. purification rejects, not just the stoichiometric 9 kg/kg.

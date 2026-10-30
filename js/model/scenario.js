@@ -6,8 +6,8 @@
    `fastMode` skips display-only series for the optimizer and IRR sweeps. */
 
 import { MODEL_ASSUMPTIONS } from '../data/assumptions.js';
-import { CHEMISTRY } from '../data/reference-data.js';
 import { ModuleCatalog } from './module-catalog.js';
+import { methanolExportFields } from './process.js';
 
 export const scenarioMethods = {
   calculateScenario(state, options = {}) {
@@ -100,7 +100,7 @@ export const scenarioMethods = {
     );
 
     const sabatier = productFlow.outputs.sabatier || this.calculateSabatier({ ...normalizedState, sabatierEnabled: false }, 0, 0, opHours);
-    const methanol = productFlow.outputs.methanol || this.calculateMethanol({ ...normalizedState, methanolEnabled: false }, 0, 0, opHours);
+    const reactorMethanol = productFlow.outputs.methanol || this.calculateMethanol({ ...normalizedState, methanolEnabled: false }, 0, 0, opHours);
     const exploratoryModules = includeExploratoryModules
       ? this.calculateExploratoryModules(normalizedState, {
           allocationPlan,
@@ -132,16 +132,9 @@ export const scenarioMethods = {
     const exploratoryH2Consumed = exploratoryModules.reduce((sum, module) => sum + (module.h2Consumed || 0), 0);
     const exploratoryCo2Consumed = exploratoryModules.reduce((sum, module) => sum + (module.co2Consumed || 0), 0);
     const exploratoryMethanolConsumed = exploratoryModules.reduce((sum, module) => sum + (module.methanolConsumed || 0), 0);
-    if (methanol.enabled) {
-      const exportedDailyKg = Math.max(0, (methanol.reactorDailyKg || methanol.dailyKg || 0) - exploratoryMethanolConsumed);
-      methanol.exportDailyKg = exportedDailyKg;
-      methanol.exportAnnualKg = exportedDailyKg * cyclesPerYear;
-      methanol.exportAnnualTons = methanol.exportAnnualKg / 1000;
-      methanol.dailyKg = exportedDailyKg;
-      methanol.annualKg = methanol.exportAnnualKg;
-      methanol.annualTons = methanol.exportAnnualTons;
-      methanol.dailyLiters = exportedDailyKg / CHEMISTRY.methanol.density;
-    }
+    const methanol = reactorMethanol.enabled
+      ? { ...reactorMethanol, ...methanolExportFields(Math.max(0, reactorMethanol.reactorDailyKg - exploratoryMethanolConsumed), cyclesPerYear) }
+      : reactorMethanol;
     const feedBuffers = this.calculateFeedBufferStorage(normalizedState, [sabatier, methanol, ...exploratoryModules]);
     const h2Surplus = Math.max(0, (electrolyzer.h2DailyKg || 0) - (sabatier.h2Consumed || 0) - (methanol.h2Consumed || 0) - exploratoryH2Consumed);
     const co2Surplus = Math.max(0, (dac.co2DailyKg || 0) - (sabatier.co2Consumed || 0) - (methanol.co2Consumed || 0) - exploratoryCo2Consumed);

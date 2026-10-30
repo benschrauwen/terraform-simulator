@@ -19,6 +19,22 @@ import { clampNumber } from './util.js';
 const FEEDSTOCK_KEYS = ['h2Kg', 'co2Kg', 'methanolKg'];
 const FEED_SHARE_KEYS = { h2Kg: 'h2', co2Kg: 'co2', methanolKg: 'methanol' };
 
+/* Methanol leaving the plant: dailyKg / annualKg / annualTons / dailyLiters
+   and export* are the exported amount (reactor output minus what methanol-
+   consuming routes take); reactor* fields stay the reactor output. */
+export function methanolExportFields(exportDailyKg, cyclesPerYear) {
+  const annualKg = exportDailyKg * cyclesPerYear;
+  return {
+    dailyKg: exportDailyKg,
+    annualKg,
+    annualTons: annualKg / 1000,
+    dailyLiters: exportDailyKg / CHEMISTRY.methanol.density,
+    exportDailyKg,
+    exportAnnualKg: annualKg,
+    exportAnnualTons: annualKg / 1000,
+  };
+}
+
 /* Sizes a two-feed (H2 + CO2) catalytic reactor. `h2PerKg` / `co2PerKg` are
    the kg of each feed per kg of product and `conversion` the yield fraction.
    Daily quantities are per cycle (day, sol, lunar cycle). Without a feed
@@ -577,19 +593,13 @@ export const processMethods = {
       family: 'air-water-chemistry',
       maturity: 'Supported',
       // reactor*: methanol leaving the reactor (after conversion losses);
-      // daily/annual*: methanol exported after any MTG offtake (the
-      // scenario lowers these once MTG consumption is known).
-      dailyKg,
+      // the export fields start equal to it until the scenario knows what
+      // the methanol-consuming routes take (methanolExportFields).
       reactorDailyKg: dailyKg,
-      annualKg,
       reactorAnnualKg: annualKg,
-      annualTons: annualKg / 1000,
       reactorAnnualTons: annualKg / 1000,
-      dailyLiters: dailyKg / c.density,
       reactorDailyLiters: dailyKg / c.density,
-      exportDailyKg: dailyKg,
-      exportAnnualKg: annualKg,
-      exportAnnualTons: annualKg / 1000,
+      ...methanolExportFields(dailyKg, body.cyclesPerEarthYear),
       h2Consumed: dailyKg * c.h2MassPerKgMeOH,
       co2Consumed: dailyKg * c.co2MassPerKgMeOH,
       waterProducedDaily: dailyKg * c.waterPerKgMeOH,

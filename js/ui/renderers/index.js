@@ -245,7 +245,7 @@ export const rendererMethods = {
     if (r.sabatier.enabled) {
       rows.push(prodItem('ch4', '🔥', 'Methane', `${FormatNumbers.fixed(r.sabatier.ch4DailyMCF, 2)}`, `MCF/${cycleUnit}`));
     }
-    if (r.methanol.enabled && ((r.methanol.exportDailyKg ?? r.methanol.dailyLiters ?? 0) > 0.1)) {
+    if (r.methanol.enabled && r.methanol.exportDailyKg > 0.1) {
       rows.push(prodItem('fuel', '🧪', 'Methanol Export', `${FormatNumbers.fixed(r.methanol.dailyLiters, 1)}`, `L/${cycleUnit}`));
     }
     (r.exploratoryModules || [])

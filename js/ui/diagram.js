@@ -384,7 +384,7 @@ export const Diagram = {
         color: this.colors.methane,
       });
     }
-    const methanolAnnualTons = r.methanol.exportAnnualTons ?? r.methanol.annualTons ?? 0;
+    const methanolAnnualTons = r.methanol.exportAnnualTons;
     if (r.methanol.enabled && methanolAnnualTons > 0.1) {
       outputs.push({
         id: 'out-methanol',

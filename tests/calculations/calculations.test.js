@@ -1689,31 +1689,30 @@ test('exploratory economics honor custom capex, sale price, and o&m inputs', () 
   assert.ok(highMtg.annualOM > lowMtg.annualOM, 'Expected MTG annual O&M to rise with the configured O&M percentage.');
 });
 
-test('multiple exploratory routes no longer collapse to the same output', () => {
-  const result = runScenario({
+// Was: lime out-produced titanium at equal priority because the route power
+// pool was split by priority alone. Priority is a product-unit weight (as for
+// the methane/methanol split), so equal priorities give equal units and each
+// route draws power in proportion to its kWh per unit.
+test('exploratory priorities are product-unit weights: power follows weight x kWh per unit', () => {
+  const base = {
     systemSizeMW: 100,
     sabatierEnabled: false,
     methanolEnabled: false,
     limeEnabled: true,
     titaniumEnabled: true,
-    limePriorityWeight: 100,
-    titaniumPriorityWeight: 100,
-  });
+  };
+  const equal = runScenario({ ...base, limePriorityWeight: 100, titaniumPriorityWeight: 100 });
+  const lime = equal.exploratoryModules.find(module => module.id === 'lime');
+  const titanium = equal.exploratoryModules.find(module => module.id === 'titanium');
+  assert.ok(lime.outputDailyUnits > 0);
+  assert.ok(Math.abs(lime.outputDailyUnits - titanium.outputDailyUnits) <= 1e-9 * lime.outputDailyUnits);
+  const kWhRatio = titanium.routeConfig.electricityKwhPerUnit / lime.routeConfig.electricityKwhPerUnit;
+  assert.ok(Math.abs(titanium.dailyKWh / lime.dailyKWh - kWhRatio) <= 1e-9 * kWhRatio);
 
-  const lime = result.exploratoryModules.find(module => module.id === 'lime');
-  const titanium = result.exploratoryModules.find(module => module.id === 'titanium');
-
-  assert.ok(lime && titanium, 'Expected both exploratory modules to be present in the modeled results.');
-  assert.ok(lime.outputDailyUnits > 0, 'Expected lime to produce a non-zero exploratory output.');
-  assert.ok(titanium.outputDailyUnits > 0, 'Expected titanium to produce a non-zero exploratory output.');
-  assert.ok(
-    Math.abs(lime.outputDailyUnits - titanium.outputDailyUnits) > 1e-6,
-    'Expected different electricity intensities to produce different exploratory outputs.'
-  );
-  assert.ok(
-    lime.outputDailyUnits > titanium.outputDailyUnits,
-    'Expected the lower-intensity lime route to produce more output than the higher-intensity titanium route at equal priority.'
-  );
+  const limeHeavy = runScenario({ ...base, limePriorityWeight: 100, titaniumPriorityWeight: 50 });
+  const limeUnits = limeHeavy.exploratoryModules.find(module => module.id === 'lime').outputDailyUnits;
+  const titaniumUnits = limeHeavy.exploratoryModules.find(module => module.id === 'titanium').outputDailyUnits;
+  assert.ok(Math.abs(limeUnits / titaniumUnits - 2) <= 1e-9);
 });
 
 test('exploratory modules expose peak-day throughput for diagram cards', () => {

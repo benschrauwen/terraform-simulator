@@ -289,6 +289,9 @@ levelized profit  = levelized revenue - levelized cost = NPV * crf(r, N)
 cost breakdown    = sum_i net_capex_i * crf(r, life_i) + land * r + O&M   (+ reconciling timing/salvage row)
 solar LCOE        = (solar_capex * crf(r, solar_life) + land * r + solar O&M)
                     / (annual_MWh * sum_y f_y (1+r)^-y * crf(r, solar_life))     # gross of incentives
+buffered LCOE     = (solar LCOE numerator + battery_capex * crf(r, battery_life) + battery O&M)
+                    / (delivered_MWh_1 * sum_y d_y (1+r)^-y * crf(r, N))           # gross of incentives
+                    d_y = (chemical + AI-served kWh)_y / year-1, from the lifetime-energy vectors
 ```
 
 Unit costs ($/kg H2, $/t CO2, $/MCF, $/t methanol) use a cost cascade:
@@ -298,7 +301,7 @@ Unit costs ($/kg H2, $/t CO2, $/MCF, $/t methanol) use a cost cascade:
 3. H2 and CO2 costs pass to each reactor by its feed share, so vented feed is charged to the product that vents it. Buffers are allocated by module.
 4. Each cost is divided by year-1 output times the levelized chemical-energy factor.
 
-Output-based credits are excluded.
+Capital charges are net of upfront support at close (ITC, grants); output-based credits are excluded. Both LCOE figures are gross of incentives.
 
 IRR is reported only when one economically meaningful root exists. MIRR (finance and reinvest at `r`) is always shown next to it. MIRR is unique and exceeds `r` exactly when NPV is positive.
 

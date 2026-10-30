@@ -16,7 +16,6 @@ import {
   calculateSimplePaybackYears,
   calculateSustainedPaybackYears,
   crf,
-  getLevelizedSolarDegradationFactor,
   getPolicyDurationFactor,
   getSolarFactorForYear,
 } from './finance.js';
@@ -537,18 +536,30 @@ export const economicsMethods = {
     };
     const cashFlowTimeline = buildCashFlowTimeline(totalCapex, financingSummary, yearlyCashFlows, policy);
 
-    // Same capital basis as the rest of the economics: annualized net of
-    // any upfront support (e.g. a 48E ITC), land at capital x r.
+    // Power cost for the unit-cost cascade: same capital basis as the rest
+    // of the economics, annualized net of any upfront support (e.g. a 48E
+    // ITC), land at capital x r.
     const solarLandAnnualCost = (annualizedCapex.solar || 0) + (annualizedCapex.land || 0) + solar.annualSolarOm;
     const batteryAnnualCost = (annualizedCapex.battery || 0) + (storage.capex * batteryOmFrac);
-    const bufferedElectricityAnnualCost = solarLandAnnualCost + batteryAnnualCost;
+    // Buffered LCOE is a technology cost like the solar LCOE: gross of
+    // incentives (solar.annualizedSolar includes land x r; the storage
+    // charge is its gross capex x CRF over the battery life). Its energy is
+    // the delivered (chemical + AI-served) energy levelized with the
+    // lifetime-energy factors over the horizon, like the unit costs, so
+    // clipping that shrinks as the array degrades is counted.
+    const bufferedElectricityAnnualCost = (solar.annualizedSolar || 0) + solar.annualSolarOm +
+      (storage.annualizedCapex || 0) + (storage.capex * batteryOmFrac);
     const bufferedElectricityAnnualDeliveredMWh = (
       ai.enabled
         ? ((ai.annualAiServedKWh || 0) + (ai.chemicalAnnualKWh || 0))
         : ((chemicalSupply.dailyAvailableKWh || 0) * (solar.cyclesPerYear || 0))
     ) / 1000;
+    const deliveredKWhByYear = (lifetimeEnergy?.chemicalKWhByYear || []).map(
+      (chemicalKWh, index) => chemicalKWh + (ai.enabled ? (lifetimeEnergy.aiServedKWhByYear?.[index] || 0) : 0)
+    );
+    const deliveredFactorByYear = deliveredKWhByYear.map(value => (deliveredKWhByYear[0] > 0 ? value / deliveredKWhByYear[0] : 1));
     const bufferedElectricityLevelizedAnnualMWh = bufferedElectricityAnnualDeliveredMWh *
-      getLevelizedSolarDegradationFactor(state.panelDegradationAnnual, state.solarAssetLife, rate);
+      getLevelizedOutputFactor(deliveredFactorByYear, rate, state.analysisHorizonYears);
     const bufferedElectricityCostPerMWh = bufferedElectricityLevelizedAnnualMWh > 0
       ? bufferedElectricityAnnualCost / bufferedElectricityLevelizedAnnualMWh
       : 0;

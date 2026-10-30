@@ -457,7 +457,7 @@ function buildUnitRows({ r, e }) {
       )
     );
   }
-  const allocationNote = 'Levelized cost allocated by cost cascade: power (solar, land, battery) by the electrolyzer/DAC power shares, H2 and CO2 to each reactor by its feed share (vented feed included), plus each block\'s own capital charge and O&M. Excludes policy credits.';
+  const allocationNote = `Levelized cost allocated by cost cascade: power (solar, land${r.ai.enabled ? ' by the chemical energy share; the battery goes to AI' : ', battery'}) by the electrolyzer/DAC power shares, H2 and CO2 to each reactor by its feed share (vented feed included), plus each block's own capital charge and O&M. Capital charges are net of upfront support at close (ITC / grants); output-based credits are excluded.`;
   if (e.costPerKgH2 > 0) rows.push(econRow('Levelized H₂ cost', `$${FormatNumbers.fixed(e.costPerKgH2, 2)}/kg`, '', allocationNote));
   if (e.costPerTonCO2 > 0) rows.push(econRow('Levelized CO₂ capture cost', `$${FormatNumbers.fixed(e.costPerTonCO2, 0)}/ton`, '', allocationNote));
   if (e.costPerMCF > 0) rows.push(econRow('Levelized CH₄ cost', `$${FormatNumbers.fixed(e.costPerMCF, 2)}/MCF`, '', allocationNote));

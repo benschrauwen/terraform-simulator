@@ -155,6 +155,27 @@ test('buffered electricity cost matches solar lcoe when all solar is used withou
   );
 });
 
+test('buffered LCOE and solar LCOE share the gross (pre-incentive) basis even under an ITC', () => {
+  // Same plant as above (no storage, full capture, horizon = solar life):
+  // both are the same cost / energy, so a 48E ITC must not open a gap
+  // between them. The unit-cost power cost, by contrast, is net of the ITC.
+  const overrides = {
+    systemSizeMW: 100,
+    batteryCapacityMWh: 0,
+    chemicalSizingPercent: 100,
+    electrolyzerEnabled: false,
+    dacEnabled: false,
+    sabatierEnabled: false,
+    methanolEnabled: false,
+  };
+  const none = runScenario(overrides);
+  const itc = runScenario({ ...overrides, policyMode: 'us_48e_solar' });
+  assert.ok(itc.economics.policy.upfrontSupport > 0, 'the 48E ITC is taken at close');
+  assert.ok(Math.abs(itc.economics.bufferedElectricityCostPerMWh - itc.solar.lcoe) <= 1e-9 * itc.solar.lcoe);
+  assert.ok(Math.abs(itc.economics.bufferedElectricityCostPerMWh - none.economics.bufferedElectricityCostPerMWh) <= 1e-9 * itc.solar.lcoe);
+  assert.ok(itc.economics.unitCosts.chemicalPowerCost < none.economics.unitCosts.chemicalPowerCost, 'unit-cost power is net of the ITC');
+});
+
 test('buffered electricity cost includes battery annualized cost and storage losses', () => {
   const result = runScenario({
     systemSizeMW: 100,
@@ -172,10 +193,17 @@ test('buffered electricity cost includes battery annualized cost and storage los
     result.solar.annualSolarOm +
     result.storage.annualizedCapex +
     (result.storage.capex * batteryOmFrac);
-  // Was the arithmetic-average degradation; energy is now levelized
-  // (discounted) like the CRF capital charge it is divided into.
-  const degradationFactor = Calc.getLevelizedSolarDegradationFactor(state.panelDegradationAnnual, state.solarAssetLife, state.discountRate / 100);
-  const expectedLevelizedAnnualMWh = ((result.chemicalSupply.dailyAvailableKWh * result.solar.cyclesPerYear) / 1000) * degradationFactor;
+  // Energy is levelized (discounted) like the CRF capital charge it is
+  // divided into, from the delivered-energy vector over the analysis
+  // horizon (as the unit costs do), not plain panel degradation over the
+  // solar life: with a battery, delivered energy does not fall in step
+  // with the panels (less clipping as they degrade).
+  const rate = state.discountRate / 100;
+  const delivered = result.lifetimeEnergy.chemicalKWhByYear;
+  let pv = 0;
+  delivered.forEach((kWh, index) => { pv += (kWh / delivered[0]) / Math.pow(1 + rate, index + 1); });
+  const crfHorizon = (rate * Math.pow(1 + rate, delivered.length)) / (Math.pow(1 + rate, delivered.length) - 1);
+  const expectedLevelizedAnnualMWh = ((result.chemicalSupply.dailyAvailableKWh * result.solar.cyclesPerYear) / 1000) * pv * crfHorizon;
   const expectedBufferedElectricityCost = expectedLevelizedAnnualMWh > 0
     ? expectedAnnualCost / expectedLevelizedAnnualMWh
     : 0;

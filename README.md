@@ -34,24 +34,29 @@ npm run preview   # serves dist/ the same way
 ## Architecture
 
 ```text
-js/data/      reference data, no logic: bodies, site presets, mountings, chemistry,
-   |          MODEL_ASSUMPTIONS, process module/route catalog, policy registry
-js/model/     calculation engine; index.js assembles the Calc facade
-   |  ^       (the model reads DEFAULT_STATE/normalizeState from state/;
-   v  |        state/ reads ModuleCatalog and numeric helpers from model/)
-js/state/     schema + DEFAULT_STATE, normalization, legacy migrations,
+js/data/      reference data and pure accessors over it: bodies, site presets, mountings,
+   |          chemistry, MODEL_ASSUMPTIONS, process module/route catalog + ModuleCatalog,
+   v          policy registry
+js/state/     schema + DEFAULT_STATE (frozen), normalization, legacy migrations,
    |          share-link codec, saved sites
+   v
+js/model/     calculation engine; index.js assembles the Calc facade
+   |
+   v
 js/ui/        App class + mixins, declarative controls, renderers, charts, diagram, site map
 js/workers/   optimizer-worker.js: runs the IRR search through Calc off the main thread
+js/util.js    dependency-free numeric helpers (clamps, step precision), usable by every layer
 ```
 
-- `js/data/`: `reference-data.js` (bodies, `LOCATION_PRESETS`, `MOUNTING_TYPES`, `CHEMISTRY`, AI defaults), `assumptions.js` (`MODEL_ASSUMPTIONS` and the GHI/cloudiness heuristics), `modules.js` (supported and exploratory process modules), `policies.js` (incentive schemes and picker groups).
-- `js/model/`: one file per concern: `solar.js` + `solar-geometry.js` (resource, sky model, mountings), `annual-series.js` (hourly year), `battery.js` (storage + chemical dispatch), `ai-compute.js`, `lifetime-energy.js`, `process.js` (allocation, electrolyzer, DAC, reactors, exploratory routes, buffers), `economics.js`, `finance.js`, `policy.js`, `module-catalog.js`, `optimizer-search.js`, and `scenario.js` (the pipeline).
-- `js/state/`: `schema.js` is the single source of state fields and defaults.
-- `js/ui/`: `app.js` plus mixins, `control-spec.js` + `controls.js`, `renderers/`, `charts/` (one module per chart), `diagram.js`, `site-map.js`, `share.js`, `optimizer-client.js`, `formatters.js`.
-- `scripts/`: `dev.mjs` (hardened static server) and `build.mjs`.
+Imports run one way, top to bottom: a layer imports its own files, lower layers and `util.js`, never a higher layer. `tests/architecture/import-direction.test.js` enforces it.
 
-**Key rule:** `data/`, `model/` and `state/` never touch the DOM. They run unchanged in the browser, in the worker and under Node tests. (`state/saved-site-presets.js` uses `localStorage` behind a guard.) The UI talks to the engine through the `Calc` facade, `ModuleCatalog`, `PolicyModel` and the schema exports (`DEFAULT_STATE`, `CORE_STATE_FIELDS`). It imports `data/` directly only for option lists and labels.
+- `js/data/`: `reference-data.js` (bodies, `LOCATION_PRESETS`, `MOUNTING_TYPES`, `CHEMISTRY`, `METHANE_MARKET_PRESETS`, AI defaults), `assumptions.js` (`MODEL_ASSUMPTIONS`, the GHI/cloudiness heuristics and `SOLAR_LAYOUT_REFERENCE`), `modules.js` (supported and exploratory process modules), `module-catalog.js` (`ModuleCatalog`: normalizes `modules.js` into frozen modules and answers route, preset, market, buffer and capex-slider questions), `policies.js` (incentive schemes and picker groups).
+- `js/state/`: `schema.js` is the single source of state fields and defaults.
+- `js/model/`: one file per concern: `solar.js` + `solar-geometry.js` (resource, sky model, mountings), `annual-series.js` (hourly year), `battery.js` (storage + chemical dispatch), `ai-compute.js`, `lifetime-energy.js`, `process.js` (allocation, electrolyzer, DAC, reactors, exploratory routes, buffers), `economics.js`, `finance.js`, `policy.js`, `optimizer-search.js`, and `scenario.js` (the pipeline).
+- `js/ui/`: `app.js` plus mixins, `control-spec.js` + `controls.js`, `module-controls.js`, `renderers/`, `charts/` (one module per chart, registered in `charts/index.js`), `diagram.js`, `site-map.js`, `share.js`, `optimizer-client.js`, `formatters.js`.
+- `scripts/`: `dev.mjs` (hardened static server that also applies the `vercel.json` headers, CSP included) and `build.mjs`.
+
+**Key rule:** `data/`, `state/` and `model/` never touch the DOM. They run unchanged in the browser, in the worker and under Node tests. (`state/saved-site-presets.js` uses `localStorage` behind a guard.) The UI talks to the engine through the `Calc` facade, `ModuleCatalog`, `PolicyModel` and the schema exports (`DEFAULT_STATE`, `CORE_STATE_FIELDS`), and imports `data/` directly for option lists and labels. Every string the UI interpolates into HTML goes through `escapeHtml` (`ui/renderers/markup.js`); visibility is toggled with `el.hidden`, never inline styles (the CSP allows none).
 
 **Calc.** Each model file exports a plain method object (`solarMethods`, `processMethods`, `economicsMethods`, ...). `model/index.js` merges them with `Object.assign` into one `Calc` object. Methods call each other through `this`, so always call them through `Calc` (for example `Calc.calculateAll(state)`) and never detach them. Pure helpers such as `finance.js`, `util.js` and `state/normalize.js` are plain functions that the facade re-exposes. The main entry points are:
 
@@ -65,46 +70,56 @@ js/workers/   optimizer-worker.js: runs the IRR search through Calc off the main
 normalizeState -> calculateSolar -> buildAnnualSolarSeries
   -> calculateBattery (chemicals only) | calculateAICompute (AI first)
   -> buildProcessAllocationPlan -> electrolyzer, DAC -> methane/methanol reactors
-  -> exploratory routes -> feed-buffer storage -> calculateEconomics -> calculateEnvironmental
+  -> exploratory routes -> methanol export -> feed-buffer storage
+  -> calculateEconomics -> calculateEnvironmental
 ```
 
-**App mixins.** `App` (`ui/app.js`) owns `state`, `init()` and `recalculate()`. All other behavior lives in mixin objects (`controlMethods`, `rendererMethods`, `chartMethods`, `siteControlMethods`, ...) that are `Object.assign`ed onto `App.prototype`. Each mixin method runs with the App instance as `this`. State-backed inputs are declared once in `CONTROL_SPECS` and `getModuleControlSpecs()` (`ui/control-spec.js`). That one list drives both input-to-state binding and state-to-control sync.
+`calculateEconomics` returns `capexItems`, the one list of installed-CAPEX items (`{ key, label, capex }`, solar with its parts, one item per exploratory route). The total CAPEX, the `'total'` policy basis, the CAPEX rows and the CAPEX chart all iterate it.
+
+**App mixins.** `App` (`ui/app.js`) owns `state`, `init()` and `recalculate()`. All other behavior lives in mixin objects (`controlMethods`, `rendererMethods`, `chartMethods`, `siteControlMethods`, ...) that are `Object.assign`ed onto `App.prototype`. Each mixin method runs with the App instance as `this`. State-backed inputs are declared once in `CONTROL_SPECS` and `getModuleControlSpecs()` (`ui/control-spec.js`). That one list drives both input-to-state binding and state-to-control sync. `recalculate()` renders the panels and calls `updateCharts(r)` once.
 
 ## Extending
 
 After any of these changes, run `npm test`. Every recipe that changes the result tree also needs a characterization fixture regeneration (see [Testing](#testing-and-validation)).
 
-**Add an exploratory route** (to an existing module):
+| Task | Files touched |
+| --- | --- |
+| Exploratory route or new product (incl. a methanol consumer) | `js/data/modules.js` + its floor in `tests/calculations/energy-floor.test.js` |
+| Policy scheme | `js/data/policies.js` (+ its facts in `tests/calculations/policy-facts.test.js`) |
+| Earth site preset | `js/data/reference-data.js` |
+| State field + control | `js/state/schema.js`, `index.html`, `js/ui/control-spec.js` |
+| Result row | the model file that computes it, `js/ui/renderers/economics.js` or `renderers/index.js` |
+| Chart | a module in `js/ui/charts/`, one `RESULT_CHARTS` entry, its `<canvas>` in `index.html` |
 
-1. In `js/data/modules.js`, add an entry under the module's `routes` with these fields:
+**Add an exploratory route or a new product.** Methane and methanol are the only *supported* products, and no third one is planned: anything else the plant should make (a fuel, a chemical, a metal, water) goes through the data-driven exploratory path.
+
+1. In `js/data/modules.js`, add an entry under an existing module's `routes`, or a new `MODULE_DEFINITIONS` entry with `exploratory: true`, a `family` key from `MODULE_FAMILY_LABELS`, a `market` (sale-price slider), `routes` and `missingInputs`. A route has:
    - `label`
    - `electricityKwhPerUnit`: electricity per output unit, excluding the H2 the route consumes. Add a comment stating its basis.
    - `capexPerAnnualUnit` with `capexUnit`: `'tpa'` for $ per t/yr, or `'m3pd'` for $ per m3/day.
    - `cyclingPenalty`
-   - `feedstocks`: `{ h2Kg, co2Kg }` per output unit. `methanolKg` is only delivered to the `mtg` module.
+   - `feedstocks`: kg per output unit of `h2Kg` and `co2Kg` (from the shared electrolyzer / DAC pools) and `methanolKg` (from the methanol reactor). Any route with `methanolKg > 0` is a methanol consumer: it shares the methanol diverted from export (the split slider in the MTG card) with the other methanol consumers by priority x kg/unit, and its power follows the methanol it gets.
    - `feedstockSummary`, `outputLabel` and `outputUnit`
-   - `diagramInputs`: `{ h2, co2, methanol }` flags for the diagram
    - Optional: `supportsFeedBuffer`, a route-level `market` (overrides the module's sale-price slider), and `assetLifeYears` (default 10).
-   - If the route needs another module, add it to the module's `routeDependencies`.
+   - If the route needs another module, add it to the module's `routeDependencies` (or the module's `dependencies`).
 2. Add the route to `FLOORS` in `tests/calculations/energy-floor.test.js`. The value is its reaction-enthalpy floor, or `null` with the reason (an external reductant supplies the energy). Unlisted routes fail that test.
-3. Regenerate the characterization fixture.
 
-The catalog generates everything else: the state keys, normalization, the route select, the capex slider (0.25-4x the route default), the buffer toggle, the diagram card and the economics rows. A new exploratory **module** is a new `MODULE_DEFINITIONS` entry with `exploratory: true`, a `family` key from `MODULE_FAMILY_LABELS`, a `market`, `routes` and `missingInputs`. Its `<id>Enabled`, `BufferEnabled`, `Route`, `PriorityWeight`, `CapexBasis` and `Price` state keys are generated. A new *supported* product (beside methane and methanol) is not data-driven: it needs code in `process.js`, `scenario.js`, `economics.js`, the renderers and the diagram.
+The catalog derives everything else: the state keys (`<id>Enabled`, `BufferEnabled`, `Route`, `PriorityWeight`, `CapexBasis`, `Price`), normalization, the route select, the capex slider (0.25-4x the route default), the buffer toggle, the diagram card and its feed lines (from `feedstocks`), the CAPEX item, chart slice and economics rows. Only MTG-specific presentation (its split slider and note) is keyed by id in `ui/module-controls.js`.
 
 **Add a policy scheme:**
 
-1. In `js/data/policies.js`, add a `POLICY_SCHEMES` entry. It needs display metadata (`label`, `jurisdiction`, `note`, `basis`, `implementationFormula`, ...) and `durationYears`: years of annual support, `0` for one-off support, or `null` to pay over the whole horizon. It also needs a `cashflowType` whose `inputs` are read in this order:
-   - `capex_share`: `inputs[0]` is the share (0-1) of `eligibleCapexBasis` (`'solar' | 'electrolyzer' | 'dac' | 'total'`), paid once at close.
-   - `unit_support`: `inputs[0]` is $ per unit of `outputBasis` (`'solar_kwh' | 'solar_mwh' | 'hydrogen_kg' | 'co2_ton'`).
-   - `strike_minus_reference`: `inputs[0]` is the strike and `inputs[1]` the reference. Support can go negative.
-   - `base_minus_correction`: `inputs[0]` is the base and `inputs[1]` the correction, floored at 0.
-   - `framework_only`: no cash flow.
+1. In `js/data/policies.js`, add a `POLICY_SCHEMES` entry. It needs display metadata (`label`, `jurisdiction`, `note`, `basis`, `implementationFormula`, ...) and `durationYears`: years of annual support, `0` for one-off support, or `null` to pay over the whole horizon. It also needs a `cashflowType` and `inputs`, each input naming its `role` in that type's formula (`CASHFLOW_INPUT_ROLES` in `model/policy.js`):
+   - `capex_share`: `share` (0-1) of `eligibleCapexBasis` (`'solar' | 'electrolyzer' | 'dac' | 'total'`, picked from `capexItems`), paid once at close.
+   - `unit_support`: `perUnit`, $ per unit of `outputBasis` (`'solar_kwh' | 'solar_mwh' | 'hydrogen_kg' | 'co2_ton'`).
+   - `strike_minus_reference`: `strike` and `reference`. Support can go negative.
+   - `base_minus_correction`: `base` and `correction`, floored at 0.
+   - `framework_only`: no inputs, no cash flow.
 
-   Each input has `key`, `label`, `min`/`max`/`step`, `defaultValue` and `format` (`'share'`, `'currency_per_kwh'`, `'currency_per_mwh'`, `'currency_per_kg'`, `'currency_per_ton'`). Each key becomes a state field automatically (`POLICY_INPUT_FIELDS`), so share a key between schemes only when it is the same quantity. Put a source comment next to every number.
+   Each input also has `key`, `label`, `min`/`max`/`step`, `defaultValue` and `format` (`'share'`, `'currency_per_kwh'`, `'currency_per_mwh'`, `'currency_per_kg'`, `'currency_per_ton'` with a display `unit` such as `'tCO2'`). Each key becomes a state field automatically (`POLICY_INPUT_FIELDS`), so share a key between schemes only when it is the same quantity. Put a source comment next to every number. `policy-schemes.test.js` checks the roles.
 2. List the id in a `POLICY_SELECT_GROUPS` group. A scheme that is not listed is still valid in state but cannot be picked.
-3. Add re-derived facts to `tests/calculations/policy-facts.test.js` and regenerate the fixture (every selectable scheme is a snapshot scenario).
+3. Add re-derived facts to `tests/calculations/policy-facts.test.js`. Every selectable scheme is a characterization scenario, so regenerate the fixture.
 
-The input controls render from `inputs` (`renderPolicyInputs`). A new cash-flow type or basis needs code in `model/policy.js` (`evaluatePolicy`, `getOutputMetric`, `getEligibleCapexBreakdown`) and in `economics.getYearlyEnergyFactors`.
+The input controls render from `inputs` (`renderPolicyInputs`). Only a new cash-flow type or basis needs code in `model/policy.js` (`evaluatePolicy`, `getOutputMetric`, `getEligibleCapexBreakdown`) and in `economics.getYearlyEnergyFactors`.
 
 **Add an Earth site preset:**
 
@@ -116,7 +131,7 @@ The input controls render from `inputs` (`renderPolicyInputs`). A new cash-flow 
    - `region`: `desert | temperate | tropical | cloudy`. This drives layout/BOS cloudiness and the fallback diffuse fraction.
 2. Run the tests. `energy-model.test.js` checks that yield/GHI is 0.72-1.0 and the diffuse fraction is 0.1-0.7.
 
-The dropdown lists the new preset automatically. A selected preset is stored as lat/lon/yield and matched back within 0.1 deg, so the array order does not matter. The preset also becomes the "nearby preset" (its GHI, diffuse fraction and estimated yield) for any location within 2 deg latitude and 3 deg longitude.
+The dropdown lists the new preset automatically. A selected preset is stored as lat/lon/yield and matched back within 0.1 deg, so the array order does not matter. The preset also becomes the "nearby preset" (its GHI, diffuse fraction and estimated yield) for any location within 2 deg latitude and 3 deg longitude. A methane market framing is likewise one `METHANE_MARKET_PRESETS` entry (an optional `group` puts it in an optgroup).
 
 **Add a state field and its control:**
 
@@ -126,13 +141,19 @@ The dropdown lists the new preset automatically. A selected preset is stored as 
    - A fixed constant that users cannot change belongs in `MODEL_ASSUMPTIONS` (`data/assumptions.js`).
 2. Add the element to `index.html`. Give it the default as its static `value`, plus a `<span id="<id>Value">` read-out that shows the formatted default.
 3. Add `{ type: 'range' | 'checkbox' | 'select' | 'number', id, stateKey?, format?, onChange? }` to `CONTROL_SPECS` in `js/ui/control-spec.js`. Binding and sync come from that entry. `tests/ui/control-spec.test.js` checks that the element exists and that its pre-JS value and read-out match `DEFAULT_STATE`.
-4. Read the value from the normalized state in the model.
+4. Read the value from the normalized state in the model (it is always present and clamped, so no fallback is needed).
 
 **Add a result row:**
 
-1. If the value is not on the result yet, compute it in the model, typically in `calculateEconomics` (`js/model/economics.js`), and return it. That changes the characterization tree, so regenerate the fixture.
-2. Render it. The economics panel is built group by group in `js/ui/renderers/economics.js` (`buildSummaryMetrics`, `buildReturnsRows`, `buildCostRows`, `buildRevenueRows`, `buildFinancingRows`, `buildUnitRows`, `buildContextRows`). Rows use `econRow(label, value, cssClass, tooltip)` from `renderers/markup.js`. The production and impact grids in `renderers/index.js` use `prodItem`. Format values with `FormatNumbers` and `ui/formatters.js`.
+1. If the value is not on the result yet, compute it in the model file that owns it (for economics, one of `calculateEconomics`'s helpers in `js/model/economics.js`: `buildCapitalAssets`, `buildYearlyCashFlows`, `summarizeReturns`) and return it. That changes the characterization tree, so regenerate the fixture.
+2. Render it. The economics panel is built group by group in `js/ui/renderers/economics.js` (`buildSummaryMetrics`, `buildReturnsRows`, `buildCostRows`, `buildRevenueRows`, `buildFinancingRows`, `buildUnitRows`, `buildContextRows`). Rows use `econRow(label, value, cssClass, tooltip)` from `renderers/markup.js`, which escapes its arguments. The production and impact grids in `renderers/index.js` use `prodItem(cls, label, value, unit)`. Format values with `FormatNumbers` and `ui/formatters.js`. A new installed-CAPEX block is one more entry in `buildCapitalAssets`' `coreAssets` (plus a color in `charts/capex-chart.js`); rows, chart and policy basis follow.
 3. Optionally assert on the HTML in `tests/renderers/`. Those tests render real results with stubbed DOM elements.
+
+**Add a chart:**
+
+1. Add a module in `js/ui/charts/` exporting `{ updateXChart(r) { ... } }`. Start it with `if (!ensureChartRuntime(this, 'x', 'xChart')) return;` (it shows a fallback when Chart.js failed to load), keep the instance in `this.charts.x`, and style it with the helpers in `chart-utils.js`.
+2. Add `[xChartMethods, 'updateXChart']` to `RESULT_CHARTS` in `js/ui/charts/index.js`. `App.recalculate` calls `updateCharts(r)`, which draws every registered chart.
+3. Add `<canvas id="xChart">` inside a `.chart-wrapper` in `index.html`. Size it with CSS classes, not inline styles.
 
 ## Model summary
 
@@ -201,24 +222,27 @@ AI has first call on solar, so it loses less than the PV output while the residu
 
 ### Process chain (`process.js`)
 
-Power and feeds are auto-balanced from the enabled consumers. A consumer's weight is its methane/methanol by-mass share of the product slate (x100), or an exploratory route's priority weight (0-100) in its own output units:
+Power and feeds are auto-balanced from the enabled consumers. A consumer's weight is in its own output units: its methane/methanol by-mass share of the product slate (x100), or an exploratory route's priority weight (0-100). A methanol-consuming route (any route with `methanolKg` in its feedstocks, e.g. MTG) has no free priority: its weight is the product its methanol can make.
 
 ```text
 h2_power   = sum_i w_i * h2_kg_per_unit_i  * electrolyzer_kWh_per_kg
 co2_power  = sum_i w_i * co2_kg_per_unit_i * dac_kWh_per_kg
-expl_pool  = sum_j w_j * electricity_kWh_per_unit_j
+route_j    = w_j * electricity_kWh_per_unit_j            # each route's own power demand
+total      = h2_power + co2_power + sum_j route_j
 electrolyzer_share = h2_power / total;  dac_share = co2_power / total
-exploratory_share_j = (expl_pool / total) * w_j / sum_k w_k      # pool split by weight only
+exploratory_share_j = route_j / total                     # weight x kWh/unit, not weight alone
 h2_feed_share_i  = w_i * h2_kg_per_unit_i  / sum_k w_k * h2_kg_per_unit_k   (same for CO2)
+methanol routes: diverted = methanol split (slider);  pool_m = p_m * meoh_kg_m / sum_k p_k * meoh_kg_k
+                 w_m = w_methanol * conversion * diverted * pool_m * 1000 / meoh_kg_m
 ```
 
-Because the feed split uses the same `weight * kg/unit` as the power split, each consumer gets H2 and CO2 in stoichiometric ratio. The only unused feed is each reactor's unconverted fraction. For example, methane + methanol 50/50 at 95%/80% conversion leaves 9.1% of the H2 and 10.0% of the CO2 unused. A disabled electrolyzer or DAC gets no power. With no product reactor or route enabled, the enabled blocks split power in the methane stoichiometric ratio (0.503 kg H2 and 2.744 kg CO2 per kg CH4: ~81/19 at defaults; a lone block gets it all) and everything is vented. Unconverted reactor feed is vented, not recycled to the reactor inlet. The allocation result carries a `kind` (`productMix`, `methane`, `methanol`, `exploratoryOnly`, `methaneFallback`) that the UI labels from.
+Because the feed and power splits use the same `weight * per-unit need`, each consumer gets power, H2 and CO2 in the ratio it uses them, so no input is stranded behind another's limit. The only unused feed is each reactor's unconverted fraction. For example, methane + methanol 50/50 at 95%/80% conversion leaves 9.1% of the H2 and 10.0% of the CO2 unused. A disabled electrolyzer or DAC gets no power. With no product reactor or route enabled, the enabled blocks split power in the methane stoichiometric ratio (0.503 kg H2 and 2.744 kg CO2 per kg CH4: ~81/19 at defaults; a lone block gets it all) and everything is vented. Unconverted reactor feed is vented, not recycled to the reactor inlet. The allocation result carries a `kind` (`productMix`, `methane`, `methanol`, `exploratoryOnly`, `methaneFallback`) that the UI labels from.
 
 ```text
 H2 kg      = electrolyzer_kWh / kWh_per_kg      (LHV efficiency = 33.33 / kWh_per_kg; HHV floor 39.4)
 CO2 t      = dac_kWh / kWh_per_t
 CO2 + 4 H2 -> CH4 + 2 H2O:  CH4 = min(H2/0.503, CO2/2.744) * conversion;  MCF = kg / 19.25
-CO2 + 3 H2 -> CH3OH + H2O:  MeOH = min(H2/0.189, CO2/1.374) * conversion; export = reactor - MTG offtake
+CO2 + 3 H2 -> CH3OH + H2O:  MeOH = min(H2/0.189, CO2/1.374) * conversion; export = reactor - methanol-route offtake
 exploratory units/day = min(kWh / kWh_per_unit, H2 / h2_per_unit, CO2 / co2_per_unit, MeOH / meoh_per_unit)
 water: stoichiometric 9 kg/kg H2; feed water 12 kg/kg H2 (incl. purification rejects);
        recycled = 2.25 kg/kg CH4 + 0.562 kg/kg MeOH
@@ -331,7 +355,7 @@ sponsor_y   = max(0, -equity_cf_y)                     # debt service and/or rep
 captured    = DAC output
 bound       = CO2 converted into methane, methanol and exploratory products
 vented      = captured - bound                      # unconverted feed
-net avoided = CH4_MCF * 0.0528 + MeOH_t * 1.374     # fossil fuel displaced (methanol incl. MTG feed)
+net avoided = CH4_MCF * 0.0528 + MeOH_t * 1.374     # fossil fuel displaced (methanol incl. route feed, e.g. MTG)
 ```
 
 0.0528 t/MCF is the combustion CO2 of pure CH4 (19.25 kg x 44.01/16.04). EPA's ~0.055 t/MCF is for pipeline gas. Carbon in a fuel returns to the air when it is burned, so capture is not removal: net avoided counts only displaced fossil combustion. Upstream emissions and leakage are excluded, and non-fuel exploratory products are counted as bound, not avoided.
@@ -359,7 +383,7 @@ The headline default scenario is:
   - Eligibility (lifecycle, wage, ownership, location, certification) is not legally validated, and award values are user inputs.
   - Upfront support is not re-applied to replacements, and custom support runs for the whole horizon.
 - **45Q on CO2 made into fuel is an upper bound.** The IRC 45Q(f)(5)(B) lifecycle limit is not modeled.
-- **Exploratory routes are rough placeholders.** Each has one electricity intensity, a flat cycling penalty, a generic 10-year life and a shared O&M %, with no thermal, startup, purity or logistics constraints. Their shared power pool is split by priority weight, not by each route's energy demand. Methanol feed reaches only MTG.
+- **Exploratory routes are rough placeholders.** Each has one electricity intensity, a flat cycling penalty, a generic 10-year life and a shared O&M %, with no thermal, startup, purity or logistics constraints. A route's priority sets its share of output (power, H2 and CO2 follow weight x per-unit need), not a fixed slice of the power. Methanol routes get only the user-set diverted share of the methanol reactor output, split by priority x kg MeOH per unit; the split slider lives in the MTG card.
 - **Process blocks follow solar freely,** with no minimum turndown, ramp limits or startup losses beyond the cycling penalty.
 - **Feed-buffer inventory is a flat-supply upper bound,** and its $/kg and $/t costs are assumptions. Methanol tankage is ignored.
 - **Some modes are stylized fallbacks.**
@@ -393,7 +417,7 @@ The headline default scenario is:
   - Qualifying-output credit bases.
 - **Hand-derived goldens:** CRF, IRR verdicts, MIRR, debt schedules and balloons, levelized identities, replacement timing and salvage, and buffer inventory.
 - **Policy facts:** scheme defaults are re-derived from the IRS notices, auction results and ECB rates instead of being copied from `policies.js`.
-- **UI and tooling:** control-spec and `index.html` contracts, renderers, charts, diagram, share links, saved sites, the optimizer worker, the build allowlist and dev-server hardening. These run in Node with small DOM stubs.
+- **UI and tooling:** control-spec and `index.html` contracts, renderers, charts, diagram, HTML escaping, share links, saved sites, the optimizer worker, the build allowlist, dev-server hardening and the one-way import order (`tests/architecture/`). These run in Node with small DOM stubs.
 
 ## Sources
 

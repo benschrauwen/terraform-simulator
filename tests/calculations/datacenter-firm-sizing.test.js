@@ -145,7 +145,7 @@ test('required MW is the (H+1)-th largest hourly shortfall and covers the target
   assert.equal(basis.hoursCoveredByFirm + basis.unservedHoursWithFirm, basis.hoursShortWithoutFirm);
 });
 
-test('the optimizer minimum-units bisection equals the auto count before spares', () => {
+test('the minimum-units bisection equals the auto count before spares; the optimizer keeps the spares', () => {
   const designs = [
     { ...BASE },
     { ...BASE, batteryCapacityMWh: 100 },
@@ -153,14 +153,17 @@ test('the optimizer minimum-units bisection equals the auto count before spares'
     buildStartingDesign(BASE, 'islanded').state,
     { ...BASE, architecture: 'islanded', batteryCapacityMWh: 200 },
   ];
-  designs.forEach((state, index) => {
-    const auto = run({ ...state, firmFamily: 'gas', firmSizingMode: 'auto' }).firm.sizingBasis.minUnits;
-    // The optimizer's own feasibility test (manual count, 0 = no plant) and bisection.
+  designs.forEach((rawState, index) => {
+    // (No battery standing in for spares here: manual counts have no reserve floor.)
+    const state = { ...rawState, batteryReplacesSpares: false };
+    const auto = run({ ...state, firmFamily: 'gas', firmSizingMode: 'auto' });
     const bisected = findMinimumUnits(units => manual(state, units).reliability.meetsTarget, 60);
-    assert.equal(bisected, auto, `design ${index}`);
-    // And the optimizer's frontier cell for the design's own solar and battery.
-    const result = optimizeDatacenterDesign(state, { sizeSolar: false, sizeBattery: false, budget: 60 });
-    assert.equal(result.frontier.cells[0][0].minUnits, auto, `design ${index}: optimizer`);
+    assert.equal(bisected, auto.firm.sizingBasis.minUnits, `design ${index}`);
+    // The optimizer's design at the same solar and battery is the auto design with its spares
+    // (battery-as-reserve as the state sets it), plus any extra units that pay.
+    const result = optimizeDatacenterDesign(rawState, { sizeSolar: false, sizeBattery: false, budget: 60 });
+    const autoRaw = run({ ...rawState, firmFamily: 'gas', firmSizingMode: 'auto', firmExtraUnits: 0 });
+    assert.equal(result.best.units, autoRaw.firm.units + result.best.extraUnits, `design ${index}: optimizer`);
   });
 });
 

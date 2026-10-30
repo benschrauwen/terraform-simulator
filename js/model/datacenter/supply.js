@@ -268,7 +268,7 @@ const EMPTY_FIRM = Object.freeze({
  * Firm generation: { family, type, typeData (power.js entry), label, units,
  * (gas 'auto': autoBaseUnits, the count firm-sizing.js finds for the uptime
  * target, + spare units less replacedSpares, the spares a battery stands in
- * for: scenario.js getBatteryReserve),
+ * for: scenario.js getBatteryReserve, + firmExtraUnits),
  * unitSizeMW, capacityMW, mustTake (nuclear runs as baseload), availableKW
  * (8760), outageHoursPerUnit, availabilityFraction, heatRate (gas, HHV
  * MMBtu/MWh), partLoad, marginalCostPerMWh (gas: (fuel price + carbon price
@@ -283,9 +283,10 @@ export function buildFirmSupply(state, { meanLoadKW, autoBaseUnits = 0, replaced
     // 'auto': the units the uptime target needs (firm-sizing.js) plus the
     // spare units, which only come with a plant (none when no unit is needed).
     const sparesReplacedByBattery = state.firmSizingMode === 'auto' && autoBaseUnits > 0 ? Math.min(replacedSpares, state.firmSpareUnits) : 0;
+    // Extra units (the optimizer's) run on cost on top of the target's and the spares.
     const units = state.firmSizingMode === 'manual'
       ? state.firmUnits
-      : autoBaseUnits + (autoBaseUnits > 0 ? state.firmSpareUnits - sparesReplacedByBattery : 0);
+      : autoBaseUnits + (autoBaseUnits > 0 ? state.firmSpareUnits - sparesReplacedByBattery : 0) + state.firmExtraUnits;
     // A carbon price on the plant's own CO2 is part of its running cost (and of the hybrid merit order).
     const carbonPerMMBtu = state.carbonPricePerTonne * getGensetFuel(typeData).co2KgPerMMBtu / 1000;
     const availabilityFraction = state.gasAvailabilityPercent / 100;

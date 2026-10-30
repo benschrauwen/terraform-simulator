@@ -6,8 +6,11 @@
 
      solar MWdc       0 .. 4 x design facility peak       (continuous)
      battery MWh      0 .. 24 h x design facility peak    (continuous)
-     firm units       0 .. ceil(peak / unit size) + 3     (integer; the
-                      selected gas type, or nuclear type; 0 = no firm plant;
+     firm units       gas: the auto design (the units the uptime target
+                      needs + the state's spare units, firmSpareUnits, which
+                      a battery may stand in for) + 0 .. ceil(peak / unit
+                      size) + 3 extra units run on cost (firmExtraUnits);
+                      nuclear: 0 .. that bound (manual count; 0 = no plant;
                       an existing-plant contract is 0 or 1 block at the
                       average load)
      grid connection  firm and/or flexible (hybrid only, optional; grid-
@@ -20,14 +23,14 @@
    type, battery duration, ...) stays as given. Each candidate is a full
    fast-mode scenario run (one hourly dispatch year, ~1-2 ms).
 
-   Method. For a given (solar, battery) the fewest gas units meeting the
-   target is the auto sizing without spares (firm-sizing.js, one zero-gas
-   dispatch). For nuclear, or if that count is not feasible as a manual
-   count, it is bisected instead (uptime does not fall when a unit is added:
-   more available capacity in every hour), bracketed from a neighbouring
-   candidate's answer. NPV is then walked one unit at a time from there
-   (more units than the minimum pay when on-site gas is cheaper than the
-   grid, or when they serve hours above the target). Over (solar, battery):
+   Method. For a given (solar, battery) a gas candidate is the auto design
+   (firm-sizing.js plus the spare policy, exactly as a user's auto design,
+   battery-as-reserve included), so optimized designs carry the same N+x as
+   the starting designs; NPV is then walked one extra unit at a time (extra
+   units pay when on-site gas is cheaper than the grid). For nuclear the
+   fewest feasible units are bisected (uptime does not fall when a unit is
+   added: more available capacity in every hour), bracketed from a
+   neighbouring candidate's answer, then walked the same way. Over (solar, battery):
    a coarse grid (0 plus halvings down from each upper bound; the battery
    axis also 0.25-2 h of the design peak, where a small battery replacing
    firm units forms its own basin), then a compass/pattern search from up to
@@ -169,6 +172,10 @@ function summarize(r, design = {}) {
     batteryDurationHours: r.state.batteryDurationHours,
     units: r.firm.units,
     unitSizeMW: r.firm.unitSizeMW,
+    // Gas auto: spares (after any the battery covers) and extra units in `units`.
+    spareUnits: r.firm.sizingBasis?.spareUnits ?? null,
+    extraUnits: r.state.firmSizingMode === 'auto' ? r.state.firmExtraUnits : 0,
+    sparesReplacedByBattery: r.firm.sparesReplacedByBattery || 0,
     firmFamily: r.firm.family,
     firmType: r.firm.type,
     firmLabel: r.firm.label,
@@ -195,7 +202,7 @@ const millions = value => `${value < 0 ? '-' : ''}$${Math.abs(value / 1e6).toFix
 
 // Decision fields every patch carries, so applying one design after another
 // never leaves the previous design's sizing behind.
-const DESIGN_KEYS = ['architecture', 'gridConnection', 'solarSizeMWdc', 'batteryCapacityMWh', 'batteryDurationHours', 'firmFamily', 'firmSizingMode', 'firmUnits', 'gasUnitSizeMW'];
+const DESIGN_KEYS = ['architecture', 'gridConnection', 'solarSizeMWdc', 'batteryCapacityMWh', 'batteryDurationHours', 'firmFamily', 'firmSizingMode', 'firmUnits', 'firmSpareUnits', 'firmExtraUnits', 'gasUnitSizeMW'];
 const resolutionFor = max => (max >= 100 ? 1 : max >= 10 ? 0.1 : 0.01);
 
 /** max x i / n for i = 1 .. n - 1. */
@@ -261,6 +268,11 @@ function optimizeFrom(startState, referenceState, options = {}) {
   const unitSizes = thorough && sizeFirm && gasRange && gasRange.max > gasRange.min
     ? [...new Set([gasRange.min, gasRange.default, gasRange.max, start.gasUnitSizeMW])].sort((x, y) => x - y)
     : [unitSizeMW];
+  // Gas: auto sizing (the units the target needs + the spare policy, which
+  // a battery may cover: scenario.js getBatteryReserve) and the searched
+  // count is the extra units run on cost (firmExtraUnits). Nuclear: the
+  // manual unit count.
+  const autoGas = sizeFirm && firmFamily === 'gas';
   const unitsMaxFor = size => (!sizeFirm ? base.firm.units
     : contract ? 1
       : (bounds.unitsMax ?? Math.ceil((peakMW * scale) / size - 1e-9) + OPTIMIZER_BOUND_FACTORS.extraUnits));
@@ -296,7 +308,9 @@ function optimizeFrom(startState, referenceState, options = {}) {
       batteryDurationHours: d.duration ?? start.batteryDurationHours,
     };
     if (firmFamily === 'gas' && !contract && d.unitSize) s.gasUnitSizeMW = d.unitSize;
-    if (sizeFirm) {
+    if (autoGas) {
+      Object.assign(s, { firmFamily, firmSizingMode: 'auto', firmExtraUnits: d.units });
+    } else if (sizeFirm) {
       if (d.units > 0 && contract) Object.assign(s, { firmFamily, firmSizingMode: 'auto' });
       else if (d.units > 0) Object.assign(s, { firmFamily, firmSizingMode: 'manual', firmUnits: d.units });
       else s.firmFamily = 'none'; // no plant on the schedule's required path either
@@ -314,53 +328,36 @@ function optimizeFrom(startState, referenceState, options = {}) {
     return summary;
   };
 
-  /*
-   * Fewest gas units meeting the target at a point: the auto sizing with no
-   * spares (firm-sizing.js, one zero-gas dispatch; the same count the
-   * bisection finds, tested), its run doubling as the candidate at that
-   * count. Nuclear, or a count above the bound: null, and the caller bisects.
-   */
-  const autoMinUnits = (q, connection, max) => {
-    if (firmFamily !== 'gas') return null;
-    const key = `${pointKey(q)}|auto|${connection}`;
-    if (!cache.has(key)) {
-      const d = { ...q, units: 1, connection };
-      const r = calculateDatacenterScenario({ ...stateFor(d), firmSizingMode: 'auto', firmSpareUnits: 0 }, { fastMode: true });
-      evaluations += 1;
-      const basis = r.firm.sizingBasis;
-      const units = basis?.reachable ? basis.minUnits : null;
-      cache.set(key, units);
-      // The auto run is the manual design at that count (same dispatch and costs; 0 units = no plant).
-      if (units !== null && units <= max) cache.set(`${pointKey(q)}|${units}|${connection}`, summarize(r, { ...q, units, connection }));
-    }
-    const units = cache.get(key);
-    return units !== null && units <= max ? units : null;
-  };
-
-  /** Best candidate at a point and connection: minimum feasible units, then an NPV walk. */
-  const bestForPoint = (q, connection, hint = {}) => {
-    const max = unitsMaxFor(q.unitSize);
-    const at = units => evaluate({ ...q, units, connection });
-    if (!sizeFirm) return { best: at(max), minUnits: null };
-    let minUnits = autoMinUnits(q, connection, max);
-    if (minUnits === null || !at(minUnits).feasible) {
-      minUnits = findMinimumUnits(units => at(units).feasible, max, hint.minUnits ?? null);
-    }
-    if (minUnits === null) return { best: at(max), minUnits: null }; // infeasible: highest uptime
-    let n = Math.max(minUnits, Math.min(max, hint.units ?? minUnits));
+  /** Walk the searched count from `n` while NPV improves, not below `min`. */
+  const walkUnits = (at, n, min, max) => {
     let best = at(n);
-    // Walk while NPV improves (never below the minimum; a count above it that is
-    // infeasible would break monotonicity: counted and skipped).
+    // (Infeasible counts above a feasible one would break monotonicity: counted and skipped.)
     for (const direction of [1, -1]) {
-      for (let next = n + direction; next >= minUnits && next <= max && budgetLeft() > 0; next += direction) {
+      for (let next = n + direction; next >= min && next <= max && budgetLeft() > 0; next += direction) {
         const candidate = at(next);
-        if (!candidate.feasible) { monotonicityExceptions += 1; continue; }
+        if (!candidate.feasible && best.feasible) { monotonicityExceptions += 1; continue; }
         if (!isBetterCandidate(candidate, best)) break;
         best = candidate;
         n = next;
       }
     }
-    return { best, minUnits };
+    return best;
+  };
+
+  /**
+   * Best candidate at a point and connection. Gas: the auto design (the
+   * units the target needs + spares), then extra units while NPV improves
+   * (they pay when gas is cheaper than grid power). Nuclear: the minimum
+   * feasible count (bisection), then an NPV walk.
+   */
+  const bestForPoint = (q, connection, hint = {}) => {
+    const max = unitsMaxFor(q.unitSize);
+    const at = units => evaluate({ ...q, units, connection });
+    if (!sizeFirm) return { best: at(max), minUnits: null };
+    if (autoGas) return { best: walkUnits(at, Math.min(max, hint.units ?? 0), 0, max), minUnits: 0 };
+    let minUnits = findMinimumUnits(units => at(units).feasible, max, hint.minUnits ?? null);
+    if (minUnits === null) return { best: at(max), minUnits: null }; // infeasible: highest uptime
+    return { best: walkUnits(at, Math.max(minUnits, Math.min(max, hint.units ?? minUnits)), minUnits, max), minUnits };
   };
 
   const solarExtra = thorough ? THOROUGH_SEARCH.solarPeakMultiples.map(multiple => multiple * peakMW) : [];
@@ -380,14 +377,14 @@ function optimizeFrom(startState, referenceState, options = {}) {
     const coarseShare = thorough ? evaluations + Math.floor((share - evaluations) * THOROUGH_SEARCH.coarseBudgetShare) : share;
     const cells = [];
     let best = null;
-    let bestHint = { units: base.firm.units };
+    let bestHint = { units: autoGas ? 0 : base.firm.units };
     // Coarse grid, row by row; each cell starts from its left (or upper) neighbour's units.
     solarLevels.forEach((solar, i) => {
       cells[i] = [];
       batteryLevels.forEach((battery, j) => {
         if (evaluations + reserve > coarseShare) { cells[i][j] = null; return; }
         const neighbour = j > 0 ? cells[i][j - 1] : i > 0 ? cells[i - 1][j] : null;
-        const hint = neighbour ? { minUnits: neighbour.minUnits, units: neighbour.units } : bestHint;
+        const hint = neighbour ? { minUnits: neighbour.minUnits, units: neighbour.summary.design.units } : bestHint;
         const { best: cellBest, minUnits } = bestForPoint(pointOf(solar, battery), connection, hint);
         cells[i][j] = {
           solarMWdc: solar, batteryMWh: battery, units: cellBest.units, minUnits,
@@ -396,7 +393,7 @@ function optimizeFrom(startState, referenceState, options = {}) {
         Object.defineProperty(cells[i][j], 'summary', { value: cellBest, enumerable: false });
         if (isBetterCandidate(cellBest, best)) {
           best = cellBest;
-          bestHint = { minUnits, units: cellBest.units };
+          bestHint = { minUnits, units: cellBest.design.units };
         }
       });
     });
@@ -423,13 +420,13 @@ function optimizeFrom(startState, referenceState, options = {}) {
       const startShare = evaluations + Math.floor((share - evaluations) / (starts.length - startIndex));
       let localBest = entry.cell.summary;
       let point = pointOf(localBest.design.solar, localBest.design.battery);
-      let hint = { minUnits: entry.cell.minUnits, units: localBest.units };
+      let hint = { minUnits: entry.cell.minUnits, units: localBest.design.units };
       const tryPoint = trial => {
         const { best: candidate, minUnits } = bestForPoint(trial, connection, hint);
         if (!isBetterCandidate(candidate, localBest)) return false;
         localBest = candidate;
         point = trial;
-        hint = { minUnits, units: candidate.units };
+        hint = { minUnits, units: candidate.design.units };
         return true;
       };
       const steps = [];
@@ -498,7 +495,7 @@ function optimizeFrom(startState, referenceState, options = {}) {
   const corners = [];
   if (sizeSolar && best.solarMWdc >= solarMax - solarRes / 2) corners.push('solar');
   if (sizeBattery && best.batteryMWh >= batteryMax - batteryRes / 2) corners.push('battery');
-  if (sizeFirm && !contract && best.units >= unitsMaxFor(overall.design.unitSize ?? unitSizeMW)) corners.push('units');
+  if (sizeFirm && !contract && (autoGas ? overall.design.units : best.units) >= unitsMaxFor(overall.design.unitSize ?? unitSizeMW)) corners.push('units');
 
   const notes = [];
   if (!best.feasible) {

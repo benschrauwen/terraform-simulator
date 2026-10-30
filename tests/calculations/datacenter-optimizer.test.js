@@ -20,27 +20,25 @@ import {
 // reciprocating gas engines for the hybrid and islanded cases (they need gas cheaper than the grid).
 const BASE = { ...DATACENTER_DEFAULT_STATE };
 const RECIP = applyDatacenterPresetDefaults({ ...DATACENTER_DEFAULT_STATE, architecture: 'hybrid', gasType: 'recip' }, 'gasType');
-const ISLANDED = { ...RECIP, architecture: 'islanded' };
+const ISLANDED = { ...RECIP, architecture: 'islanded', firmSpareUnits: 2 };
 // The hybrid starting design with standby diesel instead of its engines (the two-basin landscape).
 const HYBRID_DIESEL = applyDatacenterPresetDefaults({ ...getArchitectureStartState(DATACENTER_DEFAULT_STATE, 'hybrid'), gasType: 'standby-diesel' }, 'gasType');
 
-/** The state the optimizer evaluates for a design (units 0 = no firm plant). */
-function designState(state, { solar, battery, units }) {
-  const next = { ...state, solarSizeMWdc: solar, batteryCapacityMWh: battery };
-  if (units > 0) Object.assign(next, { firmFamily: 'gas', firmSizingMode: 'manual', firmUnits: units });
-  else next.firmFamily = 'none';
-  return next;
+/** The state the optimizer evaluates for a gas design: auto sizing (the units the target needs +
+    the spare policy, which a battery may cover) plus `extra` units run on cost. */
+function designState(state, { solar, battery, extra }) {
+  return { ...state, solarSizeMWdc: solar, batteryCapacityMWh: battery, firmFamily: 'gas', firmSizingMode: 'auto', firmExtraUnits: extra };
 }
 
 /** Exhaustive search over a grid: the best feasible design (or null). */
-function bruteForce(state, solars, batteries, unitsMax) {
+function bruteForce(state, solars, batteries, extraMax) {
   let best = null;
   for (const solar of solars) {
     for (const battery of batteries) {
-      for (let units = 0; units <= unitsMax; units++) {
-        const r = calculateDatacenterScenario(designState(state, { solar, battery, units }), { fastMode: true });
+      for (let extra = 0; extra <= extraMax; extra++) {
+        const r = calculateDatacenterScenario(designState(state, { solar, battery, extra }), { fastMode: true });
         if (!r.reliability.meetsTarget) continue;
-        if (!best || r.economics.npv > best.npv) best = { solar, battery, units, npv: r.economics.npv };
+        if (!best || r.economics.npv > best.npv) best = { solar, battery, extra, units: r.firm.units, npv: r.economics.npv };
       }
     }
   }
@@ -91,12 +89,17 @@ test('minimum-units bisection equals a linear scan, with or without a hint', () 
   assert.equal(findMinimumUnits(units => units >= 10, 10, 2), 10);
 });
 
-test('islanded gas: the optimizer matches an exhaustive grid search', () => {
-  const bounds = { solarMaxMWdc: 64, batteryMaxMWh: 256, unitsMax: 14 };
-  const brute = bruteForce(ISLANDED, range(64, 8), range(256, 32), 14);
+test('islanded gas: the optimizer matches an exhaustive grid search, spares kept', () => {
+  const bounds = { solarMaxMWdc: 64, batteryMaxMWh: 256, unitsMax: 3 };
+  const brute = bruteForce(ISLANDED, range(64, 8), range(256, 32), 3);
   assert.ok(brute, 'the grid holds a feasible design');
   const result = optimizeDatacenterDesign(ISLANDED, { bounds });
   assert.equal(result.feasible, true);
+  // The optimum keeps the islanded N+2 policy (less any spares a battery covers), like auto sizing.
+  const applied = calculateDatacenterScenario({ ...ISLANDED, ...result.best.patch }, { fastMode: true });
+  assert.equal(applied.state.firmSizingMode, 'auto');
+  assert.equal(result.best.spareUnits + result.best.sparesReplacedByBattery, 2);
+  assert.equal(result.best.units, applied.firm.sizingBasis.minUnits + result.best.spareUnits + result.best.extraUnits);
   assert.ok(result.best.uptimePercent >= ISLANDED.uptimeTargetPercent - 1e-9);
   // The optimizer is not limited to the brute-force grid, so it may only do better.
   assert.ok(result.best.npv >= brute.npv - 1e-6 * Math.abs(brute.npv),
@@ -104,14 +107,15 @@ test('islanded gas: the optimizer matches an exhaustive grid search', () => {
   assert.ok(result.candidatesEvaluated <= result.budget);
 });
 
-test('hybrid (gas cheaper than grid power): extra units beyond the minimum are found when they pay', () => {
-  // Cheap gas makes on-site generation earn its keep: the best count is above the
-  // minimum the uptime target needs (0 on a firm grid).
-  const hybrid = { ...RECIP, gasFuelPricePerMMBtu: 1, gridEnergyPricePerMWh: 150 };
+test('hybrid (gas cheaper than grid power): extra units beyond the target and spares are found when they pay', () => {
+  // Cheap gas makes on-site generation earn its keep: the best count is above what the uptime
+  // target needs plus the spare (none needed: a firm grid without utility outages here).
+  const hybrid = { ...RECIP, gasFuelPricePerMMBtu: 1, gridEnergyPricePerMWh: 150, firmGridOutageHoursPerYear: 0 };
   const bounds = { solarMaxMWdc: 0, batteryMaxMWh: 0, unitsMax: 17 };
   const brute = bruteForce(hybrid, [0], [0], 17);
   const result = optimizeDatacenterDesign(hybrid, { bounds, sizeSolar: false, sizeBattery: false });
-  assert.ok(brute.units > 0);
+  assert.ok(brute.extra > 0);
+  assert.equal(result.best.extraUnits, brute.extra);
   assert.equal(result.best.units, brute.units);
   assert.ok(Math.abs(result.best.npv - brute.npv) <= 1e-6 * Math.abs(brute.npv));
 });
@@ -175,26 +179,13 @@ test('two basins: the optimizer finds the small-battery design a coarse halving 
   // Hybrid starting design with standby diesel (flexible connection) and a cheap battery ($150/kWh,
   // no power cost: the landscape before the energy/power split), where ~50-60 MWh of battery
   // replaces several diesel units. Reduced brute force: solar 0-300 MWdc step 25, battery 0-200
-  // MWh step 20, the fewest feasible units by bisection (checked against a linear scan above)
-  // then up to two more. The optimizer, with the same bounds, must come within 0.5% of its NPV.
-  // (The single-start search on halvings of the bounds stopped in the no-battery basin, $150.6M
-  // with 19 units, against ~$154.7M with ~51 MWh and 12 units.)
+  // MWh step 20, the auto design (target + spare) with up to two extra units. The optimizer, with
+  // the same bounds, must come within 0.5% of its NPV. (The single-start search on halvings of
+  // the bounds once stopped in the no-battery basin.)
   const start = { ...HYBRID_DIESEL, batteryCostPerKWh: 150, batteryPowerCostPerKW: 0 };
-  const unitsMax = 40;
-  let best = null;
-  for (let solar = 0; solar <= 300; solar += 25) {
-    for (let battery = 0; battery <= 200; battery += 20) {
-      const at = units => calculateDatacenterScenario(designState(start, { solar, battery, units }), { fastMode: true });
-      const min = findMinimumUnits(units => at(units).reliability.meetsTarget, unitsMax);
-      if (min === null) continue;
-      for (let units = min; units <= Math.min(unitsMax, min + 2); units++) {
-        const r = at(units);
-        if (r.reliability.meetsTarget && (!best || r.economics.npv > best.npv)) best = { npv: r.economics.npv, solar, battery, units };
-      }
-    }
-  }
+  const best = bruteForce(start, range(300, 25), range(200, 20), 2);
   assert.ok(best.battery > 0, 'the brute-force optimum uses a small battery');
-  const result = optimizeDatacenterDesign(start, { bounds: { solarMaxMWdc: 300, batteryMaxMWh: 200, unitsMax } });
+  const result = optimizeDatacenterDesign(start, { bounds: { solarMaxMWdc: 300, batteryMaxMWh: 200, unitsMax: 40 } });
   assert.ok(result.best.feasible);
   assert.ok(result.best.npv >= best.npv - 0.005 * Math.abs(best.npv), `optimizer ${result.best.npv} vs brute force ${best.npv} (${JSON.stringify(best)})`);
   assert.ok(result.best.batteryMWh > 0, 'the optimizer lands in the battery basin');

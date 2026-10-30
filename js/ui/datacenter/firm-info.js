@@ -103,8 +103,10 @@ function firmSizing(state, r) {
     const basis = firm.sizingBasis;
     rows.push(...uptimeNeedRows(r));
     if (basis) {
-      const spare = firm.units - basis.minUnits;
+      const extra = basis.extraUnits || 0;
+      const spare = firm.units - basis.minUnits - extra;
       rows.push(infoRow('Redundancy', spare >= 0 ? `N+${spare} (N = ${basis.minUnits} for the uptime target)` : `short by ${-spare} unit${spare === -1 ? '' : 's'} for the uptime target`));
+      if (extra > 0) rows.push(infoRow('Extra units', `+${fixed(extra, 0)} run on cost`));
       if (firm.sparesReplacedByBattery > 0) {
         const replaced = firm.sparesReplacedByBattery;
         rows.push(infoRow('Spares as battery reserve', `${fixed(replaced, 0)} unit${replaced > 1 ? 's' : ''} (${formatMWh(firm.batteryReserveMWh)} held)`, 'The battery stands in for these spare units: its power covers them and it keeps this energy for them, used only to avoid unserved load (Battery section).'));

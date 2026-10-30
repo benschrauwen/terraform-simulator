@@ -285,6 +285,11 @@ export const DATACENTER_SECTIONS = {
       tooltip: 'Units on top of the ones the uptime target needs (which already allow for planned maintenance), for failures and load the model does not see. Backup: N+1; islanded: N+2 is common. None are added when the target needs no unit.',
     },
     {
+      type: 'range', id: 'firmExtraUnits', label: 'Extra units (run on cost)', min: 0, max: 50, step: 1, format: value => (value > 0 ? `+${fixed(value, 0)} units` : 'None'),
+      visible: state => state.firmFamily === 'gas' && state.firmSizingMode === 'auto',
+      tooltip: 'Units on top of the ones the uptime target needs and the spares, which run whenever gas is cheaper than grid power (hybrid). The optimizer sets this.',
+    },
+    {
       type: 'range', id: 'firmUnits', label: 'Units', min: 0, max: 300, step: 1, format: value => `${fixed(value, 0)} units`,
       visible: state => state.firmFamily !== 'none' && state.firmSizingMode === 'manual',
     },

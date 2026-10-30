@@ -613,15 +613,15 @@ NPV is linear in the revenue price, so the break-even rental price, token price 
 | --- | --- |
 | Solar MWdc | 0 to 4 x P (x 2 with the wider range) |
 | Battery MWh | 0 to 24 h x P (x 2 with the wider range) |
-| Firm units | 0 to ceil(P / unit size) + 3 of the selected gas or nuclear type, manual sizing; 0 = no firm plant (so it is off the schedule too); an existing-plant nuclear contract is 0 or 1 block at the average load |
+| Firm units | gas: the auto design (the units the uptime target needs + the state's spare units, which a battery may stand in for) + 0 to ceil(P / unit size) + 3 extra units run on cost (`firmExtraUnits`); nuclear: 0 to that bound, manual sizing; 0 = no firm plant (so it is off the schedule too); an existing-plant nuclear contract is 0 or 1 block at the average load |
 | Grid connection | optional: firm and flexible are both searched (hybrid; grid-connected is firm only) |
 | Battery duration, unit size | `thorough` only: 1, 2, 4, 8 h (and the current); the generator type's min, default and max unit size |
 
 ```text
 for each (solar, battery):
-  n_min  = fewest units with uptime >= target          # gas: the auto sizing without spares (firm-sizing.js,
-                                                       #   one zero-gas dispatch); nuclear or a miss: bisection
-  units  = walk n_min, n_min+1, ... while NPV improves # more units pay when gas is cheaper than grid power
+  gas    = auto design: N for the target + spares (N+x as in auto sizing, battery-as-reserve included)
+  extra  = walk 0, 1, 2, ... extra units while NPV improves   # pay when gas is cheaper than grid power
+  nuclear: n_min = fewest units with uptime >= target (bisection), then walk n_min, n_min+1, ...
 coarse grid: solar in {0, S/32, ..., S}; battery in {0, 0.25, 0.5, 1, 2 h of P} + {B/8, B/4, B/2, B}
              (7 x 9 at the default bounds, S, B = upper bounds)
 refine:      compass search from up to 3 coarse cells (the best, then the next best that are not its

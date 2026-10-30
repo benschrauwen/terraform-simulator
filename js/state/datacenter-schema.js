@@ -235,6 +235,9 @@ export const DATACENTER_STATE_FIELDS = [
   // older share links with a manual count decode unchanged. The UI seeds it
   // from the current auto count when the user switches to manual.
   { key: 'firmUnits', type: 'integer', min: 0, max: 200000, defaultValue: 15 },
+  // Gas 'auto': units on top of the target's and the spares, run when gas is
+  // cheaper than the grid (the optimizer sets this; it keeps the spares).
+  { key: 'firmExtraUnits', type: 'integer', min: 0, max: 200000, defaultValue: 0 },
 
   { key: 'gasType', type: 'enum', getOptions: () => Object.keys(GAS_GENSET_TYPES), defaultValue: DEFAULT_GAS_GENSET_TYPE },
   { key: 'gasUnitSizeMW', type: 'number', min: 0.1, max: 1500, derive: state => gasType(state).unitSizeMW.default },
@@ -385,7 +388,7 @@ export function applyDatacenterPresetDefaults(state, selectionKey) {
 /** State fields a starting design sets (applyArchitectureDefaults). */
 export const ARCHITECTURE_DESIGN_KEYS = Object.freeze([
   'architecture', 'gridConnection', 'solarSizeMWdc', 'batteryCapacityMWh', 'batteryDurationHours',
-  'firmFamily', 'firmSizingMode', 'firmSpareUnits', 'firmUnits', 'gasType',
+  'firmFamily', 'firmSizingMode', 'firmSpareUnits', 'firmUnits', 'firmExtraUnits', 'gasType',
   // Reset with the gas type when the design changes it (DERIVED_BY_SELECTION.gasType).
   ...DERIVED_BY_SELECTION.gasType,
 ]);
@@ -439,6 +442,7 @@ export function applyArchitectureDefaults(state, architecture) {
     firmSizingMode: 'auto',
     firmSpareUnits: design.gasSpareUnits,
     firmUnits: DATACENTER_DEFAULT_STATE.firmUnits,
+    firmExtraUnits: 0,
   });
 }
 

@@ -410,7 +410,8 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
       requiredMW: sizing ? sizing.requiredMW : null,
       sizingBasis: sizing ? {
         ...sizing,
-        spareUnits: autoGas ? firm.units - sizing.minUnits : null,
+        spareUnits: autoGas ? firm.units - sizing.minUnits - state.firmExtraUnits : null,
+        extraUnits: autoGas ? state.firmExtraUnits : 0,
       } : null,
     },
     gpu: { ...getGpuFleet(state), gpuHoursSoldPerYear: economics.annualGpuHoursSold },

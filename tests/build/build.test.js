@@ -39,6 +39,7 @@ test('production build ships an allowlisted, versioned asset tree', t => {
 
   [
     'index.html',
+    'sources.html',
     'README.md',
     'LICENSE',
     `${ASSET_DIR}/style.css`,
@@ -59,7 +60,7 @@ test('production build ships an allowlisted, versioned asset tree', t => {
   const files = listFiles(dist);
   files.forEach(relativePath => {
     assert.ok(
-      ['index.html', 'README.md', 'LICENSE'].includes(relativePath) || relativePath.startsWith(`${ASSET_DIR}/`),
+      ['index.html', 'sources.html', 'README.md', 'LICENSE'].includes(relativePath) || relativePath.startsWith(`${ASSET_DIR}/`),
       `Unexpected file outside the allowlist: ${relativePath}`
     );
     assert.equal(
@@ -78,6 +79,12 @@ test('production build ships an allowlisted, versioned asset tree', t => {
     assert.equal(exists(url), true, `Expected ${url} to resolve inside dist.`);
   });
   assert.match(html, new RegExp(`<script type="module" src="${ASSET_DIR}/js/main\\.js"></script>`));
+
+  // The sources page shares the versioned stylesheet and links back unversioned.
+  const sourcesHtml = fs.readFileSync(path.join(dist, 'sources.html'), 'utf8');
+  assert.match(sourcesHtml, new RegExp(`href="${ASSET_DIR}/style\\.css"`));
+  assert.match(sourcesHtml, /href="index\.html"/);
+  assert.match(html, /href="sources\.html"/);
 });
 
 test('the asset version is a content hash, identical for identical sources', t => {

@@ -10,8 +10,11 @@ const DIST = path.resolve(ROOT, process.env.DIST_DIR || 'dist');
 
 // Allowlist: nothing outside these paths reaches dist/. Versioned assets live under
 // dist/assets/<buildId>/ so relative ES-module imports and the worker URL inherit the
-// version, and only index.html needs rewriting.
+// version, and only the top-level pages need rewriting.
 const ROOT_FILES = ['README.md', 'LICENSE'];
+// Top-level HTML pages: their local asset URLs are rewritten to the versioned
+// directory and their footer gets the release label; links between pages stay as-is.
+const PAGES = ['index.html', 'sources.html'];
 const ASSETS = {
   // dist path (under ASSET_DIR) -> source path
   'style.css': 'style.css',
@@ -33,16 +36,18 @@ Object.entries(ASSETS).forEach(([target, source]) => {
   cpSync(path.join(ROOT, source), path.join(DIST, ASSET_DIR, target), { recursive: true, filter: isShipped });
 });
 
-const html = readFileSync(path.join(ROOT, 'index.html'), 'utf8')
-  .replace(/\b(src|href)="([^"]+)"/g, (match, attribute, url) => {
-    if (/^(?:[a-z]+:|\/\/|#)/i.test(url)) return match;
-    const entry = Object.entries(ASSETS).find(([, source]) => url === source || url.startsWith(`${source}/`));
-    if (!entry) throw new Error(`index.html references ${url}, which is not in the build allowlist.`);
-    return `${attribute}="${ASSET_DIR}/${entry[0]}${url.slice(entry[1].length)}"`;
-  })
-  .replace(VERSION_SLOT, `$1${getVersionLabel()}$2`);
-if (!html.includes(getVersionLabel())) throw new Error('index.html is missing the #appVersion footer slot.');
-writeFileSync(path.join(DIST, 'index.html'), html);
+PAGES.forEach(page => {
+  const html = readFileSync(path.join(ROOT, page), 'utf8')
+    .replace(/\b(src|href)="([^"]+)"/g, (match, attribute, url) => {
+      if (/^(?:[a-z]+:|\/\/|#)/i.test(url) || PAGES.includes(url.split('#')[0])) return match;
+      const entry = Object.entries(ASSETS).find(([, source]) => url === source || url.startsWith(`${source}/`));
+      if (!entry) throw new Error(`${page} references ${url}, which is not in the build allowlist.`);
+      return `${attribute}="${ASSET_DIR}/${entry[0]}${url.slice(entry[1].length)}"`;
+    })
+    .replace(VERSION_SLOT, `$1${getVersionLabel()}$2`);
+  if (!html.includes(getVersionLabel())) throw new Error(`${page} is missing the #appVersion footer slot.`);
+  writeFileSync(path.join(DIST, page), html);
+});
 
 console.log(`Built ${DIST} (${getVersionLabel()}) with assets under ${ASSET_DIR}/`);
 

@@ -28,8 +28,8 @@ test('the CSP forbids inline styles', () => {
   assert.equal(styleSrc, "style-src 'self'");
 });
 
-test('no markup in index.html or js/ carries a style attribute or <style> element', () => {
-  const files = [path.join(ROOT, 'index.html'), ...listJsFiles(path.join(ROOT, 'js'))];
+test('no markup in the HTML pages or js/ carries a style attribute or <style> element', () => {
+  const files = [path.join(ROOT, 'index.html'), path.join(ROOT, 'sources.html'), ...listJsFiles(path.join(ROOT, 'js'))];
   const offenders = files.flatMap(file => fs.readFileSync(file, 'utf8')
     .split('\n')
     .map((line, index) => ({ line, number: index + 1 }))

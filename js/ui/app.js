@@ -177,10 +177,7 @@ export class App {
       this.updateEconomics(r);
       this.updateHeaderMetrics(r);
       this.updatePlantScore(r);
-      this.updatePowerChart(r);
-      this.updateAnnualDispatchChart(r);
-      this.updateEconomicsTimelineChart(r);
-      this.updateEconChart(r);
+      this.updateCharts(r);
       if (includeSensitivity) this.flushSensitivityUpdate(r);
       else this.scheduleSensitivityUpdate(r);
       this.updateImpact(r);

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { Calc } from '../../js/model/index.js';
-import { chartMethods } from '../../js/ui/charts/index.js';
+import { RESULT_CHARTS, chartMethods } from '../../js/ui/charts/index.js';
 
 function createElement(id) {
   return {
@@ -67,6 +67,20 @@ test.afterEach(() => {
   delete globalThis.Chart;
   delete globalThis.document;
   delete globalThis.window;
+});
+
+test('updateCharts redraws every registered per-result chart once, in order', () => {
+  const calls = [];
+  const app = Object.create(chartMethods);
+  RESULT_CHARTS.forEach(([methods, update]) => {
+    assert.equal(typeof methods[update], 'function', `${update} is defined by its chart module`);
+    assert.equal(chartMethods[update], methods[update], `${update} is mixed into the App`);
+    app[update] = r => calls.push([update, r]);
+  });
+  app.updateSensitivityChart = () => calls.push(['updateSensitivityChart']);
+  const result = { marker: true };
+  app.updateCharts(result);
+  assert.deepEqual(calls, RESULT_CHARTS.map(([, update]) => [update, result]));
 });
 
 function createEconomicsResult() {

@@ -5,7 +5,15 @@
    cash-flow treatment (`cashflowType`, `eligibleCapexBasis`, `outputBasis`)
    and the user-tunable `inputs` that model/policy.js evaluates.
    POLICY_SELECT_GROUPS orders the schemes in the policy picker.
-   To add a scheme: add an entry here and list its id in a select group. */
+   To add a scheme: add an entry here and list its id in a select group.
+
+   Facts verified 2026-10 against the sources cited next to each value; notes
+   that describe programme status say "as of" a date because they can change.
+   The model currency is USD. Where a scheme's benchmark is in EUR or GBP it is
+   converted with the ECB euro reference rates of 2026-10-29 (EUR 1 = USD 1.1130
+   = GBP 0.83578, so GBP 1 = USD 1.3317):
+   https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html
+   Converted defaults are rounded onto the input's slider step. */
 
 export const POLICY_SELECT_GROUPS = [
   {
@@ -93,17 +101,28 @@ export const POLICY_SCHEMES = {
     referencePriceRequired: 0,
     carbonIntensityGate: 0,
     renewableAttributeGate: 0,
-    domesticContentOrLocationBonus: 'Domestic content and energy community adders can apply.',
+    domesticContentOrLocationBonus: 'Domestic content and energy community adders can each add 10 percentage points.',
     stackingOrExclusivity: 'Cannot claim both 48E and 45Y on the same facility.',
     implementationFormula: 'support_t0 = eligible_solar_capex * chosen_rate',
     basis: 'One-time solar CAPEX support on the installed PV block',
-    note: 'Modeled as an upfront reduction to solar installation CAPEX. Use the selected rate to reflect prevailing-wage, domestic-content, and energy-community assumptions.',
+    // OBBBA (P.L. 119-21, signed 2025-07-04) termination for wind/solar: IRC §48E(e)(4)
+    // (placed in service after 2027-12-31), with the uncodified exception for projects
+    // beginning construction by 2026-07-04.
+    // https://www.law.cornell.edu/uscode/text/26/48E ; Clifford Chance briefing 2026-09-04
+    // https://www.cliffordchance.com/content/dam/cliffordchance/briefings/2026/09/IRS%20Notice%202025-42%20Appeal%20Deadline%20Nears.pdf
+    // Notice 2025-42 vacated: Oregon Environmental Council v. IRS, D.D.C. No. 25-4400, 2026-06-06
+    // https://kpmg.com/us/en/taxnewsflash/news/2026/06/court-vacates-notice-2025-42-eliminated-safe-harbor-construction-wind-solar.html
+    note: 'Modeled as an upfront reduction to solar installation CAPEX; the rate reflects wage and bonus assumptions. Under the One Big Beautiful Bill Act (P.L. 119-21), solar that began construction after 2026-07-04 qualifies only if placed in service by 2027-12-31, and prohibited-foreign-entity (FEOC) restrictions apply. A D.D.C. court vacated Notice 2025-42 (which had removed the 5% safe harbor for solar above 1.5 MW) on 2026-06-06; as of Sep 2026 no government appeal had been reported. Rates and status as of Oct 2026; not tax advice.',
     cashflowType: 'capex_share',
     eligibleCapexBasis: 'solar',
     inputs: [
       {
         key: 'us48eSolarRate',
         label: '48E rate (share of solar CAPEX)',
+        // IRC §48E(a)(2): 6% base, 30% with prevailing wage & apprenticeship;
+        // §48E(a)(3): energy community and domestic content bonuses, +10 pts each
+        // at the 30% rate. FEOC limits: §48E(b)(6), (d)(6).
+        // https://www.law.cornell.edu/uscode/text/26/48E (retrieved 2026-10)
         min: 0.06,
         max: 0.50,
         step: 0.01,
@@ -127,21 +146,26 @@ export const POLICY_SCHEMES = {
     referencePriceRequired: 0,
     carbonIntensityGate: 0,
     renewableAttributeGate: 0,
-    domesticContentOrLocationBonus: 'Domestic content and energy community adders can apply.',
+    domesticContentOrLocationBonus: 'Domestic content and energy community bonuses each add 10% to the credit.',
     stackingOrExclusivity: 'Cannot claim both 45Y and 48E on the same facility.',
     implementationFormula: 'support_t = eligible_kWh_t * credit_rate_t',
     basis: 'Annual solar-output support on eligible PV generation',
-    note: 'Modeled on annual solar generation. The selected rate should reflect the applicable wage and bonus assumptions for the power-side credit.',
+    // Sale/metering rule: IRC §45Y(a)(1)(A)(ii); termination: §45Y(d)(4) (P.L. 119-21).
+    // https://www.law.cornell.edu/uscode/text/26/45Y (retrieved 2026-10)
+    note: 'Modeled on annual solar generation at the 2026 amount (IRS Notice 2026-47: 0.6 ¢/kWh base, 3.1 ¢/kWh with prevailing wage and apprenticeship; indexed yearly). Power used on site counts only if an unrelated party owns and operates the meter. Under the One Big Beautiful Bill Act, solar that began construction after 2026-07-04 must be placed in service by 2027-12-31; FEOC restrictions apply. Status as of Oct 2026; not tax advice.',
     cashflowType: 'unit_support',
     outputBasis: 'solar_kwh',
     inputs: [
       {
         key: 'us45ySolarCreditPerKwh',
-        label: '45Y credit ($/kWh)',
-        min: 0.003,
-        max: 0.00363,
-        step: 0.00001,
-        defaultValue: 0.00363,
+        label: '45Y credit ($/kWh, 2026)',
+        // IRS Notice 2026-47 (IRB 2026-41, inflation factor 2.0570): base $0.006/kWh,
+        // $0.031/kWh with prevailing wage & apprenticeship. https://www.irs.gov/irb/2026-41_IRB
+        // Max allows both 10% bonuses (§45Y(g)(7), (g)(11)): 0.031 * 1.2 ≈ 0.037.
+        min: 0.006,
+        max: 0.038,
+        step: 0.001,
+        defaultValue: 0.031,
         format: 'currency_per_kwh',
       },
     ],
@@ -162,20 +186,27 @@ export const POLICY_SCHEMES = {
     carbonIntensityGate: 1,
     renewableAttributeGate: 1,
     domesticContentOrLocationBonus: 'No direct domestic-content adder in the per-kg value.',
-    stackingOrExclusivity: '45V should not be stacked with 45Q on the same qualifying facility.',
+    stackingOrExclusivity: 'No 45V for hydrogen from a facility that includes carbon capture equipment claiming 45Q (IRC §45V(d)(2)).',
     implementationFormula: 'support_t = verified_H2_kg_t * credit_per_kg_tier_t',
     basis: 'Annual H2-output support on qualifying clean hydrogen production',
-    note: 'The selected per-kg amount should reflect the lifecycle-emissions tier and any prevailing-wage multiplier assumption.',
+    // Construction deadline: IRC §45V(c)(3) as amended by P.L. 119-21 §70511; no 45V where
+    // the facility has 45Q carbon capture equipment (§45V(d)(2)).
+    // https://www.law.cornell.edu/uscode/text/26/45V (retrieved 2026-10)
+    note: 'Default is the 2026 inflation-adjusted top tier ($3.28/kg: <0.45 kg CO2e/kg H2 with prevailing wage and apprenticeship; the statute\'s nominal 2022 figure is $3.00). 2026 tiers without the 5x wage multiplier: $0.131 / $0.164 / $0.219 / $0.656 per kg (IRS Notice 2026-41). Under the One Big Beautiful Bill Act, construction must begin before 2028-01-01. Status as of Oct 2026; not tax advice.',
     cashflowType: 'unit_support',
     outputBasis: 'hydrogen_kg',
     inputs: [
       {
         key: 'us45vHydrogenCreditPerKg',
-        label: '45V credit ($/kg H2)',
-        min: 0.12,
-        max: 3.00,
+        label: '45V credit ($/kg H2, 2026)',
+        // IRS Notice 2026-41 (IRB 2026-29, factor 1.0929): base $0.656/kg for the
+        // <0.45 tier; x5 with prevailing wage (§45V(e)(1)) = $3.28/kg. Lowest tier
+        // (2.5-4 kg CO2e) without the multiplier = $0.131/kg -> slider floor $0.13.
+        // https://www.irs.gov/irb/2026-29_IRB
+        min: 0.13,
+        max: 3.28,
         step: 0.01,
-        defaultValue: 3.00,
+        defaultValue: 3.28,
         format: 'currency_per_kg',
       },
     ],
@@ -196,16 +227,20 @@ export const POLICY_SCHEMES = {
     carbonIntensityGate: 0,
     renewableAttributeGate: 0,
     domesticContentOrLocationBonus: 'No direct domestic-content bonus in the per-ton value.',
-    stackingOrExclusivity: 'Verify the storage or utilization route and avoid stacking with 45V on the same qualifying facility.',
+    stackingOrExclusivity: 'A hydrogen facility that includes 45Q carbon capture equipment cannot also claim 45V (IRC §45V(d)(2)).',
     implementationFormula: 'support_t = qualified_tCO2_t * credit_per_tCO2',
     basis: 'Annual DAC-output support on qualifying captured CO2',
-    note: 'Modeled on annual DAC capture. Use the selected rate to reflect the storage or utilization structure and wage assumption.',
+    // IRC §45Q(a)(3)(B)(iii) parity, (b)(1)(A) indexing after 2026 (2025 base),
+    // (d)(1) construction before 2033-01-01, (f)(5)(B) LCA rule, (h) 5x multiplier.
+    // https://www.law.cornell.edu/uscode/text/26/45Q (retrieved 2026-10)
+    note: 'Modeled on gross annual DAC capture. Since the One Big Beautiful Bill Act, utilization earns the same rate as geologic storage for equipment placed in service after 2025-07-04: DAC $36/t base, $180/t with prevailing wage and apprenticeship (point source $85/t); amounts are indexed after 2026. Construction must begin before 2033-01-01; 12-year credit period. For CO2 made into fuel, the creditable tonnage is limited to the lifecycle-analysis net reduction (IRC §45Q(f)(5)(B)), which can be far below gross capture. Status as of Oct 2026; not tax advice.',
     cashflowType: 'unit_support',
     outputBasis: 'co2_ton',
     inputs: [
       {
         key: 'us45qDacCreditPerTon',
         label: '45Q credit ($/tCO2)',
+        // IRC §45Q(b)(1): DAC $36/t base, x5 = $180/t with prevailing wage (§45Q(h)).
         min: 36,
         max: 180,
         step: 1,
@@ -233,7 +268,10 @@ export const POLICY_SCHEMES = {
     stackingOrExclusivity: 'Can be stacked with tax credits subject to award terms.',
     implementationFormula: 'support_t0 = eligible_electrolyzer_capex * user_assumed_grant_share',
     basis: 'Case-specific upfront grant on the electrolyzer block',
-    note: 'The real program is negotiated and project-specific. In this app it is treated as a discretionary upfront grant share on electrolyzer CAPEX.',
+    // ARCHES/PNWH2 terminated 2025-10-01; April 2026 retain/modify list (reported):
+    // https://decarbonfuse.com/posts/doe-restores-1-2b-for-dac-hubs-and-5-hydrogen-projects
+    // https://www.geekwire.com/2025/pacific-northwest-loses-1b-hydrogen-hub-as-trump-cancels-clean-energy-projects-nationwide/
+    note: 'Effectively closed to new projects: the seven hubs were selected in 2023 and there is no new solicitation. DOE terminated ARCHES (California) and PNWH2 (Pacific Northwest) on 2025-10-01; an April 2026 DOE list reportedly retained or modified the other five (HyVelocity, ARCH2, MachH2, MACH2, Heartland). Use a nonzero share only for a project inside a surviving hub award. Treated as an upfront grant share on electrolyzer CAPEX. Status as of Oct 2026.',
     cashflowType: 'capex_share',
     eligibleCapexBasis: 'electrolyzer',
     inputs: [
@@ -267,7 +305,9 @@ export const POLICY_SCHEMES = {
     stackingOrExclusivity: 'Can be stacked with 45Q subject to award terms.',
     implementationFormula: 'support_t0 = eligible_dac_capex * user_assumed_grant_share',
     basis: 'Case-specific upfront grant on the DAC block',
-    note: 'The real program is negotiated and project-specific. In this app it is treated as a discretionary upfront grant share on DAC CAPEX.',
+    // DOE retained South Texas DAC Hub and Project Cypress (reported April 2026):
+    // https://decarbonfuse.com/posts/doe-restores-1-2b-for-dac-hubs-and-5-hydrogen-projects
+    note: 'Closed to new entrants: in April 2026 DOE reportedly kept funding for the two selected hubs, South Texas DAC Hub (1PointFive) and Project Cypress (Louisiana), each with about $50M obligated so far. Use a nonzero share only for a project inside one of those awards. Treated as an upfront grant share on DAC CAPEX. Status as of Oct 2026.',
     cashflowType: 'capex_share',
     eligibleCapexBasis: 'dac',
     inputs: [
@@ -301,7 +341,15 @@ export const POLICY_SCHEMES = {
     stackingOrExclusivity: 'Can stack with member-state top-ups only where scheme rules allow.',
     implementationFormula: 'support_t = verified_RFNBO_H2_kg_t * auction_premium_per_kg',
     basis: 'Bid-based H2 premium on qualifying RFNBO output',
-    note: 'Enter the assumed winning premium. This is not one statutory EU-wide amount and may include national top-ups routed through the auction.',
+    // Pilot (2024-04-30): 7 projects, EUR 720M, EUR 0.37-0.48/kg, 10-year fixed premium
+    //   https://ammoniaenergy.org/articles/taking-the-markets-temperature-european-hydrogen-bank-awards-e720-million
+    // 2nd (2025-05): 15 projects, EUR 992M; general basket EUR 0.20-0.60/kg
+    //   https://www.iea.org/policies/27897-second-auction-of-european-hydrogen-bank-ehb
+    // 3rd (2026-05-07): 9 projects, EUR 1.09bn, ~1.1 GW; RFNBO general EUR 0.57-0.98/kg,
+    //   RFNBO+low-carbon EUR 0.44-1.10/kg, maritime/aviation EUR 3.48-3.49/kg
+    //   https://timharper.net/european-hydrogen-auction-explained-if25/ ;
+    //   https://www.pv-magazine.com/2026/05/07/eu-allocates-1-1-gw-of-electrolyzer-capacity-in-third-hydrogen-auction-lowest-bid-comes-in-at-e0-44-kg/
+    note: 'Enter the assumed winning fixed premium, converted to $ (EUR 1 = $1.113, ECB 2026-10-29); paid for up to 10 years. Cleared bids so far: pilot (Apr 2024) EUR 0.37-0.48/kg; 2nd auction (May 2025) EUR 0.20-0.60/kg in the general basket; 3rd auction (May 2026, EUR 1.09bn, 9 projects, ~1.1 GW) EUR 0.57-0.98/kg in the general RFNBO basket and about EUR 3.5/kg in the maritime/aviation basket. National top-ups (auctions-as-a-service) can fund projects ranked below the EU cut-off.',
     cashflowType: 'unit_support',
     outputBasis: 'hydrogen_kg',
     inputs: [
@@ -309,7 +357,7 @@ export const POLICY_SCHEMES = {
         key: 'euHydrogenBankPremiumPerKg',
         label: 'Hydrogen Bank premium ($/kg equivalent)',
         min: 0,
-        max: 10,
+        max: 5, // highest cleared bid to date EUR 3.49/kg = $3.88/kg
         step: 0.05,
         defaultValue: 0,
         format: 'currency_per_kg',
@@ -360,26 +408,31 @@ export const POLICY_SCHEMES = {
     simulatorTreatment: 'auction_user_input',
     supportFamily: 'market_premium',
     supportTiming: 'Annual operating cash flow',
-    durationYears: null,
+    durationYears: 20, // EEG §25: award term 20 years from commissioning
     competitiveFlag: 1,
     referencePriceRequired: 1,
     carbonIntensityGate: 0,
     renewableAttributeGate: 0,
     domesticContentOrLocationBonus: 'No',
     stackingOrExclusivity: 'Project-specific auction terms apply.',
-    implementationFormula: 'support_t = eligible_kWh_t * max(award_or_market_premium_t, 0)',
-    basis: 'Indicative solar market premium on eligible PV output',
-    note: 'The default premium reflects the 8.0 ct/kWh indicative monitoring value cited in the policy sheet, not a guaranteed tariff for new awards.',
+    implementationFormula: 'support_t = eligible_kWh_t * max(award_value_t - solar_market_value_t, 0)',
+    basis: 'Average net sliding market premium on eligible PV output',
+    // Award values (Bundesnetzagentur, ground-mounted PV "erstes Segment"):
+    //   2026-03-01 round: 4.94 ct/kWh avg, cap 5.79 https://www.bundesnetzagentur.de/1091186
+    //   2026-07-01 round: 4.79 ct/kWh avg, cap 5.90 https://www.bundesnetzagentur.de/1114090
+    // Annual solar market value ("JW Solar") 2025: 4.508 ct/kWh (DGS, retrieved 2026-10)
+    //   https://www.dgs.de/wp-content/uploads/2026/01/DGS_Jahres-Monatsmarktwerte-Solar_2025.pdf
+    note: 'Enter the expected average net premium, not the award value: EEG pays max(award value - monthly solar market value, 0) on grid-exported, directly marketed output for 20 years, so behind-the-meter use by a colocated plant earns nothing. 2026 ground-mounted PV tenders cleared at 4.94 (Mar, cap 5.79) and 4.79 (Jul, cap 5.90) EUR ct/kWh; the 2025 annual solar market value was 4.508 EUR ct/kWh. The default is that annual gap (0.28 EUR ct = $0.003/kWh at EUR 1 = $1.113); monthly settlement with a zero floor raises it, and no payment in negative-price hours lowers it.',
     cashflowType: 'unit_support',
     outputBasis: 'solar_kwh',
     inputs: [
       {
         key: 'deEegSolarPremiumPerKwh',
-        label: 'EEG net premium ($/kWh equivalent)',
+        label: 'EEG net premium ($/kWh, from EUR)',
         min: 0,
-        max: 0.20,
-        step: 0.005,
-        defaultValue: 0.08,
+        max: 0.07, // 2026 bid cap 5.90 EUR ct/kWh = $0.066/kWh
+        step: 0.001,
+        defaultValue: 0.003, // (4.79 - 4.508) EUR ct/kWh * 1.113 = $0.0031/kWh
         format: 'currency_per_kwh',
       },
     ],
@@ -403,7 +456,12 @@ export const POLICY_SCHEMES = {
     stackingOrExclusivity: 'Stacking is subject to scheme and state-aid rules.',
     implementationFormula: 'support_t = verified_RFNBO_H2_kg_t * auction_grant_per_kg',
     basis: 'Bid-based H2 premium on qualifying RFNBO output',
-    note: 'Enter the assumed awarded per-kg grant. The actual German program is auction-cleared and RFNBO-gated.',
+    // First EUR 350M window scrapped Dec 2024:
+    //   https://www.hydrogeninsight.com/policy/germany-scraps-first-350m-auction-as-a-service-via-european-hydrogen-bank/2-1-1752779
+    // Up to EUR 1.3bn window for projects in Denmark; winners 2026-05-29:
+    //   https://www.bundeswirtschaftsministerium.de/Redaktion/DE/Pressemitteilungen/2026/05/20260529-gewinner-auctions-as-a-service-fenster.html
+    //   https://www.hydrogeninsight.com/policy/germany-awards-three-danish-green-hydrogen-projects-subsidies-under-auctions-as-a-service-scheme/2-1-1997069
+    note: 'Germany\'s EU Hydrogen Bank auctions-as-a-service window: the first EUR 350M round was scrapped in Dec 2024; the second (up to EUR 1.3bn, run with the 3rd EU auction) funded projects in Denmark exporting to Germany, with three Danish winners named 2026-05-29 (e.g. Everfuel at EUR 0.98/kg). As of Oct 2026 no window is open to new projects; Germany\'s other main hydrogen instruments are H2Global (import auctions) and Klimaschutzvertraege (carbon contracts for difference). Enter an assumed per-kg premium converted to $ (EUR 1 = $1.113).',
     cashflowType: 'unit_support',
     outputBasis: 'hydrogen_kg',
     inputs: [
@@ -411,7 +469,7 @@ export const POLICY_SCHEMES = {
         key: 'deHydrogenAaasPremiumPerKg',
         label: 'German H2 premium ($/kg equivalent)',
         min: 0,
-        max: 10,
+        max: 5,
         step: 0.05,
         defaultValue: 0,
         format: 'currency_per_kg',
@@ -428,7 +486,9 @@ export const POLICY_SCHEMES = {
     simulatorTreatment: 'auction_user_input',
     supportFamily: 'operating_subsidy_correction_mechanism',
     supportTiming: 'Annual operating cash flow',
-    durationYears: null,
+    // RVO: SDE++ runs 12 or 15 years by category; solar PV is 15 years.
+    // https://www.rvo.nl/subsidies-financiering/sde/orienteren (retrieved 2026-10)
+    durationYears: 15,
     competitiveFlag: 1,
     referencePriceRequired: 1,
     carbonIntensityGate: 0,
@@ -437,7 +497,7 @@ export const POLICY_SCHEMES = {
     stackingOrExclusivity: 'May not stack with overlapping Dutch schemes.',
     implementationFormula: 'support_t = eligible_MWh_t * max(base_amount_t - correction_amount_t, 0)',
     basis: 'Net solar-output support equal to base amount minus correction amount',
-    note: 'This remains a simplified solar-output proxy. Enter the awarded base amount and the expected correction amount in model-currency-per-MWh terms.',
+    note: 'Simplified solar-output proxy over the 15-year solar PV subsidy term. Enter the awarded base amount and the expected correction amount converted from EUR to $ per MWh (EUR 1 = $1.113, ECB 2026-10-29).',
     cashflowType: 'base_minus_correction',
     outputBasis: 'solar_mwh',
     inputs: [
@@ -480,7 +540,10 @@ export const POLICY_SCHEMES = {
     stackingOrExclusivity: 'Cannot receive OWE 2024 if the same electrolyzer already received SDE++ or OWE 2023 support.',
     implementationFormula: 'support_t0 = eligible_electrolyzer_capex * chosen_grant_rate',
     basis: 'Upfront capex grant on the electrolyzer block',
-    note: 'The actual Dutch OWE rules are award- and project-specific. The app applies the selected share to electrolyzer CAPEX only.',
+    // OWE round 2 (OWE 2024 call) awarded July 2025: 11 projects, 602 MW, ~EUR 709M.
+    //   https://www.pv-magazine.com/?p=63529 ; OWE 3 announced for 2026:
+    //   https://www.pnoinnovation.com/nl/insights/owe-2026-aangekondigd-nieuwe-ronde-verwacht-voor-hernieuwbare-waterstofprojecten-in-nederland/
+    note: 'OWE (Opschalingsinstrument waterstofproductie via elektrolyse) combines an investment part and a production-based part in one award; the app splits them into this capex share and the separate OWE opex scheme. Round 2 (OWE 2024 call) awarded about EUR 709M to 11 projects (602 MW) in July 2025; a third round (OWE 3) was announced for 2026 (in consultation as of Jun 2026). Applied to electrolyzer CAPEX only.',
     cashflowType: 'capex_share',
     eligibleCapexBasis: 'electrolyzer',
     inputs: [
@@ -514,7 +577,9 @@ export const POLICY_SCHEMES = {
     stackingOrExclusivity: 'Cannot receive OWE 2024 if the same electrolyzer already received SDE++ or OWE 2023 support.',
     implementationFormula: 'support_t = verified_H2_kg_t * max(production_price_t - correction_amount_t, 0)',
     basis: 'Net H2-output support equal to awarded production price minus correction amount',
-    note: 'Enter the awarded production-price bridge and the expected correction amount in model-currency-per-kg terms.',
+    // RVO: opex term 7-15 years (OWE 2023) or 5-10 years (OWE 2024).
+    //   https://www.rvo.nl/subsidies-financiering/owe/waterstof-produceren (retrieved 2026-10)
+    note: 'Enter the awarded production-price bridge and the expected correction amount, converted from EUR to $ per kg (EUR 1 = $1.113). The operating part runs at most 10 years for OWE 2024 awards (7-15 years for OWE 2023).',
     cashflowType: 'base_minus_correction',
     outputBasis: 'hydrogen_kg',
     inputs: [
@@ -557,26 +622,32 @@ export const POLICY_SCHEMES = {
     stackingOrExclusivity: 'Can coexist with other support only where scheme rules permit.',
     implementationFormula: 'support_t = eligible_MWh_t * (strike_price_t - reference_price_t)',
     basis: 'Two-way solar CfD on annual PV output',
-    note: 'Enter a strike and reference price in model-currency-per-MWh terms. If the reference exceeds the strike, the modeled support turns negative.',
+    // AR7a results (DESNZ, 2026-02-10): solar PV cleared at GBP 46.82/MWh (2012 prices)
+    // = GBP 65.23/MWh (2024 prices), CPI-indexed, 20-year term.
+    //   https://www.gov.uk/government/publications/contracts-for-difference-cfd-allocation-round-7-results/contracts-for-difference-allocation-round-7-results-accessible-webpage
+    //   https://assets.publishing.service.gov.uk/media/698a0dc06da2dee8230a9c3a/contracts-for-difference-AR7a.pdf
+    // 2025 GB solar capture price GBP 66.91/MWh (day-ahead, Montel GB electricity market summary 2025)
+    //   https://dmscdn.vuelio.co.uk/publicitem/21629084-3878-47f5-8970-390b9d1bc756
+    note: 'Two-way CfD on metered generation for 20 years; power used behind the meter by a colocated plant is generally not paid. Defaults convert GBP at GBP 1 = $1.3317 (ECB 2026-10-29): strike = AR7a solar clearing price GBP 65.23/MWh (2024 prices, CPI-indexed thereafter); reference = 2025 GB solar capture price GBP 66.91/MWh (Montel). At these values the CfD pays roughly nothing; if the reference exceeds the strike, the generator pays back.',
     cashflowType: 'strike_minus_reference',
     outputBasis: 'solar_mwh',
     inputs: [
       {
         key: 'ukCfdSolarStrikePricePerMwh',
-        label: 'CfD strike price ($/MWh equivalent)',
+        label: 'CfD strike price ($/MWh, from GBP)',
         min: 0,
         max: 250,
         step: 0.5,
-        defaultValue: 65.23,
+        defaultValue: 87, // GBP 65.23 * 1.3317 = $86.87/MWh
         format: 'currency_per_mwh',
       },
       {
         key: 'ukCfdSolarReferencePricePerMwh',
-        label: 'CfD reference price ($/MWh equivalent)',
+        label: 'CfD reference price ($/MWh, from GBP)',
         min: 0,
         max: 250,
         step: 0.5,
-        defaultValue: 50,
+        defaultValue: 89, // GBP 66.91 * 1.3317 = $89.10/MWh
         format: 'currency_per_mwh',
       },
     ],
@@ -600,7 +671,10 @@ export const POLICY_SCHEMES = {
     stackingOrExclusivity: 'Can be paired with Net Zero Hydrogen Fund capex grants.',
     implementationFormula: 'support_t = verified_H2_output_t * contract_gap_payment_t',
     basis: 'User-entered H2 gap payment on qualifying hydrogen output',
-    note: 'The actual contract is CfD-like. The app uses the realized gap payment per kilogram as the user-entered operating-support value.',
+    // HAR1: 11 projects, 125 MW, weighted avg strike GBP 241/MWh (GBP 175 in 2012 prices)
+    //   https://www.gov.uk/government/publications/hydrogen-production-business-model-net-zero-hydrogen-fund-shortlisted-projects/hydrogen-production-business-model-net-zero-hydrogen-fund-har1-successful-projects
+    // HAR2: 27 projects shortlisted Apr 2025 https://www.gov.uk/government/collections/hydrogen-allocation-rounds
+    note: 'The actual 15-year contract pays strike minus a reference price (the higher of the achieved sale price and a natural-gas reference); enter the realized gap per kg converted to $ (GBP 1 = $1.3317). Context: HAR1 awarded 11 projects (125 MW) at a weighted average strike of about GBP 241/MWh (~GBP 9.5/kg); 27 projects were shortlisted for HAR2 in Apr 2025, with no HAR2 awards published as of Mar 2026.',
     cashflowType: 'unit_support',
     outputBasis: 'hydrogen_kg',
     inputs: [

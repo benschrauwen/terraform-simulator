@@ -20,6 +20,10 @@ function npvAt(cashFlows, rate) {
 }
 
 const SABATIER_POSITIVE_ROOT_CAPEX = 100;
+// The IRR root-selection regression cases were calibrated on the nominal 2022 45V
+// top tier ($3.00/kg). The app default is now the 2026 inflation-adjusted $3.28/kg
+// (IRS Notice 2026-41), so pin $3.00 here to keep exercising the same cash-flow shapes.
+const IRR_REGRESSION_45V_PER_KG = 3.00;
 const SABATIER_UPPER_BRANCH_METHANE_PRICE = 22;
 
 test('default scenario stays numerically sane', () => {
@@ -310,8 +314,8 @@ test('lean IRR path matches the full exploratory-enabled scenario calculation', 
 });
 
 test('headline IRR stays on the discount-rate root when replacement cycles create multiple roots', () => {
-  const higherConversionState = createState({ sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX, sabatierConversion: 85 });
-  const lowerConversionState = createState({ sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX, sabatierConversion: 84 });
+  const higherConversionState = createState({ sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX, us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG, sabatierConversion: 85 });
+  const lowerConversionState = createState({ sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX, us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG, sabatierConversion: 84 });
   const higherConversionResult = Calc.calculateAll(higherConversionState);
   const lowerConversionResult = Calc.calculateAll(lowerConversionState);
   const leanLowerConversionIrr = Calc.calculateIrr(lowerConversionState);
@@ -348,11 +352,13 @@ test('headline IRR stays on the discount-rate root when replacement cycles creat
 test('equity IRR stays on the positive branch when longer debt terms add another debt-service year', () => {
   const twentyYearDebtState = createState({
     sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX,
+    us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG,
     financingEnabled: true,
     debtTermYears: 20,
   });
   const twentyOneYearDebtState = createState({
     sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX,
+    us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG,
     financingEnabled: true,
     debtTermYears: 21,
   });
@@ -399,6 +405,7 @@ test('equity IRR stays on the positive branch when longer debt terms add another
 test('reported project and equity IRRs zero their respective cash-flow NPVs', () => {
   const projectResult = Calc.calculateAll(createState({
     sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX,
+    us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG,
     sabatierConversion: 84,
   }));
   const projectCashFlows = [
@@ -408,6 +415,7 @@ test('reported project and equity IRRs zero their respective cash-flow NPVs', ()
   const projectIrrRate = projectResult.economics.projectIrr / 100;
   const equityResult = Calc.calculateAll(createState({
     sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX,
+    us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG,
     financingEnabled: true,
     debtTermYears: 21,
   }));
@@ -457,6 +465,7 @@ test('approximateIRR keeps the largest positive root when multiple positive root
 test('30-year financed equity IRR stays on the upper branch until no real root remains', () => {
   const ninePointFivePercent = Calc.calculateAll(createState({
     sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX,
+    us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG,
     methanePrice: SABATIER_UPPER_BRANCH_METHANE_PRICE,
     financingEnabled: true,
     debtTermYears: 30,
@@ -464,6 +473,7 @@ test('30-year financed equity IRR stays on the upper branch until no real root r
   })).economics;
   const ninePointSeventyFivePercent = Calc.calculateAll(createState({
     sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX,
+    us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG,
     methanePrice: SABATIER_UPPER_BRANCH_METHANE_PRICE,
     financingEnabled: true,
     debtTermYears: 30,
@@ -471,6 +481,7 @@ test('30-year financed equity IRR stays on the upper branch until no real root r
   })).economics;
   const tenPointFivePercent = Calc.calculateAll(createState({
     sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX,
+    us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG,
     methanePrice: SABATIER_UPPER_BRANCH_METHANE_PRICE,
     financingEnabled: true,
     debtTermYears: 30,
@@ -478,6 +489,7 @@ test('30-year financed equity IRR stays on the upper branch until no real root r
   })).economics;
   const twelvePointFivePercent = Calc.calculateAll(createState({
     sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX,
+    us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG,
     methanePrice: SABATIER_UPPER_BRANCH_METHANE_PRICE,
     financingEnabled: true,
     debtTermYears: 30,
@@ -957,9 +969,11 @@ test('48E solar support reduces net capex at close and appears in the close buck
 test('45Y solar support scales directly with modeled annual solar output', () => {
   const economics = Calc.calculateAll(createState({
     policyMode: 'us_45y_solar',
-    us45ySolarCreditPerKwh: 0.00363,
+    // 2026 prevailing-wage 45Y amount, $0.031/kWh (IRS Notice 2026-47); the old
+    // $0.00363 sat below the $0.006 statutory base and is now clamped to the slider floor.
+    us45ySolarCreditPerKwh: 0.031,
   })).economics;
-  const expectedSupport = economics.policy.outputMetric.value * 0.00363;
+  const expectedSupport = economics.policy.outputMetric.value * 0.031;
 
   assert.equal(economics.policy.outputMetric.unit, 'kWh/yr', 'Expected 45Y to use solar output in kWh/year.');
   assert.ok(

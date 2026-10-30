@@ -12,7 +12,7 @@ What it models:
 - Exploratory industrial routes with rough economics: MTG gasoline, CO2 to CO, ammonia, specialty carbon, lime, cement, steel, silicon, aluminum, titanium and desalination.
 - An optional colocated AI datacenter: a constant IT load served before the chemicals, either the largest load the battery supports at a reliability target or a user-set load with the battery auto-sized to that target.
 - Sourced and dated incentive schemes for the US, EU, Germany, the Netherlands, the UK and Spain, plus a custom mix.
-- Project finance: replacements, salvage, NPV, IRR/MIRR, payback, levelized metrics, optional debt with DSCR, inline IRR optimizers and price sensitivities.
+- Project finance: replacements, salvage, NPV, IRR/MIRR, payback, levelized metrics, optional debt with DSCR, inline IRR optimizers, price sensitivities with break-even (NPV = 0) sale prices, and a yearly cash-flow table with CSV export.
 - CO2 accounting (captured, bound, vented, net avoided), water and land use.
 
 ## Running locally
@@ -52,9 +52,9 @@ js/util.js    dependency-free numeric helpers (clamps, step precision), usable b
 
 Imports run one way, top to bottom: a layer imports its own files, lower layers and `util.js`, never a higher layer. `tests/architecture/import-direction.test.js` enforces it.
 
-- `js/data/`: `reference-data.js` (bodies, `LOCATION_PRESETS`, `MOUNTING_TYPES`, `CHEMISTRY`, `METHANE_MARKET_PRESETS`, AI defaults), `assumptions.js` (`MODEL_ASSUMPTIONS`, the GHI/cloudiness heuristics and `SOLAR_LAYOUT_REFERENCE`), `modules.js` (supported and exploratory process modules), `module-catalog.js` (`ModuleCatalog`: normalizes `modules.js` into frozen modules and answers route, preset, market, buffer and capex-slider questions), `policies.js` (incentive schemes and picker groups), `market-ladders.js` (Terraform's methane and methanol market tiers).
+- `js/data/`: `reference-data.js` (bodies, `LOCATION_PRESETS`, `MOUNTING_TYPES`, `CHEMISTRY`, `METHANE_MARKET_PRESETS`, AI defaults), `assumptions.js` (`MODEL_ASSUMPTIONS`, the GHI/cloudiness heuristics and `SOLAR_LAYOUT_REFERENCE`), `modules.js` (supported and exploratory process modules), `module-catalog.js` (`ModuleCatalog`: normalizes `modules.js` into frozen modules and answers route, preset, market, buffer and capex-slider questions), `policies.js` (incentive schemes and picker groups), `market-ladders.js` (Terraform's methane and methanol market tiers), `sensitivity-variables.js` (the inputs the NPV tornado moves and their low/high bounds).
 - `js/state/`: `schema.js` is the single source of state fields and defaults.
-- `js/model/`: one file per concern: `solar.js` + `solar-geometry.js` (resource, sky model, mountings), `annual-series.js` (hourly year), `battery.js` (storage + chemical dispatch), `ai-compute.js`, `lifetime-energy.js`, `process.js` (allocation, electrolyzer, DAC, reactors, exploratory routes, buffers), `economics.js`, `finance.js`, `policy.js`, `optimizer-search.js`, and `scenario.js` (the pipeline).
+- `js/model/`: one file per concern: `solar.js` + `solar-geometry.js` (resource, sky model, mountings), `annual-series.js` (hourly year), `battery.js` (storage + chemical dispatch), `ai-compute.js`, `lifetime-energy.js`, `process.js` (allocation, electrolyzer, DAC, reactors, exploratory routes, buffers), `economics.js`, `finance.js`, `policy.js`, `optimizer-search.js`, `break-even.js` (NPV = 0 sale prices), `cash-flow-table.js` (yearly cash-flow rows + CSV), `scenario.js` (the pipeline), and two pure helpers the UI imports directly: `market-ladder.js` and `tornado.js` (one-at-a-time NPV sensitivity).
 - `js/ui/`: `app.js` plus mixins, `control-spec.js` + `controls.js`, `module-controls.js`, `renderers/`, `charts/` (one module per chart, registered in `charts/index.js`), `diagram.js`, `site-map.js`, `share.js`, `optimizer-client.js`, `formatters.js`.
 - `scripts/`: `dev.mjs` (hardened static server that also applies the `vercel.json` headers, CSP included) and `build.mjs`.
 
@@ -64,7 +64,7 @@ Imports run one way, top to bottom: a layer imports its own files, lower layers 
 
 - `calculateAll(state)` / `calculateScenario(state, { fastMode })`: the full result tree.
 - `calculateIrr` / `calculateReturnMetrics`: the lean path, which skips display series.
-- `runSensitivity`, `findBestRangeValueForIrr` and `normalizeState`.
+- `runSensitivity`, `calculateBreakEvenPrices`, `findBestRangeValueForIrr` and `normalizeState`.
 
 `scenario.js` runs this pipeline:
 
@@ -78,7 +78,7 @@ normalizeState -> calculateSolar -> buildAnnualSolarSeries
 
 `calculateEconomics` returns `capexItems`, the one list of installed-CAPEX items (`{ key, label, capex }`, solar with its parts, one item per exploratory route). The total CAPEX, the `'total'` policy basis, the CAPEX rows and the CAPEX chart all iterate it.
 
-**App mixins.** `App` (`ui/app.js`) owns `state`, `init()` and `recalculate()`. All other behavior lives in mixin objects (`controlMethods`, `rendererMethods`, `chartMethods`, `siteControlMethods`, ...) that are `Object.assign`ed onto `App.prototype`. Each mixin method runs with the App instance as `this`. State-backed inputs are declared once in `CONTROL_SPECS` and `getModuleControlSpecs()` (`ui/control-spec.js`). That one list drives both input-to-state binding and state-to-control sync. `recalculate()` renders the panels and calls `updateCharts(r)` once.
+**App mixins.** `App` (`ui/app.js`) owns `state`, `init()` and `recalculate()`. All other behavior lives in mixin objects (`controlMethods`, `rendererMethods`, `chartMethods`, `siteControlMethods`, ...) that are `Object.assign`ed onto `App.prototype`. Each mixin method runs with the App instance as `this`. State-backed inputs are declared once in `CONTROL_SPECS` and `getModuleControlSpecs()` (`ui/control-spec.js`). That one list drives both input-to-state binding and state-to-control sync. `recalculate()` renders the panels and calls `updateCharts(r)` once. The Sensitivity charts (price curves and the NPV tornado) rerun the model, so they refresh through `updateSensitivityCharts(r)`, debounced (`scheduleSensitivityUpdate`) while a slider is dragged.
 
 ## Extending
 
@@ -90,6 +90,7 @@ After any of these changes, run `npm test`. Every recipe that changes the result
 | Policy scheme | `js/data/policies.js` (+ its facts in `tests/calculations/policy-facts.test.js`) |
 | Earth site preset | `js/data/reference-data.js` |
 | Market ladder tier | `js/data/market-ladders.js` |
+| NPV tornado variable | `js/data/sensitivity-variables.js` |
 | State field + control | `js/state/schema.js`, `index.html`, `js/ui/control-spec.js` |
 | Result row | the model file that computes it, `js/ui/renderers/economics.js` or `renderers/index.js` |
 | Chart | a module in `js/ui/charts/`, one `RESULT_CHARTS` entry, its `<canvas>` in `index.html` |
@@ -108,6 +109,8 @@ After any of these changes, run `npm test`. Every recipe that changes the result
 2. Add the route to `FLOORS` in `tests/calculations/energy-floor.test.js`. The value is its reaction-enthalpy floor, or `null` with the reason (an external reductant supplies the energy). Unlisted routes fail that test.
 
 The catalog derives everything else: the state keys (`<id>Enabled`, `BufferEnabled`, `Route`, `PriorityWeight`, `CapexBasis`, `Price`), normalization, the route select, the capex slider (0.25-4x the route default), the buffer toggle, the diagram card and its feed lines (from `feedstocks`), the CAPEX item, chart slice and economics rows. Only MTG-specific presentation (its split slider and note) is keyed by id in `ui/module-controls.js`.
+
+**Add an NPV tornado variable.** Append an entry to `SENSITIVITY_VARIABLES` in `js/data/sensitivity-variables.js`: the `stateKey` it moves (a numeric schema or module-config field), a `label`, a display `format`, `bounds` and an `appliesTo(state, result)` predicate that is false when the input cannot matter for the build (product off, no battery, AI off). Prefer `{ kind: 'absolute', low, high }` with a sourced benchmark for each end (put each URL in `sources.html`); use `{ kind: 'relative', low, high }` multipliers only where no absolute range fits every build, and say why in a comment. Bounds may be functions of the state. `runTornado` clamps them to the field's schema range and drops rows that do not move NPV; `tests/calculations/tornado.test.js` checks every bound against the schema.
 
 **Add a policy scheme:**
 
@@ -365,6 +368,19 @@ DSCR_y      = operating_cf_y / scheduled_debt_service_y      # CFADS before majo
 sponsor_y   = max(0, -equity_cf_y)                     # debt service and/or replacement shortfalls
 ```
 
+### Break-even prices and cash-flow table (`break-even.js`, `cash-flow-table.js`)
+
+For each product the build sells (methane, exported methanol, AI tokens, each modeled exploratory route) the break-even price is the sale price at which project NPV = 0 with every other input fixed: other prices, policy credits, costs and the plant design. A product's revenue is volume x price x that year's output factor and nothing else reads the price, so NPV is exactly linear in it and two runs (the current price and one more, on the fast path) give the root:
+
+```text
+NPV(p)   = NPV(p0) + (p - p0) * V,   V = volume_1 * sum_y factor_y / (1 + r)^y
+p*       = p0 - NPV(p0) / V
+```
+
+Zero volume gives no break-even. A negative `p*` is reported as such: NPV stays positive even if that product were given away. The Unit economics rows show `p*` next to the current price; the NPV-vs-price sensitivity charts (linear price axis) mark it with a dashed line, extending the sweep with one run when `p*` lies just outside it.
+
+The "Yearly cash flows" table under Economics Over Time lists years 0..N as signed project cash: product revenue, operating policy credits, O&M, replacement CAPEX, salvage, net cash flow, discount factor, discounted and cumulative discounted cash flow, plus debt service and equity cash flow with financing. Year 0 is net CAPEX at close (gross CAPEX less upfront support); the last cumulative discounted value is the NPV, and the simple-payback year is highlighted. "Download CSV" saves the same rows at full precision under a header with the scenario link and key inputs (a Blob object URL on a temporary `<a download>`, which the CSP allows).
+
 ### CO2 and impact (`calculateEnvironmental`)
 
 ```text
@@ -375,6 +391,18 @@ net avoided = CH4_MCF * 0.0528 + MeOH_t * 1.374     # fossil fuel displaced (met
 ```
 
 0.0528 t/MCF is the combustion CO2 of pure CH4 (19.25 kg x 44.01/16.04). EPA's ~0.055 t/MCF is for pipeline gas. Carbon in a fuel returns to the air when it is burned, so capture is not removal: net avoided counts only displaced fossil combustion. Upstream emissions and leakage are excluded, and non-fuel exploratory products are counted as bound, not avoided.
+
+### NPV tornado (`tornado.js`)
+
+The "What drives NPV" card at the top of Sensitivity is a one-at-a-time tornado. For each input in `js/data/sensitivity-variables.js` that applies to the build, it reruns the scenario (fast path, same NPV as the full run) with that input at its low and at its high bound and every other input at its current value:
+
+```text
+bar_i     = [NPV(x_i = low_i), NPV(x_i = high_i)], all other inputs at their current values
+swing_i   = max(NPV_base, NPV_low, NPV_high) - min(NPV_base, NPV_low, NPV_high)
+rows      sorted by swing, largest first; rows with no NPV change are dropped
+```
+
+Market prices, solar costs, battery cost and the AI inputs use the sourced slider benchmarks as bounds; process CAPEX uses -30%/+50% of the current value (the wide end of an AACE Class 4 estimate range), process energy use and site yield +/-10% (judgment), the discount rate 5-11% and process O&M 2-5%/yr (judgment). The active policy's credit runs from the scheme's floor (0, or the lowest statutory tier where the slider stops above 0) to its current value. It ignores interactions: two inputs moving together can shift NPV by more or less than the sum of their bars. A refresh takes about 25 fast runs: ~20 ms at the defaults, ~200 ms with AI (its hourly battery dispatch dominates).
 
 ### Market ladder (`market-ladder.js`)
 
@@ -445,7 +473,7 @@ The headline default scenario is:
   - CO2 captured = bound + vented, with net avoided never above the carbon bound in fuels.
   - Every exploratory route above its reaction-enthalpy floor.
   - Qualifying-output credit bases.
-- **Hand-derived goldens:** CRF, IRR verdicts, MIRR, debt schedules and balloons, levelized identities, replacement timing and salvage, and buffer inventory.
+- **Hand-derived goldens:** CRF, IRR verdicts, MIRR, debt schedules and balloons, levelized identities, replacement timing and salvage, and buffer inventory; break-even prices checked against a full run at the root, a third price on the same line and the hand-built discounted volume; the cash-flow table's last cumulative discounted value against NPV.
 - **Policy facts:** scheme defaults are re-derived from the IRS notices, auction results and ECB rates instead of being copied from `policies.js`.
 - **UI and tooling:** control-spec and `index.html` contracts, renderers, charts, diagram, HTML escaping, share links, saved sites, the optimizer worker, the build allowlist, dev-server hardening and the one-way import order (`tests/architecture/`). These run in Node with small DOM stubs.
 
@@ -498,7 +526,7 @@ Each value in `js/data/policies.js` carries its own source comment; the main ref
 - UK: [CfD AR7 results](https://www.gov.uk/government/publications/contracts-for-difference-cfd-allocation-round-7-results/contracts-for-difference-allocation-round-7-results-accessible-webpage), [Hydrogen allocation rounds](https://www.gov.uk/government/collections/hydrogen-allocation-rounds)
 - FX: [ECB euro reference rates](https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html) (2026-10-29)
 
-### Market benchmarks used for slider markers (retrieved 2026-10)
+### Market benchmarks used for slider markers and NPV tornado bounds (retrieved 2026-10)
 
 - Battery: [BNEF Energy Storage System Cost Survey 2025 (via Energy-Storage.news)](https://www.energy-storage.news/behind-the-numbers-bnef-finds-40-year-on-year-drop-in-bess-costs/): turnkey BESS $117/kWh global, $73 China, $177 Europe, $219 US
 - Modules: OPIS via pv magazine, [FOB China TOPCon, 2026-07-31](https://www.pv-magazine.com/2026/07/31/chinese-topcon-module-prices-fall-as-high-efficiency-supply-adds-pressure/) and [DDP US TOPCon, 2026-03-06](https://www.pv-magazine.com/2026/03/06/china-topcon-module-prices-edge-higher-as-march-cargoes-clear/)

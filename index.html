@@ -716,6 +716,16 @@
         <div class="chart-wrapper chart-wrapper-timeline">
           <canvas id="economicsTimelineChart"></canvas>
         </div>
+        <details class="cash-flow-details" id="cashFlowDetails">
+          <summary>Yearly cash flows <span id="cashFlowSummary" class="chart-title-meta"></span></summary>
+          <div class="cash-flow-body">
+            <div class="cash-flow-toolbar">
+              <div class="field-note compact-note" id="cashFlowNote"></div>
+              <button type="button" id="cashFlowCsvButton" class="cash-flow-csv-btn">Download CSV</button>
+            </div>
+            <div class="cash-flow-table-scroll" id="cashFlowTableScroll" role="region" aria-label="Yearly cash flows" tabindex="0"></div>
+          </div>
+        </details>
       </div>
 
       <div class="chart-section" id="marketLadderCard">
@@ -786,6 +796,15 @@
           <span class="chevron">▾</span>
         </h2>
         <div class="section-body">
+          <div class="sensitivity-card tornado-card" id="tornadoCard" hidden>
+            <div class="sensitivity-card-title">What drives NPV</div>
+            <div class="field-note tornado-note">
+              Each row moves one input from its low to its high bound while every other input stays at its current value; bars run from the current NPV (white line) to the NPV at each bound. Red dashes mark NPV = 0. Hover a bar for the input values.
+            </div>
+            <div class="chart-wrapper chart-wrapper-tornado">
+              <canvas id="tornadoChart" role="img" aria-label="NPV tornado chart"></canvas>
+            </div>
+          </div>
           <div class="sensitivity-grid">
             <div class="sensitivity-card" id="sensitivityMethaneCard" hidden>
               <div class="sensitivity-card-title">Methane price sensitivity</div>

@@ -428,7 +428,8 @@ function buildFinancingRows({ e }) {
   return rows;
 }
 
-function buildUnitRows({ r, e }) {
+function buildUnitRows(context) {
+  const { r, e } = context;
   const rows = [];
   if (r.ai.enabled) {
     rows.push(
@@ -450,7 +451,45 @@ function buildUnitRows({ r, e }) {
   if (e.costPerTonCO2 > 0) rows.push(econRow('Levelized CO₂ capture cost', `$${FormatNumbers.fixed(e.costPerTonCO2, 0)}/ton`, '', allocationNote));
   if (e.costPerMCF > 0) rows.push(econRow('Levelized CH₄ cost', `$${FormatNumbers.fixed(e.costPerMCF, 2)}/MCF`, '', allocationNote));
   if (e.costPerTonMethanol > 0) rows.push(econRow('Levelized methanol cost', `$${FormatNumbers.fixed(e.costPerTonMethanol, 0)}/ton`, '', allocationNote));
+  rows.push(...buildBreakEvenRows(context));
   return rows;
+}
+
+// Price digits by unit: whole dollars per ton, cents otherwise.
+const priceDigits = unit => (unit === 't' ? 0 : 2);
+const formatUnitPrice = (value, unit) =>
+  `${value < 0 ? '−' : ''}$${FormatNumbers.fixed(Math.abs(value), priceDigits(unit))}/${unit}`;
+
+function breakEvenTooltip(product, e) {
+  const unit = product.unit;
+  const parts = [
+    `Sale price of ${product.label} at which project NPV is zero (${FormatNumbers.fixed(e.discountRatePercent, 1)}% discount rate, ${FormatNumbers.fixed(e.yearlyCashFlows.length, 0)}-year horizon), with every other price, policy credit, cost and the plant design held fixed.`,
+    `NPV moves ${money(product.npvPerUnitPrice)} per $1/${unit}.`,
+  ];
+  if (Number.isFinite(product.ratioToCurrent)) {
+    parts.push(`Break-even is ${FormatNumbers.fixed(product.ratioToCurrent * 100, 0)}% of the current price.`);
+  }
+  if (product.positiveAtZeroPrice) {
+    parts.push(`Negative: NPV stays positive even if ${product.label} were given away; the other revenue carries the project.`);
+  }
+  return parts.join(' ');
+}
+
+/* Break-even sale price rows (NPV = 0), one per product sold. */
+function buildBreakEvenRows({ e, breakEven }) {
+  return (breakEven || []).map(product => {
+    const label = `Break-even ${product.label} price (NPV = 0)`;
+    const current = `current ${formatUnitPrice(product.currentPrice, product.unit)}`;
+    if (!Number.isFinite(product.breakEvenPrice)) {
+      return econRow(label, `n/a, none sold (${current})`, '', `No ${product.label} is sold, so NPV does not depend on its price.`);
+    }
+    return econRow(
+      label,
+      `${formatUnitPrice(product.breakEvenPrice, product.unit)} (${current})`,
+      product.breakEvenPrice <= product.currentPrice ? 'positive' : 'negative',
+      breakEvenTooltip(product, e)
+    );
+  });
 }
 
 function buildPolicyContextRows({ e }) {
@@ -563,11 +602,12 @@ function unitEconomicsSummary({ r, e }) {
 /**
  * HTML for the economics panel.
  * @param {object} r calculation results
- * @param {{ state: object, methaneMarket: object, cycleUnit: string }} options
+ * @param {{ state: object, methaneMarket: object, cycleUnit: string, breakEven?: object[] }} options
+ *   breakEven: Calc.calculateBreakEvenPrices output for the same result
  */
-export function renderEconomicsBreakdown(r, { state, methaneMarket, cycleUnit }) {
+export function renderEconomicsBreakdown(r, { state, methaneMarket, cycleUnit, breakEven = [] }) {
   const e = r.economics;
-  const context = { r, e, state, methaneMarket, cycleUnit, labels: projectLabels(e.financing) };
+  const context = { r, e, state, methaneMarket, cycleUnit, breakEven, labels: projectLabels(e.financing) };
   const financingRows = buildFinancingRows(context);
   const unitRows = buildUnitRows(context);
   const contextRows = buildContextRows(context);
@@ -605,7 +645,7 @@ export function renderEconomicsBreakdown(r, { state, methaneMarket, cycleUnit })
       'Unit economics',
       unitEconomicsSummary(context),
       unitRows.join(''),
-      'Integrated cost and margin metrics'
+      'Integrated cost, margin and break-even sale prices'
     );
   }
   if (contextRows.length) {

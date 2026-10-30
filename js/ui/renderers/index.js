@@ -1,13 +1,17 @@
 /* Result panels attached to App: info read-outs, header metrics, score, production, economics, impact */
 
+import { Calc } from '../../model/index.js';
 import { SolarGeometry } from '../../model/solar-geometry.js';
 import { Diagram } from '../diagram.js';
 import { FormatNumbers } from '../format-numbers.js';
 import { formatIrrWithStatus, formatMirr, formatPowerKW } from '../formatters.js';
+import { cashFlowTableMethods } from './cash-flow-table.js';
 import { renderEconomicsBreakdown } from './economics.js';
 import { applyTooltip, EDUCATIONAL_TOOLTIPS, escapeAttribute, escapeHtml, prodItem } from './markup.js';
 
 export const rendererMethods = {
+  ...cashFlowTableMethods,
+
   updateInfoDisplays(r) {
     document.getElementById('ghiValue').textContent = `${FormatNumbers.fixed(r.solar.ghi, 0)} kWh/m²/yr`;
     document.getElementById('sunHoursValue').textContent = `${FormatNumbers.fixed(r.solar.sunHours, 1)} ${r.solar.hoursPerCycleLabel}`;
@@ -293,7 +297,9 @@ export const rendererMethods = {
       state: this.state,
       methaneMarket: this.getMethaneMarketConfig(),
       cycleUnit: this.getCycleRateUnit(r),
+      breakEven: Calc.calculateBreakEvenPrices(r.state, { baseResult: r }),
     });
+    this.updateCashFlowTable(r);
   },
 
   updateImpact(r) {

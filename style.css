@@ -1591,6 +1591,156 @@ input[type="range"]:disabled {
   height: 280px;
 }
 
+/* Yearly cash-flow table under the economics timeline */
+.cash-flow-details {
+  margin-top: 10px;
+  border: 1px solid rgba(141, 153, 168, 0.18);
+  border-radius: 8px;
+  background: rgba(141, 153, 168, 0.06);
+}
+
+.cash-flow-details summary {
+  cursor: pointer;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  list-style: none;
+}
+
+.cash-flow-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.cash-flow-details summary::after {
+  content: '+';
+  float: right;
+  color: var(--text-muted);
+}
+
+.cash-flow-details[open] summary {
+  border-bottom: 1px solid rgba(141, 153, 168, 0.12);
+}
+
+.cash-flow-details[open] summary::after {
+  content: '−';
+}
+
+.cash-flow-body {
+  padding: 8px 10px 10px;
+}
+
+.cash-flow-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.cash-flow-toolbar .field-note {
+  margin: 0;
+}
+
+.cash-flow-csv-btn {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border: 1px solid rgba(95, 127, 184, 0.4);
+  border-radius: var(--radius);
+  background: rgba(95, 127, 184, 0.16);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.cash-flow-csv-btn:hover,
+.cash-flow-csv-btn:focus-visible {
+  background: rgba(95, 127, 184, 0.26);
+  border-color: rgba(95, 127, 184, 0.55);
+  outline: none;
+}
+
+/* Wide tables scroll sideways inside the card instead of widening it. */
+.cash-flow-table-scroll {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.cash-flow-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cash-flow-table th,
+.cash-flow-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(141, 153, 168, 0.1);
+  text-align: right;
+  color: var(--text-secondary);
+}
+
+.cash-flow-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.cash-flow-table .cash-flow-year,
+.cash-flow-table thead th:first-child {
+  text-align: left;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.cash-flow-table .cash-flow-negative {
+  color: var(--danger);
+}
+
+.cash-flow-table tr.cash-flow-payback th,
+.cash-flow-table tr.cash-flow-payback td {
+  background: rgba(126, 169, 109, 0.14);
+}
+
+.cash-flow-table tr.cash-flow-final td,
+.cash-flow-table tr.cash-flow-final th {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.cash-flow-table tr.cash-flow-final .cash-flow-negative {
+  color: var(--danger);
+}
+
+.cash-flow-tag {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(126, 169, 109, 0.22);
+  color: var(--success);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 600px) {
+  .cash-flow-toolbar {
+    flex-direction: column;
+  }
+}
+
 /* Economics doughnut: bottom legend + title need more vertical space than default charts */
 .chart-wrapper-econ {
   height: 280px;
@@ -1651,6 +1801,19 @@ input[type="range"]:disabled {
 
 .sensitivity-card .chart-wrapper {
   height: 160px;
+}
+
+/* The tornado's height follows its row count (set from JS); this is the floor. */
+.tornado-card {
+  margin-bottom: 10px;
+}
+
+.tornado-card .tornado-note {
+  margin: 0 0 8px;
+}
+
+.sensitivity-card .chart-wrapper-tornado {
+  height: 220px;
 }
 
 /* ============ PLANT SCORE ============ */

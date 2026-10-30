@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { Calc, createState, formatMoney } from './harness.js';
+import { Calc, createState, formatMoney, LOW_COST_SOLAR } from './harness.js';
 
 function npvAt(cashFlows, rate) {
   return cashFlows.reduce(
@@ -176,7 +176,7 @@ test('zero-interest debt schedule repays principal evenly and then stops', () =>
 });
 
 test('financing model funds only the debt share and leaves zero-debt cases unlevered', () => {
-  const financedResult = Calc.calculateAll(createState({
+  const financedResult = Calc.calculateAll(createState({ ...LOW_COST_SOLAR,
     financingEnabled: true,
     debtSharePercent: 70,
     debtInterestRate: 6.5,
@@ -188,7 +188,7 @@ test('financing model funds only the debt share and leaves zero-debt cases unlev
   const expectedDebtAmount = financedEconomics.totalCapex * 0.70;
   const expectedFee = expectedDebtAmount * 0.015;
   const expectedEquityUpfront = financedEconomics.totalCapex - expectedDebtAmount + expectedFee;
-  const zeroDebtEconomics = Calc.calculateAll(createState({
+  const zeroDebtEconomics = Calc.calculateAll(createState({ ...LOW_COST_SOLAR,
     financingEnabled: true,
     debtSharePercent: 0,
     debtFeePercent: 5,
@@ -267,7 +267,7 @@ test('financing coverage metrics flag sponsor support when debt service exceeds 
 // Was: "coverage stays clear" with $0 support although year 7's replacement
 // made equity cash negative. Replacement-year shortfalls now count.
 test('sponsor support includes replacement-year shortfalls when debt service alone is covered', () => {
-  const economics = Calc.calculateAll(createState({
+  const economics = Calc.calculateAll(createState({ ...LOW_COST_SOLAR,
     financingEnabled: true,
     debtTermYears: 10,
   })).economics;

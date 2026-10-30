@@ -53,6 +53,13 @@ export const SLIDER_MARKERS = {
     // https://www.pv-magazine.com/2026/03/06/china-topcon-module-prices-edge-higher-as-march-cargoes-clear/
     { value: 0.29, label: 'TOPCon module DDP US, Mar 2026 (OPIS)' },
   ],
+  bosCost: [
+    // Terraform 1.8 MW build, Kern County CA, 2026: $1.3M "including land, site
+    // improvements" (~$0.72/W). With $0.29/W modules and default land/site prep,
+    // the remainder is ~$0.40/W of BOS:
+    // https://terraformindustries.wordpress.com/2026/10/27/how-terraform-built-the-cheapest-solar-in-north-america/
+    { value: 0.40, label: 'Implied by Terraform 1.8 MW build, 2026 ($0.72/W all-in)' },
+  ],
   landCost: [
     { value: 2500, label: 'Cheap ag / desert land' },
     { value: 10000, label: 'Higher-value land' },

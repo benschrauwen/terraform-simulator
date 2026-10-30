@@ -142,12 +142,17 @@ export const LOCATION_PRESETS = [
    off-Earth profiles (Mars, generic Moon), relative to fixed tilt. The
    spacing and BOS sensitivities scale layout and balance-of-system cost with
    latitude and cloudiness relative to SOLAR_LAYOUT_REFERENCE. */
+// typicalBOS ($/Wdc, before site adjustments) is what a mounting change loads into
+// the BOS slider. East-West is calibrated to Terraform's 2026 build (~$0.72/W all-in
+// with $0.29/W modules leaves ~$0.40/W BOS; see bosCostPerW in js/state/schema.js).
+// The other mountings keep their earlier illustrative premiums over East-West
+// (+0.08 fixed, +0.23 single-axis, +0.43 dual-axis); they are not sourced quotes.
 export const MOUNTING_TYPES = {
   fixed: {
     label: 'Fixed Tilt',
     yieldMult: 1.0,
     groundCoverageRatio: 0.45,
-    typicalBOS: 0.20,
+    typicalBOS: 0.48,
     spacingLatitudeSensitivity: 0.45,
     spacingCloudRelief: 0.08,
     bosLayoutSensitivity: 0.30,
@@ -159,7 +164,7 @@ export const MOUNTING_TYPES = {
     label: 'East-West Fixed',
     yieldMult: 0.92,
     groundCoverageRatio: 0.75,
-    typicalBOS: 0.12,
+    typicalBOS: 0.40,
     spacingLatitudeSensitivity: 0.18,
     spacingCloudRelief: 0.10,
     bosLayoutSensitivity: 0.20,
@@ -171,7 +176,7 @@ export const MOUNTING_TYPES = {
     label: 'Single-Axis Tracker',
     yieldMult: 1.18,
     groundCoverageRatio: 0.30,
-    typicalBOS: 0.35,
+    typicalBOS: 0.63,
     spacingLatitudeSensitivity: 0.60,
     spacingCloudRelief: 0.15,
     bosLayoutSensitivity: 0.35,
@@ -183,7 +188,7 @@ export const MOUNTING_TYPES = {
     label: 'Dual-Axis Tracker',
     yieldMult: 1.28,
     groundCoverageRatio: 0.22,
-    typicalBOS: 0.55,
+    typicalBOS: 0.83,
     spacingLatitudeSensitivity: 0.55,
     spacingCloudRelief: 0.12,
     bosLayoutSensitivity: 0.32,

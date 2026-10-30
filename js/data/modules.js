@@ -37,6 +37,10 @@ export const MODULE_DEFINITIONS = [
       {
         value: 'terraform-default',
         label: 'Terraform',
+        // 78.89 kWh/kg (whitepaper 2.0, 2023); $100/kW (Aug 2023 post). The
+        // 2026 update reports a stack BOM "well below $100/kW" and demo H2 below
+        // $2/kg, so $100/kW stays a conservative default:
+        // https://terraformindustries.wordpress.com/2026/10/21/terraform-2026-update/
         values: {
           electrolyzerEfficiency: 79,
           electrolyzerCapex: 100,
@@ -88,6 +92,10 @@ export const MODULE_DEFINITIONS = [
       {
         value: 'terraform-default',
         label: 'Terraform',
+        // 3.44 MWh/t and the $/t-yr capex basis come from whitepaper 2.0 (2023).
+        // The 2026 update reports >99% CO2 from a >1,000 C calciner at an early-stage
+        // internal cost "well below $200/T-CO2", with no new energy figure:
+        // https://terraformindustries.wordpress.com/2026/10/21/terraform-2026-update/
         values: {
           dacEnergy: 3440,
           dacCapex: 450,

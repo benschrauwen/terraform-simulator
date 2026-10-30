@@ -8,9 +8,11 @@
 import { POLICY_SCHEMES } from '../data/policies.js';
 import {
   AI_COMPUTE_DEFAULTS,
+  DEFAULT_SOLAR_COST_PRESET,
   METHANE_MARKET_PRESETS,
   MOUNTING_TYPES,
   PLANETARY_BODIES,
+  SOLAR_COST_PRESETS,
 } from '../data/reference-data.js';
 import { ModuleCatalog } from '../data/module-catalog.js';
 
@@ -81,9 +83,11 @@ export const CORE_STATE_FIELDS = [
   { key: 'siteYieldMwhPerMwdcYear', type: 'number', min: 0, max: 1e6, defaultValue: 1974 },
   { key: 'systemSizeMW', type: 'number', min: 0, max: 1e6, defaultValue: 1.0 },
   { key: 'panelEfficiency', type: 'number', min: 1, max: 100, defaultValue: 20 },
-  { key: 'panelCostPerW', type: 'number', min: 0, max: 1e6, defaultValue: 0.20 },
+  // Solar costs default to the target basis on the default East-West mounting
+  // (see SOLAR_COST_PRESETS in js/data/reference-data.js for both bases and sources).
+  { key: 'panelCostPerW', type: 'number', min: 0, max: 1e6, defaultValue: SOLAR_COST_PRESETS[DEFAULT_SOLAR_COST_PRESET].panelCostPerW },
   { key: 'panelDegradationAnnual', type: 'number', min: 0, max: 100, defaultValue: 0.65 },
-  { key: 'bosCostPerW', type: 'number', min: 0, max: 1e6, defaultValue: 0.12 },
+  { key: 'bosCostPerW', type: 'number', min: 0, max: 1e6, defaultValue: SOLAR_COST_PRESETS[DEFAULT_SOLAR_COST_PRESET].ewBosCostPerW },
   { key: 'landCostPerAcre', type: 'number', min: 0, max: 1e9, defaultValue: 5000 },
   { key: 'sitePrepCostPerAcre', type: 'number', min: 0, max: 1e9, defaultValue: 15000 },
 
@@ -99,8 +103,14 @@ export const CORE_STATE_FIELDS = [
 
   { key: 'aiComputeEnabled', type: 'boolean', defaultValue: false },
   { key: 'aiReliabilityTarget', type: 'number', min: 0, max: 99.9999, defaultValue: 99.9 },
-  { key: 'aiTokenPricePerM', type: 'number', min: 0, max: 1e9, defaultValue: 3.0 },
-  { key: 'aiMillionTokensPerMWh', type: 'number', min: 0, max: 1e9, defaultValue: 1000 },
+  // GPU cluster sizing: 'max' = largest IT load the battery supports at the
+  // target; 'fixed' = the user's aiLoadKW with the battery auto-sized to it
+  // (batteryCapacityMWh is then kept but unused). normalizeState also caps
+  // aiLoadKW at the array's DC peak.
+  { key: 'aiSizingMode', type: 'enum', options: ['max', 'fixed'], defaultValue: 'max' },
+  { key: 'aiLoadKW', type: 'number', min: 1, max: 1e9, defaultValue: 100 },
+  { key: 'aiTokenPricePerM', type: 'number', min: 0, max: 1e9, defaultValue: AI_COMPUTE_DEFAULTS.tokenPricePerM },
+  { key: 'aiMillionTokensPerMWh', type: 'number', min: 0, max: 1e9, defaultValue: AI_COMPUTE_DEFAULTS.millionTokensPerMWh },
   { key: 'aiGpuCapexPerKW', type: 'number', min: 0, max: 1e9, defaultValue: AI_COMPUTE_DEFAULTS.capexPerKW },
   { key: 'aiAssetLifeYears', type: 'integer', min: 1, max: 100, defaultValue: AI_COMPUTE_DEFAULTS.assetLifeYears },
 

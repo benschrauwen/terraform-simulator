@@ -9,6 +9,7 @@
 import { annualDispatchChartMethods } from './annual-dispatch-chart.js';
 import { capexChartMethods } from './capex-chart.js';
 import { economicsTimelineChartMethods } from './economics-timeline-chart.js';
+import { marketLadderChartMethods } from './market-ladder-chart.js';
 import { powerChartMethods } from './power-chart.js';
 import { sensitivityChartMethods } from './sensitivity-chart.js';
 
@@ -17,6 +18,7 @@ export const RESULT_CHARTS = [
   [powerChartMethods, 'updatePowerChart'],
   [annualDispatchChartMethods, 'updateAnnualDispatchChart'],
   [economicsTimelineChartMethods, 'updateEconomicsTimelineChart'],
+  [marketLadderChartMethods, 'updateMarketLadderChart'],
   [capexChartMethods, 'updateEconChart'],
 ];
 

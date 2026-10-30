@@ -39,6 +39,7 @@ test('production build ships an allowlisted, versioned asset tree', t => {
 
   [
     'index.html',
+    'sources.html',
     'README.md',
     'LICENSE',
     `${ASSET_DIR}/style.css`,
@@ -59,7 +60,7 @@ test('production build ships an allowlisted, versioned asset tree', t => {
   const files = listFiles(dist);
   files.forEach(relativePath => {
     assert.ok(
-      ['index.html', 'README.md', 'LICENSE'].includes(relativePath) || relativePath.startsWith(`${ASSET_DIR}/`),
+      ['index.html', 'sources.html', 'README.md', 'LICENSE'].includes(relativePath) || relativePath.startsWith(`${ASSET_DIR}/`),
       `Unexpected file outside the allowlist: ${relativePath}`
     );
     assert.equal(
@@ -78,6 +79,12 @@ test('production build ships an allowlisted, versioned asset tree', t => {
     assert.equal(exists(url), true, `Expected ${url} to resolve inside dist.`);
   });
   assert.match(html, new RegExp(`<script type="module" src="${ASSET_DIR}/js/main\\.js"></script>`));
+
+  // The sources page shares the versioned stylesheet and links back unversioned.
+  const sourcesHtml = fs.readFileSync(path.join(dist, 'sources.html'), 'utf8');
+  assert.match(sourcesHtml, new RegExp(`href="${ASSET_DIR}/style\\.css"`));
+  assert.match(sourcesHtml, /href="index\.html"/);
+  assert.match(html, /href="sources\.html"/);
 });
 
 test('the asset version is a content hash, identical for identical sources', t => {
@@ -88,4 +95,14 @@ test('the asset version is a content hash, identical for identical sources', t =
   assert.equal(first.length, 1);
   assert.match(first[0], /^[0-9a-f]{12}$/);
   assert.deepEqual(second, first);
+});
+
+test('the footer shows the release version, commit date and short sha', t => {
+  const { version } = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const dist = build(t, { RELEASE_DATE: '2026-10-30', RELEASE_SHA: 'abcdef1234567890' });
+  const html = fs.readFileSync(path.join(dist, 'index.html'), 'utf8');
+
+  assert.match(html, new RegExp(`id="appVersion">v${version.replaceAll('.', '\\.')} · 2026-10-30 · abcdef1</span>`));
+  // The source page keeps a neutral label so `npm run dev` never claims to be a release.
+  assert.match(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'), /id="appVersion">Development build</);
 });

@@ -18,6 +18,7 @@ import { selectOptionMethods } from './select-options.js';
 import { shareMethods } from './share.js';
 import { siteControlMethods } from './site-controls.js';
 import { siteMapMethods } from './site-map.js';
+import { solarCostControlMethods } from './solar-cost-controls.js';
 import { sliderMarkerMethods } from './slider-markers.js';
 import { tooltipMethods } from './tooltips.js';
 import { uiStateMethods } from './ui-state.js';
@@ -171,6 +172,7 @@ export class App {
       this.applyNormalizedState(r.state);
       this.lastResults = r;
       this.updateInfoDisplays(r);
+      this.syncAiSizingControls(r);
       this.updateDiagram(r);
       this.updateSiteMap(r);
       this.updateProduction(r);
@@ -196,6 +198,7 @@ Object.assign(
   selectOptionMethods,
   controlMethods,
   siteControlMethods,
+  solarCostControlMethods,
   moduleControlMethods,
   optimizerMethods,
   uiStateMethods,

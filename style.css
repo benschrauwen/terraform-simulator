@@ -369,7 +369,8 @@ body {
   cursor: not-allowed;
 }
 
-.load-config-tabs {
+.load-config-tabs,
+.chart-tabs {
   display: flex;
   gap: 2px;
   margin-bottom: 10px;
@@ -379,7 +380,8 @@ body {
   padding: 2px;
 }
 
-.load-config-tab {
+.load-config-tab,
+.chart-tab {
   flex: 1;
   padding: 7px 8px;
   border: none;
@@ -392,12 +394,14 @@ body {
   transition: background-color var(--transition), color var(--transition);
 }
 
-.load-config-tab.active {
+.load-config-tab.active,
+.chart-tab.active {
   background: rgba(95, 127, 184, 0.18);
   color: var(--text-primary);
 }
 
-.load-config-tab:hover:not(.active) {
+.load-config-tab:hover:not(.active),
+.chart-tab:hover:not(.active) {
   color: var(--text-secondary);
   background: rgba(255, 255, 255, 0.03);
 }
@@ -1080,6 +1084,16 @@ input[type="range"]::-moz-range-track {
 
 .compact-note {
   margin-top: 0;
+}
+
+.field-note.warning-note {
+  color: var(--warning);
+}
+
+/* Read-only slider (e.g. battery capacity auto-sized for a set AI load). */
+input[type="range"]:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .field-note a {
@@ -2111,6 +2125,84 @@ input[type="range"]::-moz-range-track {
 
 .app-footer a:hover {
   text-decoration: underline;
+}
+
+.app-version {
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+/* ============ DOCUMENT PAGES (sources.html) ============ */
+
+body.doc-page {
+  overflow: auto;
+  display: block;
+}
+
+.doc-header,
+.doc-main {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.doc-header {
+  padding-top: 28px;
+  padding-bottom: 8px;
+}
+
+.doc-header h1 {
+  font-size: 26px;
+  margin: 10px 0 8px;
+}
+
+.doc-header p,
+.doc-note {
+  color: var(--text-secondary);
+}
+
+.doc-back,
+.doc-toc a,
+.source-list a {
+  color: var(--electric);
+}
+
+.doc-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 14px;
+  font-size: 13px;
+}
+
+.doc-main {
+  padding-bottom: 40px;
+}
+
+.doc-main h2 {
+  font-size: 18px;
+  margin: 28px 0 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.source-list {
+  padding-left: 20px;
+  color: var(--text-secondary);
+}
+
+.source-list li {
+  margin: 6px 0;
+}
+
+.source-list a {
+  color: var(--electric);
+}
+
+body.doc-page .app-footer {
+  height: auto;
+  min-height: var(--footer-height);
+  padding: 6px 18px;
 }
 
 /* ============ RESPONSIVE ============ */

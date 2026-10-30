@@ -172,6 +172,12 @@
             <input type="range" id="panelEfficiency" min="15" max="30" step="0.5" value="20">
             <span class="range-value" id="panelEfficiencyValue">20.0%</span>
           </label>
+          <label>Solar Cost Basis
+            <select id="solarCostPreset"></select>
+          </label>
+          <div class="field-note compact-note">
+            Sets module and BOS prices together. The target is Terraform's &lt;1 ¢/kWh goal; the measured option reproduces its first 1.8 MW build (Oct 2026, ~$0.72/W including land and site work). Changing mounting keeps the basis and adds that mounting's BOS premium.
+          </div>
           <label>Panel Cost ($/W)
             <input type="range" id="panelCost" min="0.05" max="0.50" step="0.01" value="0.20">
             <span class="range-value" id="panelCostValue">$0.20/W</span>
@@ -180,8 +186,12 @@
             <input type="range" id="panelDegradationAnnual" min="0.4" max="0.8" step="0.05" value="0.65">
             <span class="range-value" id="panelDegradationAnnualValue">0.65%/yr</span>
           </label>
+          <label>Solar Asset Life (years)
+            <input type="range" id="solarAssetLife" min="10" max="40" step="1" value="30">
+            <span class="range-value" id="solarAssetLifeValue">30 years</span>
+          </label>
           <div class="field-note compact-note">
-            Multi-year economics re-dispatch the fixed plant design on the degraded array each year (degradation restarts after a solar replacement).
+            Multi-year economics re-dispatch the fixed plant design on the degraded array each year. Modules and BOS are replaced at the end of their life (land and site prep are kept), and degradation restarts after the replacement.
           </div>
           <label>Mounting Type
             <select id="mountingType"></select>
@@ -216,7 +226,7 @@
             <span id="capacityFactor" class="highlight">— %</span>
           </div>
           <div class="info-row">
-            <span class="tooltip-label" data-tooltip="Levelized cost of energy from the solar plant alone, gross of incentives (before any ITC or grant), with energy levelized over the solar asset life.">LCOE (pre-incentive):</span>
+            <span class="tooltip-label" data-tooltip="Levelized cost of energy from the solar plant alone, gross of incentives (before any ITC or grant), with capital discounted at the project discount rate and energy levelized over the solar asset life. For comparison, Terraform reports 1.6 ¢/kWh amortized for its 2026 1.8 MW build at ~$0.72/W all-in without stating a discount rate or life; with these inputs that matches no discounting and no O&M (~$15/MWh), while the default 8% gives roughly 3x more.">LCOE (pre-incentive):</span>
             <span id="lcoe" class="highlight">— $/MWh</span>
           </div>
           <div class="info-row">
@@ -249,6 +259,7 @@
                   title="Set battery capacity to the best IRR found (ranked by MIRR at the discount rate if IRR is undefined anywhere in the range)"
                 >optimize</button>
               </span>
+              <div class="field-note compact-note" id="batteryAutoSizeNote" hidden></div>
             </div>
             <label>Cost ($/kWh)
               <input type="range" id="batteryCost" min="50" max="400" step="1" value="150">
@@ -400,35 +411,53 @@
                 <label>Full-rate reliability target
                   <select id="aiReliabilityTarget"></select>
                 </label>
+                <label><span class="tooltip-label" data-tooltip="Max for battery: the largest constant GPU load the solar plus your battery can run at the uptime target. Set load: you choose the GPU load and the battery is sized to the smallest capacity that keeps it at the target.">GPU cluster sizing</span>
+                  <select id="aiSizingMode">
+                    <option value="max" selected>Max for battery</option>
+                    <option value="fixed">Set load</option>
+                  </select>
+                </label>
+                <label id="aiLoadControl" hidden>GPU IT load (kW)
+                  <input type="range" id="aiLoadKW" data-scale="log" min="0" max="3" step="0.001" value="2">
+                  <span class="range-value" id="aiLoadKWValue">100 kW</span>
+                </label>
+                <div class="field-note compact-note warning-note" id="aiLoadFeasibilityWarning" role="status" hidden></div>
                 <div class="field-note">
-                  The AI load is auto-sized from the current solar plus battery system to satisfy the selected full-rate uptime target. The chemical plant then ramps up and down only on the residual energy left after AI load and battery charging.
+                  The AI load runs at a constant rate off solar plus battery to satisfy the selected full-rate uptime target: either the largest load your battery supports, or your set load with the battery auto-sized to it. The chemical plant then ramps up and down only on the residual energy left after AI load and battery charging.
                 </div>
                 <div class="field-note compact-note">
-                  Reliability is clear-sky-equivalent: every modeled day has the clear-sky shape scaled to the site's annual yield, so multi-day cloudy spells are not modeled and real-world uptime at the same battery size will be lower. AI sizing needs storage; with the battery at 0, one of 1 MWh per GWh/yr of solar is added automatically.
+                  Reliability is clear-sky-equivalent: every modeled day has the clear-sky shape scaled to the site's annual yield, so multi-day cloudy spells are not modeled and real-world uptime at the same battery size will be lower. Max-for-battery sizing needs storage; with the battery at 0, one of 1 MWh per GWh/yr of solar is added automatically.
                 </div>
                 <div class="field-note compact-note" id="aiBatterySeedNote" hidden></div>
                 <div class="field-note compact-note">
                   GPU CAPEX is modeled on a direct-current datacenter framing ($/kW installed IT load).
                 </div>
-                <label>GPU CAPEX ($/kW)
+                <label>GPU CAPEX ($/kW of facility AI load)
                   <input type="range" id="aiGpuCapexPerKW" min="5000" max="150000" step="1000" value="50000">
                   <span class="range-value" id="aiGpuCapexPerKWValue">$50,000/kW</span>
                 </label>
-                <label>Token price ($ / 1M tokens)
-                  <input type="range" id="aiTokenPrice" min="0.25" max="20" step="0.25" value="3">
-                  <span class="range-value" id="aiTokenPriceValue">$3.00 / 1M tokens</span>
+                <label>Token price ($ / 1M tokens, input + output blended)
+                  <input type="range" id="aiTokenPrice" data-scale="log" min="-1.3010" max="0.6990" step="0.001" value="-0.4559319556497244">
+                  <span class="range-value" id="aiTokenPriceValue">$0.35 / 1M tokens</span>
                 </label>
-                <label>Throughput (1M tokens / MWh)
-                  <input type="range" id="aiTokensPerMWh" min="100" max="3000" step="25" value="1000">
-                  <span class="range-value" id="aiTokensPerMWhValue">1,000 M tokens/MWh</span>
+                <label>Throughput (1M tokens / facility MWh, input + output)
+                  <input type="range" id="aiTokensPerMWh" data-scale="log" min="2.4771" max="4.4771" step="0.001" value="3.7781512503836434">
+                  <span class="range-value" id="aiTokensPerMWhValue">6,000 M tokens/MWh</span>
                 </label>
+                <div class="field-note compact-note">
+                  Tokens count input plus output, as inference benchmarks and price comparisons do; price × throughput is revenue per MWh (default $2,100/MWh, close to renting the same power out as Blackwell GPUs). Energy and CAPEX are per facility kW, cooling included.
+                </div>
                 <label>GPU Asset Life (years)
                   <input type="range" id="aiAssetLifeYears" min="3" max="8" step="1" value="5">
                   <span class="range-value" id="aiAssetLifeYearsValue">5 years</span>
                 </label>
                 <div class="info-row">
-                  <span class="tooltip-label" data-tooltip="AI load size the current solar-plus-battery system can support at the selected reliability target.">Auto-sized AI load:</span>
+                  <span id="aiDesignLoadLabel" class="tooltip-label" data-tooltip="AI load size the current solar-plus-battery system can support at the selected reliability target.">Auto-sized AI load:</span>
                   <span id="aiDesignLoadValue" class="highlight">—</span>
+                </div>
+                <div class="info-row" id="aiSizedBatteryRow" hidden>
+                  <span class="tooltip-label" data-tooltip="Smallest battery (at the Battery Storage duration, efficiency and leakage) that keeps the set GPU load at full rate for the target share of hours, and how many hours of the IT load it holds.">Auto-sized battery:</span>
+                  <span id="aiSizedBatteryValue" class="highlight">—</span>
                 </div>
                 <div class="info-row">
                   <span class="tooltip-label" data-tooltip="Fraction of that AI design load actually served with electricity over the year.">Served-energy utilization:</span>
@@ -441,6 +470,10 @@
                 <div class="info-row">
                   <span class="tooltip-label" data-tooltip="Lowest yearly full-rate reliability over the analysis horizon: the year-1 design load re-dispatched on the degraded array (degradation restarts after a solar replacement).">Late-life reliability:</span>
                   <span id="aiLateLifeReliabilityValue" class="highlight">—</span>
+                </div>
+                <div class="info-row">
+                  <span class="tooltip-label" data-tooltip="Year-1 share of the solar generation served to the AI load and delivered to the chemical plant. The remainder is battery losses and clipping.">Solar to AI / chemicals:</span>
+                  <span id="aiEnergySplitValue" class="highlight">—</span>
                 </div>
                 <div class="info-row">
                   <span class="tooltip-label" data-tooltip="Total yearly AI tokens produced and sold in the model.">Annual tokens:</span>
@@ -534,34 +567,28 @@
               </div>
             </details>
           </div>
-          <div class="market-card">
-            <div class="market-card-header">
-              <div class="market-card-title">Project economics</div>
-              <div class="market-card-subtitle">Keep asset life, evaluation window, and discount rate in one place.</div>
-            </div>
-            <label>Solar Asset Life (years)
-              <input type="range" id="solarAssetLife" min="10" max="40" step="1" value="30">
-              <span class="range-value" id="solarAssetLifeValue">30 years</span>
-            </label>
-            <label>Analysis Horizon (years)
-              <input type="range" id="analysisHorizonYears" min="3" max="30" step="1" value="30">
-              <span class="range-value" id="analysisHorizonYearsValue">30 years</span>
-            </label>
-            <label>Discount Rate (%)
-              <input type="range" id="discountRate" min="0" max="20" step="0.5" value="8">
-              <span class="range-value" id="discountRateValue">8.0%</span>
-            </label>
-          </div>
         </div>
       </section>
 
-      <!-- Financing -->
+      <!-- Finance & valuation -->
       <section class="config-section" data-section="financing">
         <h2 class="section-header" data-toggle="financing">
-          <span class="icon">🏦</span> Financing
+          <span class="icon">🏦</span> Finance &amp; Valuation
           <span class="chevron">▾</span>
         </h2>
         <div class="section-body financing-section-body">
+          <div class="module-group-title">Valuation</div>
+          <div class="module-group-subtitle">
+            How returns are measured: years of cash flow counted, and the rate future cash is discounted at (NPV, MIRR, LCOE and levelized metrics).
+          </div>
+          <label>Analysis Horizon (years)
+            <input type="range" id="analysisHorizonYears" min="3" max="30" step="1" value="30">
+            <span class="range-value" id="analysisHorizonYearsValue">30 years</span>
+          </label>
+          <label>Discount Rate (%)
+            <input type="range" id="discountRate" min="0" max="20" step="0.5" value="8">
+            <span class="range-value" id="discountRateValue">8.0%</span>
+          </label>
           <div class="module-group-title">Debt structure</div>
           <div class="module-group-subtitle">
             Switch between unlevered project returns and an equity-style view funded with upfront debt.
@@ -690,6 +717,18 @@
           <canvas id="economicsTimelineChart"></canvas>
         </div>
       </div>
+
+      <div class="chart-section" id="marketLadderCard">
+        <h3><span class="tooltip-label" data-tooltip="Terraform's market ladder: premium niches at the top, bulk commodity at the bottom. Each shelf is a market tier's price; its width is that tier's annual volume, stacked left to right. A site can profitably sell into every tier priced at or above its levelized cost. Tiers from Terraform's scale-up roadmap; see Sources.">Market Ladder</span></h3>
+        <div class="chart-tabs" id="marketLadderTabs" role="tablist" aria-label="Market ladder product" hidden>
+          <button type="button" class="chart-tab active" data-ladder-product="methane" role="tab" aria-selected="true">Methane</button>
+          <button type="button" class="chart-tab" data-ladder-product="methanol" role="tab" aria-selected="false">Methanol</button>
+        </div>
+        <div class="field-note compact-note" id="marketLadderNote"></div>
+        <div class="chart-wrapper chart-wrapper-timeline">
+          <canvas id="marketLadderChart" aria-label="Market ladder with this site's levelized cost"></canvas>
+        </div>
+      </div>
     </section>
 
     <!-- RIGHT: Results Panel -->
@@ -794,7 +833,9 @@
   <footer class="app-footer">
     <p>Based on <a href="https://terraformindustries.com/" target="_blank" rel="noreferrer">Terraform Industries</a> technology.
     Data from public sources. This is an independent educational tool — not affiliated with Terraform Industries.
-    View the source on <a href="https://github.com/benschrauwen/terraform-simulator" target="_blank" rel="noreferrer">GitHub</a>.</p>
+    View the source on <a href="https://github.com/benschrauwen/terraform-simulator" target="_blank" rel="noreferrer">GitHub</a>
+    · <a href="sources.html">Sources</a>.
+    <span class="app-version" id="appVersion">Development build</span></p>
   </footer>
 
   <script src="node_modules/lz-string/libs/lz-string.min.js"></script>

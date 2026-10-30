@@ -4,6 +4,7 @@ import {
   AI_RELIABILITY_OPTIONS,
   METHANE_MARKET_PRESETS,
   MOUNTING_TYPES,
+  SOLAR_COST_PRESETS,
 } from '../data/reference-data.js';
 import { PolicyModel } from '../model/policy.js';
 import { escapeAttribute, escapeHtml } from './renderers/markup.js';
@@ -42,6 +43,11 @@ export const selectOptionMethods = {
     setOptions('mountingType', Object.entries(MOUNTING_TYPES)
       .map(([value, mounting]) => optionHtml({ value, label: mounting.label }))
       .join(''));
+
+    setOptions('solarCostPreset', [
+      ...Object.entries(SOLAR_COST_PRESETS).map(([value, preset]) => optionHtml({ value, label: preset.label })),
+      optionHtml({ value: 'custom', label: 'Custom values' }),
+    ].join(''));
 
     setOptions('aiReliabilityTarget', AI_RELIABILITY_OPTIONS.map(optionHtml).join(''));
 

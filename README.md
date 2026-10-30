@@ -10,7 +10,7 @@ What it models:
 - An hour-by-hour annual dispatch of solar, an optional battery and the chemical plant, with intentional undersizing (clipping) via `chemicalSizingPercent`.
 - Supported products: methane (Sabatier) and methanol, with H2 and CO2 shared between them by stoichiometry.
 - Exploratory industrial routes with rough economics: MTG gasoline, CO2 to CO, ammonia, specialty carbon, lime, cement, steel, silicon, aluminum, titanium and desalination.
-- An optional colocated AI datacenter: a constant IT load sized to a reliability target, served before the chemicals.
+- An optional colocated AI datacenter: a constant IT load served before the chemicals, either the largest load the battery supports at a reliability target or a user-set load with the battery auto-sized to that target.
 - Sourced and dated incentive schemes for the US, EU, Germany, the Netherlands, the UK and Spain, plus a custom mix.
 - Project finance: replacements, salvage, NPV, IRR/MIRR, payback, levelized metrics, optional debt with DSCR, inline IRR optimizers and price sensitivities.
 - CO2 accounting (captured, bound, vented, net avoided), water and land use.
@@ -29,7 +29,9 @@ npm run preview   # serves dist/ the same way
 
 `PORT` and `HOST` override the dev server address. There is no bundler or framework: `index.html` loads the vendor scripts from `node_modules/` and one native ES module entry, `js/main.js`.
 
-`npm run build` copies an allowlist (`index.html`, `style.css`, `js/`, the vendor files, `README.md`, `LICENSE`) into `dist/`. Assets go under `dist/assets/<buildId>/`, where the build ID comes from `BUILD_ID`, the Vercel or GitHub commit SHA, or `git rev-parse`, and `index.html` is rewritten to point at them. Vercel deploys `dist/` using `vercel.json`, which runs the build, marks `/assets/*` immutable and sets a strict Content-Security-Policy. The only external host the CSP allows is the Esri satellite tile server used by the site map.
+`npm run build` copies an allowlist (`index.html`, `sources.html`, `style.css`, `js/`, the vendor files, `README.md`, `LICENSE`) into `dist/`. Assets go under `dist/assets/<buildId>/`, where the build ID is a short SHA-256 of the shipped asset files (so identical content keeps its URL and any change gets a new one; `BUILD_ID` overrides it), and `index.html` is rewritten to point at them. `DIST_DIR` changes the output directory.
+
+The footer shows which release a visitor is looking at: `v<package.json version> · <commit date> · <short sha>`, stamped into `dist/index.html` by the build (the unbuilt page says "Development build"). Bump `version` in `package.json` when you cut a release. Vercel deploys `dist/` using `vercel.json`, which runs the build, marks `/assets/*` immutable and sets a strict Content-Security-Policy. The only external host the CSP allows is the Esri satellite tile server used by the site map.
 
 ## Architecture
 
@@ -50,7 +52,7 @@ js/util.js    dependency-free numeric helpers (clamps, step precision), usable b
 
 Imports run one way, top to bottom: a layer imports its own files, lower layers and `util.js`, never a higher layer. `tests/architecture/import-direction.test.js` enforces it.
 
-- `js/data/`: `reference-data.js` (bodies, `LOCATION_PRESETS`, `MOUNTING_TYPES`, `CHEMISTRY`, `METHANE_MARKET_PRESETS`, AI defaults), `assumptions.js` (`MODEL_ASSUMPTIONS`, the GHI/cloudiness heuristics and `SOLAR_LAYOUT_REFERENCE`), `modules.js` (supported and exploratory process modules), `module-catalog.js` (`ModuleCatalog`: normalizes `modules.js` into frozen modules and answers route, preset, market, buffer and capex-slider questions), `policies.js` (incentive schemes and picker groups).
+- `js/data/`: `reference-data.js` (bodies, `LOCATION_PRESETS`, `MOUNTING_TYPES`, `CHEMISTRY`, `METHANE_MARKET_PRESETS`, AI defaults), `assumptions.js` (`MODEL_ASSUMPTIONS`, the GHI/cloudiness heuristics and `SOLAR_LAYOUT_REFERENCE`), `modules.js` (supported and exploratory process modules), `module-catalog.js` (`ModuleCatalog`: normalizes `modules.js` into frozen modules and answers route, preset, market, buffer and capex-slider questions), `policies.js` (incentive schemes and picker groups), `market-ladders.js` (Terraform's methane and methanol market tiers).
 - `js/state/`: `schema.js` is the single source of state fields and defaults.
 - `js/model/`: one file per concern: `solar.js` + `solar-geometry.js` (resource, sky model, mountings), `annual-series.js` (hourly year), `battery.js` (storage + chemical dispatch), `ai-compute.js`, `lifetime-energy.js`, `process.js` (allocation, electrolyzer, DAC, reactors, exploratory routes, buffers), `economics.js`, `finance.js`, `policy.js`, `optimizer-search.js`, and `scenario.js` (the pipeline).
 - `js/ui/`: `app.js` plus mixins, `control-spec.js` + `controls.js`, `module-controls.js`, `renderers/`, `charts/` (one module per chart, registered in `charts/index.js`), `diagram.js`, `site-map.js`, `share.js`, `optimizer-client.js`, `formatters.js`.
@@ -87,6 +89,7 @@ After any of these changes, run `npm test`. Every recipe that changes the result
 | Exploratory route or new product (incl. a methanol consumer) | `js/data/modules.js` + its floor in `tests/calculations/energy-floor.test.js` |
 | Policy scheme | `js/data/policies.js` (+ its facts in `tests/calculations/policy-facts.test.js`) |
 | Earth site preset | `js/data/reference-data.js` |
+| Market ladder tier | `js/data/market-ladders.js` |
 | State field + control | `js/state/schema.js`, `index.html`, `js/ui/control-spec.js` |
 | Result row | the model file that computes it, `js/ui/renderers/economics.js` or `renderers/index.js` |
 | Chart | a module in `js/ui/charts/`, one `RESULT_CHARTS` entry, its `<canvas>` in `index.html` |
@@ -139,7 +142,7 @@ The dropdown lists the new preset automatically. A selected preset is stored as 
    - A per-module slider belongs in that module's `configs` (`data/modules.js`).
    - A policy input belongs in the scheme's `inputs`.
    - A fixed constant that users cannot change belongs in `MODEL_ASSUMPTIONS` (`data/assumptions.js`).
-2. Add the element to `index.html`. Give it the default as its static `value`, plus a `<span id="<id>Value">` read-out that shows the formatted default.
+2. Add the element to `index.html`. Give it the default as its static `value`, plus a `<span id="<id>Value">` read-out that shows the formatted default. A log-scale slider takes `data-scale="log"` with `min`/`max`/`value` as log10 of the state values (see `aiLoadKW`).
 3. Add `{ type: 'range' | 'checkbox' | 'select' | 'number', id, stateKey?, format?, onChange? }` to `CONTROL_SPECS` in `js/ui/control-spec.js`. Binding and sync come from that entry. `tests/ui/control-spec.test.js` checks that the element exists and that its pre-JS value and read-out match `DEFAULT_STATE`.
 4. Read the value from the normalized state in the model (it is always present and clamped, so no fallback is needed).
 
@@ -204,7 +207,20 @@ full_capture_kW = annual solar peak                          (no battery)
 process_kW      = full_capture_kW * chemicalSizingPercent / 100
 ```
 
-AI mode serves solar in this order: the constant AI load, then battery charging (the battery discharges only to AI), then the chemicals. The AI load is the largest constant load whose clear-sky-equivalent full-power reliability meets the target (bisection). Chemical 100% is the peak residual power at that load. With no battery, AI mode seeds 1 MWh per GWh/yr of solar and says so. GPU CAPEX is `$/kW * load`, O&M is 4%/yr of it, and `revenue = served MWh * M tokens/MWh * $/M tokens`.
+AI mode serves solar in this order: the constant AI load, then battery charging (the battery discharges only to AI), then the chemicals. Reliability is the share of hours of the settled year-1 dispatch in which the load runs at full rate (clear-sky-equivalent). `aiSizingMode` picks what is solved:
+
+```
+'max' (default, "Max for battery"):
+  load_kW    = max { L : reliability(L, battery) >= target }          (doubling + bisection)
+'fixed' ("Set load"):
+  load_kW    = aiLoadKW  (clamped to the array DC peak, systemSizeMW * 1000)
+  battery    = min { B : reliability(load, B) >= target }               (bisection, to 1e-4 of B)
+               over 0 <= B <= load * cycle hours * 7   (a week of autonomy on Earth)
+  infeasible : reliability(load, cap) < target -> battery = cap, ai.loadFeasible = false,
+               maxFeasibleLoadKW = max { L : reliability(L, cap(L)) >= target }
+```
+
+The fixed-mode battery uses the Battery Storage duration (C-rate, both ways), efficiency and leakage, and replaces `batteryCapacityMWh` for dispatch, CAPEX and replacements; the user's own value stays in state (and in share links) for "Max for battery". It is returned as `ai.batterySizing`. Chemical 100% is the peak residual power at the design load. With no battery, "Max for battery" seeds 1 MWh per GWh/yr of solar and says so. GPU CAPEX is `$/kW * load`, O&M is 3%/yr of it, and `revenue = served MWh * M tokens/MWh * $/M tokens`. Load, energy and CAPEX are per facility kW (cooling included); tokens count input + output with a blended price, as the InferenceX benchmarks and Artificial Analysis price comparisons do. Defaults (`AI_COMPUTE_DEFAULTS`, checked 2026-10): $50k/kW (Terraform's figure), 6,000 M tokens/MWh (Blackwell serving a frontier open MoE, about half of benchmark peak), $0.35/M blended (open-weight model pricing), so $2,100/MWh of revenue, close to renting the same power out as Blackwell GPUs.
 
 Battery CAPEX is `$/kWh * capacity`. Its life is `min(12 yr, rated cycles / EFC per year)`, where equivalent full cycles per year = year-1 energy discharged (annualized to an Earth year) / capacity, in both chemical and AI dispatch.
 
@@ -360,6 +376,20 @@ net avoided = CH4_MCF * 0.0528 + MeOH_t * 1.374     # fossil fuel displaced (met
 
 0.0528 t/MCF is the combustion CO2 of pure CH4 (19.25 kg x 44.01/16.04). EPA's ~0.055 t/MCF is for pipeline gas. Carbon in a fuel returns to the air when it is burned, so capture is not removal: net avoided counts only displaced fossil combustion. Upstream emissions and leakage are excluded, and non-fuel exploratory products are counted as bound, not avoided.
 
+### Market ladder (`market-ladder.js`)
+
+The Market Ladder chart places the site on Terraform's market ladder for each product it sells (tiers from Terraform's scale-up roadmap, `js/data/market-ladders.js`). Each tier has a price and the cumulative market size down to it; its own volume is its share of that market divided by its price, and shelves stack left to right on log axes.
+
+```text
+tier_volume_i      = (cumulative_market_i - cumulative_market_(i-1)) / price_i
+site point         = (annual volume sold, levelized unit cost)
+                     methane: MCF/yr x 1.01 MMBtu/MCF, costPerMCF / 1.01 (pure CH4 HHV)
+                     methanol: exported t/yr, costPerTonMethanol
+tiers cleared      = tiers with price >= site unit cost
+```
+
+The unit cost is the allocated plant cost per unit, excluding output credits. The dashed line is the assumed sale price. The ladder's x-axis is market volume, not this site's cost curve: Terraform's learning-curve path is not drawn.
+
 ## Defaults
 
 All defaults live in `js/state/schema.js` (`CORE_STATE_FIELDS`), with the module, route and policy defaults in `js/data/modules.js` and `js/data/policies.js`. Print the full set with:
@@ -371,7 +401,7 @@ node --input-type=module -e "import {DEFAULT_STATE} from './js/model/index.js'; 
 The headline default scenario is:
 
 - **Site:** Mojave Desert preset with base yield 1,974 MWh/MWdc-yr (PVGIS) on east-west fixed racking (x0.86). Earth annual-average view.
-- **Plant:** 1 MWdc ($0.20/W modules, $0.12/W BOS), no battery, 100% chemical sizing. 30-year solar life with 0.65%/yr degradation.
+- **Plant:** 1 MWdc on the "Terraform target" solar cost basis ($0.20/W modules, $0.12/W East-West BOS, ~$0.35/W all-in with land and site prep; ~0.74 ¢/kWh on Terraform's undiscounted amortization basis, matching its <1 ¢/kWh goal). The Solar Cost Basis select switches to Terraform's measured 2026 build (~$0.72/W all-in, Oct 2026 post), at which the default methane plant does not pay back. Both bases live in `SOLAR_COST_PRESETS` (`js/data/reference-data.js`). No battery, 100% chemical sizing, 30-year solar life with 0.65%/yr degradation.
 - **Products:** methane only. Electrolyzer at 79 kWh/kg and $100/kW, DAC at 3,440 kWh/t and $450 per t-yr, Sabatier at 95% and $50/kW-CH4, 7-year process lives. Methane sells at $20/MCF. Methanol, MTG, exploratory routes, feed buffers, AI and debt are all off.
 - **Policy and finance:** US 45V at $3.28/kg H2 for 10 years, an 8% discount rate and a 30-year horizon.
 
@@ -422,6 +452,8 @@ The headline default scenario is:
 ## Sources
 
 This repo is based on public materials and should be read as an independent interpretation of those sources. Model data cite their own sources inline: PVGIS and Global Solar Atlas values in `js/data/reference-data.js`, and every incentive figure in `js/data/policies.js`.
+
+The app links a full, annotated list from its footer: [`sources.html`](sources.html). `tests/ui/sources-page.test.js` fails if any URL cited in `js/`, this README or `index.html` is missing from that page, so add new sources there too.
 
 ### Primary Terraform sources
 

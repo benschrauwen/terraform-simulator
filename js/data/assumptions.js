@@ -27,6 +27,11 @@ export const MODEL_ASSUMPTIONS = {
   batteryStartSocFraction: 0.5,
   // AI mode seeds storage at 1 MWh per GWh/yr of solar when none is set.
   aiBatterySeedMWhPerSolarGWh: 1,
+  // "Set load" AI sizing searches batteries up to this many full day-night
+  // cycles of the IT load (7 = one week on Earth). Past one night the extra
+  // capacity only shifts energy between seasons; a load that still misses
+  // the reliability target at a week of storage is reported as infeasible.
+  aiFixedLoadMaxAutonomyCycles: 7,
   // A process block counts as operating in a step when it runs at or above
   // this fraction of its capacity.
   processOperatingThresholdFraction: 0.05,

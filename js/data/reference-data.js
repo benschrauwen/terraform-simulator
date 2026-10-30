@@ -142,12 +142,54 @@ export const LOCATION_PRESETS = [
    off-Earth profiles (Mars, generic Moon), relative to fixed tilt. The
    spacing and BOS sensitivities scale layout and balance-of-system cost with
    latitude and cloudiness relative to SOLAR_LAYOUT_REFERENCE. */
+// bosPremiumOverEw ($/Wdc) is the BOS a mounting adds over the East-West BOS of the
+// selected solar cost basis (SOLAR_COST_PRESETS); switching mounting shifts the BOS
+// slider by the difference. The premiums are illustrative, not sourced quotes.
+// Solar cost bases offered in the Solar Array section: module price and East-West
+// BOS ($/Wdc); land and site prep stay at their own sliders. The default is the
+// cheaper target so the default plant shows a working business case; the measured
+// build is one selection away.
+export const SOLAR_COST_PRESETS = {
+  'terraform-target': {
+    label: 'Terraform target: <1 ¢/kWh (~$0.35/W all-in)',
+    // Terraform's 2026 update targets power below 1 c/kWh. On the same undiscounted,
+    // no-O&M basis that reproduces its measured 1.6 c/kWh (see below), this stack
+    // gives ~0.74 c/kWh at the default site. The module/BOS split is illustrative.
+    // https://terraformindustries.wordpress.com/2026/10/21/terraform-2026-update/
+    panelCostPerW: 0.20,
+    ewBosCostPerW: 0.12,
+  },
+  'terraform-2026-build': {
+    label: 'Terraform 2026 build, measured (~$0.72/W all-in)',
+    // 1.8 MW for $1.3M "including land, site improvements" (~$0.72/W), 1.6 c/kWh
+    // amortized. No breakdown is given: modules take the OPIS DDP US TOPCon 600 W+
+    // price ($0.29/W, Mar 2026; the 2,984 panels average ~603 W) and BOS the
+    // remainder after default land and site prep.
+    // https://terraformindustries.wordpress.com/2026/10/27/how-terraform-built-the-cheapest-solar-in-north-america/
+    panelCostPerW: 0.29,
+    ewBosCostPerW: 0.40,
+  },
+};
+
+export const DEFAULT_SOLAR_COST_PRESET = 'terraform-target';
+
+/** Module price and BOS ($/Wdc) a solar cost basis implies for one mounting type. */
+export function getSolarCostPresetValues(presetId, mountingType) {
+  const preset = SOLAR_COST_PRESETS[presetId] || SOLAR_COST_PRESETS[DEFAULT_SOLAR_COST_PRESET];
+  const premium = MOUNTING_TYPES[mountingType]?.bosPremiumOverEw ?? 0;
+  return {
+    panelCostPerW: preset.panelCostPerW,
+    // Rounded to the BOS slider's $0.01 step so presets match slider values exactly.
+    bosCostPerW: Math.round((preset.ewBosCostPerW + premium) * 100) / 100,
+  };
+}
+
 export const MOUNTING_TYPES = {
   fixed: {
     label: 'Fixed Tilt',
     yieldMult: 1.0,
     groundCoverageRatio: 0.45,
-    typicalBOS: 0.20,
+    bosPremiumOverEw: 0.08,
     spacingLatitudeSensitivity: 0.45,
     spacingCloudRelief: 0.08,
     bosLayoutSensitivity: 0.30,
@@ -159,7 +201,7 @@ export const MOUNTING_TYPES = {
     label: 'East-West Fixed',
     yieldMult: 0.92,
     groundCoverageRatio: 0.75,
-    typicalBOS: 0.12,
+    bosPremiumOverEw: 0,
     spacingLatitudeSensitivity: 0.18,
     spacingCloudRelief: 0.10,
     bosLayoutSensitivity: 0.20,
@@ -171,7 +213,7 @@ export const MOUNTING_TYPES = {
     label: 'Single-Axis Tracker',
     yieldMult: 1.18,
     groundCoverageRatio: 0.30,
-    typicalBOS: 0.35,
+    bosPremiumOverEw: 0.23,
     spacingLatitudeSensitivity: 0.60,
     spacingCloudRelief: 0.15,
     bosLayoutSensitivity: 0.35,
@@ -183,7 +225,7 @@ export const MOUNTING_TYPES = {
     label: 'Dual-Axis Tracker',
     yieldMult: 1.28,
     groundCoverageRatio: 0.22,
-    typicalBOS: 0.55,
+    bosPremiumOverEw: 0.43,
     spacingLatitudeSensitivity: 0.55,
     spacingCloudRelief: 0.12,
     bosLayoutSensitivity: 0.32,
@@ -267,10 +309,32 @@ export const METHANE_MARKET_PRESETS = {
   },
 };
 
+// AI datacenter defaults (checked 2026-10). Energy is facility energy delivered to
+// the AI load (cooling included), so capex and throughput are per facility kW/MWh,
+// and tokens count input + output with a blended per-token price, as the
+// InferenceX benchmarks and Artificial Analysis price comparisons do.
 export const AI_COMPUTE_DEFAULTS = {
+  // Terraform: GPUs "currently valued at around $50,000/kW" (2026-01-30). Epoch AI's
+  // 1 GW GB200 NVL72 build is $37.9k per IT kW incl. network and facility at PUE 1.14
+  // (~$33k per facility kW); GB300 racks alone run ~$36-43k per IT kW.
+  // https://terraformindustries.wordpress.com/2026/01/30/direct-current-data-centers/
+  // https://epoch.ai/data-insights/ai-datacenter-cost-breakdown
+  // https://www.wing.vc/content/how-much-does-an-nvidia-nvl72-cost
   capexPerKW: 50000,
+  // Hyperscalers depreciate servers over ~5-5.5 years; SemiAnalysis TCO uses 4.
   assetLifeYears: 5,
-  omPercent: 4,
+  // Maintenance, staff, support contracts, spares and insurance; Epoch's hyperscale
+  // case is ~0.8%/yr of capex, a small independent site carries more per kW.
+  omPercent: 3,
+  // Blended open-weight inference price, ~8:1 input:output, uncached: DeepSeek-V3.2
+  // ~$0.27, gpt-oss-120B ~$0.20, DeepSeek-R1 ~$0.68 per M tokens (list prices 2026-10).
+  // https://deepinfra.com/pricing  https://www.together.ai/pricing
+  tokenPricePerM: 0.35,
+  // Total (input + output) tokens per facility MWh. InferenceX peak for DeepSeek-R1 on
+  // GB200 NVL72 / B200 is ~9,000-12,000 M per MWh of all-in facility power; halved for
+  // real traffic (partial batches, latency targets, cache misses), a judgment call.
+  // https://inferencex.semianalysis.com/compare/deepseek-r1-gb200-vs-h100
+  millionTokensPerMWh: 6000,
 };
 
 export const AI_RELIABILITY_OPTIONS = [

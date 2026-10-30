@@ -54,7 +54,9 @@ test('index.html pre-JS values and read-outs match DEFAULT_STATE', () => {
     const stateValue = DEFAULT_STATE[spec.stateKey || spec.id];
 
     if (spec.type === 'range' || spec.type === 'number') {
-      assert.equal(Number(attr(tag, 'value')), stateValue, `#${spec.id} value attribute should match DEFAULT_STATE`);
+      // Log-scale sliders carry log10 of the state value.
+      const value = attr(tag, 'data-scale') === 'log' ? Math.pow(10, Number(attr(tag, 'value'))) : Number(attr(tag, 'value'));
+      assert.ok(Math.abs(value - stateValue) <= 1e-9 * Math.max(1, Math.abs(stateValue)), `#${spec.id} value attribute should match DEFAULT_STATE`);
     }
     if (spec.type === 'range') {
       assert.equal(readoutText(spec.id), spec.format(stateValue, fakeApp), `#${spec.id}Value text should match its formatter`);

@@ -8,15 +8,29 @@ export const SLIDER_MARKERS = {
     { value: 85, label: 'Moderate peak shaving' },
     { value: 100, label: 'Full-capture default' },
   ],
+  // Blended input + output prices per M tokens (~8:1 input:output, list prices 2026-10):
+  // https://artificialanalysis.ai/models/comparisons/deepseek-v3-2-reasoning-vs-gpt-oss-120b
+  // https://www.together.ai/pricing  https://deepinfra.com/pricing  https://claude.com/pricing
   aiTokenPrice: [
-    { value: 1, label: 'Low-value internal workload' },
-    { value: 3, label: 'Balanced default case' },
-    { value: 5, label: 'Higher-value inference mix' },
+    { value: 0.15, label: 'Commodity open models (gpt-oss-120B, Llama 70B)' },
+    { value: 0.35, label: 'Frontier open MoE (DeepSeek V3.2 / R1)' },
+    { value: 1, label: 'Premium open / reasoning models' },
+    { value: 3, label: 'Closed frontier API list price (reference only; not open-model revenue)' },
   ],
+  // Total tokens per facility MWh (InferenceX tokens per MW, all-in power):
+  // https://inferencex.semianalysis.com/compare/deepseek-r1-gb200-vs-h100
+  // https://developer.nvidia.com/blog/nvidia-blackwell-leads-on-new-semianalysis-inferencemax-benchmarks/
   aiTokensPerMWh: [
-    { value: 400, label: 'Heavier models / lower throughput' },
-    { value: 1000, label: 'Balanced default case' },
-    { value: 1600, label: 'Lighter models / higher throughput' },
+    { value: 1000, label: 'H100, large MoE at interactive speed' },
+    { value: 6000, label: 'Blackwell, frontier open MoE, real traffic' },
+    { value: 20000, label: 'Blackwell, models up to ~120B' },
+  ],
+  // $/kW of facility AI load: Epoch AI 1 GW GB200 build ($37.9k per IT kW at PUE 1.14),
+  // and Terraform's "around $50,000/kW":
+  // https://epoch.ai/data-insights/ai-datacenter-cost-breakdown
+  aiGpuCapexPerKW: [
+    { value: 33000, label: 'GB200 hyperscale build (Epoch AI, per facility kW)' },
+    { value: 50000, label: 'Terraform DC post (Jan 2026)' },
   ],
   // Market benchmarks below were checked 2026-10; each carries its source.
   methanePrice: [
@@ -52,6 +66,13 @@ export const SLIDER_MARKERS = {
     // OPIS DDP US TOPCon 600 W+ $0.290/W, 2026-03-06:
     // https://www.pv-magazine.com/2026/03/06/china-topcon-module-prices-edge-higher-as-march-cargoes-clear/
     { value: 0.29, label: 'TOPCon module DDP US, Mar 2026 (OPIS)' },
+  ],
+  bosCost: [
+    // Terraform 1.8 MW build, Kern County CA, 2026: $1.3M "including land, site
+    // improvements" (~$0.72/W). With $0.29/W modules and default land/site prep,
+    // the remainder is ~$0.40/W of BOS:
+    // https://terraformindustries.wordpress.com/2026/10/27/how-terraform-built-the-cheapest-solar-in-north-america/
+    { value: 0.40, label: 'Implied by Terraform 1.8 MW build, 2026 ($0.72/W all-in)' },
   ],
   landCost: [
     { value: 2500, label: 'Cheap ag / desert land' },
@@ -157,38 +178,44 @@ export const sliderMarkerMethods = {
 
   initLogSliderTicks() {
     document.querySelectorAll('input[type="range"][data-scale="log"]').forEach(input => {
-      const wrap = ensureRangeInputWrap(input);
-      wrap.classList.add('has-log-ticks');
-
-      const tickLayer = ensureLayer(wrap, 'slider-log-ticks');
-      tickLayer.innerHTML = '';
-
-      const bounds = readSliderBounds(input);
-      if (!bounds) return;
-
-      const realMin = Math.pow(10, bounds.min);
-      const realMax = Math.pow(10, bounds.max);
-
-      for (let decade = Math.floor(bounds.min); decade <= Math.ceil(bounds.max); decade++) {
-        for (const m of [1, 2, 5]) {
-          const realValue = m * Math.pow(10, decade);
-          if (realValue < realMin * 0.999 || realValue > realMax * 1.001) continue;
-
-          const tick = document.createElement('span');
-          tick.className = m === 1 ? 'slider-log-tick major' : 'slider-log-tick minor';
-          if (m === 1) {
-            const label = document.createElement('span');
-            label.className = 'slider-log-tick-label';
-            label.textContent = realValue >= 1000
-              ? `${(realValue / 1000).toLocaleString()}k`
-              : `${realValue}`;
-            tick.appendChild(label);
-          }
-          tickLayer.appendChild(tick);
-          this.logTickBindings.push({ input, element: tick, ...bounds, value: Math.log10(realValue) });
-        }
-      }
+      this.renderLogSliderTicks(input);
     });
+  },
+
+  /* (Re)draws one log slider's decade ticks, e.g. after its bounds changed. */
+  renderLogSliderTicks(input) {
+    this.logTickBindings = (this.logTickBindings || []).filter(binding => binding.input !== input);
+    const wrap = ensureRangeInputWrap(input);
+    wrap.classList.add('has-log-ticks');
+
+    const tickLayer = ensureLayer(wrap, 'slider-log-ticks');
+    tickLayer.innerHTML = '';
+
+    const bounds = readSliderBounds(input);
+    if (!bounds) return;
+
+    const realMin = Math.pow(10, bounds.min);
+    const realMax = Math.pow(10, bounds.max);
+
+    for (let decade = Math.floor(bounds.min); decade <= Math.ceil(bounds.max); decade++) {
+      for (const m of [1, 2, 5]) {
+        const realValue = m * Math.pow(10, decade);
+        if (realValue < realMin * 0.999 || realValue > realMax * 1.001) continue;
+
+        const tick = document.createElement('span');
+        tick.className = m === 1 ? 'slider-log-tick major' : 'slider-log-tick minor';
+        if (m === 1) {
+          const label = document.createElement('span');
+          label.className = 'slider-log-tick-label';
+          label.textContent = realValue >= 1000
+            ? `${(realValue / 1000).toLocaleString()}k`
+            : `${realValue}`;
+          tick.appendChild(label);
+        }
+        tickLayer.appendChild(tick);
+        this.logTickBindings.push({ input, element: tick, ...bounds, value: Math.log10(realValue) });
+      }
+    }
   },
 
   positionSliderMarkers() {

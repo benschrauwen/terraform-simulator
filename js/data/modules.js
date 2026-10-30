@@ -310,7 +310,10 @@ export const MODULE_DEFINITIONS = [
     routes: {
       'haber-bosch': {
         label: 'Haber-Bosch style loop',
-        electricityKwhPerUnit: 1200,
+        // Non-H2 electricity only (ASU, syngas/loop compression, refrigeration):
+        // ~0.5-0.7 MWh/t NH3 for electrolytic plants; the H2 (176 kg/t) is
+        // made upstream by the electrolyzer.
+        electricityKwhPerUnit: 600,
         capexPerAnnualUnit: 600,
         capexUnit: 'tpa',
         cyclingPenalty: 1.5,
@@ -356,7 +359,9 @@ export const MODULE_DEFINITIONS = [
     routes: {
       'molten-carbonate': {
         label: 'Molten-carbonate electrolysis',
-        electricityKwhPerUnit: 3500,
+        // CO2 -> C + O2 needs 393.5 kJ/mol = 9.1 MWh/t C (4 e- per C: 8.9 MWh/t
+        // per cell volt). ~1.2 V cells plus heat losses at ~750 C: ~11 MWh/t.
+        electricityKwhPerUnit: 11000,
         capexPerAnnualUnit: 1200,
         capexUnit: 'tpa',
         cyclingPenalty: 1.1,
@@ -368,7 +373,8 @@ export const MODULE_DEFINITIONS = [
       },
       'graphene-grade': {
         label: 'Graphene-grade polishing (speculative)',
-        electricityKwhPerUnit: 5000,
+        // Molten-carbonate carbon (~11 MWh/t) plus purification/exfoliation.
+        electricityKwhPerUnit: 13000,
         capexPerAnnualUnit: 2200,
         capexUnit: 'tpa',
         cyclingPenalty: 1.15,
@@ -401,7 +407,9 @@ export const MODULE_DEFINITIONS = [
     routes: {
       'resistive-calciner': {
         label: 'Resistive electric calciner',
-        electricityKwhPerUnit: 890,
+        // CaCO3 -> CaO + CO2 is 178 kJ/mol = 0.88 MWh/t CaO; practical
+        // calciners add sensible heat and losses: ~1.1-1.4 MWh/t.
+        electricityKwhPerUnit: 1250,
         capexPerAnnualUnit: 200,
         capexUnit: 'tpa',
         cyclingPenalty: 1.35,
@@ -413,7 +421,8 @@ export const MODULE_DEFINITIONS = [
       },
       'indirect-heated': {
         label: 'Indirect-heated calciner',
-        electricityKwhPerUnit: 980,
+        // Same 0.88 MWh/t enthalpy; heat transfer through a wall costs more.
+        electricityKwhPerUnit: 1400,
         capexPerAnnualUnit: 240,
         capexUnit: 'tpa',
         cyclingPenalty: 1.3,
@@ -494,7 +503,10 @@ export const MODULE_DEFINITIONS = [
     routes: {
       'h2-dri-eaf': {
         label: 'H2-DRI + EAF',
-        electricityKwhPerUnit: 3800,
+        // Non-H2 electricity (EAF ~0.75 MWh/t plus H2/pellet heating); the
+        // 54 kg H2/t comes from the electrolyzer. Vogl et al. 2018 (J. Clean.
+        // Prod. 203:736): ~3.5 MWh/t in total, of which ~2.6 is electrolysis.
+        electricityKwhPerUnit: 900,
         capexPerAnnualUnit: 700,
         capexUnit: 'tpa',
         cyclingPenalty: 1.15,
@@ -563,7 +575,9 @@ export const MODULE_DEFINITIONS = [
       },
       'electrochemical-reduction': {
         label: 'Electrochemical reduction (developmental)',
-        electricityKwhPerUnit: 9000,
+        // SiO2 -> Si + O2 needs 911 kJ/mol = 9.0 MWh/t Si without a carbon
+        // reductant; ~75% electrical efficiency assumed.
+        electricityKwhPerUnit: 12000,
         capexPerAnnualUnit: 1800,
         capexUnit: 'tpa',
         cyclingPenalty: 1.15,
@@ -596,7 +610,9 @@ export const MODULE_DEFINITIONS = [
     routes: {
       'hall-heroult': {
         label: 'Hall-Heroult style',
-        electricityKwhPerUnit: 12500,
+        // World-average smelter AC power, ~14 MWh/t Al (International
+        // Aluminium Institute); best-in-class cells run ~12.5.
+        electricityKwhPerUnit: 14000,
         capexPerAnnualUnit: 3500,
         capexUnit: 'tpa',
         cyclingPenalty: 1.8,
@@ -686,7 +702,9 @@ export const MODULE_DEFINITIONS = [
     routes: {
       'reverse-osmosis': {
         label: 'Seawater reverse osmosis',
-        electricityKwhPerUnit: 2.2,
+        // Whole plant (intake, pretreatment, RO with energy recovery,
+        // post-treatment): ~3-3.5 kWh/m3; the RO train alone is ~2.2.
+        electricityKwhPerUnit: 3.2,
         capexPerAnnualUnit: 1500,
         capexUnit: 'm3pd',
         cyclingPenalty: 1.05,
@@ -708,8 +726,11 @@ export const MODULE_DEFINITIONS = [
         outputUnit: 'm3',
         diagramInputs: {},
       },
+      // Route key kept for saved links. All-electric thermal desalination is
+      // mechanical vapour compression (~8-15 kWh/m3); MED/MSF at ~14 kWh/m3
+      // would assume free heat (with resistive heat they need ~50-80).
       thermal: {
-        label: 'Thermal MED / MSF',
+        label: 'Mechanical vapour compression (MVC)',
         electricityKwhPerUnit: 14,
         capexPerAnnualUnit: 3200,
         capexUnit: 'm3pd',

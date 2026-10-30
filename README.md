@@ -336,6 +336,13 @@ export_meoh_kg = max(0, gross_meoh_kg - mtg_methanol_consumption)
 
 ### Exploratory routes
 
+Route electricity intensities exclude the H2 they consume (made upstream by
+the electrolyzer), and electricity plus H2 at its HHV never falls below the
+product's reaction enthalpy (e.g. CO2 -> C + O2 9.1 MWh/t C, CaCO3 -> CaO
+0.88 MWh/t, CO2 -> CO 2.8 MWh/t); routes with a carbon, magnesium or gas
+reductant are exempt because that feed carries part of the energy. Each
+`electricityKwhPerUnit` in `js/data/modules.js` states its basis.
+
 Each exploratory route uses a rough throughput limit from electricity plus any required feedstocks:
 
 ```text

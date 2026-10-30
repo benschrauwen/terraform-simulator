@@ -17,7 +17,7 @@ import { layoutMethods } from '../layout.js';
 import { cashFlowTableMethods } from '../renderers/cash-flow-table.js';
 import { sliderMarkerMethods } from '../slider-markers.js';
 import { tooltipMethods } from '../tooltips.js';
-import { buildDatacenterCsvHeader, DATACENTER_CASH_FLOW_TOOLTIPS, DATACENTER_TIMELINE_TEXT } from './cash-flow.js';
+import { buildDatacenterCsvHeader, DATACENTER_CASH_FLOW_LABELS, DATACENTER_CASH_FLOW_TOOLTIPS, DATACENTER_TIMELINE_TEXT } from './cash-flow.js';
 import { datacenterControlMethods } from './controls.js';
 import { dispatchChartMethods } from './dispatch-chart.js';
 import { resultMethods } from './results.js';
@@ -43,6 +43,7 @@ export class DatacenterApp {
     // Hooks read by the shared mixins.
     this.sliderMarkerDefinitions = DATACENTER_SLIDER_MARKERS;
     this.cashFlowColumnTooltips = DATACENTER_CASH_FLOW_TOOLTIPS;
+    this.cashFlowColumnLabels = DATACENTER_CASH_FLOW_LABELS;
     this.cashFlowCsvFilePrefix = 'datacenter-cash-flows';
     this.economicsTimelineText = DATACENTER_TIMELINE_TEXT;
     this.init();

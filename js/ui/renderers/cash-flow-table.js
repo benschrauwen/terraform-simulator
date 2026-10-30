@@ -131,7 +131,7 @@ export const cashFlowTableMethods = {
   updateCashFlowTable(r) {
     const container = document.getElementById('cashFlowTableScroll');
     if (!container) return;
-    const table = buildCashFlowTable(r.economics);
+    const table = this.relabelCashFlowTable(buildCashFlowTable(r.economics));
     // A page with other cash items (the datacenter app) supplies its own column tooltips.
     container.innerHTML = renderCashFlowTable(table, this.cashFlowColumnTooltips || COLUMN_TOOLTIPS);
     const note = document.getElementById('cashFlowNote');
@@ -142,6 +142,13 @@ export const cashFlowTableMethods = {
     }
   },
 
+  /** Column labels a page overrides (this.cashFlowColumnLabels: { key: { label, csvLabel } }). */
+  relabelCashFlowTable(table) {
+    const overrides = this.cashFlowColumnLabels;
+    if (!overrides) return table;
+    return { ...table, columns: table.columns.map(column => ({ ...column, ...overrides[column.key] })) };
+  },
+
   downloadCashFlowCsv(r = this.lastResults) {
     if (!r?.economics) return;
     // Bring the address bar up to date so the link reopens this scenario.
@@ -149,7 +156,7 @@ export const cashFlowTableMethods = {
     const shareUrl = `${window.location.origin}${window.location.pathname}${window.location.hash}`;
     // The datacenter app supplies its own CSV header rows and file name.
     const header = this.buildCashFlowCsvHeader ? this.buildCashFlowCsvHeader(r, shareUrl) : buildCsvHeader(r, shareUrl);
-    const csv = buildCashFlowCsv(buildCashFlowTable(r.economics), header);
+    const csv = buildCashFlowCsv(this.relabelCashFlowTable(buildCashFlowTable(r.economics)), header);
     const date = new Date().toISOString().slice(0, 10);
     downloadText(`${this.cashFlowCsvFilePrefix || 'plant-cash-flows'}-${date}.csv`, csv, 'text/csv;charset=utf-8');
   },

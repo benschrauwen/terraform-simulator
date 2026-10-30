@@ -17,6 +17,12 @@ export const DATACENTER_CASH_FLOW_TOOLTIPS = {
   equityCashFlow: 'Net cash flow after debt service. Year 0 is the sponsor cash at close (equity share plus financing fee).',
 };
 
+export const DATACENTER_CASH_FLOW_LABELS = {
+  marketRevenue: { label: 'Revenue', csvLabel: 'Revenue ($)' },
+  operatingCost: { label: 'O&M + energy', csvLabel: 'O&M and energy ($)' },
+  replacementCapex: { label: 'Deferred + replacement CAPEX', csvLabel: 'Deferred and replacement CAPEX ($)' },
+};
+
 export const DATACENTER_TIMELINE_TEXT = {
   operating: 'O&M and energy (grid, fuel, water)',
   operatingLegend: 'O&M + energy',

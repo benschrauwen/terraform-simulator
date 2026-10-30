@@ -52,8 +52,10 @@ export function allowedUnservedHours(targetPercent) {
   return Math.max(0, Math.min(HOURS_PER_YEAR, h));
 }
 
-// Above this many units the count is reported unreachable (schema firmUnits max).
-const MAX_UNITS = 2000;
+// Above this many units the count is reported unreachable (schema firmUnits
+// max): enough for the largest IT load (20 GW) on the smallest units (0.325
+// MW fuel cells, ~90,000 at a ~1.4 peak PUE).
+export const MAX_FIRM_UNITS = 200000;
 // kW margin so a count that only just covers an hour in exact arithmetic is
 // not judged served when the dispatch's floating point would leave it short.
 const NEED_MARGIN_KW = 1e-6;
@@ -93,12 +95,28 @@ function residualSizing(run, loadKW, firm, H) {
   }
   const sorted = needs.map(entry => entry.kW).sort((a, b) => b - a);
   const requiredKW = sorted.length > H ? sorted[H] : 0;
-  let units = requiredKW > 0 ? Math.ceil(requiredKW / (firm.unitSizeMW * 1000) - 1e-9) : 0;
-  let failing = failingHours(needs, units, firm);
-  while (failing > H && units < MAX_UNITS) {
-    units += 1;
-    failing = failingHours(needs, units, firm);
+  const start = requiredKW > 0 ? Math.min(MAX_FIRM_UNITS, Math.ceil(requiredKW / (firm.unitSizeMW * 1000) - 1e-9)) : 0;
+  // More units never remove capacity from an hour (a new unit's maintenance
+  // block only takes out that unit), so failing hours fall monotonically:
+  // gallop up from the start count, then bisect to the fewest that pass.
+  const passes = n => failingHours(needs, n, firm) <= H;
+  let units = start;
+  if (!passes(start)) {
+    let lo = start;
+    let hi = start;
+    for (let step = 1; hi < MAX_FIRM_UNITS; step *= 2) {
+      hi = Math.min(MAX_FIRM_UNITS, lo + step);
+      if (passes(hi)) break;
+      lo = hi;
+    }
+    while (hi - lo > 1) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (passes(mid)) hi = mid;
+      else lo = mid;
+    }
+    units = hi;
   }
+  const failing = failingHours(needs, units, firm);
   return {
     units,
     reachable: failing <= H,

@@ -9,13 +9,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { GAS_GENSET_TYPES } from '../../js/data/datacenter/power.js';
 import { allowedUnservedHours } from '../../js/model/datacenter/firm-sizing.js';
 import {
   applyDatacenterPresetDefaults,
   buildStartingDesign,
   calculateDatacenterScenario,
   DATACENTER_DEFAULT_STATE,
+  normalizeDatacenterState,
 } from '../../js/model/datacenter/index.js';
+import { buildOutageCounts } from '../../js/model/datacenter/supply.js';
 import { findMinimumUnits, optimizeDatacenterDesign } from '../../js/model/datacenter/optimizer.js';
 
 const BASE = { ...DATACENTER_DEFAULT_STATE };
@@ -159,4 +162,35 @@ test('the optimizer minimum-units bisection equals the auto count before spares'
     const result = optimizeDatacenterDesign(state, { sizeSolar: false, sizeBattery: false, budget: 60 });
     assert.equal(result.frontier.cells[0][0].minUnits, auto, `design ${index}: optimizer`);
   });
+});
+
+test('every gas type can be sized for the largest IT load (20 GW), quickly', () => {
+  // Fuel cells are 0.325 MW units: ~58,000 of them carry 20 GW of IT (the unit cap was once 2,000,
+  // i.e. 650 MW). Outage counts are built in O(units + 8760) and the count found by galloping.
+  Object.keys(GAS_GENSET_TYPES).forEach(gasType => {
+    const state = applyDatacenterPresetDefaults({ ...BASE, architecture: 'islanded', gasType, itCapacityMW: 20000, firmSpareUnits: 2 }, 'gasType');
+    const started = Date.now();
+    const r = run(state);
+    const elapsed = Date.now() - started;
+    assert.ok(r.firm.sizingBasis.reachable, gasType);
+    assert.ok(r.reliability.meetsTarget, `${gasType}: ${r.reliability.uptimePercent}`);
+    assert.equal(r.firm.units, r.firm.sizingBasis.minUnits + 2, gasType);
+    assert.ok(r.firm.units * r.firm.unitSizeMW >= r.load.meanFacilityMW, gasType);
+    assert.ok(elapsed < 2000, `${gasType}: ${elapsed} ms`);
+  });
+  // A manual count of that size is a legal state.
+  assert.equal(normalizeDatacenterState({ firmUnits: 100000 }).firmUnits, 100000);
+});
+
+test('maintenance outage counts: blocks one after another, wrapping the year', () => {
+  // 3 units x 4000 h from hour 8000: unit 0 covers 8000-8759 and 0-3239, unit 1 3240-7239,
+  // unit 2 7240-8759 and 0-2479.
+  const counts = buildOutageCounts(3, 4000, 8000);
+  assert.equal(counts.reduce((sum, value) => sum + value, 0), 12000);
+  assert.equal(counts[100], 2);
+  assert.equal(counts[3000], 1);
+  assert.equal(counts[7239], 1);
+  assert.equal(counts[7240], 1);
+  assert.equal(counts[8500], 2);
+  assert.equal(buildOutageCounts(0, 100, 0).reduce((sum, value) => sum + value, 0), 0);
 });

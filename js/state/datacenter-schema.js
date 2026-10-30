@@ -234,7 +234,7 @@ export const DATACENTER_STATE_FIELDS = [
   // 10 MW engines -> 14, + 1), the former auto rule; kept as the default so
   // older share links with a manual count decode unchanged. The UI seeds it
   // from the current auto count when the user switches to manual.
-  { key: 'firmUnits', type: 'integer', min: 0, max: 2000, defaultValue: 15 },
+  { key: 'firmUnits', type: 'integer', min: 0, max: 200000, defaultValue: 15 },
 
   { key: 'gasType', type: 'enum', getOptions: () => Object.keys(GAS_GENSET_TYPES), defaultValue: DEFAULT_GAS_GENSET_TYPE },
   { key: 'gasUnitSizeMW', type: 'number', min: 0.1, max: 1500, derive: state => gasType(state).unitSizeMW.default },

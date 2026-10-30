@@ -232,12 +232,28 @@ export function buildGridSupply(state, loadKW, designPeakKW) {
  * another and only overlap when units x outageHours > 8760.
  */
 export function buildOutageCounts(units, outageHours, startHour) {
-  const counts = new Uint16Array(HOURS_PER_YEAR);
+  const counts = new Uint32Array(HOURS_PER_YEAR);
   const length = Math.max(0, Math.min(HOURS_PER_YEAR, Math.round(outageHours)));
-  if (!length) return counts;
+  if (!length || !(units > 0)) return counts;
+  // Difference array: O(units + 8760), so fleets of many small units (fuel
+  // cells, 2.5 MW engines at GW scale) stay fast.
+  const diff = new Int32Array(HOURS_PER_YEAR + 1);
   for (let unit = 0; unit < units; unit++) {
-    const first = startHour + unit * length;
-    for (let k = 0; k < length; k++) counts[(first + k) % HOURS_PER_YEAR] += 1;
+    const first = (startHour + unit * length) % HOURS_PER_YEAR;
+    const end = first + length;
+    diff[first] += 1;
+    if (end <= HOURS_PER_YEAR) {
+      diff[end] -= 1;
+    } else {
+      diff[HOURS_PER_YEAR] -= 1;
+      diff[0] += 1;
+      diff[end - HOURS_PER_YEAR] -= 1;
+    }
+  }
+  let running = 0;
+  for (let h = 0; h < HOURS_PER_YEAR; h++) {
+    running += diff[h];
+    counts[h] = running;
   }
   return counts;
 }

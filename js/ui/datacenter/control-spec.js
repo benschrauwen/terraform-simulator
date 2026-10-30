@@ -315,6 +315,14 @@ export const DATACENTER_SECTIONS = {
       note: 'Defaults to the site\'s scheme (EU ETS, California, Washington; else 0). Set your own internal carbon price to test it.',
       tooltip: 'Charged on the gas or diesel the plant burns, and part of its running cost when gas competes with the grid. Not on grid imports: their price already carries it. Resets when the site changes.',
     },
+    {
+      type: 'checkbox', id: 'priceMethaneSlip', label: 'Carbon price also on methane slip', visible: state => state.firmFamily === 'gas',
+      tooltip: 'Unburned methane from gas engines (~4 g CH₄/kWh; turbines and fuel cells ~0) is always reported as CO₂e. The EU ETS does not price it for power plants, and California and Washington use generic factors far below an engine\'s slip, so it is off by default; tick it for an internal carbon price.',
+    },
+    {
+      type: 'select', id: 'methaneGwpHorizon', label: 'Methane CO₂e basis', visible: state => state.firmFamily === 'gas',
+      options: () => [{ value: '100', label: 'GWP100 (29.8, reporting standard)' }, { value: '20', label: 'GWP20 (82.5, near-term warming)' }],
+    },
     { type: 'range', id: 'nuclearPpaPricePerMWh', label: 'PPA price', min: 0, max: 250, step: 1, format: per(0, 'MWh'), visible: state => state.firmFamily === 'nuclear' && isContractedNuclear(state), tooltip: 'Take-or-pay on all available output.' },
     {
       details: 'Generator costs and performance',

@@ -15,6 +15,7 @@
    Pure; no DOM. */
 
 import { DATACENTER_MODEL_ASSUMPTIONS as A } from '../../data/datacenter/model-assumptions.js';
+import { METHANE_GWP } from '../../data/datacenter/carbon.js';
 import { GAS_GENSET_TYPES, getGensetFuel, NUCLEAR_TYPES } from '../../data/datacenter/power.js';
 import { DEFAULT_STATE } from '../../state/schema.js';
 import { Calc, SolarGeometry } from '../index.js';
@@ -282,6 +283,12 @@ export function gasAmbientFactors(typeData, ambientC) {
   return { output, heatRate, minOutput };
 }
 
+/** kg CO2e per MMBtu of a gas type's fuel that the carbon price applies to: its CO2, plus its methane slip x GWP when priceMethaneSlip. */
+export function pricedCo2eKgPerMMBtu(state, typeData) {
+  const slip = state.priceMethaneSlip ? (typeData?.methaneSlipKgPerMMBtu || 0) * METHANE_GWP[state.methaneGwpHorizon] : 0;
+  return getGensetFuel(typeData).co2KgPerMMBtu + slip;
+}
+
 const EMPTY_FIRM = Object.freeze({
   family: 'none', type: null, typeData: null, label: 'None', units: 0, unitSizeMW: 0, capacityMW: 0, mustTake: false,
   availableKW: null, outageHoursPerUnit: 0, availabilityFraction: 0, heatRate: 0, partLoad: null, marginalCostPerMWh: Infinity,
@@ -313,7 +320,7 @@ export function buildFirmSupply(state, { meanLoadKW, autoBaseUnits = 0, replaced
       ? state.firmUnits
       : autoBaseUnits + (autoBaseUnits > 0 ? state.firmSpareUnits - sparesReplacedByBattery : 0) + state.firmExtraUnits;
     // A carbon price on the plant's own CO2 is part of its running cost (and of the hybrid merit order).
-    const carbonPerMMBtu = state.carbonPricePerTonne * getGensetFuel(typeData).co2KgPerMMBtu / 1000;
+    const carbonPerMMBtu = state.carbonPricePerTonne * pricedCo2eKgPerMMBtu(state, typeData) / 1000;
     const availabilityFraction = state.gasAvailabilityPercent / 100;
     const outageHoursPerUnit = (1 - availabilityFraction) * HOURS_PER_YEAR;
     const counts = buildOutageCounts(units, outageHoursPerUnit, A.gasOutageStartDayOfYear * 24);

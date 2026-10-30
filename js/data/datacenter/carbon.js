@@ -39,6 +39,25 @@
    https://www.gesetze-im-internet.de/behg/__10.html
    Users can set an internal (shadow) carbon price instead. */
 
+/* Global warming potential of fossil methane (IPCC AR6 WG1 Chapter 7, Table
+   7.15): GWP100 29.8, GWP20 82.5. Methane slip is reported as CO2e with the
+   state's horizon (methaneGwpHorizon, default 100 years, the reporting
+   convention; 20 years shows the near-term warming).
+   https://www.ipcc.ch/report/ar6/wg1/downloads/report/IPCC_AR6_WGI_Chapter07.pdf
+   Whether a carbon price applies to it (state priceMethaneSlip, default
+   off): the EU ETS covers CO2 only from stationary combustion (methane only
+   for maritime, from 2026); California (17 CCR 95852(i)) and Washington
+   (WAC 173-446-040) cover CH4 from combustion, but compute it with generic
+   default factors (40 CFR 98 Table C-2, 0.001 kg/MMBtu for natural gas;
+   judgment, not checked per facility) far below an engine's slip. So by
+   default the price applies to CO2 only, and the toggle prices the slip as
+   an internal carbon price would.
+   https://climate.ec.europa.eu/eu-action/eu-emissions-trading-system-eu-ets/scope-eu-emissions-trading-system_en
+   https://www.emsa.europa.eu/reducing-emissions/extension-ets.html
+   https://www.law.cornell.edu/regulations/california/17-CCR-95852
+   https://www.law.cornell.edu/regulations/washington/WAC-173-446-040 */
+export const METHANE_GWP = Object.freeze({ 100: 29.8, 20: 82.5 });
+
 // ECB reference rate, October 2026 average of the daily fixings (1.1202
 // USD per EUR; 1.1172 on 2026-10-30), computed from the ECB 90-day history.
 // https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist-90d.xml (retrieved 2026-10-30)

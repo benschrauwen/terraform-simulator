@@ -135,3 +135,39 @@ test('the hybrid starting design keeps its spare as battery reserve; off restore
   assert.equal(off.firm.units, start.firm.units + 1);
   assert.ok(start.reliability.meetsTarget && off.reliability.meetsTarget);
 });
+
+/* ---------- Methane slip ---------- */
+
+test('methane slip is reported as CO2e at the chosen GWP; fuel cells and turbines slip ~none', () => {
+  const r = calculateDatacenterScenario(ISLANDED, { fastMode: true });
+  const fuel = r.dispatch.annual.fuelMMBtu;
+  // Lean-burn engines: 0.522 kg CH4/MMBtu (40 CFR 98 Table W-7) x GWP100 29.8 (IPCC AR6).
+  assert.ok(close(r.emissions.methaneT, fuel * 0.522 / 1000));
+  assert.ok(close(r.emissions.methaneCo2eT, r.emissions.methaneT * 29.8));
+  assert.ok(close(r.emissions.totalCo2eT, r.emissions.totalT + r.emissions.methaneCo2eT));
+  // ~4 g CH4/kWh at 7.8 MMBtu/MWh: about +29% on the engines' CO2 at GWP100.
+  assert.ok(Math.abs(r.emissions.methaneCo2eT / r.emissions.gasT - 0.522 * 29.8 / 52.91) < 1e-9);
+  const gwp20 = calculateDatacenterScenario({ ...ISLANDED, methaneGwpHorizon: '20' }, { fastMode: true });
+  assert.ok(close(gwp20.emissions.methaneCo2eT, r.emissions.methaneT * 82.5));
+  // In the CO2 flows as its own node.
+  const full = calculateDatacenterScenario(ISLANDED);
+  assert.ok(full.flows.co2.some(entry => entry.from === 'methaneSlip' && close(entry.value, full.emissions.methaneCo2eT)));
+  // Fuel cells: none; turbines: 0.004 kg/MMBtu.
+  const sofc = calculateDatacenterScenario(applyDatacenterPresetDefaults({ ...ISLANDED, gasType: 'sofc' }, 'gasType'), { fastMode: true });
+  assert.equal(sofc.emissions.methaneT, 0);
+  const aero = calculateDatacenterScenario(applyDatacenterPresetDefaults({ ...ISLANDED, gasType: 'aero' }, 'gasType'), { fastMode: true });
+  assert.ok(close(aero.emissions.methaneT, aero.dispatch.annual.fuelMMBtu * 0.004 / 1000));
+});
+
+test('the carbon price applies to methane slip only when the toggle is on', () => {
+  const priced = { ...ISLANDED, carbonPricePerTonne: 50 };
+  const off = calculateDatacenterScenario(priced, { fastMode: true });
+  const on = calculateDatacenterScenario({ ...priced, priceMethaneSlip: true }, { fastMode: true });
+  const fuel = off.dispatch.annual.fuelMMBtu;
+  assert.equal(off.state.priceMethaneSlip, false);
+  assert.ok(close(carbonLine(off), fuel * 52.91 / 1000 * 50));
+  assert.ok(close(carbonLine(on), on.dispatch.annual.fuelMMBtu * (52.91 + 0.522 * 29.8) / 1000 * 50));
+  // And in the hybrid merit order: 7.8 x (4 + 50 x (52.91 + 15.56) / 1000) + 7.4.
+  const hybrid = calculateDatacenterScenario({ ...priced, priceMethaneSlip: true, architecture: 'hybrid', gridConnection: 'firm' }, { fastMode: true });
+  assert.ok(close(hybrid.firm.marginalCostPerMWh, 7.8 * (4 + 50 * (52.91 + 0.522 * 29.8) / 1000) + 7.4));
+});

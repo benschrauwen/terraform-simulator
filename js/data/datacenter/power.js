@@ -266,6 +266,31 @@ export function getGensetFuel(type) {
   return GENSET_FUELS[type?.fuel] || GAS_DEFAULTS;
 }
 
+/* Methane slip: unburned CH4 in the exhaust, kg per MMBtu of fuel (HHV).
+   - Lean-burn gas engines: 40 CFR 98 Subpart W Table W-7 (2024), 4-stroke
+     lean-burn 0.522 kg/MMBtu (EPA AP-42 3.2 Table 3.2-2: 1.25 lb/MMBtu =
+     0.567). At ~7.8 MMBtu/MWh that is ~4 g CH4/kWh; a Cat G3520H site sheet
+     gives ~2.7 g/kWh (THC - NMHC, not-to-exceed) and FuelEU Maritime assumes
+     2.6% of fuel for lean-burn spark-ignition engines (~4 g/kWh).
+   - Gas turbines (aero, industrial, CCGT, mobile): Table W-7 0.004 kg/MMBtu
+     (AP-42 3.1 Table 3.1-2a: 8.6E-3 lb/MMBtu).
+   - Diesel: 40 CFR 98 Table C-2, petroleum products 3.0E-3 kg/MMBtu.
+   - Solid-oxide fuel cells: none (Bloom: "NO CH4 ... emissions",
+     Connecticut Siting Council petition 1208; company claim).
+   https://www.law.cornell.edu/cfr/text/40/appendix-Table_W-7_to_subpart_W_of_part_98
+   https://www.epa.gov/sites/production/files/2020-10/documents/c03s02.pdf
+   https://www.epa.gov/sites/default/files/2020-10/documents/c03s01.pdf
+   https://www.law.cornell.edu/cfr/text/40/appendix-Table_C-2_to_subpart_C_of_part_98
+   https://powergenenterprises.com/wp-content/uploads/2026/04/G3520H-Performance-Data-Sheet.pdf
+   https://portal.ct.gov/lib/csc/pending_petitions/2_petitions_1201through1300/pe1208_responsetointerrogatories_manchester1.pdf
+   (all retrieved 2026-10-30) */
+export const METHANE_SLIP = {
+  leanBurnEngineKgPerMMBtu: 0.522,
+  turbineKgPerMMBtu: 0.004,
+  dieselKgPerMMBtu: 0.003,
+  fuelCellKgPerMMBtu: 0,
+};
+
 /* On-site generation types of the 'gas' firm family (the name predates the
    diesel entry: the family is fuel-burning or fuel-cell generation on
    site). Per type:
@@ -290,6 +315,8 @@ export function getGensetFuel(type) {
                            a unit's output falls (and its heat rate rises) by
                            that % per °C (supply.js gasAmbientFactors; no
                            uplift below it, conservative). No inlet cooling.
+     methaneSlipKgPerMMBtu unburned CH4 per MMBtu of fuel (HHV), reported as
+                           CO2e (impacts.js; METHANE_SLIP sources below)
 
    2026 price context: EIA AEO2026 (2025$; Sargent & Lundy basis) is the
    cost floor; Lazard LCOE+ v19 (Jul 2026) captures 2026 quotes. Wood
@@ -341,6 +368,7 @@ export const GAS_GENSET_TYPES = {
     // https://www.epa.gov/sites/default/files/2015-07/documents/catalog_of_chp_technologies.pdf
     // https://www.wartsila.com/energy/learn-more/technology-comparison-engines-vs-aeros/derating-due-to-ambient-temperature
     ambientDerate: { referenceC: 25, outputPercentPerC: 0.18, heatRatePercentPerC: 0.18 },
+    methaneSlipKgPerMMBtu: METHANE_SLIP.leanBurnEngineKgPerMMBtu,
     leadTimeKey: 'gas-recip',
     tradeOff: 'Highest simple-cycle efficiency at small unit size, 2-minute starts and flat part-load efficiency; modular N+1/N+2 is natural. More units to maintain and higher O&M per kW.',
   },
@@ -381,6 +409,7 @@ export const GAS_GENSET_TYPES = {
     // GT PRO aeroderivative ~26% below ISO at 45 °C (Wärtsilä, vendor).
     // https://www.powermag.com/improving-warm-weather-performance-of-the-lm6000/
     ambientDerate: { referenceC: 15, outputPercentPerC: 0.86, heatRatePercentPerC: 0.2 },
+    methaneSlipKgPerMMBtu: METHANE_SLIP.turbineKgPerMMBtu,
     leadTimeKey: 'gas-aero',
     tradeOff: 'Fast 5-minute starts and steep ramps for AI load swings, compact and lighter; moderate efficiency and a tight 2026 supply chain.',
   },
@@ -418,6 +447,7 @@ export const GAS_GENSET_TYPES = {
     // 80% of ISO output at 100 °F (~0.88%/°C).
     // https://assets.new.siemens.com/siemens/assets/api/uuid:daeb2935-2ea5-4400-a5dc-653de64ca7d3/gas-turbine-sgt-800.pdf
     ambientDerate: { referenceC: 15, outputPercentPerC: 0.7, heatRatePercentPerC: 0.2 },
+    methaneSlipKgPerMMBtu: METHANE_SLIP.turbineKgPerMMBtu,
     leadTimeKey: 'gas-industrial-sc',
     tradeOff: 'Lowest $/kW of the gas options and fine for backup that runs few hours; frame units are large and lumpy and wait ~5 years for delivery.',
   },
@@ -457,6 +487,7 @@ export const GAS_GENSET_TYPES = {
     // 0.5%/°C above ISO 15 °C; heat rate change not modeled (no source).
     // https://www.cpuc.ca.gov/-/media/cpuc-website/divisions/energy-division/documents/resource-adequacy-homepage/r21-10-002/4_ed-proposal-for-phase-3-derates.pdf
     ambientDerate: { referenceC: 15, outputPercentPerC: 0.5, heatRatePercentPerC: 0 },
+    methaneSlipKgPerMMBtu: METHANE_SLIP.turbineKgPerMMBtu,
     leadTimeKey: 'gas-ccgt',
     tradeOff: 'Best fuel efficiency and lowest running cost; slow starts, 600+ MW blocks, water-hungry with wet cooling, and the longest turbine wait.',
   },
@@ -493,6 +524,7 @@ export const GAS_GENSET_TYPES = {
     // stated (datasheet, Feb 2026).
     // https://www.bloomenergy.com/wp-content/uploads/bloom-energy-server-datasheet-feb-2026.pdf
     ambientDerate: { referenceC: 45, outputPercentPerC: 0, heatRatePercentPerC: 0 },
+    methaneSlipKgPerMMBtu: METHANE_SLIP.fuelCellKgPerMMBtu,
     leadTimeKey: 'gas-sofc',
     tradeOff: 'Efficient, no water, near-zero NOx, small modules that permit fast; price is high and unpublished, and output ramps slowly, so it needs a battery for AI load swings.',
   },
@@ -524,6 +556,7 @@ export const GAS_GENSET_TYPES = {
     // at 30 °C (~0.36%/°C) (datasheet chart, read +/-2%).
     // https://www.globalpwr.com/wp-content/uploads/cut-sheets/gps-titan130-spec-sheet.pdf
     ambientDerate: { referenceC: 15, outputPercentPerC: 0.8, heatRatePercentPerC: 0.36 },
+    methaneSlipKgPerMMBtu: METHANE_SLIP.turbineKgPerMMBtu,
     leadTimeKey: 'gas-bridge',
     tradeOff: 'Fastest path to on-site power (months) and easy to remove later; least efficient, highest emissions per MWh, and contested air permits.',
   },
@@ -578,6 +611,7 @@ export const GAS_GENSET_TYPES = {
     // rated 45 °C ("consult ... for temperature derations"). Above 45 °C:
     // Cummins QSK95 ~12.1% per 10 °C (search index only).
     ambientDerate: { referenceC: 45, outputPercentPerC: 1.2, heatRatePercentPerC: 0 },
+    methaneSlipKgPerMMBtu: METHANE_SLIP.dieselKgPerMMBtu,
     leadTimeKey: 'diesel-standby',
     // EPA emergency stationary engines (40 CFR 60.4211(f), Subpart IIII;
     // 63.6640(f), Subpart ZZZZ): emergency operation is unlimited; maintenance

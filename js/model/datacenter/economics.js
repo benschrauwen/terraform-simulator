@@ -67,10 +67,10 @@
 import { COOLING_TECHNOLOGIES } from '../../data/datacenter/cooling.js';
 import { FACILITY_DEFAULTS } from '../../data/datacenter/facility.js';
 import { DATACENTER_MODEL_ASSUMPTIONS as A } from '../../data/datacenter/model-assumptions.js';
-import { getGensetFuel } from '../../data/datacenter/power.js';
 import { summarizeReturns } from '../economics.js';
 import { getGpuFleet, getRentalRevenueFactor } from './gpu.js';
 import { onSiteNuclearMWh } from './impacts.js';
+import { pricedCo2eKgPerMMBtu } from './supply.js';
 import { buildFinancingModel, buildReplacementSchedule, crf } from '../finance.js';
 
 /* Installed assets: { key, label, capex, lifeYears, group ('facility' |
@@ -155,8 +155,9 @@ export function buildOpexLines(state, { totals, monthlyPeakGridKW, water, firm }
     { key: 'gasVariableOm', label: diesel ? 'Diesel generator variable O&M' : 'Gas variable O&M', energy: true, annual: firm.family === 'gas' ? gasMWh * state.gasVariableOmPerMWh : 0 },
     { key: 'nuclearVariable', label: 'Nuclear fuel + variable O&M', energy: true, annual: firm.family === 'nuclear' && !contracted ? nuclearMWh * (state.nuclearFuelPerMWh + state.nuclearVariableOmPerMWh) : 0 },
     { key: 'nuclearPpa', label: 'Nuclear PPA', energy: true, annual: contracted ? nuclearMWh * state.nuclearPpaPricePerMWh : 0 },
-    // On-site combustion CO2 x carbon price (grid imports carry theirs in the power price).
-    { key: 'carbonPrice', label: 'Carbon price', energy: true, annual: firm.family === 'gas' ? totals.fuelMMBtu * getGensetFuel(firm.typeData).co2KgPerMMBtu / 1000 * state.carbonPricePerTonne : 0 },
+    // On-site combustion CO2 (and, with priceMethaneSlip, methane slip as CO2e) x carbon
+    // price; grid imports carry theirs in the power price.
+    { key: 'carbonPrice', label: 'Carbon price', energy: true, annual: firm.family === 'gas' ? totals.fuelMMBtu * pricedCo2eKgPerMMBtu(state, firm.typeData) / 1000 * state.carbonPricePerTonne : 0 },
     { key: 'water', label: 'Water', energy: false, annual: water.withdrawnM3 * state.waterPricePerM3 },
   ];
   return lines;

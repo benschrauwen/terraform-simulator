@@ -170,6 +170,11 @@ export const DATACENTER_STATE_FIELDS = [
   // carry it. Default: the compliance price of the site's scheme
   // (data/datacenter/carbon.js: EU ETS, California, Washington; else 0).
   { key: 'carbonPricePerTonne', type: 'number', min: 0, max: 1000, derive: state => CARBON_PRICE_SCHEMES[getSiteCarbonScheme(getDatacenterSite(state.siteId))].usdPerTonne },
+  // Methane slip (unburned CH4, power.js METHANE_SLIP) as CO2e with this GWP
+  // horizon (years; carbon.js METHANE_GWP), and whether the carbon price
+  // also applies to it (off: the schemes do not price it; carbon.js).
+  { key: 'methaneGwpHorizon', type: 'enum', options: ['100', '20'], defaultValue: '100' },
+  { key: 'priceMethaneSlip', type: 'boolean', defaultValue: false },
   { key: 'gridExportEnabled', type: 'boolean', defaultValue: GRID_DEFAULTS.exportEnabled },
   { key: 'gridExportPricePerMWh', type: 'number', min: 0, max: 1000, defaultValue: GRID_DEFAULTS.exportPricePerMWh },
   { key: 'gridInterconnectionCapexPerKW', type: 'number', min: 0, max: 5000, defaultValue: GRID_DEFAULTS.interconnectionCapexPerKW },

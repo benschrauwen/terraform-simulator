@@ -4,6 +4,9 @@
    Post-processing of a settled dispatch:
    - facility energy split into IT, cooling and electrical overhead, served
      share only (an unserved hour sheds IT, cooling and overhead alike);
+   - methane slip: on-site fuel x the type's unburned CH4 (power.js
+     METHANE_SLIP), x the GWP of the state's horizon (carbon.js) as CO2e,
+     reported next to the CO2 (totalCo2eT);
    - CO2: grid imports x grid intensity + on-site fuel x its factor:
      natural gas 52.91 kg/MMBtu (EIA, power.js GAS_DEFAULTS), diesel 73.96
      kg/MMBtu (40 CFR 98 Table C-1, DIESEL_DEFAULTS); nuclear, solar and
@@ -27,6 +30,7 @@ import { SQUARE_METERS_PER_ACRE } from '../../data/assumptions.js';
 import { LATENT_HEAT_KWH_PER_LITRE } from '../../data/datacenter/cooling.js';
 import { FACILITY_DEFAULTS } from '../../data/datacenter/facility.js';
 import { DATACENTER_MODEL_ASSUMPTIONS as A } from '../../data/datacenter/model-assumptions.js';
+import { METHANE_GWP } from '../../data/datacenter/carbon.js';
 import { getGensetFuel, GRID_DEFAULTS, ONSITE_SUBSTATION } from '../../data/datacenter/power.js';
 import { HOURS_PER_YEAR } from './climate.js';
 
@@ -53,6 +57,7 @@ export const FLOW_NODE_LABELS = Object.freeze({
   evaporated: 'Evaporated',
   discharged: 'Discharged (blowdown)',
   atmosphere: 'Atmosphere',
+  methaneSlip: 'Methane slip (CO₂e)',
 });
 
 /**
@@ -77,19 +82,31 @@ export function splitFacilityEnergy({ itKW, cooling, tech, loadKW, unservedKW })
 
 /**
  * CO2 in tonnes/yr: { gridT, gasT (on-site fuel: natural gas or diesel),
- * totalT, kgPerMWhServed, gridCo2KgPerMWh, gasCo2KgPerMMBtu (the fuel's
+ * totalT, methaneT (on-site methane slip, t CH4), methaneCo2eT (x GWP),
+ * methaneGwp, totalCo2eT (totalT + methaneCo2eT), kgPerMWhServed (CO2),
+ * kgCo2ePerMWhServed, gridCo2KgPerMWh, gasCo2KgPerMMBtu (the fuel's
  * factor), fuel (label) }. `firm` gives the fuel (default natural gas).
  */
 export function calculateEmissions(state, totals, facilityServedKWh, firm = null) {
-  const fuel = getGensetFuel(firm?.family === 'gas' ? firm.typeData : null);
+  const gas = firm?.family === 'gas';
+  const fuel = getGensetFuel(gas ? firm.typeData : null);
   const gridT = (totals.gridKWh / 1000) * state.gridCo2KgPerMWh / 1000;
   const gasT = totals.fuelMMBtu * fuel.co2KgPerMMBtu / 1000;
   const totalT = gridT + gasT;
+  const methaneT = gas ? totals.fuelMMBtu * (firm.typeData?.methaneSlipKgPerMMBtu || 0) / 1000 : 0;
+  const methaneGwp = METHANE_GWP[state.methaneGwpHorizon] ?? METHANE_GWP[100];
+  const methaneCo2eT = methaneT * methaneGwp;
+  const perServedMWh = tonnes => (facilityServedKWh > 0 ? (tonnes * 1000) / (facilityServedKWh / 1000) : 0);
   return {
     gridT,
     gasT,
     totalT,
-    kgPerMWhServed: facilityServedKWh > 0 ? (totalT * 1000) / (facilityServedKWh / 1000) : 0,
+    methaneT,
+    methaneGwp,
+    methaneCo2eT,
+    totalCo2eT: totalT + methaneCo2eT,
+    kgPerMWhServed: perServedMWh(totalT),
+    kgCo2ePerMWhServed: perServedMWh(totalT + methaneCo2eT),
     gridCo2KgPerMWh: state.gridCo2KgPerMWh,
     gasCo2KgPerMMBtu: fuel.co2KgPerMMBtu,
     fuel: fuel.label,
@@ -221,6 +238,8 @@ export function buildFlows({ totals, energy, water, heat, emissions, batteryLoss
     co2: positive([
       flow('grid', 'atmosphere', emissions.gridT, 't/yr'),
       flow('gas', 'atmosphere', emissions.gasT, 't/yr'),
+      // Unburned methane as CO2e (GWP of the state's horizon).
+      flow('methaneSlip', 'atmosphere', emissions.methaneCo2eT, 't/yr'),
     ]),
     unservedMWh: totals.unservedKWh / 1000,
   };

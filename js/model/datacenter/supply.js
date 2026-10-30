@@ -249,19 +249,23 @@ const EMPTY_FIRM = Object.freeze({
 
 /**
  * Firm generation: { family, type, typeData (power.js entry), label, units,
+ * (gas 'auto': autoBaseUnits, the count firm-sizing.js finds for the uptime
+ * target, + spare units),
  * unitSizeMW, capacityMW, mustTake (nuclear runs as baseload), availableKW
  * (8760), outageHoursPerUnit, availabilityFraction, heatRate (gas, HHV
  * MMBtu/MWh), partLoad, marginalCostPerMWh (gas: fuel x heat rate + VOM),
  * onSite (false for an existing plant under contract), sizing }.
  */
-export function buildFirmSupply(state, { designPeakKW, meanLoadKW }) {
+export function buildFirmSupply(state, { meanLoadKW, autoBaseUnits = 0 }) {
   const family = state.firmFamily;
   if (family === 'gas') {
     const typeData = GAS_GENSET_TYPES[state.gasType];
     const unitSizeMW = state.gasUnitSizeMW;
+    // 'auto': the units the uptime target needs (firm-sizing.js) plus the
+    // spare units, which only come with a plant (none when no unit is needed).
     const units = state.firmSizingMode === 'manual'
       ? state.firmUnits
-      : Math.ceil(designPeakKW / 1000 / unitSizeMW - 1e-9) + state.firmSpareUnits;
+      : autoBaseUnits + (autoBaseUnits > 0 ? state.firmSpareUnits : 0);
     const availabilityFraction = state.gasAvailabilityPercent / 100;
     const outageHoursPerUnit = (1 - availabilityFraction) * HOURS_PER_YEAR;
     const counts = buildOutageCounts(units, outageHoursPerUnit, A.gasOutageStartDayOfYear * 24);

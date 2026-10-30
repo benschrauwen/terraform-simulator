@@ -33,7 +33,7 @@ export function describeStartingDesign(r, addedUnits = 0) {
   if (s.solarSizeMWdc > 0) parts.push(`${formatMW(s.solarSizeMWdc)}dc ${(MOUNTING_TYPES[s.mountingType]?.label || '').toLowerCase()} solar`);
   if (s.batteryCapacityMWh > 0) parts.push(`${formatStorageMWh(s.batteryCapacityMWh)} / ${formatMW(r.dispatch.battery.powerMW)} battery`);
   if (r.firm.family === 'gas' && r.firm.units > 0) {
-    let redundancy = s.firmSizingMode === 'auto' ? `N+${fixed(s.firmSpareUnits, 0)}` : (s.batteryCapacityMWh > 0 ? 'N+1 with the battery' : '');
+    let redundancy = s.firmSizingMode === 'auto' ? `N+${fixed(s.firmSpareUnits, 0)}` : '';
     if (s.firmSizingMode === 'auto' && s.architecture === 'grid') redundancy += ' standby';
     if (addedUnits > 0) redundancy = [redundancy, `${fixed(addedUnits, 0)} added to meet the uptime target`].filter(Boolean).join(', ');
     parts.push(`${fixed(r.firm.units, 0)} × ${formatMW(r.firm.unitSizeMW)} ${lowerFirst(GAS_GENSET_TYPES[s.gasType]?.label || 'gas units')}${redundancy ? ` (${redundancy})` : ''}`);

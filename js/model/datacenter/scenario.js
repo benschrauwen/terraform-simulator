@@ -6,7 +6,8 @@
 
      normalizeDatacenterState -> site + cooling profile (PUE/WUE per hour)
        -> facility load = IT x utilization x PUE(h)
-       -> supply (solar series, grid availability, firm generation units)
+       -> supply (solar series, grid availability, firm generation units;
+          'auto' gas = the fewest units meeting the uptime target, firm-sizing.js)
        -> hourly dispatch (settled battery) -> facility energy split
        -> emissions, water, heat, flows, footprint
        -> schedule (critical path, energization) -> economics -> warnings
@@ -30,7 +31,11 @@
             capexPerGpu, rentalPricePerHour, occupancyPercent, priceDeclinePercentPerYear, lifeYears,
             itLoadFraction, marketIndex, ownerTcoPerGpuHour, gpuHoursSoldPerYear },
      firm: { family, type, label, units, unitSizeMW, capacityMW, mustTake, onSite,
-             availabilityFraction, outageHoursPerUnit, marginalCostPerMWh, sizing },
+             availabilityFraction, outageHoursPerUnit, marginalCostPerMWh, sizing,
+             requiredMW (gas: firm MW the uptime target needs, every unit available),
+             sizingBasis (gas, firm-sizing.js: { method, minUnits (before spares), spareUnits,
+               reachable, allowedUnservedHours, hoursShortWithoutFirm, requiredMW, maxShortfallMW,
+               hoursCoveredByFirm, unservedHoursWithFirm }; null for nuclear, or manual gas in fast mode) },
      dispatch: {
        order ('grid-first' | 'firm-first'), batteryRole ('shift' | 'reserve' | 'none'),
        annual: { loadMWh, servedMWh, solarMWh, nuclearMWh, gridMWh, gasMWh,
@@ -94,6 +99,7 @@ import {
 } from './impacts.js';
 import { getGpuFleet, getItLoadFraction } from './gpu.js';
 import { buildSchedule } from './schedule.js';
+import { sizeGasForUptime } from './firm-sizing.js';
 import { buildFirmSupply, buildGridSupply, buildSolarSupply } from './supply.js';
 import { buildWarnings } from './warnings.js';
 
@@ -104,14 +110,16 @@ function getCoolingProfile(site, tech) {
   return coolingCache.get(key);
 }
 
-// State fields the hourly dispatch depends on (prices and costs excluded,
-// except through the hybrid merit order, which is part of the key).
-const DISPATCH_KEYS = [
+// State fields the hourly dispatch depends on besides the firm unit count
+// (prices and costs excluded, except through the hybrid merit order, which
+// is part of the key). The dispatch cache adds the resolved unit count; the
+// gas sizing cache (firm-sizing.js) adds nothing, its result being the count.
+const SUPPLY_KEYS = [
   'siteId', 'itCapacityMW', 'itUtilizationPercent', 'revenueBasis', 'gpuOccupancyPercent', 'coolingTechnology', 'architecture', 'gridConnection', 'gridImportCapMW',
   'gridUnavailableHoursPerYear', 'firmGridOutageHoursPerYear', 'gridExportEnabled', 'solarSizeMWdc', 'mountingType', 'siteYieldMwhPerMwdcYear',
-  'batteryCapacityMWh', 'batteryDurationHours', 'batteryEfficiency', 'firmFamily', 'firmSizingMode', 'firmSpareUnits', 'firmUnits',
+  'batteryCapacityMWh', 'batteryDurationHours', 'batteryEfficiency', 'firmFamily', 'uptimeTargetPercent',
   'gasType', 'gasUnitSizeMW', 'gasHeatRateMMBtuPerMWh', 'gasAvailabilityPercent',
-  'nuclearType', 'nuclearUnitSizeMW', 'nuclearCapacityFactorPercent',
+  'nuclearType', 'nuclearUnitSizeMW', 'nuclearCapacityFactorPercent', 'firmSizingMode',
 ];
 const dispatchCache = new Map();
 
@@ -146,15 +154,24 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
 
   const solar = buildSolarSupply(state, site);
   const grid = buildGridSupply(state, loadKW, designPeakKW);
-  const firm = buildFirmSupply(state, { designPeakKW, meanLoadKW });
+  const exportAllowed = state.gridExportEnabled && grid.connected;
+  // Gas sized for the uptime target ('auto'), or (full mode) what the
+  // target would need next to a manual count; firm-sizing.js.
+  let firm = buildFirmSupply(state, { meanLoadKW });
   const order = getDispatchOrder(state, firm);
+  const autoGas = firm.family === 'gas' && state.firmSizingMode === 'auto';
+  let sizing = null;
+  if (firm.family === 'gas' && (autoGas || !fastMode)) {
+    const key = JSON.stringify([...SUPPLY_KEYS.map(k => state[k]), order]);
+    sizing = sizeGasForUptime(state, { loadKW, solar, grid, firm, order, exportAllowed, key });
+    if (autoGas) firm = buildFirmSupply(state, { meanLoadKW, autoBaseUnits: sizing.minUnits });
+  }
   const dispatchInputs = {
-    loadKW, solarKW: solar.hourlyKW, solar, firm, grid, batteryState: state, order,
-    exportAllowed: state.gridExportEnabled && grid.connected,
+    loadKW, solarKW: solar.hourlyKW, solar, firm, grid, batteryState: state, order, exportAllowed,
   };
   let run;
   if (fastMode) {
-    const key = JSON.stringify([...DISPATCH_KEYS.map(k => state[k]), order]);
+    const key = JSON.stringify([...SUPPLY_KEYS.map(k => state[k]), firm.units, order]);
     run = dispatchCache.get(key);
     if (!run) {
       run = dispatchYear(dispatchInputs);
@@ -326,6 +343,13 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
       outageHoursPerUnit: firm.outageHoursPerUnit,
       marginalCostPerMWh: firm.marginalCostPerMWh,
       sizing: firm.sizing,
+      // Gas: what the uptime target needs (firm-sizing.js); null for nuclear
+      // and for a manual gas count in fast mode.
+      requiredMW: sizing ? sizing.requiredMW : null,
+      sizingBasis: sizing ? {
+        ...sizing,
+        spareUnits: autoGas ? firm.units - sizing.minUnits : null,
+      } : null,
     },
     gpu: { ...getGpuFleet(state), gpuHoursSoldPerYear: economics.annualGpuHoursSold },
     dispatch,

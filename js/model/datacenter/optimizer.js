@@ -326,7 +326,7 @@ function optimizeFrom(startState, referenceState, options = {}) {
   }
   if (corners.length) notes.push(`At the upper bound: ${corners.join(', ')}; a wider search range may find more.`);
   if (best.feasible && !islanded && best.gridConnection === 'firm' && sizeFirm && best.units === 0 && base.firm.units > 0) {
-    notes.push('A firm grid connection never fails in this model, so no standby generation is needed for the uptime target; real Tier III sites still carry N+1 standby for utility outages.');
+    notes.push('On this firm connection the utility outages fit within the hours the uptime target allows (or the battery rides through them), so no standby generation is needed for the target; real Tier III sites still carry N+1 standby.');
   }
   if (monotonicityExceptions > 0) notes.push(`Uptime fell when a unit was added in ${monotonicityExceptions} case(s); those were skipped.`);
   if (perConnection.length > 1) {

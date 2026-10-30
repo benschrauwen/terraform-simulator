@@ -24,7 +24,9 @@ export function buildWarnings(result, { designPeakKW }) {
   if (grid.connected && state.gridConnection === 'flexible' && firm.family === 'none' && !(state.batteryCapacityMWh > 0)) {
     add('flexible-no-backup', `A flexible connection is unavailable ${fmt(grid.unavailableHours)} h a year; without on-site generation or a battery the load goes unserved in those hours.`);
   }
-  if (firm.family === 'gas' && firm.capacityMW * 1000 < designPeakKW - 1e-6 && (state.architecture === 'islanded' || state.gridConnection === 'flexible')) {
+  // Manual counts only: an auto count meets the uptime target on the modeled
+  // (occupancy-driven) load by construction, which can sit below the design peak.
+  if (firm.family === 'gas' && state.firmSizingMode === 'manual' && firm.capacityMW * 1000 < designPeakKW - 1e-6 && (state.architecture === 'islanded' || state.gridConnection === 'flexible')) {
     add('gas-below-peak', `Gas capacity (${fmt(firm.capacityMW, 1)} MW) is below the design facility peak (${fmt(designPeakKW / 1000, 1)} MW).`);
   }
   if (state.architecture === 'islanded' && dispatch.batteryRole === 'reserve' && firm.family !== 'gas') {

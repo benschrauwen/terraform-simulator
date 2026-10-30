@@ -184,14 +184,18 @@ export const DATACENTER_STATE_FIELDS = [
   // "HV substation/standby generation ~$2,000-3,500/kW"). On a firm grid it
   // only adds capex and fixed O&M; it runs when the grid is short.
   { key: 'firmFamily', type: 'enum', options: ['none', 'gas', 'nuclear'], defaultValue: 'gas' },
-  // 'auto': gas = N + spare units at the design facility peak; nuclear =
+  // 'auto': gas = the fewest units with which the hourly dispatch meets the
+  // uptime target given the grid, solar and battery (model/datacenter/
+  // firm-sizing.js), + spare units when that is at least one; nuclear =
   // enough units for the average facility load (an existing-plant contract
   // is sized to the average load exactly). 'manual': firmUnits x unit size.
   { key: 'firmSizingMode', type: 'enum', options: ['auto', 'manual'], defaultValue: 'auto' },
   // N+1 (power.js GAS_REDUNDANCY_GUIDANCE: backup N+1, islanded N+2).
   { key: 'firmSpareUnits', type: 'integer', min: 0, max: 20, defaultValue: 1 },
-  // Manual unit count; 15 = the auto N+1 count at the default site (design
-  // peak 100 MW IT x peak PUE 1.31 = 131 MW / 10 MW engines -> 14, + 1).
+  // Manual unit count. 15 = N+1 at the default site's design peak (131 MW /
+  // 10 MW engines -> 14, + 1), the former auto rule; kept as the default so
+  // older share links with a manual count decode unchanged. The UI seeds it
+  // from the current auto count when the user switches to manual.
   { key: 'firmUnits', type: 'integer', min: 0, max: 2000, defaultValue: 15 },
 
   { key: 'gasType', type: 'enum', getOptions: () => Object.keys(GAS_GENSET_TYPES), defaultValue: DEFAULT_GAS_GENSET_TYPE },
@@ -296,11 +300,6 @@ export function applyDatacenterPresetDefaults(state, selectionKey) {
   return normalizeDatacenterState(input);
 }
 
-// Design peak / IT nameplate assumed when the caller has no model result
-// (judgment: above the default site's 1.31 and most climates' peak PUE, so
-// a fallback errs towards more gas).
-const FALLBACK_DESIGN_PEAK_PUE = 1.5;
-
 /** State fields a starting design sets (applyArchitectureDefaults). */
 export const ARCHITECTURE_DESIGN_KEYS = Object.freeze([
   'architecture', 'gridConnection', 'solarSizeMWdc', 'batteryCapacityMWh', 'batteryDurationHours',
@@ -314,25 +313,25 @@ export const ARCHITECTURE_DESIGN_KEYS = Object.freeze([
  * the sizes are justified); everything else (site, IT, cooling, prices, the
  * gas type and its unit size, the solar mounting) is kept. Pure.
  *
- * - grid: firm connection, no solar or battery, gas auto-sized N+1 at the
- *   design peak: exactly DATACENTER_DEFAULT_STATE's supply side.
+ * - grid: firm connection, no solar or battery, gas auto-sized for the
+ *   uptime target + 1 spare: exactly DATACENTER_DEFAULT_STATE's supply side.
  * - hybrid: flexible connection, solar = 2 MWdc per MW IT, a 4-hour battery
- *   of 4 h x IT MW, gas = ceil((design peak - battery MW) / unit) + 1 units
- *   (manual sizing, so the count does not jump back to the full design peak).
- * - islanded: no solar or battery, gas auto-sized N+2 at the design peak.
+ *   of 4 h x IT MW, gas auto-sized for the uptime target + 1 spare.
+ * - islanded: no solar or battery, gas auto-sized + 2 spares.
  *
- * `designPeakMW` (IT nameplate x peak PUE, result.load.designPeakMW) sizes
- * the hybrid gas; without it IT x 1.5 is assumed. Solar and battery round to
- * their slider steps (5 MWdc, 10 MWh).
+ * 'auto' gas is the fewest units with which the dispatch meets the uptime
+ * target (model/datacenter/firm-sizing.js), so it follows the battery,
+ * solar and grid of the design. Solar and battery round to their slider
+ * steps (5 MWdc, 10 MWh). The third argument is accepted for callers that
+ * pass the model's design peak; the sizes no longer need it.
  */
-export function applyArchitectureDefaults(state, architecture, { designPeakMW } = {}) {
+export function applyArchitectureDefaults(state, architecture) {
   const base = normalizeDatacenterState(state);
   const design = ARCHITECTURE_STARTING_DESIGNS[architecture];
   if (!design) return base;
   const itMW = base.itCapacityMW;
-  const peakMW = Number.isFinite(designPeakMW) && designPeakMW > 0 ? designPeakMW : itMW * FALLBACK_DESIGN_PEAK_PUE;
   const roundTo = (value, step) => Math.round(value / step) * step;
-  const next = {
+  return normalizeDatacenterState({
     ...base,
     architecture,
     gridConnection: design.gridConnection || base.gridConnection,
@@ -343,12 +342,5 @@ export function applyArchitectureDefaults(state, architecture, { designPeakMW } 
     firmSizingMode: 'auto',
     firmSpareUnits: design.gasSpareUnits,
     firmUnits: DATACENTER_DEFAULT_STATE.firmUnits,
-  };
-  if (design.gasSizing === 'design-peak-less-battery') {
-    const batteryMW = next.batteryCapacityMWh / next.batteryDurationHours;
-    const needed = Math.ceil(Math.max(0, peakMW - batteryMW) / base.gasUnitSizeMW - 1e-9);
-    next.firmSizingMode = 'manual';
-    next.firmUnits = needed + design.gasSpareUnits;
-  }
-  return normalizeDatacenterState(next);
+  });
 }

@@ -115,8 +115,14 @@ test('islanded gas: N+1 units serve every hour; too few units leave exactly the 
   const nPlusOne = calculateDatacenterScenario(ARCHITECTURES.islandedGasOnly, { fastMode: true });
   assert.equal(nPlusOne.reliability.uptimePercent, 100);
   assert.equal(nPlusOne.reliability.unservedMWh, 0);
-  // N = ceil(design peak / unit size); +1 spare.
-  assert.equal(nPlusOne.firm.units, Math.ceil(nPlusOne.load.designPeakMW / 10) + 1);
+  // Auto sizing covers the dispatch-year load (gas-only: the facility load in
+  // every hour) with every unit's maintenance block, plus one spare (N+1).
+  // The load is below the 10 MW-unit design peak, so N <= ceil(design peak / 10).
+  const base = nPlusOne.firm.sizingBasis.minUnits;
+  assert.equal(nPlusOne.firm.units, base + 1);
+  assert.ok(base * 10 >= nPlusOne.firm.requiredMW);
+  assert.ok(nPlusOne.firm.requiredMW >= nPlusOne.load.meanFacilityMW && nPlusOne.firm.requiredMW <= nPlusOne.load.designPeakMW);
+  assert.ok(base <= Math.ceil(nPlusOne.load.designPeakMW / 10));
 
   // 5 x 10 MW engines against a ~80 MW load: short in every hour. Each unit is
   // out round(3% x 8760) = 263 h one after another (no overlap), so the

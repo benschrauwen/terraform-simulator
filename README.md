@@ -453,7 +453,7 @@ cooling(T)   = free-cooling fraction                if T < changeover
 load(h)      = IT(h) x PUE(h)
 WUE(h)       = interpolate(litres per kWh IT, T(h))           # withdrawn water
 T(h)         = the site's typical-day dry- or wet-bulb for that month and hour (local standard time)
-design peak  = IT nameplate x max PUE                         # sizes grid connection, substation, auto gas
+design peak  = IT nameplate x max PUE                         # sizes grid connection and substation
 ```
 
 Annual PUE is facility energy / IT energy. At the cooling.js calibration climates the model reproduces the calibrated PUE within 0.01 (Phoenix; New Albany OH for the 11.3 °C Chicago case).
@@ -466,10 +466,21 @@ Annual PUE is facility energy / IT energy. At the cooling.js calibration climate
   solar(h) = s x clearSkyPOA(h) x dailySolarFactor(day(h)),  capped at MWdc;  s: sum_h solar(h) = MWdc x yield x multiplier
   ```
 - **Grid**: connected in `grid` and `hybrid`, import cap 0 = design peak. Firm service is not uninterruptible: every connection has `firmGridOutageHoursPerYear` of utility outages (default 3 h/yr). Electricity Canada's transmission composite (BC Hydro's F2024 reliability filing) averages 2.68 h and 0.82 sustained interruptions per delivery point a year over F2015-F2023, about 3.3 h each; US distribution customers see more (EIA Table 11.1, IEEE 1366: SAIDI 6.1 h with major event days, 2.1 h without, in 2023; 11.0 h and 2.2 h in 2024), but most of that starts on the distribution system, which a transmission-served load bypasses. The default rounds the transmission figure to whole hours (judgment). Outages come as ceil(N / 3) events of up to 3 h, the first on 15 July from 15:00 local standard time and the rest spread evenly over the year at the same hour (deterministic, judgment). Without backup, 3 h/yr gives 8757 / 8760 = 99.966% uptime, below the Tier III 99.982% (1.6 h/yr) target, so standby generation or a reserve battery is needed to meet it, which is what the Uptime Institute's Tier Standard assumes (it treats the utility as an economic alternative to the engine-generator plant). A flexible connection is in addition curtailed for N hours a year, placed as contiguous 4-hour events (the low end of the 4-16 h curtailments in the Camus study) on the days of highest facility load, i.e. hot afternoons, skipping days with an outage so the two add up.
-- **Firm generation**, one family at a time. Gas: `auto` = ceil(design peak / unit size) + spare units (default N+1); each unit is out (1 - availability) x 8760 h in a block, units maintained one after another from 1 March. Fuel uses the plant's committed units at equal loading, with the heat rate rising linearly to the 50%-load penalty (floored at the minimum stable load). Nuclear: must-take baseload at full rating except a (1 - capacity factor) x 8760 h refuelling/maintenance block per unit from 1 April; `auto` = enough units for the average facility load (an existing-plant contract exactly that). A contract is take-or-pay; an own reactor backs down instead of curtailing.
+- **Firm generation**, one family at a time. Gas: `auto` = the fewest units with which the dispatch meets the uptime target given the grid (outages, curtailments, import cap), solar and battery, plus the spare units (default N+1) when at least one unit is needed (`firm-sizing.js`, below); each unit is out (1 - availability) x 8760 h in a block, units maintained one after another from 1 March. Fuel uses the plant's committed units at equal loading, with the heat rate rising linearly to the 50%-load penalty (floored at the minimum stable load). Nuclear: must-take baseload at full rating except a (1 - capacity factor) x 8760 h refuelling/maintenance block per unit from 1 April; `auto` = enough units for the average facility load (an existing-plant contract exactly that). A contract is take-or-pay; an own reactor backs down instead of curtailing.
 - **Order**, each hour: solar + nuclear serve the load; surplus charges the battery, then is exported (if enabled, grid available, up to the connection) or curtailed. A deficit is met by a shifting battery, then grid → reserve battery → gas (`grid`: gas is backup) or, in `hybrid` when gas is cheaper (fuel x heat rate + VOM < grid energy price), gas → grid → reserve battery; `islanded` has no grid. The rest is unserved.
 - **Battery**: with a surplus source (solar or nuclear) it shifts surplus only and discharges first. Without one it is a reserve: topped up from the grid (islanded: from spare gas) and used only when the grid cannot carry the load. It never buys grid energy to shift it. Power limit, efficiency, leakage and the periodic start state of charge are the plant builder's battery primitives; life = min(12 yr, rated cycles / equivalent full cycles).
 - **Reliability**: uptime = hours with the full load served / 8760, compared with the target (legacy Tier III 99.982% by default); unserved hours, energy and the longest outage are reported.
+- **Gas sized for the uptime target** (`firm-sizing.js`). The target allows H unserved hours, the largest H with (8760 - H) / 8760 >= target (99.982% -> 1 h, 99.9% -> 8 h, 99% -> 87 h). One dispatch run with zero firm capacity gives the residual shortfall s(h) after solar, battery and grid. Gas is last in every hour's deficit order and nothing it does feeds back into other hours (a shifting battery charges only from surplus and discharges first; a reserve battery on a grid-first design charges only from the grid and discharges before gas; with gas first in the order, gas and grid split the same deficit), so s(h) is what gas faces with any fleet:
+
+  ```text
+  need(h)     = s(h) - servedTolerance x load(h)          for the hours the zero-gas run leaves unserved
+  required MW = the (H+1)-th largest need(h)              (0 when at most H hours are short)
+  N           = the fewest units with #{h : (N - units in maintenance at h) x unit size < need(h)} <= H,
+                from ceil(required MW / unit size) upwards (maintenance blocks as in the dispatch)
+  auto units  = N + spare units if N > 0, else 0
+  ```
+
+  When a reserve battery is charged from spare gas (islanded) or used after gas (hybrid with gas cheaper than the grid), the battery's state depends on the fleet; the count is then bisected on full dispatch runs between 0 and the residual count without the battery (an upper bound). Both are cached per supply design: an auto scenario costs one extra dispatch (fast mode ~1.9 ms uncached, ~0.35 ms cached; bisection cases ~6 ms). `result.firm.requiredMW` and `result.firm.sizingBasis` report the method, H, the hours short without gas, the required and largest shortfall MW, the units before spares and the hours the gas covers; the full run also reports them next to a manual count. Because the load is the modeled one (GPU occupancy or utilization x PUE), the fleet can sit below the IT-nameplate design peak: the spare units, or a manual count, cover a load the model does not see.
 
 The hourly balance `solar + nuclear + grid + gas + battery out + unserved = load + battery in + export + curtailed` holds to rounding in every architecture (tested).
 
@@ -490,13 +501,13 @@ CO2 is combustion only (eGRID-style; EU grids are Ember lifecycle values): no up
 Switching the power architecture in the UI resets the supply side to that architecture's starting design (`applyArchitectureDefaults` in `datacenter-schema.js`, sizes justified in `power.js` `ARCHITECTURE_STARTING_DESIGNS`); site, IT, cooling, prices, gas type and mounting are kept. The default state is the grid design.
 
 ```text
-grid      firm connection; gas auto N+1 at the design peak (standby); no solar or battery
+grid      firm connection; gas auto-sized for the uptime target + 1 spare (standby); no solar or battery
 hybrid    flexible connection; solar = 2 MWdc x IT MW; battery = 4 h x IT MW (4-hour);
-          gas units = ceil((design peak - battery MW) / unit size) + 1      (manual sizing)
-islanded  no grid; gas auto N+2 at the design peak; no solar or battery
+          gas auto-sized for the uptime target + 1 spare
+islanded  no grid; gas auto-sized + 2 spares; no solar or battery
 ```
 
-The hybrid rule credits the battery's full power during a curtailment (the Camus study's flexible-connection pattern: grid, batteries and a little gas). With solar on site the battery shifts solar daily and is not always full when an event starts, so `buildStartingDesign` then adds one gas unit at a time until the design meets the uptime target (none at Abilene; up to four at the cloudier or hotter sites). In the hybrid merit order the gas still runs whenever it is cheaper than the grid. At Abilene the three designs give (uptime, NPV): grid 100%, $264M; hybrid 100%, $77M (5 x 10 MW engines; solar 34%, gas 39%, grid 21% of served energy); islanded 100%, $28M (16 x 10 MW). They are starting points, not optima.
+Auto sizing accounts for the battery and solar (with solar on site the battery shifts solar daily and is not always full when a curtailment starts, which the former design-peak-less-battery rule missed at the cloudier or hotter sites), so every starting design meets the uptime target by construction; `buildStartingDesign` still adds manual gas units one at a time if it does not (an unreachable target). In the hybrid merit order the gas still runs whenever it is cheaper than the grid. They are starting points, not optima.
 
 ### Schedule (`schedule.js`)
 
@@ -577,7 +588,7 @@ Uptime cannot fall when a unit is added (every hour has at least as much availab
 | Hybrid | same as grid (on-site gas is cheaper per MWh than Abilene's grid, but not by enough to pay for the plant) | 100% | $581M | 10.0% | Jul 2031 |
 | Islanded | 10 x 10 MW engines + 2 MWdc solar | 100% | $158M | 8.5% | Jan 2030 |
 
-A firm grid never fails in this model, so the optimizer drops standby generation on a firm connection (the card says so; real Tier III sites keep N+1 standby). The islanded optimum needs only 10 engines because the dispatch-year peak (GPU occupancy) is below the 131 MW design peak and a little solar covers the hours when maintenance outages overlap.
+On a firm connection the optimizer keeps only the standby units the utility outages need for the target (none when a battery rides through them; the card then says so, since real Tier III sites keep N+1 standby). Its minimum unit count per (solar, battery) point is the auto count before spares (`firm-sizing.js`), tested to match. The islanded optimum needs only 10 engines because the dispatch-year peak (GPU occupancy) is below the 131 MW design peak and a little solar covers the hours when maintenance outages overlap.
 
 Limitations: it is a local search (coarse grid, then compass steps on two axes with the unit count chosen per point), so a narrow optimum between grid points can be missed; one TMY year decides feasibility (see below); the objective is NPV only (no CO2, water or first-power weight); one firm family at a time; battery duration, gas type and import cap are not searched. NPV is not smooth in the first-power date: the GPU rental price of each year is taken at the fleet's age at mid-year, so moving first power by a few months shifts every fleet's price step (at the default site, `scheduleScalePercent` 50 -> 60% moves NPV from +$821M to -$143M). Choices that change the schedule, such as a flexible connection or an islanded battery on the critical path, can therefore win or lose by more than their own cost.
 

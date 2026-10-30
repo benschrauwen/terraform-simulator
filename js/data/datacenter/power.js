@@ -790,34 +790,32 @@ export const DEFAULT_ARCHITECTURE = 'grid';
 /* Starting design per architecture, applied when the user switches
    architecture (state/datacenter-schema.js applyArchitectureDefaults). A
    starting point to adjust or optimize, not an optimum; every size is
-   judgment, chosen so the design meets the default uptime target at the
-   default site (tested in tests/calculations/datacenter-architecture.test.js).
-   - grid: the default design. Firm utility service carries the load; N+1 gas
-     engines at the design peak are Tier III standby (GAS_REDUNDANCY_GUIDANCE
-     backup). No solar or battery.
+   judgment. Gas is sized 'auto' in all three: the fewest units with which
+   the hourly dispatch meets the uptime target given the grid, solar and
+   battery (model/datacenter/firm-sizing.js), plus spare units, so each
+   design meets the target by construction (tested in
+   tests/calculations/datacenter-architecture.test.js).
+   - grid: the default design. Firm utility service carries the load; gas
+     covers the utility outages the target does not allow, plus one spare
+     unit (GAS_REDUNDANCY_GUIDANCE backup). No solar or battery.
    - hybrid: the flexible-connection design of the Camus / encoord /
      Princeton study (GRID_DEFAULTS): a curtailable grid connection, on-site
      solar, a 4-hour battery (the study's batteries were 4-hour, and the
-     model's curtailment events last 4 h) and gas sized N+1 for the hours
-     without grid. Solar = 2 MWdc per MW IT, east-west (judgment: it
-     supplies roughly a third of the facility energy at Abilene with little
-     curtailment, leaving the grid and gas as the balance). Battery
-     power = the IT nameplate, so energy = 4 h x IT MW. Gas: N units cover
-     what the battery cannot at the design peak during an event with no
-     solar (a night-time curtailment), N = ceil((design peak - battery MW) /
-     unit size), plus one spare. With the battery full, gas N x unit +
-     battery carry the design peak for the whole 4-h event, because
-     (peak - N x unit) x 4 h <= battery MW x 4 h. In the hybrid merit order
-     the gas still runs whenever it is cheaper than the grid.
-   - islanded: gas engines alone at the design peak with N+2 redundancy
-     (GAS_REDUNDANCY_GUIDANCE islanded); solar is optional and off, because
-     gas-only is the common real off-grid build (Socrates, GW Ranch's core). */
+     model's curtailment events last 4 h) and gas for what the battery and
+     solar cannot cover during outages and curtailments, plus one spare.
+     Solar = 2 MWdc per MW IT, east-west (judgment: it supplies roughly a
+     third of the facility energy at Abilene with little curtailment,
+     leaving the grid and gas as the balance). Battery power = the IT
+     nameplate, so energy = 4 h x IT MW. In the hybrid merit order the gas
+     still runs whenever it is cheaper than the grid.
+   - islanded: gas engines alone with N+2 redundancy (GAS_REDUNDANCY_GUIDANCE
+     islanded); solar is optional and off, because gas-only is the common
+     real off-grid build (Socrates, GW Ranch's core). */
 export const ARCHITECTURE_STARTING_DESIGNS = {
   grid: {
     gridConnection: 'firm',
     solarMWdcPerMWIT: 0,
     batteryHoursOfIT: 0,
-    gasSizing: 'design-peak',
     gasSpareUnits: GAS_REDUNDANCY_GUIDANCE.backup.spareUnits,
   },
   hybrid: {
@@ -825,13 +823,11 @@ export const ARCHITECTURE_STARTING_DESIGNS = {
     solarMWdcPerMWIT: 2,
     batteryDurationHours: 4,
     batteryHoursOfIT: 4,
-    gasSizing: 'design-peak-less-battery',
     gasSpareUnits: GAS_REDUNDANCY_GUIDANCE.backup.spareUnits,
   },
   islanded: {
     solarMWdcPerMWIT: 0,
     batteryHoursOfIT: 0,
-    gasSizing: 'design-peak',
     gasSpareUnits: GAS_REDUNDANCY_GUIDANCE.islanded.spareUnits,
   },
 };

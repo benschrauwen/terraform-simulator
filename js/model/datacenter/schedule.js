@@ -57,7 +57,8 @@ export function listScheduleComponents(state, { firm, solarEnabled }) {
     const key = flexible ? 'grid-flexible' : 'grid-firm';
     components.push({ id: key, label: POWER_LEAD_TIMES[key].label, leadTimes: POWER_LEAD_TIMES[key], required: true });
   }
-  if (firm.family === 'gas') {
+  // No path for a plant of zero units (auto sizing can need none).
+  if (firm.family === 'gas' && firm.units > 0) {
     const key = GAS_GENSET_TYPES[state.gasType].leadTimeKey;
     components.push({ id: key, label: POWER_LEAD_TIMES[key].label, leadTimes: POWER_LEAD_TIMES[key], required: onSiteRequired });
   }

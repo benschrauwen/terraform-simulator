@@ -3,17 +3,11 @@
    ============================================
    buildStartingDesign(state, architecture) = applyArchitectureDefaults
    (state/datacenter-schema.js; sizes justified in data/datacenter/power.js
-   ARCHITECTURE_STARTING_DESIGNS) with the design peak taken from the model,
-   then, if that design still misses the uptime target, one gas unit at a
-   time is added (manual sizing) until it meets it, up to MAX_EXTRA_UNITS.
-
-   Why the top-up: the hybrid design credits the battery's full power during
-   a grid curtailment, but with solar on site the battery shifts solar every
-   day and is not always full when a curtailment starts (at Abilene it is;
-   at a few cloudier or hotter sites one or two units more are needed in the
-   TMY year). The starting design should meet the target the user set, so
-   the gap is closed with the cheapest-to-explain resource, a gas unit.
-   Pure; no DOM. */
+   ARCHITECTURE_STARTING_DESIGNS). Its gas is auto-sized for the uptime
+   target (firm-sizing.js), so it meets the target whenever enough units
+   can; as a safeguard (an unreachable target, a type with tiny units), one
+   gas unit at a time is then added (manual sizing) until it meets it, up to
+   MAX_EXTRA_UNITS. Pure; no DOM. */
 
 import { applyArchitectureDefaults } from '../../state/datacenter-schema.js';
 import { calculateDatacenterScenario } from './scenario.js';
@@ -26,8 +20,7 @@ const MAX_EXTRA_UNITS = 10;
  * target (0 when the rule-based design already meets it).
  */
 export function buildStartingDesign(rawState, architecture) {
-  const current = calculateDatacenterScenario(rawState, { fastMode: true });
-  let state = applyArchitectureDefaults(current.state, architecture, { designPeakMW: current.load.designPeakMW });
+  let state = applyArchitectureDefaults(rawState, architecture);
   let result = calculateDatacenterScenario(state, { fastMode: true });
   let addedUnits = 0;
   while (!result.reliability.meetsTarget && result.firm.family === 'gas' && addedUnits < MAX_EXTRA_UNITS) {

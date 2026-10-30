@@ -37,20 +37,19 @@ test('the hybrid starting design follows its sizing rule (hand-derived at Abilen
   assert.equal(s.solarSizeMWdc, 200);
   assert.equal(s.batteryCapacityMWh, 400);
   assert.equal(s.batteryDurationHours, 4);
-  // Gas: design peak 100 MW x 1.308 peak PUE = 130.8 MW; the battery covers 100 MW, so
-  // N = ceil(30.8 / 10 MW) = 4 engines, plus one spare = 5 (manual sizing).
   assert.ok(Math.abs(designPeakMW - 130.8) < 0.05, `design peak ${designPeakMW}`);
+  // Gas: auto-sized for the uptime target, plus one spare (was a manual design-peak-less-battery
+  // count before the sizing followed the uptime target).
   assert.equal(s.firmFamily, 'gas');
-  assert.equal(s.firmSizingMode, 'manual');
-  assert.equal(s.firmUnits, 5);
-  // Independent check of the rule: with one unit out, gas + battery power carry the design
-  // peak, and the battery holds enough energy for a 4-hour curtailment at that deficit.
+  assert.equal(s.firmSizingMode, 'auto');
+  assert.equal(s.firmSpareUnits, GAS_REDUNDANCY_GUIDANCE.backup.spareUnits);
+  const r = designs.hybrid.result;
+  const base = r.firm.sizingBasis.minUnits;
+  assert.equal(r.firm.units, base > 0 ? base + 1 : 0);
+  // The battery's full power covers at least as much as the old rule credited it with, so the
+  // uptime-sized base count never exceeds ceil((design peak - battery MW) / unit size).
   const batteryMW = s.batteryCapacityMWh / s.batteryDurationHours;
-  const firmMW = (s.firmUnits - GAS_REDUNDANCY_GUIDANCE.backup.spareUnits) * s.gasUnitSizeMW;
-  assert.ok(firmMW + batteryMW >= designPeakMW);
-  assert.ok((designPeakMW - firmMW) * 4 <= s.batteryCapacityMWh);
-  // Without a model result the design peak falls back to IT x 1.5: ceil((150 - 100) / 10) + 1 = 6.
-  assert.equal(applyArchitectureDefaults(DATACENTER_DEFAULT_STATE, 'hybrid').firmUnits, 6);
+  assert.ok(base <= Math.ceil((designPeakMW - batteryMW) / s.gasUnitSizeMW));
 });
 
 test('the islanded starting design is gas-only with N+2 redundancy', () => {
@@ -59,9 +58,12 @@ test('the islanded starting design is gas-only with N+2 redundancy', () => {
   assert.equal(state.batteryCapacityMWh, 0);
   assert.equal(state.firmSizingMode, 'auto');
   assert.equal(state.firmSpareUnits, GAS_REDUNDANCY_GUIDANCE.islanded.spareUnits);
-  // ceil(130.8 / 10) + 2 = 14 + 2 = 16 engines.
-  assert.equal(result.firm.units, Math.ceil(designPeakMW / state.gasUnitSizeMW) + 2);
-  assert.equal(result.firm.units, 16);
+  // Gas carries the whole load: N units cover the dispatch-year load except in the hours the
+  // uptime target allows; N + 2 spares, and N is at most the design-peak count ceil(130.8 / 10) = 14.
+  const base = result.firm.sizingBasis.minUnits;
+  assert.equal(result.firm.units, base + 2);
+  assert.ok(base * state.gasUnitSizeMW >= result.load.meanFacilityMW);
+  assert.ok(base <= Math.ceil(designPeakMW / state.gasUnitSizeMW));
   assert.equal(result.grid.connected, false);
   assert.equal(result.dispatch.annual.gridMWh, 0);
 });
@@ -78,13 +80,13 @@ test('a switch keeps everything outside the supply design', () => {
     });
     assert.equal(next.firmFamily, 'gas', `${architecture}: gas is the starting firm generation`);
   });
-  // Hybrid sizes scale with the IT capacity and the kept gas unit size: 250 MW IT -> 500 MWdc,
-  // 1,000 MWh; aero units (50 MW): ceil((300 - 250) / 50) + 1 = 2.
+  // Hybrid sizes scale with the IT capacity and keep the gas unit size: 250 MW IT -> 500 MWdc,
+  // 1,000 MWh; aero units (50 MW), auto-sized.
   const hybrid = applyArchitectureDefaults(custom, 'hybrid', { designPeakMW: 300 });
   assert.equal(hybrid.solarSizeMWdc, 500);
   assert.equal(hybrid.batteryCapacityMWh, 1000);
   assert.equal(hybrid.gasUnitSizeMW, 50);
-  assert.equal(hybrid.firmUnits, 2);
+  assert.equal(hybrid.firmSizingMode, 'auto');
 });
 
 test('every starting design meets the uptime target at the default site without top-up', () => {
@@ -127,12 +129,15 @@ test('switching architecture changes the result and the footprint as the design 
   assert.ok(Math.abs(areas('grid').utilitySwitchyard - 40 * r.grid.grid.importCapMW) < 1e-6);
 });
 
-test('the starting design adds gas units only until the uptime target is met', () => {
-  // At Richland, LA the battery is not always full when a curtailment starts, so the rule-based
-  // hybrid design needs a top-up; one unit fewer than the top-up must still miss the target.
+test('auto-sized starting designs meet the target without a top-up, also where the battery is not full', () => {
+  // At Richland, LA the battery shifts solar and is not always full when a curtailment starts; the
+  // old design-peak-less-battery rule needed gas units added there. Auto sizing already accounts
+  // for it: no top-up, the target is met, and one base unit fewer misses it.
   const design = buildStartingDesign({ ...DATACENTER_DEFAULT_STATE, siteId: 'richland-la' }, 'hybrid');
-  assert.ok(design.addedUnits > 0, 'top-up needed');
+  assert.equal(design.addedUnits, 0);
   assert.ok(design.result.reliability.meetsTarget);
-  const oneFewer = calculateDatacenterScenario({ ...design.state, firmUnits: design.state.firmUnits - 1 });
+  const base = design.result.firm.sizingBasis.minUnits;
+  assert.ok(base > 0);
+  const oneFewer = calculateDatacenterScenario({ ...design.state, firmSizingMode: 'manual', firmUnits: base - 1 });
   assert.equal(oneFewer.reliability.meetsTarget, false);
 });

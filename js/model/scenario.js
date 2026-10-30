@@ -104,24 +104,24 @@ export const scenarioMethods = {
     const exploratoryModules = includeExploratoryModules
       ? this.calculateExploratoryModules(normalizedState, {
           allocationPlan,
-          materialFlows: {
-            h2DailyKg: electrolyzer.h2DailyKg || 0,
-            co2DailyKg: dac.co2DailyKg || 0,
+          dailyFeedsKg: {
+            h2Kg: electrolyzer.h2DailyKg || 0,
+            co2Kg: dac.co2DailyKg || 0,
+            methanolKg: productFlow.outputs.methanol.reactorDailyKg,
           },
-          peakMaterialFlows: {
-            h2KgPerHour: normalizedState.electrolyzerEnabled
+          peakFeedsKgPerHour: {
+            h2Kg: normalizedState.electrolyzerEnabled
               ? (peakSizingKW * allocation.electrolyzer) / normalizedState.electrolyzerEfficiency
               : 0,
-            co2KgPerHour: normalizedState.dacEnabled
+            co2Kg: normalizedState.dacEnabled
               ? ((peakSizingKW * allocation.dac) / normalizedState.dacEnergy) * 1000
               : 0,
-            methanolKgPerHour: (productFlow.outputs?.methanol?.designHourlyOutputKg || 0) * (
+            methanolKg: (productFlow.outputs?.methanol?.designHourlyOutputKg || 0) * (
               productFlow.outputs?.methanol?.bufferEnabled
                 ? 1
                 : (effectivePeakKW > 0 ? peakSizingKW / effectivePeakKW : 1)
             ),
           },
-          supportedOutputs: productFlow.outputs,
           effectivePeakKW: reactorSizingPeakKW,
           peakSizingKW,
           effectiveDailyKWh,

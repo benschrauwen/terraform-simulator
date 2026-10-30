@@ -11,6 +11,14 @@ import { DEFAULT_STATE } from '../state/schema.js';
 import { ModuleCatalog } from './module-catalog.js';
 import { clampNumber } from './util.js';
 
+/* Feedstocks a route can consume, as keys of routeConfig.feedstocks (kg per
+   output unit), and the allocation-plan share map each one is split by. H2
+   and CO2 come from the shared electrolyzer / DAC pools; methanol from the
+   methanol reactor, of which the diverted share (state.mtgMethanolSplit)
+   goes to the methanol-consuming routes. */
+const FEEDSTOCK_KEYS = ['h2Kg', 'co2Kg', 'methanolKg'];
+const FEED_SHARE_KEYS = { h2Kg: 'h2', co2Kg: 'co2', methanolKg: 'methanol' };
+
 /* Sizes a two-feed (H2 + CO2) catalytic reactor. `h2PerKg` / `co2PerKg` are
    the kg of each feed per kg of product and `conversion` the yield fraction.
    Daily quantities are per cycle (day, sol, lunar cycle). Without a feed
@@ -154,40 +162,44 @@ export const processMethods = {
 
   buildProcessAllocationPlan(state) {
     const supported = this.getSupportedProductWeights(state);
-    const mtgMethanolSplit = state.mtgEnabled
+    const routes = ModuleCatalog.getExploratoryModules().map(module => {
+      const route = state[`${module.id}Route`] || ModuleCatalog.getDefaultRoute(module) || 'unspecified';
+      return {
+        ...module,
+        enabled: Boolean(state[`${module.id}Enabled`]),
+        route,
+        routeConfig: ModuleCatalog.getRouteConfig(module.id, route),
+        priorityWeight: this.getExploratoryPriorityWeight(state, module.id),
+      };
+    });
+
+    // Every enabled route whose feedstocks include methanol shares the
+    // diverted part of the methanol reactor's output, split by priority x
+    // kg MeOH per unit (like the H2 / CO2 pools). It competes for no H2 or
+    // CO2 by priority: its weight is the product units its methanol makes
+    // (methanol weight x reactor conversion x diverted share x pool share /
+    // kg MeOH per unit), so its power share follows its methanol. Weighting
+    // MTG by priority handed it power for up to ~6x the gasoline its
+    // methanol can make.
+    const methanolConsumers = routes.filter(module => module.enabled && (module.routeConfig?.feedstocks?.methanolKg || 0) > 0);
+    const methanolDivertedShare = methanolConsumers.length
       ? clampNumber(state.mtgMethanolSplit, 0, 100, DEFAULT_STATE.mtgMethanolSplit) / 100
       : 0;
-
-    const exploratoryModules = ModuleCatalog.getExploratoryModules()
-      .map(module => {
-        const enabled = Boolean(state[`${module.id}Enabled`]);
-        const route = state[`${module.id}Route`] || ModuleCatalog.getDefaultRoute(module) || 'unspecified';
-        const routeConfig = this.getModuleRouteConfig(module.id, route);
-        const priorityWeight = this.getExploratoryPriorityWeight(state, module.id);
-        // MTG competes for no H2 or CO2: its throughput is the methanol
-        // diverted to it, so its weight is those product units (methanol
-        // weight x reactor conversion x diverted share / kg MeOH per unit),
-        // not a priority. Weighting it by priority handed it power for up to
-        // ~6x the gasoline its methanol can make.
-        const methanolKgPerUnit = routeConfig?.feedstocks?.methanolKg || 0;
-        const effectivePriorityWeight = enabled
-          ? module.id === 'mtg'
-            ? (methanolKgPerUnit > 0
-                ? (supported.methanol * (clampNumber(state.methanolEfficiency, 0, 100, DEFAULT_STATE.methanolEfficiency) / 100) *
-                  mtgMethanolSplit * 1000) / methanolKgPerUnit
-                : 0)
-            : priorityWeight
-          : 0;
-
-        return {
-          ...module,
-          enabled,
-          route,
-          routeConfig,
-          priorityWeight,
-          effectivePriorityWeight,
-        };
-      });
+    const methanolPoolShares = this.buildWeightedShareMap(methanolConsumers.map(module => ({
+      id: module.id,
+      weight: module.priorityWeight * module.routeConfig.feedstocks.methanolKg,
+    })));
+    const divertedMethanolWeightKg = supported.methanol *
+      (clampNumber(state.methanolEfficiency, 0, 100, DEFAULT_STATE.methanolEfficiency) / 100) * methanolDivertedShare * 1000;
+    const exploratoryModules = routes.map(module => {
+      const methanolKgPerUnit = module.routeConfig?.feedstocks?.methanolKg || 0;
+      const effectivePriorityWeight = !module.enabled
+        ? 0
+        : methanolKgPerUnit > 0
+          ? (divertedMethanolWeightKg * (methanolPoolShares[module.id] || 0)) / methanolKgPerUnit
+          : module.priorityWeight;
+      return { ...module, effectivePriorityWeight };
+    });
 
     const h2Consumers = [];
     const co2Consumers = [];
@@ -218,30 +230,17 @@ export const processMethods = {
       });
     }
 
+    const sharedFeedConsumers = { h2Kg: h2Consumers, co2Kg: co2Consumers };
     exploratoryModules.forEach(module => {
       const routeConfig = module.routeConfig;
       if (!module.enabled || !routeConfig) {
         exploratoryPowerDemandProxies[module.id] = 0;
         return;
       }
-
-      const h2KgPerUnit = routeConfig.feedstocks?.h2Kg || 0;
-      const co2KgPerUnit = routeConfig.feedstocks?.co2Kg || 0;
-      if (h2KgPerUnit > 0) {
-        h2Consumers.push({
-          id: module.id,
-          weight: module.effectivePriorityWeight,
-          inputKgPerUnit: h2KgPerUnit,
-        });
-      }
-      if (co2KgPerUnit > 0) {
-        co2Consumers.push({
-          id: module.id,
-          weight: module.effectivePriorityWeight,
-          inputKgPerUnit: co2KgPerUnit,
-        });
-      }
-
+      Object.entries(sharedFeedConsumers).forEach(([feedKey, consumers]) => {
+        const inputKgPerUnit = routeConfig.feedstocks[feedKey] || 0;
+        if (inputKgPerUnit > 0) consumers.push({ id: module.id, weight: module.effectivePriorityWeight, inputKgPerUnit });
+      });
       exploratoryPowerDemandProxies[module.id] = module.effectivePriorityWeight * (routeConfig.electricityKwhPerUnit || 0);
     });
 
@@ -301,8 +300,8 @@ export const processMethods = {
         h2: this.buildWeightedShareMap(toFeedDemandEntries(h2Consumers)),
         co2: this.buildWeightedShareMap(toFeedDemandEntries(co2Consumers)),
         methanol: this.buildWeightedShareMap([
-          ...(state.methanolEnabled ? [{ id: 'methanolExport', weight: Math.max(0, 1 - mtgMethanolSplit) }] : []),
-          ...(state.mtgEnabled ? [{ id: 'mtg', weight: Math.max(0, mtgMethanolSplit) }] : []),
+          ...(state.methanolEnabled ? [{ id: 'methanolExport', weight: 1 - methanolDivertedShare }] : []),
+          ...methanolConsumers.map(module => ({ id: module.id, weight: methanolDivertedShare * (methanolPoolShares[module.id] || 0) })),
         ]),
       },
       powerProxy: {
@@ -657,47 +656,23 @@ export const processMethods = {
     };
   },
 
-  calculateExploratoryOutputUnits(routeConfig, dailyKWh, allocations = {}) {
-    if (!routeConfig || !Number.isFinite(dailyKWh) || dailyKWh <= 0) return 0;
+  /* Output units a route can make from `energyKWh` of power and the feeds
+     in `feedsKg` (kg keyed by FEEDSTOCK_KEYS) over the same period (a cycle,
+     or an hour for a rate): the binding input sets the output. */
+  calculateExploratoryOutputLimit(routeConfig, energyKWh, feedsKg = {}) {
+    if (!routeConfig || !Number.isFinite(energyKWh) || energyKWh <= 0) return 0;
 
     const limits = [];
     if (routeConfig.electricityKwhPerUnit > 0) {
-      limits.push(dailyKWh / routeConfig.electricityKwhPerUnit);
+      limits.push(energyKWh / routeConfig.electricityKwhPerUnit);
     }
-
-    const feedstocks = routeConfig.feedstocks || {};
-    if (feedstocks.h2Kg > 0) limits.push((allocations.h2Kg || 0) / feedstocks.h2Kg);
-    if (feedstocks.co2Kg > 0) limits.push((allocations.co2Kg || 0) / feedstocks.co2Kg);
-    if (feedstocks.methanolKg > 0) limits.push((allocations.methanolKg || 0) / feedstocks.methanolKg);
-
-    if (!limits.length) return 0;
-    return Math.max(0, Math.min(...limits.filter(Number.isFinite)));
-  },
-
-  calculateExploratoryPeakOutputRate(routeConfig, peakAllocKW, peakAllocations = {}) {
-    if (!routeConfig || !Number.isFinite(peakAllocKW) || peakAllocKW <= 0) return 0;
-
-    const limits = [];
-    if (routeConfig.electricityKwhPerUnit > 0) {
-      limits.push(peakAllocKW / routeConfig.electricityKwhPerUnit);
-    }
-
-    const feedstocks = routeConfig.feedstocks || {};
-    if (feedstocks.h2Kg > 0) limits.push((peakAllocations.h2KgPerHour || 0) / feedstocks.h2Kg);
-    if (feedstocks.co2Kg > 0) limits.push((peakAllocations.co2KgPerHour || 0) / feedstocks.co2Kg);
-    if (feedstocks.methanolKg > 0) limits.push((peakAllocations.methanolKgPerHour || 0) / feedstocks.methanolKg);
-
-    if (!limits.length) return 0;
-    return Math.max(0, Math.min(...limits.filter(Number.isFinite)));
-  },
-
-  calculateExploratoryBufferedOutputRate(routeConfig, peakAllocKW, dailyAllocations = {}, cycleHours = 0) {
-    if (!routeConfig || !Number.isFinite(cycleHours) || cycleHours <= 0) return 0;
-    return this.calculateExploratoryPeakOutputRate(routeConfig, peakAllocKW, {
-      h2KgPerHour: (dailyAllocations.h2Kg || 0) / cycleHours,
-      co2KgPerHour: (dailyAllocations.co2Kg || 0) / cycleHours,
-      methanolKgPerHour: (dailyAllocations.methanolKg || 0) / cycleHours,
+    FEEDSTOCK_KEYS.forEach(feedKey => {
+      const kgPerUnit = routeConfig.feedstocks?.[feedKey] || 0;
+      if (kgPerUnit > 0) limits.push((feedsKg[feedKey] || 0) / kgPerUnit);
     });
+
+    if (!limits.length) return 0;
+    return Math.max(0, Math.min(...limits.filter(Number.isFinite)));
   },
 
   calculateExploratoryCapex(routeConfig, capexBasis, peakOutputUnitsPerHour, cycleHours, cyclesPerYear) {
@@ -720,9 +695,8 @@ export const processMethods = {
   calculateExploratoryModules(state, context = {}) {
     const {
       allocationPlan,
-      materialFlows = {},
-      peakMaterialFlows = {},
-      supportedOutputs = {},
+      dailyFeedsKg = {},
+      peakFeedsKgPerHour = {},
       effectivePeakKW = 0,
       peakSizingKW = 0,
       effectiveDailyKWh = 0,
@@ -732,10 +706,11 @@ export const processMethods = {
     const body = this.getBodyConfig(state.body || 'earth');
     const cyclesPerYear = body.cyclesPerEarthYear;
     const cycleHours = body.cycleHours;
-    const h2Shares = allocationPlan?.feedShares?.h2 || {};
-    const co2Shares = allocationPlan?.feedShares?.co2 || {};
-    const methanolShares = allocationPlan?.feedShares?.methanol || {};
-    const reactorMethanolDailyKg = supportedOutputs?.methanol?.reactorDailyKg || supportedOutputs?.methanol?.dailyKg || 0;
+    // A route's share of each feed (kg of feed per period x its share).
+    const feedsFor = (moduleId, flows, scale = 1) => Object.fromEntries(FEEDSTOCK_KEYS.map(feedKey => [
+      feedKey,
+      (flows[feedKey] || 0) * (allocationPlan?.feedShares?.[FEED_SHARE_KEYS[feedKey]]?.[moduleId] || 0) * scale,
+    ]));
     const peakDayScale = effectiveDailyKWh > 0 && peakDailyKWh > 0
       ? Math.max(1, peakDailyKWh / effectiveDailyKWh)
       : 1;
@@ -744,46 +719,31 @@ export const processMethods = {
       .map(module => {
         const enabled = Boolean(state[`${module.id}Enabled`]);
         const route = state[`${module.id}Route`] || ModuleCatalog.getDefaultRoute(module) || 'unspecified';
-        const routeConfig = this.getModuleRouteConfig(module.id, route);
+        const routeConfig = ModuleCatalog.getRouteConfig(module.id, route);
         const capexBasis = Number(state[`${module.id}CapexBasis`]);
         const omPercent = Number(state.exploratoryOmPercent);
         const powerShare = allocationPlan?.powerShares?.exploratory?.[module.id] || 0;
         const allocKW = effectivePeakKW * powerShare;
         const peakAllocKW = Math.max(effectivePeakKW, peakSizingKW) * powerShare;
         const dailyKWh = effectiveDailyKWh * powerShare;
-        const peakDayKWh = dailyKWh * peakDayScale;
         const bufferEnabled = this.isModuleFeedBufferEnabled(state, module.id, route);
-        const allocations = {
-          h2Kg: (materialFlows.h2DailyKg || 0) * (h2Shares[module.id] || 0),
-          co2Kg: (materialFlows.co2DailyKg || 0) * (co2Shares[module.id] || 0),
-          methanolKg: module.id === 'mtg' ? reactorMethanolDailyKg * (methanolShares.mtg || 0) : 0,
-        };
-        const peakDayAllocations = {
-          h2Kg: allocations.h2Kg * peakDayScale,
-          co2Kg: allocations.co2Kg * peakDayScale,
-          methanolKg: allocations.methanolKg * peakDayScale,
-        };
-        const peakAllocations = {
-          h2KgPerHour: (peakMaterialFlows.h2KgPerHour || 0) * (h2Shares[module.id] || 0),
-          co2KgPerHour: (peakMaterialFlows.co2KgPerHour || 0) * (co2Shares[module.id] || 0),
-          methanolKgPerHour: module.id === 'mtg' ? (peakMaterialFlows.methanolKgPerHour || 0) * (methanolShares.mtg || 0) : 0,
-        };
+        const allocations = feedsFor(module.id, dailyFeedsKg);
+        const peakDayAllocations = feedsFor(module.id, dailyFeedsKg, peakDayScale);
         const outputDailyUnits = enabled
-          ? this.calculateExploratoryOutputUnits(routeConfig, dailyKWh, allocations)
+          ? this.calculateExploratoryOutputLimit(routeConfig, dailyKWh, allocations)
           : 0;
         const peakOutputUnitsPerHour = enabled
-          ? this.calculateExploratoryPeakOutputRate(routeConfig, peakAllocKW, peakAllocations)
+          ? this.calculateExploratoryOutputLimit(routeConfig, peakAllocKW, feedsFor(module.id, peakFeedsKgPerHour))
           : 0;
         const peakOutputDailyUnits = enabled
-          ? this.calculateExploratoryOutputUnits(routeConfig, peakDayKWh, peakDayAllocations)
+          ? this.calculateExploratoryOutputLimit(routeConfig, dailyKWh * peakDayScale, peakDayAllocations)
           : 0;
-        const capexSizingOutputUnitsPerHour = enabled
-          ? (
-              bufferEnabled
-                ? this.calculateExploratoryBufferedOutputRate(routeConfig, peakAllocKW, peakDayAllocations, cycleHours)
-                : peakOutputUnitsPerHour
-            )
-          : 0;
+        // A buffered route runs at the peak day's cycle-average feed rate.
+        const capexSizingOutputUnitsPerHour = !enabled
+          ? 0
+          : bufferEnabled
+            ? (cycleHours > 0 ? this.calculateExploratoryOutputLimit(routeConfig, peakAllocKW, feedsFor(module.id, dailyFeedsKg, peakDayScale / cycleHours)) : 0)
+            : peakOutputUnitsPerHour;
         const annualOutputUnits = outputDailyUnits * cyclesPerYear;
         const realizedCapacityFactor = capexSizingOutputUnitsPerHour > 0 && cycleHours > 0
           ? Math.max(0, Math.min(1, outputDailyUnits / (capexSizingOutputUnitsPerHour * cycleHours)))

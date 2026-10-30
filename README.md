@@ -212,7 +212,7 @@ exploratory_share_j = (expl_pool / total) * w_j / sum_k w_k      # pool split by
 h2_feed_share_i  = w_i * h2_kg_per_unit_i  / sum_k w_k * h2_kg_per_unit_k   (same for CO2)
 ```
 
-Because the feed split uses the same `weight * kg/unit` as the power split, each consumer gets H2 and CO2 in stoichiometric ratio. The only unused feed is each reactor's unconverted fraction. For example, methane + methanol 50/50 at 95%/80% conversion leaves 9.1% of the H2 and 10.0% of the CO2 unused. With no product enabled, the split falls back to 50/50 and everything is vented.
+Because the feed split uses the same `weight * kg/unit` as the power split, each consumer gets H2 and CO2 in stoichiometric ratio. The only unused feed is each reactor's unconverted fraction. For example, methane + methanol 50/50 at 95%/80% conversion leaves 9.1% of the H2 and 10.0% of the CO2 unused. A disabled electrolyzer or DAC gets no power. With no product reactor or route enabled, the enabled blocks split power in the methane stoichiometric ratio (0.503 kg H2 and 2.744 kg CO2 per kg CH4: ~81/19 at defaults; a lone block gets it all) and everything is vented. Unconverted reactor feed is vented, not recycled to the reactor inlet. The allocation result carries a `kind` (`productMix`, `methane`, `methanol`, `exploratoryOnly`, `methaneFallback`) that the UI labels from.
 
 ```text
 H2 kg      = electrolyzer_kWh / kWh_per_kg      (LHV efficiency = 33.33 / kWh_per_kg; HHV floor 39.4)

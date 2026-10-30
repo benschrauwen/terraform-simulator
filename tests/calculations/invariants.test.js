@@ -65,6 +65,10 @@ const SCENARIOS = {
   moonPel: { ...sitePreset('Moon'), mountingType: 'dual' },
   berlin: sitePreset('Berlin'),
   zeroSize: { systemSizeMW: 0 },
+  // No product reactor: the electrolyzer / DAC split falls back to the
+  // methane ratio among the enabled blocks.
+  noReactor: { sabatierEnabled: false },
+  dacOnly: { sabatierEnabled: false, electrolyzerEnabled: false },
 };
 
 const results = Object.fromEntries(
@@ -209,7 +213,10 @@ test('I4 H2 and CO2 produced equal the sum consumed plus a non-negative surplus'
       assert.equal(mtgMethanol, 0, `${name} no methanol for MTG without the reactor`);
     }
     // Exploratory routes convert their feeds fully, so the only stranded
-    // H2 / CO2 is the unconverted fraction of the supported reactors.
+    // H2 / CO2 is the unconverted fraction of the supported reactors
+    // (all of it when nothing consumes that feed).
+    const plan = Calc.buildProcessAllocationPlan(result.state);
+    if (!Object.keys(plan.feedShares.h2).length || !Object.keys(plan.feedShares.co2).length) return;
     const conversions = [1];
     if (result.sabatier.enabled) conversions.push(result.state.sabatierConversion / 100);
     if (result.methanol.enabled) conversions.push(result.state.methanolEfficiency / 100);
@@ -589,4 +596,27 @@ test('I12 cost allocation: AI + chemical plant = total asset-life annual cost; A
       relClose(u.chemicalPowerCost, solarLandCost + batteryCost, 1e-9, `${name} chemical power cost`, 1e-6);
     }
   });
+});
+
+test('I14 power shares cover only enabled blocks and sum to 1; with no reactor they follow the methane ratio', () => {
+  forEachScenario((result, name) => {
+    const { allocation, state } = result;
+    const shares = [allocation.electrolyzer, allocation.dac, ...Object.values(allocation.exploratory)];
+    if (state.electrolyzerEnabled || state.dacEnabled || result.exploratoryModules.some(module => module.enabled)) {
+      relClose(sum(shares), 1, 1e-12, `${name} power shares`);
+    }
+    if (!state.electrolyzerEnabled) assert.equal(allocation.electrolyzer, 0, `${name} disabled electrolyzer`);
+    if (!state.dacEnabled) assert.equal(allocation.dac, 0, `${name} disabled DAC`);
+    assert.ok(['productMix', 'methane', 'methanol', 'exploratoryOnly', 'methaneFallback'].includes(allocation.kind), `${name} kind`);
+  });
+  // CH4 + 2 H2O <- CO2 + 4 H2: per kg CH4, 4 x 2.016 / 16.04 = 0.503 kg H2
+  // and 44.01 / 16.04 = 2.744 kg CO2. The electrolyzer power share is
+  // 0.503 e / (0.503 e + 2.744 d / 1000): 39.7 / (39.7 + 9.44) = 0.808 at
+  // the default 79 kWh/kg H2 and 3,440 kWh/t CO2 (the old fallback was 0.5).
+  const { state, allocation } = results.noReactor;
+  assert.equal(allocation.kind, 'methaneFallback');
+  const h2 = (4 * M.h2 / M.ch4) * state.electrolyzerEfficiency;
+  const co2 = (M.co2 / M.ch4) * state.dacEnergy / 1000;
+  relClose(allocation.electrolyzer, h2 / (h2 + co2), 2e-3, 'methane-ratio electrolyzer share');
+  assert.equal(results.dacOnly.allocation.dac, 1, 'a lone DAC takes all the power');
 });

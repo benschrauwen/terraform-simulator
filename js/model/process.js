@@ -112,14 +112,17 @@ export const processMethods = {
     if (mix.methaneShare === 0 && mix.methanolShare === 0) {
       return {
         mix,
-        label: 'default methane case',
+        kind: 'none',
+        label: 'no product reactor',
         sabatier: 100,
         methanol: 0,
       };
     }
 
+    const kind = mix.bothEnabled ? 'productMix' : mix.methaneShare > 0 ? 'methane' : 'methanol';
     return {
       mix,
+      kind,
       label: mix.bothEnabled
         ? 'configured product mix'
         : mix.methaneShare > 0
@@ -252,15 +255,27 @@ export const processMethods = {
       weight: Math.max(0, consumer.weight || 0) * Math.max(0, consumer.inputKgPerUnit || 0),
     }));
 
-    const h2PowerDemand = h2Consumers.reduce(
-      (sum, consumer) => sum + consumer.weight * consumer.inputKgPerUnit * state.electrolyzerEfficiency,
-      0
-    );
-    const co2PowerDemand = co2Consumers.reduce(
-      (sum, consumer) => sum + consumer.weight * consumer.inputKgPerUnit * (state.dacEnergy / 1000),
-      0
-    );
+    // A disabled electrolyzer or DAC takes no power: its share would be
+    // delivered energy that turns into nothing.
+    let h2PowerDemand = state.electrolyzerEnabled
+      ? h2Consumers.reduce((sum, consumer) => sum + consumer.weight * consumer.inputKgPerUnit * state.electrolyzerEfficiency, 0)
+      : 0;
+    let co2PowerDemand = state.dacEnabled
+      ? co2Consumers.reduce((sum, consumer) => sum + consumer.weight * consumer.inputKgPerUnit * (state.dacEnergy / 1000), 0)
+      : 0;
     const exploratoryPowerDemand = Object.values(exploratoryPowerDemandProxies).reduce((sum, value) => sum + value, 0);
+    // With nothing downstream to set the split (no product reactor, no
+    // route), the enabled electrolyzer / DAC split power in the methane
+    // stoichiometric ratio (per kg CH4: 0.503 kg H2 x kWh/kg vs 2.744 kg
+    // CO2 x kWh/kg, ~0.82 / 0.18 at defaults); a lone block gets it all.
+    let kind = supported.kind === 'none'
+      ? (exploratoryPowerDemand > 0 ? 'exploratoryOnly' : 'methaneFallback')
+      : supported.kind;
+    if (h2PowerDemand + co2PowerDemand + exploratoryPowerDemand <= 0) {
+      kind = 'methaneFallback';
+      h2PowerDemand = state.electrolyzerEnabled ? CHEMISTRY.sabatier.h2MassPerKgCH4 * state.electrolyzerEfficiency : 0;
+      co2PowerDemand = state.dacEnabled ? CHEMISTRY.sabatier.co2MassPerKgCH4 * (state.dacEnergy / 1000) : 0;
+    }
     const totalPowerDemand = h2PowerDemand + co2PowerDemand + exploratoryPowerDemand;
     // Each route's power share is its own demand (weight x kWh per unit),
     // the same product its feed shares use, so power and feeds limit its
@@ -272,8 +287,14 @@ export const processMethods = {
       return shares;
     }, {});
 
+    const baseLabel = {
+      exploratoryOnly: 'exploratory demand',
+      methaneFallback: 'methane stoichiometric split (no product reactor)',
+    }[kind] || supported.label;
     return {
-      label: exploratoryPowerDemand > 0 ? `${supported.label} + exploratory demand` : supported.label,
+      kind,
+      includesExploratory: exploratoryPowerDemand > 0,
+      label: exploratoryPowerDemand > 0 && kind !== 'exploratoryOnly' ? `${baseLabel} + exploratory demand` : baseLabel,
       supported,
       exploratoryModules,
       feedShares: {
@@ -291,8 +312,8 @@ export const processMethods = {
         total: totalPowerDemand,
       },
       powerShares: {
-        electrolyzer: totalPowerDemand > 0 ? h2PowerDemand / totalPowerDemand : 0.5,
-        dac: totalPowerDemand > 0 ? co2PowerDemand / totalPowerDemand : 0.5,
+        electrolyzer: totalPowerDemand > 0 ? h2PowerDemand / totalPowerDemand : 0,
+        dac: totalPowerDemand > 0 ? co2PowerDemand / totalPowerDemand : 0,
         exploratory: exploratoryPowerShares,
       },
     };
@@ -306,6 +327,8 @@ export const processMethods = {
   getAllocationFromPlan(allocationPlan) {
     return {
       source: 'auto',
+      kind: allocationPlan.kind,
+      includesExploratory: allocationPlan.includesExploratory,
       label: allocationPlan.label,
       electrolyzer: allocationPlan.powerShares.electrolyzer,
       dac: allocationPlan.powerShares.dac,

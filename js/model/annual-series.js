@@ -77,10 +77,6 @@ export const annualSeriesMethods = {
     return { hourlyKW, totalKWh, reachable };
   },
 
-  scaleRawSeriesToAnnualEnergy(rawSeries, annualKWhTarget, peakKW) {
-    return this.scaleRawSeriesToEnergy(rawSeries, annualKWhTarget, peakKW).hourlyKW;
-  },
-
   /* Earth hourly series in kW for the modeled site, via the per-site
      geometry cache and a per-full-load-hours shape cache. */
   buildEarthHourlySolarKW(state, solar, annualKWhTarget, peakKW) {

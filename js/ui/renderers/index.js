@@ -251,9 +251,7 @@ export const rendererMethods = {
     (r.exploratoryModules || [])
       .filter(module => module.enabled && module.outputDailyUnits > 0)
       .forEach(module => {
-        const value = module.outputUnit === 'm3'
-          ? `${FormatNumbers.fixed(module.outputDailyUnits, module.outputDailyUnits >= 10 ? 0 : 1)}`
-          : `${FormatNumbers.fixed(module.outputDailyUnits, module.outputDailyUnits >= 10 ? 0 : 1)}`;
+        const value = FormatNumbers.fixed(module.outputDailyUnits, module.outputDailyUnits >= 10 ? 0 : 1);
         const unit = module.outputUnit === 'm3' ? `m3/${cycleUnit}` : `t/${cycleUnit}`;
         rows.push(prodItem('electric', '', module.outputLabel || module.label, value, unit));
       });

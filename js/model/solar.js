@@ -20,7 +20,6 @@ import {
   MOUNTING_TYPES,
   PLANETARY_BODIES,
 } from '../data/reference-data.js';
-import { DEFAULT_STATE } from '../state/schema.js';
 import { crf, getLevelizedSolarDegradationFactor } from './finance.js';
 import { SolarGeometry } from './solar-geometry.js';
 import { clampNumber } from './util.js';
@@ -356,7 +355,7 @@ export const solarMethods = {
     const rate = state.discountRate / 100;
     const annualizedLand = landCapex * Math.max(0, rate);
     const annualizedSolar = (depreciableSolarCapex * crf(rate, state.solarAssetLife)) + annualizedLand;
-    const solarOmFrac = (state.solarOmPercent ?? DEFAULT_STATE.solarOmPercent) / 100;
+    const solarOmFrac = state.solarOmPercent / 100;
     const annualSolarOm = (totalPanelCost + totalBOSCost) * solarOmFrac;
     // Levelized (discounted) energy over the array life, matching the CRF
     // capital charge in the numerator.

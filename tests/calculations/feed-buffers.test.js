@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { CHEMISTRY } from '../../js/data/reference-data.js';
-import { Calc, createState, formatMoney, runScenario } from './harness.js';
+import { Calc, ModuleCatalog, createState, formatMoney, runScenario } from './harness.js';
 
 const close = (actual, expected, tolerance, message) => assert.ok(
   Math.abs(actual - expected) <= tolerance,
@@ -144,7 +144,7 @@ test('co2-to-co feed buffer keeps output while sizing from peak-day average co2 
   const buffered = runScenario({ ...baseOverrides, carbonMonoxideBufferEnabled: true });
   const coUnbuffered = unbuffered.exploratoryModules.find(module => module.id === 'carbonMonoxide');
   const coBuffered = buffered.exploratoryModules.find(module => module.id === 'carbonMonoxide');
-  const route = Calc.getExploratoryRouteConfig('carbonMonoxide', 'plasma');
+  const route = ModuleCatalog.getRouteConfig('carbonMonoxide', 'plasma');
   const peakChemicalDailyKWh = Math.max(...(buffered.annualDispatch?.dailyChemicalKWh || []), 0);
   const peakDayScale = buffered.chemicalSupply.dailyAvailableKWh > 0
     ? Math.max(1, peakChemicalDailyKWh / buffered.chemicalSupply.dailyAvailableKWh)
@@ -211,7 +211,7 @@ test('mtg peak fully reflects upstream methanol buffering even without the MTG b
   const methanolBuffered = runScenario({ ...baseOverrides, methanolBufferEnabled: true });
   const mtgUnbuffered = unbuffered.exploratoryModules.find(module => module.id === 'mtg');
   const mtgMethanolBuffered = methanolBuffered.exploratoryModules.find(module => module.id === 'mtg');
-  const route = Calc.getExploratoryRouteConfig('mtg', 'fluid-bed');
+  const route = ModuleCatalog.getRouteConfig('mtg', 'fluid-bed');
   const methanolShare = Calc.buildProcessAllocationPlan(methanolBuffered.state).feedShares.methanol.mtg || 0;
   const expectedBufferedPeakUnitsPerHour = (
     (methanolBuffered.methanol.designHourlyOutputKg || 0) * methanolShare
@@ -263,7 +263,7 @@ test('mtg buffer no longer changes peak or capex after methanol is already buffe
   const mtgOnlyBuffered = mtgBuffered.exploratoryModules.find(module => module.id === 'mtg');
   const mtgUpstreamBuffered = upstreamBuffered.exploratoryModules.find(module => module.id === 'mtg');
   const mtgBothBuffered = bothBuffered.exploratoryModules.find(module => module.id === 'mtg');
-  const route = Calc.getExploratoryRouteConfig('mtg', 'fluid-bed');
+  const route = ModuleCatalog.getRouteConfig('mtg', 'fluid-bed');
   const methanolShare = Calc.buildProcessAllocationPlan(upstreamBuffered.state).feedShares.methanol.mtg || 0;
   const expectedBufferedPeakUnitsPerHour = (
     (upstreamBuffered.methanol.designHourlyOutputKg || 0) * methanolShare

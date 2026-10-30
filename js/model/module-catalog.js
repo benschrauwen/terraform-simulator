@@ -3,7 +3,7 @@
    ============================================
    Normalizes the raw definitions in data/modules.js into frozen module objects
    and answers catalog questions (routes, presets, markets, feed buffers, capex
-   slider ranges). `catalogMethods` exposes the Calc-facing wrappers. */
+   slider ranges). */
 
 import { MODULE_DEFINITIONS, MODULE_FAMILY_LABELS } from '../data/modules.js';
 
@@ -110,10 +110,6 @@ export const ModuleCatalog = Object.freeze({
 
   getExploratoryModules() {
     return MODULE_CATALOG.filter(module => module.exploratory);
-  },
-
-  resolve(moduleOrId) {
-    return resolveModule(moduleOrId);
   },
 
   hasRoutes(moduleOrId) {
@@ -226,6 +222,13 @@ export const ModuleCatalog = Object.freeze({
     return Boolean(routeConfig?.supportsFeedBuffer);
   },
 
+  /* True when the module's selected route supports a feed buffer and the
+     state turns it on. */
+  isFeedBufferEnabled(state, moduleOrId, route = null) {
+    const module = resolveModule(moduleOrId);
+    return Boolean(module) && this.supportsFeedBuffer(module, route) && Boolean(state?.[`${module.id}BufferEnabled`]);
+  },
+
   /* True when the module or any of its routes can run with a feed buffer. */
   hasFeedBufferSupport(moduleOrId) {
     const module = resolveModule(moduleOrId);
@@ -275,46 +278,3 @@ export const ModuleCatalog = Object.freeze({
     }, {});
   },
 });
-
-/* Calc facade wrappers (kept for the UI's existing Calc.* calls). */
-export const catalogMethods = {
-  getModuleById(moduleId) {
-    return ModuleCatalog.getById(moduleId);
-  },
-
-  getDirectModuleDependencies(moduleId, state = {}) {
-    return ModuleCatalog.getDependencies(moduleId, state);
-  },
-
-  getModuleRouteConfig(moduleId, route) {
-    return ModuleCatalog.getRouteConfig(moduleId, route);
-  },
-
-  getExploratoryRouteConfig(moduleId, route) {
-    return ModuleCatalog.getRouteConfig(moduleId, route);
-  },
-
-  getModuleCapexControlConfig(moduleId, route) {
-    return ModuleCatalog.getCapexControlConfig(moduleId, route);
-  },
-
-  getExploratoryCapexControlConfig(moduleId, route) {
-    return ModuleCatalog.getCapexControlConfig(moduleId, route);
-  },
-
-  moduleSupportsFeedBuffer(moduleId, route = null) {
-    return ModuleCatalog.supportsFeedBuffer(moduleId, route);
-  },
-
-  hasModuleFeedBufferSupport(moduleId) {
-    return ModuleCatalog.hasFeedBufferSupport(moduleId);
-  },
-
-  getModuleFeedBufferLabel(moduleId, route = null) {
-    return ModuleCatalog.getFeedBufferLabel(moduleId, route);
-  },
-
-  isModuleFeedBufferEnabled(state = {}, moduleId, route = null) {
-    return ModuleCatalog.supportsFeedBuffer(moduleId, route) && Boolean(state?.[`${moduleId}BufferEnabled`]);
-  },
-};

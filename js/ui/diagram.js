@@ -844,7 +844,7 @@ export const Diagram = {
 
   drawConn(connection) {
     if (!connection) return '';
-    const { from, to, color, label, active, width, labelOffsetX, labelOffsetY } = connection;
+    const { color, label, active, width, labelOffsetX, labelOffsetY } = connection;
     if (!active) return this.drawInactiveLine(connection);
     const { x1, y1, x2, y2, path } = this.buildConnPath(connection);
 

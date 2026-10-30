@@ -2,7 +2,6 @@
    Domain display formatters shared by controls and renderers
    ============================================ */
 
-import { Calc } from '../model/index.js';
 import { ModuleCatalog } from '../model/module-catalog.js';
 import { FormatNumbers } from './format-numbers.js';
 
@@ -60,7 +59,7 @@ export function formatExploratoryOmPercent(value) {
 
 /** CAPEX basis of an exploratory route, e.g. `$450/ton/yr capacity`. */
 export function formatExploratoryCapexBasis(moduleId, route, value) {
-  const capexConfig = Calc.getModuleCapexControlConfig(moduleId, route);
+  const capexConfig = ModuleCatalog.getCapexControlConfig(moduleId, route);
   const digits = capexConfig.step < 1 ? 2 : 0;
   return `$${FormatNumbers.fixed(parseFloat(value), digits)}/${capexConfig.unitLabel.replace('$/', '')}`;
 }

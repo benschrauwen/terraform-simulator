@@ -13,7 +13,6 @@
 import { MODEL_ASSUMPTIONS } from '../data/assumptions.js';
 import { hasBatteryStorage } from '../state/normalize.js';
 import { DEFAULT_STATE } from '../state/schema.js';
-import { crf } from './finance.js';
 import { clampNumber } from './util.js';
 
 export function getBatteryLeakageRetention(stepHours) {
@@ -343,7 +342,7 @@ export const batteryMethods = {
       ...finalDispatch,
       fullCaptureChemicalKW: fullCapture.processPowerKW,
       fullCaptureChemicalKWh,
-      chemicalSizingPercent: state.chemicalSizingPercent ?? DEFAULT_STATE.chemicalSizingPercent,
+      chemicalSizingPercent: state.chemicalSizingPercent,
     };
     const { capex, lifetimeYears, equivalentFullCyclesPerYear } = getBatteryCapexAndLife(
       state,

@@ -136,7 +136,6 @@ export const optimizerMethods = {
       }
     }
 
-    if (typeof Calc.findBestRangeValueForIrr !== 'function') return null;
     const fallbackResult = Calc.findBestRangeValueForIrr(this.state, search, { onProgress });
     return fallbackResult?.bestValue ?? null;
   },

@@ -46,7 +46,7 @@ export const moduleControlMethods = {
         const marketConfig = ModuleCatalog.getMarketConfig(module.id, route);
         if (!marketConfig) return '';
         const priceKey = `${module.id}Price`;
-        const currentValue = this.state[priceKey] ?? marketConfig.defaultValue;
+        const currentValue = this.state[priceKey];
         return `
           <div id="${module.id}MarketWrap" class="market-exploratory-group" hidden>
             <div class="module-note-title">${module.label}</div>
@@ -72,22 +72,22 @@ export const moduleControlMethods = {
         <div class="module-note-title">Shared exploratory plants</div>
         <label>
           Exploratory M&amp;O (% CAPEX / yr)
-          <input type="range" id="exploratoryOmPercent" min="0" max="20" step="0.5" value="${this.state.exploratoryOmPercent ?? 4}">
-          <span class="range-value" id="exploratoryOmPercentValue">${formatExploratoryOmPercent(this.state.exploratoryOmPercent ?? 4)}</span>
+          <input type="range" id="exploratoryOmPercent" min="0" max="20" step="0.5" value="${this.state.exploratoryOmPercent}">
+          <span class="range-value" id="exploratoryOmPercentValue">${formatExploratoryOmPercent(this.state.exploratoryOmPercent)}</span>
         </label>
       </div>
     `;
   },
 
   renderModuleBufferControl(module, route = null) {
-    if (!Calc.hasModuleFeedBufferSupport(module.id)) return '';
+    if (!ModuleCatalog.hasFeedBufferSupport(module.id)) return '';
 
     const bufferKey = `${module.id}BufferEnabled`;
     return `
-      <div id="${module.id}BufferWrap"${hiddenAttr(Calc.moduleSupportsFeedBuffer(module.id, route))}>
+      <div id="${module.id}BufferWrap"${hiddenAttr(ModuleCatalog.supportsFeedBuffer(module.id, route))}>
         <label class="toggle-label">
           <input type="checkbox" id="${bufferKey}" ${this.state[bufferKey] ? 'checked' : ''}>
-          <span>${Calc.getModuleFeedBufferLabel(module.id, route)}</span>
+          <span>${ModuleCatalog.getFeedBufferLabel(module.id, route)}</span>
         </label>
       </div>
     `;
@@ -173,14 +173,14 @@ export const moduleControlMethods = {
     ).join('');
     const priorityKey = `${module.id}PriorityWeight`;
     const capexKey = `${module.id}CapexBasis`;
-    const capexControl = Calc.getModuleCapexControlConfig(module.id, route);
-    const capexValue = this.state[capexKey] ?? capexControl.defaultValue;
+    const capexControl = ModuleCatalog.getCapexControlConfig(module.id, route);
+    const capexValue = this.state[capexKey];
     // MTG takes no shared H2 / CO2: its throughput (and power) follows the
     // methanol diverted to it, so it has no pool priority.
     const priorityControl = module.id === 'mtg' ? '' : `
       <label>Shared Pool Priority
-        <input type="range" id="${priorityKey}" min="0" max="100" step="5" value="${this.state[priorityKey] ?? 100}">
-        <span class="range-value" id="${priorityKey}Value">${formatExploratoryPriorityWeight(this.state[priorityKey] ?? 100)}</span>
+        <input type="range" id="${priorityKey}" min="0" max="100" step="5" value="${this.state[priorityKey]}">
+        <span class="range-value" id="${priorityKey}Value">${formatExploratoryPriorityWeight(this.state[priorityKey])}</span>
       </label>
     `;
     const capexBlock = `
@@ -293,7 +293,7 @@ export const moduleControlMethods = {
     const label = document.getElementById(`${moduleId}CapexBasisLabel`);
     if (!input) return;
 
-    const capexConfig = Calc.getModuleCapexControlConfig(moduleId, this.state[`${moduleId}Route`]);
+    const capexConfig = ModuleCatalog.getCapexControlConfig(moduleId, this.state[`${moduleId}Route`]);
     input.min = String(capexConfig.min);
     input.max = String(capexConfig.max);
     input.step = String(capexConfig.step);
@@ -334,6 +334,6 @@ export const moduleControlMethods = {
     const wrap = document.getElementById(`${moduleId}BufferWrap`);
     if (!wrap) return;
     const route = this.state[`${moduleId}Route`];
-    wrap.hidden = !Calc.moduleSupportsFeedBuffer(moduleId, route);
+    wrap.hidden = !ModuleCatalog.supportsFeedBuffer(moduleId, route);
   },
 };

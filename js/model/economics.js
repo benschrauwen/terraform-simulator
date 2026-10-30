@@ -500,7 +500,6 @@ export const economicsMethods = {
     const revenue = {
       ai: ai.enabled ? ai.annualRevenue : 0,
       methane: sabatier.enabled ? sabatier.ch4AnnualMCF * methaneSalePrice : 0,
-      hydrogen: 0,
       methanol: methanol.enabled ? methanol.exportAnnualTons * state.methanolPrice : 0,
       exploratory: exploratoryDetails.reduce((sum, module) => sum + module.annualRevenue, 0),
       policyCredits: policy.total,

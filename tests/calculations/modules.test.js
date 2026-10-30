@@ -87,8 +87,8 @@ test('dac capex is sized from nameplate capacity at the 25% reference utilizatio
 });
 
 test('exploratory capex controls spell out annual output capacity units', () => {
-  const mtgControl = Calc.getExploratoryCapexControlConfig('mtg', 'fixed-bed');
-  const desalinationControl = Calc.getExploratoryCapexControlConfig('desalination', 'reverse-osmosis');
+  const mtgControl = ModuleCatalog.getCapexControlConfig('mtg', 'fixed-bed');
+  const desalinationControl = ModuleCatalog.getCapexControlConfig('desalination', 'reverse-osmosis');
 
   assert.equal(
     mtgControl.unitLabel,
@@ -230,7 +230,7 @@ test('exploratory capex uses annual peak throughput rather than average-day sizi
   });
 
   const lime = result.exploratoryModules.find(module => module.id === 'lime');
-  const route = Calc.getExploratoryRouteConfig('lime', 'resistive-calciner');
+  const route = ModuleCatalog.getRouteConfig('lime', 'resistive-calciner');
   const peakSizingKW = Math.max(result.chemicalSupply.processPowerKW, result.annualDispatch?.chemicalPeakKW || 0);
   const expectedPeakOutputUnitsPerHour = peakSizingKW / route.electricityKwhPerUnit;
   const expectedPeakSizedCapex = expectedPeakOutputUnitsPerHour *

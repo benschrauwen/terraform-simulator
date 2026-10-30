@@ -28,8 +28,6 @@ function interpolate(nodes, factor, key) {
 }
 
 export const lifetimeEnergyMethods = {
-  getSolarFactorForYear,
-
   /* `year1` and `evaluate(solarFactor)` return { aiServedKWh, chemicalKWh,
      clippedKWh, reliability } on the dispatch horizon; energies are
      multiplied by `annualizationFactor` (Mars orbital year -> Earth year).

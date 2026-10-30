@@ -21,8 +21,7 @@ export const siteMapMethods = {
   initSiteMap() {
     const mapEl = document.getElementById('siteMap');
     if (!mapEl || this.siteMap) return;
-    const palette = (typeof Diagram !== 'undefined' && Diagram.colors) ? Diagram.colors : {};
-    const markerColor = palette.electric || '#5f7fb8';
+    const markerColor = Diagram.colors.electric;
     const overlayColor = this.getSiteFootprintColor('total');
 
     if (typeof L === 'undefined') {

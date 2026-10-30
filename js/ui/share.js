@@ -156,7 +156,6 @@ export const shareMethods = {
   },
 
   persistSavedSiteAppStateIfNeeded() {
-    if (typeof SavedSitePresets === 'undefined' || !SavedSitePresets.saveAppStateForSite) return;
     if (
       this.deferSavedSitePersistUntilNextSync &&
       this._hashHydratedState &&

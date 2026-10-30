@@ -13,7 +13,6 @@ import { batteryMethods } from './battery.js';
 import { economicsMethods } from './economics.js';
 import { financeMethods } from './finance.js';
 import { lifetimeEnergyMethods } from './lifetime-energy.js';
-import { catalogMethods } from './module-catalog.js';
 import { optimizerSearchMethods } from './optimizer-search.js';
 import { processMethods } from './process.js';
 import { scenarioMethods } from './scenario.js';
@@ -24,7 +23,6 @@ export const Calc = Object.assign(
   {},
   utilMethods,
   financeMethods,
-  catalogMethods,
   normalizeMethods,
   optimizerSearchMethods,
   solarMethods,

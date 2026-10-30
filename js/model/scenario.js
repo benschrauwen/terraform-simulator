@@ -16,14 +16,6 @@ export const scenarioMethods = {
     const exploratoryEnabled = ModuleCatalog.getExploratoryModules().some(
       module => Boolean(normalizedState[`${module.id}Enabled`])
     );
-    const bufferedModuleEnabled = ModuleCatalog.getAll().some(module => {
-      if (!normalizedState[`${module.id}Enabled`]) return false;
-      return this.isModuleFeedBufferEnabled(
-        normalizedState,
-        module.id,
-        normalizedState[`${module.id}Route`]
-      );
-    });
     const includeSeries = !fastMode;
     const includeSupportedModules = !fastMode;
     const includeExploratoryModules = !fastMode || exploratoryEnabled;
@@ -95,19 +87,17 @@ export const scenarioMethods = {
           : 0,
       },
       opHours,
-      allocationPlan,
-      { includeSupportedModules }
+      allocationPlan
     );
 
-    const sabatier = productFlow.outputs.sabatier || this.calculateSabatier({ ...normalizedState, sabatierEnabled: false }, 0, 0, opHours);
-    const reactorMethanol = productFlow.outputs.methanol || this.calculateMethanol({ ...normalizedState, methanolEnabled: false }, 0, 0, opHours);
+    const { sabatier, methanol: reactorMethanol } = productFlow.outputs;
     const exploratoryModules = includeExploratoryModules
       ? this.calculateExploratoryModules(normalizedState, {
           allocationPlan,
           dailyFeedsKg: {
             h2Kg: electrolyzer.h2DailyKg || 0,
             co2Kg: dac.co2DailyKg || 0,
-            methanolKg: productFlow.outputs.methanol.reactorDailyKg,
+            methanolKg: reactorMethanol.reactorDailyKg,
           },
           peakFeedsKgPerHour: {
             h2Kg: normalizedState.electrolyzerEnabled
@@ -116,8 +106,8 @@ export const scenarioMethods = {
             co2Kg: normalizedState.dacEnabled
               ? ((peakSizingKW * allocation.dac) / normalizedState.dacEnergy) * 1000
               : 0,
-            methanolKg: (productFlow.outputs?.methanol?.designHourlyOutputKg || 0) * (
-              productFlow.outputs?.methanol?.bufferEnabled
+            methanolKg: reactorMethanol.designHourlyOutputKg * (
+              reactorMethanol.bufferEnabled
                 ? 1
                 : (effectivePeakKW > 0 ? peakSizingKW / effectivePeakKW : 1)
             ),

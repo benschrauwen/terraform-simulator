@@ -313,7 +313,7 @@ export const aiComputeMethods = {
       capturedSolarFraction: annualizedFullCaptureChemicalKWh > 0
         ? annualizedChemicalKWh / annualizedFullCaptureChemicalKWh
         : 1,
-      sizingPercent: dispatch.chemicalSizingPercent ?? DEFAULT_STATE.chemicalSizingPercent,
+      sizingPercent: dispatch.chemicalSizingPercent,
       baseloadKW: dispatch.loadKW || 0,
       clipKW: Math.max(0, fullCapturePowerKW - processPowerKW),
     };
@@ -386,7 +386,7 @@ export const aiComputeMethods = {
       }),
       fullCaptureChemicalKW: fullCaptureDispatch.chemicalPeakKW || 0,
       fullCaptureChemicalKWh: fullCaptureDispatch.chemicalKWh || 0,
-      chemicalSizingPercent: state.chemicalSizingPercent ?? DEFAULT_STATE.chemicalSizingPercent,
+      chemicalSizingPercent: state.chemicalSizingPercent,
     };
     const lifetimeEnergy = this.buildLifetimeEnergyProfile(state, {
       year1: {
@@ -420,9 +420,9 @@ export const aiComputeMethods = {
     const annualAiServedKWh = finalDispatch.aiServedKWh * annualizationFactor;
     const annualChemicalKWh = finalDispatch.chemicalKWh * annualizationFactor;
     const annualTokensM = (annualAiServedKWh / 1000) * (state.aiMillionTokensPerMWh || 0);
-    const gpuCapexPerKW = state.aiGpuCapexPerKW ?? AI_COMPUTE_DEFAULTS.capexPerKW;
+    const gpuCapexPerKW = state.aiGpuCapexPerKW;
     const capex = designLoadKW * gpuCapexPerKW;
-    const annualizedCapex = capex * crf(state.discountRate / 100, state.aiAssetLifeYears || AI_COMPUTE_DEFAULTS.assetLifeYears);
+    const annualizedCapex = capex * crf(state.discountRate / 100, state.aiAssetLifeYears);
     const annualOM = capex * ((AI_COMPUTE_DEFAULTS.omPercent || 0) / 100);
     const minReliabilityYearIndex = lifetimeEnergy.aiReliabilityByYear.indexOf(lifetimeEnergy.minAiReliability);
 
@@ -453,7 +453,7 @@ export const aiComputeMethods = {
       capex,
       annualizedCapex,
       annualOM,
-      assetLifeYears: state.aiAssetLifeYears || AI_COMPUTE_DEFAULTS.assetLifeYears,
+      assetLifeYears: state.aiAssetLifeYears,
       dispatch: this.attachAnnualDispatchDisplaySeries(state, dispatchSolar, finalDispatch, dispatchHorizonLabel, {
         includeDisplaySeries: includeDisplayDispatchSeries,
         includeSolarSummary: captureDispatchSeries || includeDisplayDispatchSeries,
@@ -490,7 +490,7 @@ export const aiComputeMethods = {
       capex: 0,
       annualizedCapex: 0,
       annualOM: 0,
-      assetLifeYears: state.aiAssetLifeYears || AI_COMPUTE_DEFAULTS.assetLifeYears,
+      assetLifeYears: state.aiAssetLifeYears,
       dispatch: null,
       storage: null,
       chemicalSupply: null,

@@ -7,9 +7,7 @@
 
 import { MODEL_ASSUMPTIONS } from '../data/assumptions.js';
 import { CHEMISTRY } from '../data/reference-data.js';
-import { DEFAULT_STATE } from '../state/schema.js';
 import { ModuleCatalog } from './module-catalog.js';
-import { clampNumber } from './util.js';
 
 /* Feedstocks a route can consume, as keys of routeConfig.feedstocks (kg per
    output unit), and the allocation-plan share map each one is split by. H2
@@ -157,15 +155,6 @@ export const processMethods = {
     };
   },
 
-  getExploratoryPriorityWeight(state, moduleId) {
-    return clampNumber(
-      state?.[`${moduleId}PriorityWeight`],
-      0,
-      100,
-      DEFAULT_STATE?.[`${moduleId}PriorityWeight`] ?? 100
-    );
-  },
-
   buildWeightedShareMap(entries = []) {
     const totalWeight = entries.reduce((sum, entry) => sum + Math.max(0, entry.weight || 0), 0);
     if (totalWeight <= 0) return {};
@@ -185,7 +174,7 @@ export const processMethods = {
         enabled: Boolean(state[`${module.id}Enabled`]),
         route,
         routeConfig: ModuleCatalog.getRouteConfig(module.id, route),
-        priorityWeight: this.getExploratoryPriorityWeight(state, module.id),
+        priorityWeight: state[`${module.id}PriorityWeight`],
       };
     });
 
@@ -199,14 +188,14 @@ export const processMethods = {
     // methanol can make.
     const methanolConsumers = routes.filter(module => module.enabled && (module.routeConfig?.feedstocks?.methanolKg || 0) > 0);
     const methanolDivertedShare = methanolConsumers.length
-      ? clampNumber(state.mtgMethanolSplit, 0, 100, DEFAULT_STATE.mtgMethanolSplit) / 100
+      ? state.mtgMethanolSplit / 100
       : 0;
     const methanolPoolShares = this.buildWeightedShareMap(methanolConsumers.map(module => ({
       id: module.id,
       weight: module.priorityWeight * module.routeConfig.feedstocks.methanolKg,
     })));
     const divertedMethanolWeightKg = supported.methanol *
-      (clampNumber(state.methanolEfficiency, 0, 100, DEFAULT_STATE.methanolEfficiency) / 100) * methanolDivertedShare * 1000;
+      (state.methanolEfficiency / 100) * methanolDivertedShare * 1000;
     const exploratoryModules = routes.map(module => {
       const methanolKgPerUnit = module.routeConfig?.feedstocks?.methanolKg || 0;
       const effectivePriorityWeight = !module.enabled
@@ -471,7 +460,7 @@ export const processMethods = {
     }
 
     const c = CHEMISTRY.sabatier;
-    const bufferEnabled = this.isModuleFeedBufferEnabled(state, 'sabatier');
+    const bufferEnabled = ModuleCatalog.isFeedBufferEnabled(state, 'sabatier');
     const reactor = sizeTwoFeedReactor({
       h2PerKg: c.h2MassPerKgCH4,
       co2PerKg: c.co2MassPerKgCH4,
@@ -567,7 +556,7 @@ export const processMethods = {
     }
 
     const c = CHEMISTRY.methanol;
-    const bufferEnabled = this.isModuleFeedBufferEnabled(state, 'methanol');
+    const bufferEnabled = ModuleCatalog.isFeedBufferEnabled(state, 'methanol');
     const reactor = sizeTwoFeedReactor({
       h2PerKg: c.h2MassPerKgMeOH,
       co2PerKg: c.co2MassPerKgMeOH,
@@ -615,8 +604,7 @@ export const processMethods = {
     };
   },
 
-  calculateSupportedProducts(state, materialFlows, opHours, allocationPlan, options = {}) {
-    const includeSupportedModules = options.includeSupportedModules !== false;
+  calculateSupportedProducts(state, materialFlows, opHours, allocationPlan) {
     const h2Shares = allocationPlan?.feedShares?.h2 || {};
     const co2Shares = allocationPlan?.feedShares?.co2 || {};
 
@@ -643,7 +631,6 @@ export const processMethods = {
     );
 
     return {
-      supportedModules: includeSupportedModules ? [sabatier, methanol] : [],
       outputs: { sabatier, methanol },
       h2Remaining: Math.max(0, (materialFlows.h2DailyKg || 0) - (sabatier.h2Consumed || 0) - (methanol.h2Consumed || 0)),
       co2Remaining: Math.max(0, (materialFlows.co2DailyKg || 0) - (sabatier.co2Consumed || 0) - (methanol.co2Consumed || 0)),
@@ -731,12 +718,11 @@ export const processMethods = {
         const route = state[`${module.id}Route`] || ModuleCatalog.getDefaultRoute(module) || 'unspecified';
         const routeConfig = ModuleCatalog.getRouteConfig(module.id, route);
         const capexBasis = Number(state[`${module.id}CapexBasis`]);
-        const omPercent = Number(state.exploratoryOmPercent);
         const powerShare = allocationPlan?.powerShares?.exploratory?.[module.id] || 0;
         const allocKW = effectivePeakKW * powerShare;
         const peakAllocKW = Math.max(effectivePeakKW, peakSizingKW) * powerShare;
         const dailyKWh = effectiveDailyKWh * powerShare;
-        const bufferEnabled = this.isModuleFeedBufferEnabled(state, module.id, route);
+        const bufferEnabled = ModuleCatalog.isFeedBufferEnabled(state, module.id, route);
         const allocations = feedsFor(module.id, dailyFeedsKg);
         const peakDayAllocations = feedsFor(module.id, dailyFeedsKg, peakDayScale);
         const outputDailyUnits = enabled
@@ -795,7 +781,7 @@ export const processMethods = {
           ),
           capexBasisUnit: routeConfig?.capexUnit || 'tpa',
           capexBasis: Number.isFinite(capexBasis) ? capexBasis : (routeConfig?.capexPerAnnualUnit || 0),
-          omPercent: Number.isFinite(omPercent) ? omPercent : DEFAULT_STATE.exploratoryOmPercent,
+          omPercent: state.exploratoryOmPercent,
           feedstockSummary: routeConfig?.feedstockSummary || 'Needs power',
           h2Consumed,
           co2Consumed,

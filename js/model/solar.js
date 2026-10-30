@@ -210,6 +210,35 @@ export const solarMethods = {
     };
   },
 
+  /* The hourly series caps every step at nameplate. When the requested
+     yield cannot fit under that cap during modeled daylight, the series
+     delivers less than requested: carry the deliverable energy through the
+     solar summary (instead of silently inventing the difference) and warn. */
+  reconcileSolarWithDispatchSeries(solar, dispatchBasis) {
+    const series = dispatchBasis?.solar;
+    if (!series || series.targetReachable !== false || !(solar.annualMWh > 0)) {
+      return { ...solar, requestedAnnualMWh: solar.annualMWh, warnings: [] };
+    }
+    const deliverableMWh = ((series.totalKWh || 0) * (dispatchBasis.annualizationFactor || 1)) / 1000;
+    const ratio = Math.max(0, Math.min(1, deliverableMWh / solar.annualMWh));
+    const cappedSiteYield = solar.siteYield * ratio;
+    return {
+      ...solar,
+      requestedAnnualMWh: solar.annualMWh,
+      annualMWh: solar.annualMWh * ratio,
+      siteYield: cappedSiteYield,
+      dailyMWh: solar.dailyMWh * ratio,
+      dailyKWh: solar.dailyKWh * ratio,
+      capacityFactor: solar.capacityFactor * ratio,
+      lifetimeAverageAnnualMWh: solar.lifetimeAverageAnnualMWh * ratio,
+      lcoe: ratio > 0 ? solar.lcoe / ratio : 0,
+      warnings: [{
+        key: 'solar-yield-capped',
+        message: `The requested yield (${Math.round(solar.siteYield).toLocaleString('en-US')} MWh/MWdc-yr for this mounting) exceeds what the array can deliver at nameplate during modeled daylight; output is capped at ${Math.round(cappedSiteYield).toLocaleString('en-US')} MWh/MWdc-yr.`,
+      }],
+    };
+  },
+
   describeBaseYieldReference(state, skyModel) {
     const bodyKey = state.body || 'earth';
     if (bodyKey === 'moon' && state.solarProfileModel === 'lunar-pel') return 'vertical sun-tracking panels';

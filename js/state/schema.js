@@ -86,6 +86,9 @@ export const CORE_STATE_FIELDS = [
 
   { key: 'batteryEnabled', type: 'boolean', defaultValue: false },
   { key: 'batteryCapacityMWh', type: 'number', min: 0, max: 1e9, defaultValue: 0.0 },
+  // Energy-to-power ratio: the battery charges or discharges at most
+  // capacity / duration per hour.
+  { key: 'batteryDurationHours', type: 'number', min: 0.25, max: 24, defaultValue: 4 },
   { key: 'batteryCostPerKWh', type: 'number', min: 0, max: 1e6, defaultValue: 150 },
   { key: 'batteryEfficiency', type: 'number', min: 0, max: 100, defaultValue: 90 },
   { key: 'batteryCycles', type: 'number', min: 1, max: 1e9, defaultValue: 4000 },

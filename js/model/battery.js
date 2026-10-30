@@ -1,10 +1,14 @@
 /* ============================================
-   Battery storage
+   Battery storage and chemical-plant dispatch
    ============================================
-   Shared battery primitives (parameters, per-step charge/discharge, annual
-   start-SoC settling, capex/life) used by both dispatch models, plus the
-   chemical-plant dispatch: solar first feeds the process, the battery covers
-   shortfalls, and surplus charges the battery. */
+   Shared battery primitives (parameters, power-limited per-step
+   charge/discharge, periodic start-SoC settling, capex/life) used by both
+   dispatch models, plus the chemical-plant dispatch over the annual hourly
+   solar series: solar first feeds the process, the battery covers
+   shortfalls, surplus charges the battery and the rest is clipped. The
+   annual dispatch is the single basis for chemical energy, clipping,
+   operating hours and process sizing; average-day series are display
+   aggregations of it. */
 
 import { MODEL_ASSUMPTIONS } from '../data/assumptions.js';
 import { hasBatteryStorage } from '../state/normalize.js';
@@ -19,42 +23,72 @@ export function getBatteryLeakageRetention(stepHours) {
   return Math.pow(1 - monthlyLeakage, stepHours / averageMonthHours);
 }
 
+/* Battery power rating (kW) at the AC/DC terminal: capacity / duration. */
+export function getBatteryPowerKW(state) {
+  if (!hasBatteryStorage(state)) return 0;
+  const durationHours = clampNumber(state?.batteryDurationHours, 0.25, 24, DEFAULT_STATE.batteryDurationHours);
+  return (Math.max(0, state.batteryCapacityMWh || 0) * 1000) / durationHours;
+}
+
 /* Mutable battery for the hour-by-hour annual dispatch loops: capacity,
    one-way efficiencies (sqrt of round trip), hourly self-discharge retention,
-   state of charge and throughput counters. */
-export function createAnnualBattery(state, startSocKWh = 0) {
+   per-step power limits (energy drawn while charging, delivered while
+   discharging), state of charge and throughput counters. */
+export function createAnnualBattery(state, startSocKWh = 0, stepHours = 1) {
   const capacityKWh = hasBatteryStorage(state) ? Math.max(0, (state.batteryCapacityMWh || 0) * 1000) : 0;
   const rtEff = capacityKWh > 0 ? Math.max(0, Math.min(1, (state.batteryEfficiency || 0) / 100)) : 1;
   const oneWayEff = capacityKWh > 0 ? Math.sqrt(Math.max(rtEff, 1e-9)) : 1;
+  const maxStepKWh = getBatteryPowerKW(state) * stepHours;
   return {
     capacityKWh,
     chargeEff: oneWayEff,
     dischargeEff: oneWayEff,
-    leakageRetentionPerStep: getBatteryLeakageRetention(1),
+    maxChargeInputKWh: maxStepKWh,
+    maxDischargeOutputKWh: maxStepKWh,
+    leakageRetentionPerStep: getBatteryLeakageRetention(stepHours),
     socKWh: Math.max(0, Math.min(capacityKWh, startSocKWh)),
     chargeThroughputKWh: 0,
     dischargeThroughputKWh: 0,
+    leakageKWh: 0,
   };
+}
+
+/* Whether a dispatch can ever put energy into the battery: storage that
+   holds nothing (0% efficiency) or a year without solar settles at empty. */
+export function batteryReceivesEnergy(state, annualSolar, solarScale = 1) {
+  const totalKWh = Number.isFinite(annualSolar?.totalKWh)
+    ? annualSolar.totalKWh
+    : sumSeries(annualSolar?.hourlyKW || []);
+  return hasBatteryStorage(state) && (state.batteryEfficiency || 0) > 0 && solarScale > 0 && totalKWh > 0;
 }
 
 export function applyBatteryLeakage(battery) {
   if (battery.socKWh > 1e-9) {
-    battery.socKWh = Math.max(0, battery.socKWh * battery.leakageRetentionPerStep);
+    const retainedKWh = Math.max(0, battery.socKWh * battery.leakageRetentionPerStep);
+    battery.leakageKWh += battery.socKWh - retainedKWh;
+    battery.socKWh = retainedKWh;
   }
 }
 
-/* Discharges up to `shortfallKWh` to a load; returns the energy delivered. */
+/* Discharges up to `shortfallKWh` to a load within the power limit; returns
+   the energy delivered. */
 export function dischargeBattery(battery, shortfallKWh) {
-  const deliveredKWh = Math.min(shortfallKWh, battery.socKWh * battery.dischargeEff);
-  battery.socKWh -= deliveredKWh / battery.dischargeEff;
+  const deliveredKWh = Math.max(0, Math.min(
+    shortfallKWh,
+    battery.socKWh * battery.dischargeEff,
+    battery.maxDischargeOutputKWh
+  ));
+  battery.socKWh = Math.max(0, battery.socKWh - (deliveredKWh / battery.dischargeEff));
   battery.dischargeThroughputKWh += deliveredKWh;
   return deliveredKWh;
 }
 
-/* Charges from `surplusKWh` of input energy; returns the energy stored
-   (after charge losses). The input drawn is stored / chargeEff. */
+/* Charges from `surplusKWh` of input energy within the power limit; returns
+   the energy stored (after charge losses). The input drawn is
+   stored / chargeEff. */
 export function chargeBattery(battery, surplusKWh) {
-  const storedKWh = Math.min(battery.capacityKWh - battery.socKWh, surplusKWh * battery.chargeEff);
+  const inputKWh = Math.min(surplusKWh, battery.maxChargeInputKWh);
+  const storedKWh = Math.max(0, Math.min(battery.capacityKWh - battery.socKWh, inputKWh * battery.chargeEff));
   battery.socKWh += storedKWh;
   battery.chargeThroughputKWh += storedKWh;
   return storedKWh;
@@ -62,8 +96,11 @@ export function chargeBattery(battery, surplusKWh) {
 
 /* Re-runs an annual dispatch preview from its own end SoC until the year is
    periodic (end SoC == start SoC within tolerance). `runPreview(startSocKWh)`
-   must return `{ endSocKWh }`. */
-export function settleAnnualStartSoc(capacityKWh, runPreview) {
+   must return `{ endSocKWh }`. With no storage, or no energy ever reaching
+   the battery, the periodic state is empty: start there instead of
+   discharging a phantom initial charge. */
+export function settleAnnualStartSoc(capacityKWh, runPreview, { hasInput = true } = {}) {
+  if (!(capacityKWh > 0) || !hasInput) return { startSocKWh: 0, settleIterations: 0 };
   let startSocKWh = capacityKWh * MODEL_ASSUMPTIONS.batteryStartSocFraction;
   let settleIterations = 0;
   const settleTolKWh = Math.max(1e-3, capacityKWh * 1e-6);
@@ -93,115 +130,141 @@ export function getBatteryCapexAndLife(state, cyclesPerYear) {
   };
 }
 
+function sumSeries(series) {
+  let total = 0;
+  for (let i = 0; i < series.length; i++) total += Number(series[i]) || 0;
+  return total;
+}
+
 export const batteryMethods = {
   getChemicalSizingFraction(state) {
     return clampNumber(state?.chemicalSizingPercent, 0, 100, DEFAULT_STATE.chemicalSizingPercent) / 100;
   },
 
   getBatteryLeakageRetention,
+  getBatteryPowerKW,
 
-  simulateAnnualChemicalDispatch(state, annualSolar, processPowerKW, options = {}) {
-    const captureSeries = options.captureSeries !== false;
+  /* One pass of the chemical dispatch from `startSocKWh`. `solarScale`
+     multiplies the solar series (PV degradation) without copying it. */
+  simulateChemicalDispatchPass(state, annualSolar, processPowerKW, startSocKWh, options = {}) {
+    const captureSeries = Boolean(options.captureSeries);
+    const captureDailySummaries = captureSeries || Boolean(options.captureDailySummaries);
+    const solarScale = Number.isFinite(options.solarScale) ? Math.max(0, options.solarScale) : 1;
     const source = Array.isArray(annualSolar?.hourlyKW) ? annualSolar.hourlyKW : [];
     const hours = source.length;
     const summaryWindowHours = Math.max(1e-6, annualSolar?.windowHours || 24);
     const summaryBinCount = Math.max(1, Math.round(annualSolar?.windowBinCount || 24));
-    const batteryEnabled = hasBatteryStorage(state);
-    const battCapKWh = createAnnualBattery(state).capacityKWh;
+    const summaryWindowCount = captureDailySummaries ? Math.max(1, Math.ceil((hours / summaryWindowHours) - 1e-9)) : 0;
     const targetProcessKW = Math.max(0, Number(processPowerKW) || 0);
-    const opThresholdKW = targetProcessKW > 0 ? targetProcessKW * MODEL_ASSUMPTIONS.processOperatingThresholdFraction : null;
+    const opThresholdKW = targetProcessKW * MODEL_ASSUMPTIONS.processOperatingThresholdFraction;
+    const battery = createAnnualBattery(state, startSocKWh);
+    const battCapKWh = battery.capacityKWh;
+    const chemicalHourlyKW = captureSeries ? new Array(hours).fill(0) : [];
+    const batteryChargeHourlyKW = captureSeries ? new Array(hours).fill(0) : [];
+    const clippedHourlyKW = captureSeries ? new Array(hours).fill(0) : [];
+    const dailyChemicalSummaryKWh = captureDailySummaries && !captureSeries ? new Array(summaryWindowCount).fill(0) : [];
+    let minSocKWh = battery.socKWh;
+    let maxSocKWh = battery.socKWh;
+    let solarKWh = 0;
+    let directKWh = 0;
+    let chargeInputTotalKWh = 0;
+    let chemicalKWh = 0;
+    let clippedSolarKWh = 0;
+    let chemicalPeakKW = 0;
+    let chemicalOpHours = 0;
 
-    const runPass = (startSocKWh, includeSeries = captureSeries) => {
-      const chemicalHourlyKW = includeSeries ? new Array(hours).fill(0) : [];
-      const batteryChargeHourlyKW = includeSeries ? new Array(hours).fill(0) : [];
-      const clippedHourlyKW = includeSeries ? new Array(hours).fill(0) : [];
-      const battery = createAnnualBattery(state, startSocKWh);
-      let minSocKWh = battery.socKWh;
-      let maxSocKWh = battery.socKWh;
-      let chemicalKWh = 0;
-      let clippedSolarKWh = 0;
-      let chemicalPeakKW = 0;
-      let chemicalOpHours = 0;
+    for (let hour = 0; hour < hours; hour++) {
+      applyBatteryLeakage(battery);
 
-      for (let hour = 0; hour < hours; hour++) {
-        applyBatteryLeakage(battery);
+      const generatedKWh = Math.max(0, Number(source[hour]) || 0) * solarScale;
+      const directToChemicalKWh = Math.min(targetProcessKW, generatedKWh);
+      let deliveredKWh = directToChemicalKWh;
 
-        const processCapKWh = targetProcessKW;
-        const generatedKWh = Math.max(0, Number(source[hour]) || 0);
-        const directToChemicalKWh = Math.min(processCapKWh, generatedKWh);
-        let deliveredKWh = directToChemicalKWh;
-
-        if (deliveredKWh + 1e-9 < processCapKWh && battery.socKWh > 1e-9) {
-          deliveredKWh += dischargeBattery(battery, processCapKWh - deliveredKWh);
-        }
-
-        let solarAvailableKWh = generatedKWh - directToChemicalKWh;
-        if (solarAvailableKWh > 1e-9 && battery.socKWh < battCapKWh - 1e-9) {
-          const storedKWh = chargeBattery(battery, solarAvailableKWh);
-          const chargeInputKWh = Math.min(solarAvailableKWh, storedKWh / battery.chargeEff);
-          solarAvailableKWh -= chargeInputKWh;
-          if (includeSeries) batteryChargeHourlyKW[hour] = chargeInputKWh;
-        }
-
-        chemicalKWh += deliveredKWh;
-        clippedSolarKWh += Math.max(0, solarAvailableKWh);
-        chemicalPeakKW = Math.max(chemicalPeakKW, deliveredKWh);
-        minSocKWh = Math.min(minSocKWh, battery.socKWh);
-        maxSocKWh = Math.max(maxSocKWh, battery.socKWh);
-        if (opThresholdKW !== null && deliveredKWh >= opThresholdKW - 1e-6) {
-          chemicalOpHours += 1;
-        }
-
-        if (includeSeries) {
-          chemicalHourlyKW[hour] = deliveredKWh;
-          clippedHourlyKW[hour] = Math.max(0, solarAvailableKWh);
-        }
+      if (battCapKWh > 0 && deliveredKWh + 1e-9 < targetProcessKW && battery.socKWh > 1e-9) {
+        deliveredKWh += dischargeBattery(battery, targetProcessKW - deliveredKWh);
       }
 
-      const dailyChemicalKWh = includeSeries ? this.aggregateSeriesBySpanHours(chemicalHourlyKW, summaryWindowHours) : [];
-      const dailyClippedKWh = includeSeries ? this.aggregateSeriesBySpanHours(clippedHourlyKW, summaryWindowHours) : [];
-      const averageDayChemicalKW = includeSeries ? this.averageSeriesByCyclePhase(chemicalHourlyKW, summaryWindowHours, summaryBinCount) : [];
-      const averageDayClippedKW = includeSeries ? this.averageSeriesByCyclePhase(clippedHourlyKW, summaryWindowHours, summaryBinCount) : [];
-      const averageDayBatteryChargeKW = includeSeries ? this.averageSeriesByCyclePhase(batteryChargeHourlyKW, summaryWindowHours, summaryBinCount) : [];
+      let surplusKWh = generatedKWh - directToChemicalKWh;
+      let chargeInputKWh = 0;
+      if (battCapKWh > 0 && surplusKWh > 1e-9 && battery.socKWh < battCapKWh - 1e-9) {
+        chargeInputKWh = Math.min(surplusKWh, chargeBattery(battery, surplusKWh) / battery.chargeEff);
+        surplusKWh -= chargeInputKWh;
+      }
+      const clippedKWh = Math.max(0, surplusKWh);
 
-      return {
-        hours,
-        chemicalHourlyKW,
-        clippedHourlyKW,
-        batteryChargeHourlyKW,
-        chemicalKWh,
-        clippedSolarKWh,
-        dailyChemicalKWh,
-        dailyClippedKWh,
-        averageDayChemicalKW,
-        averageDayClippedKW,
-        averageDayBatteryChargeKW,
-        chemicalPeakKW,
-        chemicalCapacityKW: targetProcessKW,
-        chemicalOpHours,
-        startSocKWh: Math.max(0, Math.min(battCapKWh, startSocKWh)),
-        endSocKWh: battery.socKWh,
-        minSocKWh,
-        maxSocKWh,
-        utilizedCapacityKWh: Math.max(0, maxSocKWh - minSocKWh),
-        chargeThroughputKWh: battery.chargeThroughputKWh,
-        dischargeThroughputKWh: battery.dischargeThroughputKWh,
-      };
-    };
+      solarKWh += generatedKWh;
+      directKWh += directToChemicalKWh;
+      chargeInputTotalKWh += chargeInputKWh;
+      chemicalKWh += deliveredKWh;
+      clippedSolarKWh += clippedKWh;
+      if (deliveredKWh > chemicalPeakKW) chemicalPeakKW = deliveredKWh;
+      if (battery.socKWh < minSocKWh) minSocKWh = battery.socKWh;
+      if (battery.socKWh > maxSocKWh) maxSocKWh = battery.socKWh;
+      if (targetProcessKW > 0 && deliveredKWh >= opThresholdKW - 1e-6) chemicalOpHours += 1;
 
-    if (!batteryEnabled) {
-      return {
-        ...runPass(0),
-        settleIterations: 1,
-        settleDeltaKWh: 0,
-      };
+      if (captureSeries) {
+        chemicalHourlyKW[hour] = deliveredKWh;
+        batteryChargeHourlyKW[hour] = chargeInputKWh;
+        clippedHourlyKW[hour] = clippedKWh;
+      } else if (captureDailySummaries) {
+        this.accumulateSeriesStepBySpanHours(dailyChemicalSummaryKWh, summaryWindowHours, hour, deliveredKWh);
+      }
     }
 
+    const dailyChemicalKWh = captureSeries
+      ? this.aggregateSeriesBySpanHours(chemicalHourlyKW, summaryWindowHours)
+      : dailyChemicalSummaryKWh;
+    return {
+      hours,
+      loadKW: 0,
+      solarKWh,
+      directToChemicalKWh: directKWh,
+      chargeInputKWh: chargeInputTotalKWh,
+      chemicalHourlyKW,
+      clippedHourlyKW,
+      batteryChargeHourlyKW,
+      chemicalKWh,
+      clippedSolarKWh,
+      dailyChemicalKWh,
+      dailyClippedKWh: captureSeries ? this.aggregateSeriesBySpanHours(clippedHourlyKW, summaryWindowHours) : [],
+      dailyBatteryChargeKWh: captureSeries ? this.aggregateSeriesBySpanHours(batteryChargeHourlyKW, summaryWindowHours) : [],
+      dailyAiKWh: dailyChemicalKWh.map(() => 0),
+      averageDayChemicalKW: captureSeries ? this.averageSeriesByCyclePhase(chemicalHourlyKW, summaryWindowHours, summaryBinCount) : [],
+      averageDayClippedKW: captureSeries ? this.averageSeriesByCyclePhase(clippedHourlyKW, summaryWindowHours, summaryBinCount) : [],
+      averageDayBatteryChargeKW: captureSeries ? this.averageSeriesByCyclePhase(batteryChargeHourlyKW, summaryWindowHours, summaryBinCount) : [],
+      averageDayAiKW: captureSeries ? new Array(summaryBinCount).fill(0) : [],
+      aiHourlyKW: captureSeries ? new Array(hours).fill(0) : [],
+      aiServedKWh: 0,
+      aiShortfallKWh: 0,
+      chemicalPeakKW,
+      chemicalCapacityKW: targetProcessKW,
+      chemicalOpHours,
+      startSocKWh: Math.max(0, Math.min(battCapKWh, startSocKWh)),
+      endSocKWh: battery.socKWh,
+      minSocKWh,
+      maxSocKWh,
+      utilizedCapacityKWh: Math.max(0, maxSocKWh - minSocKWh),
+      chargeThroughputKWh: battery.chargeThroughputKWh,
+      dischargeThroughputKWh: battery.dischargeThroughputKWh,
+      leakageKWh: battery.leakageKWh,
+    };
+  },
+
+  /* Periodic-year chemical dispatch at a fixed process capacity. */
+  simulateAnnualChemicalDispatch(state, annualSolar, processPowerKW, options = {}) {
+    const captureSeries = options.captureSeries !== false;
+    const solarScale = Number.isFinite(options.solarScale) ? options.solarScale : 1;
+    const capacityKWh = createAnnualBattery(state).capacityKWh;
     const { startSocKWh, settleIterations } = settleAnnualStartSoc(
-      battCapKWh,
-      start => runPass(start, false)
+      capacityKWh,
+      start => this.simulateChemicalDispatchPass(state, annualSolar, processPowerKW, start, { solarScale }),
+      { hasInput: batteryReceivesEnergy(state, annualSolar, solarScale) }
     );
-    const captured = runPass(startSocKWh);
+    const captured = this.simulateChemicalDispatchPass(state, annualSolar, processPowerKW, startSocKWh, {
+      captureSeries,
+      captureDailySummaries: options.captureDailySummaries,
+      solarScale,
+    });
     return {
       ...captured,
       settleIterations,
@@ -209,285 +272,75 @@ export const batteryMethods = {
     };
   },
 
-  calculateBattery(state, solar, options = {}) {
-    const includeSeries = options.includeSeries !== false;
-    const stepCount = solar.hourlyProfile.length;
-    const stepHours = solar.binHours;
-    const solarKW = solar.hourlyProfile.map(v => Math.min((v * solar.dailyKWh) / stepHours, solar.peakPowerKW));
-    const chemicalSizingFraction = this.getChemicalSizingFraction(state);
-    // Keep the zero-storage case on the same basis as the battery-backed case:
-    // size process equipment from the modeled direct-solar peak, not PV nameplate.
-    const directProcessPeakKW = Math.max(...solarKW, 0);
-    const directOpHours = directProcessPeakKW > 0
-      ? solarKW.reduce((sum, value) => sum + (value >= directProcessPeakKW * MODEL_ASSUMPTIONS.processOperatingThresholdFraction ? stepHours : 0), 0)
-      : 0;
-    const directEffectiveCF = directProcessPeakKW > 0
-      ? solar.dailyKWh / (directProcessPeakKW * solar.cycleHours)
-      : 0;
-    const batteryEnabled = hasBatteryStorage(state);
-
-    const buildStorageSummary = summary => ({
-      enabled: Boolean(summary.enabled),
-      capex: summary.capex || 0,
-      battCapKWh: summary.battCapKWh || 0,
-      annualizedCapex: summary.annualizedCapex || 0,
-      lifetimeYears: summary.lifetimeYears || 0,
-      utilizedCapacityKWh: summary.utilizedCapacityKWh || 0,
-      startBatteryKWh: summary.startBatteryKWh || 0,
-      endBatteryKWh: summary.endBatteryKWh || 0,
-      minBatteryKWh: summary.minBatteryKWh || 0,
-      maxBatteryKWh: summary.maxBatteryKWh || 0,
-      chargeThroughputKWh: summary.chargeThroughputKWh || 0,
-      dischargeThroughputKWh: summary.dischargeThroughputKWh || 0,
-      settleDeltaKWh: summary.settleDeltaKWh || 0,
-    });
-
-    const buildChemicalSupply = summary => ({
-      effectiveCF: summary.effectiveCF || 0,
-      dailyOpHours: summary.dailyOpHours || 0,
-      dailyAvailableKWh: summary.dailyAvailableKWh || 0,
-      clippedDailyKWh: summary.clippedDailyKWh || 0,
-      hourlyProfile: includeSeries ? (summary.hourlyProfile || []) : [],
-      hourlyKW: includeSeries ? (summary.hourlyKW || []) : [],
-      clippedHourlyKW: includeSeries ? (summary.clippedHourlyKW || []) : [],
-      batteryChargeHourlyKW: includeSeries ? (summary.batteryChargeHourlyKW || []) : [],
-      processPowerKW: summary.processPowerKW || 0,
-      fullCapturePowerKW: summary.fullCapturePowerKW || summary.processPowerKW || 0,
-      fullCaptureDailyKWh: summary.fullCaptureDailyKWh || summary.dailyAvailableKWh || 0,
-      capturedSolarFraction: summary.capturedSolarFraction ?? 1,
-      sizingPercent: summary.sizingPercent ?? (state.chemicalSizingPercent ?? 100),
-      baseloadKW: summary.baseloadKW || 0,
-      clipKW: summary.clipKW || 0,
-    });
-
-    if (!batteryEnabled) {
-      const processPowerKW = directProcessPeakKW * chemicalSizingFraction;
-      const hourlyKW = solarKW.map(value => Math.min(value, processPowerKW));
-      const clippedHourlyKW = solarKW.map((value, index) => Math.max(0, value - hourlyKW[index]));
-      const dailyAvailableKWh = hourlyKW.reduce((sum, value) => sum + (value * stepHours), 0);
-      const clippedDailyKWh = clippedHourlyKW.reduce((sum, value) => sum + (value * stepHours), 0);
-      const dailyOpHours = processPowerKW > 0
-        ? hourlyKW.reduce((sum, value) => sum + (value >= processPowerKW * MODEL_ASSUMPTIONS.processOperatingThresholdFraction ? stepHours : 0), 0)
-        : 0;
-      const effectiveCF = processPowerKW > 0
-        ? dailyAvailableKWh / (processPowerKW * solar.cycleHours)
-        : 0;
-      const normalizedProfile = includeSeries && dailyAvailableKWh > 0
-        ? hourlyKW.map(value => (value * stepHours) / dailyAvailableKWh)
-        : [];
-      return {
-        storage: buildStorageSummary({
-          enabled: false,
-        }),
-        chemicalSupply: buildChemicalSupply({
-          effectiveCF: chemicalSizingFraction >= (1 - 1e-9) ? directEffectiveCF : effectiveCF,
-          dailyOpHours: chemicalSizingFraction >= (1 - 1e-9) ? directOpHours : dailyOpHours,
-          dailyAvailableKWh: chemicalSizingFraction >= (1 - 1e-9) ? solar.dailyKWh : dailyAvailableKWh,
-          clippedDailyKWh: chemicalSizingFraction >= (1 - 1e-9) ? 0 : clippedDailyKWh,
-          hourlyProfile: chemicalSizingFraction >= (1 - 1e-9)
-            ? (includeSeries ? solar.hourlyProfile : [])
-            : normalizedProfile,
-          hourlyKW: includeSeries ? hourlyKW : [],
-          clippedHourlyKW: includeSeries ? clippedHourlyKW : [],
-          batteryChargeHourlyKW: includeSeries ? new Array(stepCount).fill(0) : [],
-          processPowerKW,
-          fullCapturePowerKW: directProcessPeakKW,
-          fullCaptureDailyKWh: solar.dailyKWh,
-          capturedSolarFraction: solar.dailyKWh > 0 ? dailyAvailableKWh / solar.dailyKWh : 1,
-          baseloadKW: processPowerKW,
-          clipKW: Math.max(0, directProcessPeakKW - processPowerKW),
-          sizingPercent: state.chemicalSizingPercent ?? 100,
-        }),
-      };
+  /* 100% chemical sizing: the smallest constant process capacity that clips
+     no solar over the periodic annual dispatch with this battery. Without
+     storage that is the annual solar peak; with storage, bisection (clipping
+     is non-increasing in capacity) to 1e-4 of the peak. */
+  findFullCaptureProcessKW(state, annualSolar) {
+    const source = Array.isArray(annualSolar?.hourlyKW) ? annualSolar.hourlyKW : [];
+    let peakKW = 0;
+    for (let i = 0; i < source.length; i++) if (source[i] > peakKW) peakKW = source[i];
+    if (peakKW <= 0 || !hasBatteryStorage(state)) {
+      return { processPowerKW: peakKW, dispatch: null };
     }
 
-    const battCapKWh = Math.max(0, (state.batteryCapacityMWh || 0) * 1000);
-    const rtEff = Math.max(0, Math.min(1, state.batteryEfficiency / 100));
-    const oneWayEff = Math.max(Math.sqrt(rtEff), 1e-9);
-    const leakageRetentionPerStep = getBatteryLeakageRetention(stepHours);
-    const maxSolarKW = Math.max(...solarKW, 0);
-    const averageSolarKW = solar.cycleHours > 0 ? solar.dailyKWh / solar.cycleHours : 0;
-
-    const simulateCycle = (processKW, startSocKWh, captureSeries = false) => {
-      const output = captureSeries ? new Array(stepCount).fill(0) : [];
-      const batteryChargeKW = captureSeries ? new Array(stepCount).fill(0) : [];
-      const clippedHourlyKW = captureSeries ? new Array(stepCount).fill(0) : [];
-      const battery = {
-        capacityKWh: battCapKWh,
-        chargeEff: oneWayEff,
-        dischargeEff: oneWayEff,
-        leakageRetentionPerStep,
-        socKWh: Math.max(0, Math.min(battCapKWh, startSocKWh)),
-        chargeThroughputKWh: 0,
-        dischargeThroughputKWh: 0,
-      };
-      let minSocKWh = battery.socKWh;
-      let maxSocKWh = battery.socKWh;
-      let chemicalKWh = 0;
-      let curtailedKWh = 0;
-      let activeProcessHours = 0;
-
-      for (let h = 0; h < stepCount; h++) {
-        applyBatteryLeakage(battery);
-        const processCapKWh = processKW * stepHours;
-        const generatedKWh = solarKW[h] * stepHours;
-        const directToChemicalKWh = Math.min(processCapKWh, generatedKWh);
-        let deliveredKWh = directToChemicalKWh;
-
-        if (deliveredKWh + 1e-9 < processCapKWh && battery.socKWh > 1e-9) {
-          deliveredKWh += dischargeBattery(battery, processCapKWh - deliveredKWh);
-        }
-
-        let solarAvailableKWh = generatedKWh - directToChemicalKWh;
-        if (solarAvailableKWh > 1e-9 && battery.socKWh < battCapKWh - 1e-9) {
-          const storedKWh = chargeBattery(battery, solarAvailableKWh);
-          const chargeInputKWh = Math.min(solarAvailableKWh, storedKWh / battery.chargeEff);
-          solarAvailableKWh -= chargeInputKWh;
-          if (captureSeries) batteryChargeKW[h] = chargeInputKWh / stepHours;
-        }
-
-        chemicalKWh += deliveredKWh;
-        curtailedKWh += Math.max(0, solarAvailableKWh);
-        minSocKWh = Math.min(minSocKWh, battery.socKWh);
-        maxSocKWh = Math.max(maxSocKWh, battery.socKWh);
-        if (processKW > 1e-9 && (deliveredKWh / stepHours) >= (processKW * MODEL_ASSUMPTIONS.processOperatingThresholdFraction)) {
-          activeProcessHours += stepHours;
-        }
-
-        if (captureSeries) {
-          output[h] = deliveredKWh / stepHours;
-          clippedHourlyKW[h] = Math.max(0, solarAvailableKWh / stepHours);
-        }
-      }
-
-      return {
-        output,
-        batteryChargeKW,
-        clippedHourlyKW,
-        chemicalKWh,
-        curtailedKWh,
-        utilizedCapacityKWh: Math.max(0, maxSocKWh - minSocKWh),
-        endSocKWh: battery.socKWh,
-        minSocKWh,
-        maxSocKWh,
-        activeProcessHours,
-        chargeThroughputKWh: battery.chargeThroughputKWh,
-        dischargeThroughputKWh: battery.dischargeThroughputKWh,
-      };
-    };
-
-    const simulateProcessCapacity = (processKW, options = {}) => {
-      const clampToFullCaptureBounds = options.clampToFullCaptureBounds !== false;
-      const minProcessKW = clampToFullCaptureBounds ? averageSolarKW : 0;
-      const boundedTargetKW = Number.isFinite(processKW) ? Math.min(processKW, maxSolarKW) : 0;
-      const targetKW = Math.max(minProcessKW, Math.max(0, boundedTargetKW));
-      const settleTolKWh = Math.max(1e-3, battCapKWh * 1e-6);
-      let startBatteryKWh = battCapKWh;
-      let settledPreview = null;
-
-      // Starting full yields the least spare headroom; once this converges,
-      // the last cycle represents the repeatable battery-supported dispatch.
-      for (let i = 0; i < 64; i++) {
-        const cycle = simulateCycle(targetKW, startBatteryKWh, false);
-        settledPreview = cycle;
-        if (Math.abs(cycle.endSocKWh - startBatteryKWh) <= settleTolKWh) {
-          startBatteryKWh = cycle.endSocKWh;
-          break;
-        }
-        startBatteryKWh = cycle.endSocKWh;
-      }
-
-      const settledCycle = simulateCycle(targetKW, startBatteryKWh, includeSeries);
-      return {
-        output: settledCycle.output,
-        batteryChargeKW: settledCycle.batteryChargeKW,
-        clippedHourlyKW: settledCycle.clippedHourlyKW,
-        processPowerKW: targetKW,
-        chemicalKWh: settledCycle.chemicalKWh,
-        curtailedKWh: settledCycle.curtailedKWh,
-        capturesAllSolar: settledCycle.curtailedKWh <= Math.max(1e-3, solar.dailyKWh * 1e-6),
-        utilizedCapacityKWh: settledCycle.utilizedCapacityKWh,
-        startBatteryKWh,
-        endBatteryKWh: settledCycle.endSocKWh,
-        minBatteryKWh: settledCycle.minSocKWh,
-        maxBatteryKWh: settledCycle.maxSocKWh,
-        chargeThroughputKWh: settledCycle.chargeThroughputKWh,
-        dischargeThroughputKWh: settledCycle.dischargeThroughputKWh,
-        activeProcessHours: settledCycle.activeProcessHours,
-        settleDeltaKWh: Math.abs(settledCycle.endSocKWh - startBatteryKWh),
-        settledPreviewEndBatteryKWh: settledPreview ? settledPreview.endSocKWh : startBatteryKWh,
-      };
-    };
-
-    let lo = Math.min(averageSolarKW, maxSolarKW);
-    let hi = maxSolarKW;
-    let bestPlan = simulateProcessCapacity(maxSolarKW);
-
-    for (let i = 0; i < 40; i++) {
+    const totalKWh = annualSolar.totalKWh ?? sumSeries(source);
+    const clipToleranceKWh = Math.max(1e-3, totalKWh * 1e-6);
+    const dispatchAt = processKW => this.simulateAnnualChemicalDispatch(state, annualSolar, processKW, {
+      captureSeries: false,
+    });
+    let lo = 0;
+    let hi = peakKW;
+    let best = null;
+    while ((hi - lo) > peakKW * 1e-4) {
       const mid = (lo + hi) / 2;
-      const plan = simulateProcessCapacity(mid);
-      if (plan.capturesAllSolar) {
-        bestPlan = plan;
+      const dispatch = dispatchAt(mid);
+      if (dispatch.clippedSolarKWh <= clipToleranceKWh) {
         hi = mid;
+        best = dispatch;
       } else {
         lo = mid;
       }
     }
+    return { processPowerKW: hi, dispatch: best || dispatchAt(hi) };
+  },
 
-    const fullCapturePlan = bestPlan;
-    const actualPlan = chemicalSizingFraction >= (1 - 1e-9)
-      ? fullCapturePlan
-      : simulateProcessCapacity(fullCapturePlan.processPowerKW * chemicalSizingFraction, {
-          clampToFullCaptureBounds: false,
-        });
-
-    const hourlyKW = actualPlan.output;
-    const processPowerKW = actualPlan.processPowerKW;
-    const totalDelivered = actualPlan.chemicalKWh;
-    const normalizedProfile = includeSeries && totalDelivered > 0
-      ? hourlyKW.map(v => (v * stepHours) / totalDelivered)
-      : [];
-    const extendedHours = actualPlan.activeProcessHours || 0;
-    const effectiveCF = processPowerKW > 0
-      ? totalDelivered / (processPowerKW * solar.cycleHours)
-      : 0;
-    const clippedDailyKWh = actualPlan.curtailedKWh || 0;
-    const fullCaptureDailyKWh = fullCapturePlan.chemicalKWh || 0;
-    const { capex, lifetimeYears } = getBatteryCapexAndLife(state, solar.cyclesPerYear);
-    const annualizedCapex = capex * crf(state.discountRate / 100, lifetimeYears);
+  /* Chemical-only plant on the annual dispatch basis (Earth year; Mars
+     orbital year, annualized). Returns { storage, chemicalSupply, dispatch }. */
+  calculateBattery(state, solar, annualSolar, options = {}) {
+    const includeSeries = options.includeSeries !== false;
+    const cyclesPerYear = this.getBodyConfig(state.body || 'earth').cyclesPerEarthYear;
+    const dispatchBasis = options.dispatchBasis || this.getAnnualDispatchBasis(state, solar, annualSolar, {
+      includeWindowSummaries: includeSeries,
+    });
+    const dispatchSolar = dispatchBasis.solar;
+    const annualizationFactor = dispatchBasis.annualizationFactor;
+    const chemicalSizingFraction = this.getChemicalSizingFraction(state);
+    const fullCapture = this.findFullCaptureProcessKW(state, dispatchSolar);
+    const processPowerKW = fullCapture.processPowerKW * chemicalSizingFraction;
+    const finalDispatch = this.simulateAnnualChemicalDispatch(state, dispatchSolar, processPowerKW, {
+      captureSeries: includeSeries,
+      captureDailySummaries: true,
+    });
+    const fullCaptureChemicalKWh = fullCapture.dispatch
+      ? fullCapture.dispatch.chemicalKWh
+      : (dispatchSolar.totalKWh ?? sumSeries(dispatchSolar.hourlyKW || []));
+    const dispatch = {
+      ...finalDispatch,
+      fullCaptureChemicalKW: fullCapture.processPowerKW,
+      fullCaptureChemicalKWh,
+      chemicalSizingPercent: state.chemicalSizingPercent ?? DEFAULT_STATE.chemicalSizingPercent,
+    };
+    const { capex, lifetimeYears } = getBatteryCapexAndLife(state, cyclesPerYear);
 
     return {
-      storage: buildStorageSummary({
-        enabled: true,
-        capex,
-        battCapKWh,
-        annualizedCapex,
-        lifetimeYears,
-        utilizedCapacityKWh: actualPlan.utilizedCapacityKWh,
-        startBatteryKWh: actualPlan.startBatteryKWh,
-        endBatteryKWh: actualPlan.endBatteryKWh,
-        minBatteryKWh: actualPlan.minBatteryKWh,
-        maxBatteryKWh: actualPlan.maxBatteryKWh,
-        chargeThroughputKWh: actualPlan.chargeThroughputKWh,
-        dischargeThroughputKWh: actualPlan.dischargeThroughputKWh,
-        settleDeltaKWh: actualPlan.settleDeltaKWh,
+      storage: this.buildAnnualStorageSummary(state, dispatch, capex, lifetimeYears),
+      chemicalSupply: this.buildAnnualChemicalSupplySummary(dispatch, solar, cyclesPerYear, annualizationFactor, {
+        includeSeries,
       }),
-      chemicalSupply: buildChemicalSupply({
-        effectiveCF,
-        dailyOpHours: extendedHours,
-        dailyAvailableKWh: totalDelivered,
-        clippedDailyKWh,
-        hourlyProfile: normalizedProfile,
-        hourlyKW: includeSeries ? hourlyKW : [],
-        clippedHourlyKW: includeSeries ? actualPlan.clippedHourlyKW : [],
-        batteryChargeHourlyKW: includeSeries ? actualPlan.batteryChargeKW : [],
-        processPowerKW,
-        fullCapturePowerKW: fullCapturePlan.processPowerKW,
-        fullCaptureDailyKWh,
-        capturedSolarFraction: fullCaptureDailyKWh > 0 ? totalDelivered / fullCaptureDailyKWh : 1,
-        sizingPercent: state.chemicalSizingPercent ?? 100,
-        baseloadKW: processPowerKW,
-        clipKW: Math.max(0, fullCapturePlan.processPowerKW - processPowerKW),
+      dispatch: this.attachAnnualDispatchDisplaySeries(state, dispatchSolar, dispatch, dispatchBasis.horizonLabel, {
+        includeDisplaySeries: includeSeries,
+        includeSolarSummary: includeSeries,
       }),
     };
   },

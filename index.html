@@ -206,6 +206,7 @@
             <span class="tooltip-label" data-tooltip="Selected mounting's annual yield relative to the reference mounting, from the model's sun geometry with the site's diffuse-light share (Hay-Davies sky, trackers limited to ±60° with backtracking).">Mounting Multiplier:</span>
             <span id="mountingYieldMultValue" class="highlight">—</span>
           </div>
+          <div class="field-note compact-note" id="solarYieldWarning" hidden></div>
           <div class="info-row">
             <span class="tooltip-label" data-tooltip="Total electricity the solar array generates in a typical year.">Annual Production:</span>
             <span id="annualProduction" class="highlight">— MWh</span>
@@ -260,6 +261,10 @@
             <label>Cycle Life
               <input type="range" id="batteryCycles" min="1000" max="10000" step="500" value="4000">
               <span class="range-value" id="batteryCyclesValue">4,000</span>
+            </label>
+            <label><span class="tooltip-label" data-tooltip="Energy-to-power ratio. The battery charges or discharges at most capacity ÷ duration per hour (a 4 h battery is a 0.25C system).">Duration (hours at full power)</span>
+              <input type="range" id="batteryDurationHours" min="0.5" max="12" step="0.5" value="4">
+              <span class="range-value" id="batteryDurationHoursValue">4.0 h</span>
             </label>
             <div class="info-row">
               <span id="effectiveCFLabel" class="tooltip-label" data-tooltip="Average utilization of the chemical plant after storage smooths solar output.">Effective CF:</span>
@@ -385,6 +390,10 @@
                   The AI load is auto-sized from the current solar plus battery system to satisfy the selected full-rate uptime target. The chemical plant then ramps up and down only on the residual energy left after AI load and battery charging.
                 </div>
                 <div class="field-note compact-note">
+                  Reliability is clear-sky-equivalent: every modeled day has the clear-sky shape scaled to the site's annual yield, so multi-day cloudy spells are not modeled and real-world uptime at the same battery size will be lower. AI sizing needs storage; with the battery at 0, one of 1 MWh per GWh/yr of solar is added automatically.
+                </div>
+                <div class="field-note compact-note" id="aiBatterySeedNote" hidden></div>
+                <div class="field-note compact-note">
                   GPU CAPEX is modeled on a direct-current datacenter framing ($/kW installed IT load).
                 </div>
                 <label>GPU CAPEX ($/kW)
@@ -412,7 +421,7 @@
                   <span id="aiUtilizationValue" class="highlight">—</span>
                 </div>
                 <div class="info-row">
-                  <span class="tooltip-label" data-tooltip="Share of time the AI load can run at full target output.">Full-rate reliability:</span>
+                  <span class="tooltip-label" data-tooltip="Share of hours the AI load runs at full design output in year 1, on a clear-sky-equivalent year (no multi-day weather).">Full-rate reliability (clear-sky eq.):</span>
                   <span id="aiFullRateValue" class="highlight">—</span>
                 </div>
                 <div class="info-row">

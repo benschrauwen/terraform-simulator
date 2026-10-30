@@ -1,6 +1,7 @@
 /*
- * Energy-model physics: clear-sky irradiance, mounting multipliers vs
- * PVGIS, lunar polar geometry, planetary constants and site lookups.
+ * Energy-model physics and invariants: clear-sky irradiance, mounting
+ * multipliers vs PVGIS, lunar polar geometry, annual series and dispatch
+ * energy balances and sizing definitions.
  * Expected values are independent references (published formulas, PVGIS
  * v5.3 outputs, conservation laws), not snapshots of the model.
  */
@@ -140,6 +141,171 @@ test('planetary constants match published values', () => {
     if (season.solarFlux > best.flux) best = { flux: season.solarFlux, ls: season.solarLongitudeDeg };
   }
   close(best.ls, 251, 0.5, 'Mars Ls of peak solar flux');
+});
+
+test('annual solar series total equals the plant annual energy', () => {
+  ['fixed', 'ew', 'single', 'dual'].forEach(mountingType => {
+    const result = runScenario({ mountingType });
+    close(result.annualSolar.totalKWh, result.solar.annualMWh * 1000, 1e-6 * result.solar.annualMWh * 1000, `Earth ${mountingType}`);
+    close(sum(result.annualSolar.hourlyKW), result.annualSolar.totalKWh, 1e-6 * result.annualSolar.totalKWh, `Earth ${mountingType} hourly sum`);
+    assert.ok(Math.max(...result.annualSolar.hourlyKW) <= result.solar.peakPowerKW + 1e-9, 'Series stays at or below nameplate');
+  });
+  const mars = runScenario({ body: 'mars', latitude: -7, longitude: -102, solarProfileModel: 'mars-average', siteYieldMwhPerMwdcYear: 980 });
+  close(mars.annualSolar.totalKWh, mars.solar.annualMWh * 1000, 1e-6 * mars.solar.annualMWh * 1000, 'Mars Earth-year series');
+  close(mars.annualDispatch.solarKWh * (355 / 668.6), mars.solar.annualMWh * 1000, 1e-6 * mars.solar.annualMWh * 1000, 'Mars orbital basis, annualized');
+  const moon = runScenario({ body: 'moon', latitude: -89.5, longitude: 0, solarProfileModel: 'lunar-pel', siteYieldMwhPerMwdcYear: 7400, mountingType: 'dual' });
+  close(moon.annualSolar.totalKWh, moon.solar.annualMWh * 1000, 1e-6 * moon.solar.annualMWh * 1000, 'Moon PEL');
+  assert.deepEqual(moon.warnings, [], 'Lunar PEL preset yield must be reachable under the nameplate cap');
+});
+
+function checkBatteryBalance(dispatch, battery, label) {
+  // Stored - delivered / discharge efficiency - self-discharge = change in state of charge.
+  const storedKWh = dispatch.chargeThroughputKWh;
+  const drawnKWh = dispatch.dischargeThroughputKWh / battery.dischargeEff;
+  close(
+    storedKWh - drawnKWh - dispatch.leakageKWh,
+    dispatch.endSocKWh - dispatch.startSocKWh,
+    1e-6 * Math.max(1, storedKWh),
+    `${label} battery SoC balance`
+  );
+  // Energy stored = energy drawn from solar x charge efficiency.
+  close(dispatch.chargeInputKWh * battery.chargeEff, storedKWh, 1e-6 * Math.max(1, storedKWh), `${label} charge losses`);
+  assert.ok(dispatch.minSocKWh >= -1e-9, `${label} SoC never negative`);
+  assert.ok(dispatch.maxSocKWh <= battery.capacityKWh + 1e-6, `${label} SoC never above capacity`);
+}
+
+test('chemical dispatch conserves energy for every battery size', () => {
+  [0, 1, 4, 20].forEach(batteryCapacityMWh => {
+    [100, 70].forEach(chemicalSizingPercent => {
+      const label = `${batteryCapacityMWh} MWh @ ${chemicalSizingPercent}%`;
+      const state = Calc.normalizeState(createState({ batteryCapacityMWh, chemicalSizingPercent }));
+      const result = Calc.calculateAll(state);
+      const dispatch = result.annualDispatch;
+      const battery = createBatteryShape(state);
+      // Solar = direct use + battery charging + clipped.
+      close(dispatch.solarKWh, dispatch.directToChemicalKWh + dispatch.chargeInputKWh + dispatch.clippedSolarKWh, 1e-6 * dispatch.solarKWh, `${label} solar split`);
+      // Delivered = direct + battery discharge.
+      close(dispatch.chemicalKWh, dispatch.directToChemicalKWh + dispatch.dischargeThroughputKWh, 1e-6 * dispatch.solarKWh, `${label} delivered`);
+      assert.ok(dispatch.chemicalKWh <= dispatch.solarKWh + 1e-6, `${label} delivered <= solar`);
+      assert.ok(result.chemicalSupply.effectiveCF <= 1 + 1e-12, `${label} effective CF <= 1`);
+      if (batteryCapacityMWh > 0) checkBatteryBalance(dispatch, battery, label);
+      // Power limit: capacity / duration per hour, both directions.
+      const powerKW = (batteryCapacityMWh * 1000) / state.batteryDurationHours;
+      assert.ok(Math.max(0, ...dispatch.batteryChargeHourlyKW) <= powerKW + 1e-6, `${label} charge power limit`);
+      const processKW = result.chemicalSupply.processPowerKW;
+      const maxDischargeKW = Math.max(0, ...dispatch.chemicalHourlyKW.map((delivered, hour) =>
+        delivered - Math.min(result.annualSolar.hourlyKW[hour], processKW)));
+      assert.ok(maxDischargeKW <= powerKW + 1e-6, `${label} discharge power limit`);
+    });
+  });
+});
+
+function createBatteryShape(state) {
+  const oneWay = Math.sqrt(Math.max(state.batteryEfficiency / 100, 1e-9));
+  return { capacityKWh: state.batteryCapacityMWh * 1000, chargeEff: oneWay, dischargeEff: oneWay };
+}
+
+test('AI dispatch conserves energy and meets its reliability target', () => {
+  [1, 4, 20].forEach(batteryCapacityMWh => {
+    const state = Calc.normalizeState(createState({ aiComputeEnabled: true, batteryCapacityMWh, aiReliabilityTarget: 95 }));
+    const result = Calc.calculateAll(state);
+    const dispatch = result.ai.dispatch;
+    const label = `AI ${batteryCapacityMWh} MWh`;
+    const aiFromSolar = dispatch.aiServedKWh - dispatch.dischargeThroughputKWh;
+    close(dispatch.solarKWh, aiFromSolar + dispatch.chargeInputKWh + dispatch.chemicalKWh + dispatch.clippedSolarKWh, 1e-6 * dispatch.solarKWh, `${label} solar split`);
+    checkBatteryBalance(dispatch, createBatteryShape(state), label);
+    assert.ok(result.ai.fullPowerReliability >= 0.95 - 1e-12, `${label} meets the 95% target`);
+    assert.ok(dispatch.aiServedKWh <= dispatch.loadKW * dispatch.hours + 1e-6, `${label} served <= demand`);
+  });
+});
+
+test('an automatically seeded AI battery is reported, also after the UI writes it back', () => {
+  const seeded = runScenario({ aiComputeEnabled: true, batteryCapacityMWh: 0 });
+  // Seed rule: 1 MWh per GWh/yr of solar.
+  close(seeded.ai.batterySeededMWh, seeded.solar.annualMWh / 1000, 1e-9, 'seeded MWh');
+  close(seeded.state.batteryCapacityMWh, seeded.ai.batterySeededMWh, 1e-12, 'seeded battery in state');
+  const rerun = Calc.calculateAll(seeded.state);
+  close(rerun.ai.batterySeededMWh, seeded.ai.batterySeededMWh, 1e-12, 'still reported on the normalized state');
+  assert.equal(runScenario({ aiComputeEnabled: true, batteryCapacityMWh: 3 }).ai.batterySeededMWh, 0, 'explicit battery is not seeded');
+});
+
+test('AI design load never shrinks as the battery grows', () => {
+  let previous = -Infinity;
+  [0.5, 1, 2, 4, 8, 16].forEach(batteryCapacityMWh => {
+    const result = runScenario({ aiComputeEnabled: true, batteryCapacityMWh, aiReliabilityTarget: 99 });
+    assert.ok(result.ai.designLoadKW >= previous - 1e-6, `design load at ${batteryCapacityMWh} MWh`);
+    previous = result.ai.designLoadKW;
+  });
+});
+
+test('100% chemical sizing is the smallest capacity that clips nothing over the year', () => {
+  [0, 4].forEach(batteryCapacityMWh => {
+    const state = Calc.normalizeState(createState({ batteryCapacityMWh }));
+    const result = Calc.calculateAll(state);
+    const fullKW = result.chemicalSupply.processPowerKW;
+    const atFull = Calc.simulateAnnualChemicalDispatch(state, result.annualSolar, fullKW, { captureSeries: false });
+    const below = Calc.simulateAnnualChemicalDispatch(state, result.annualSolar, fullKW * 0.99, { captureSeries: false });
+    assert.ok(atFull.clippedSolarKWh <= 1e-6 * result.annualSolar.totalKWh, `${batteryCapacityMWh} MWh: no clipping at full size`);
+    assert.ok(below.clippedSolarKWh > 0, `${batteryCapacityMWh} MWh: 1% smaller clips`);
+  });
+  // Storage lets a smaller constant plant absorb the same year.
+  assert.ok(
+    runScenario({ batteryCapacityMWh: 4 }).chemicalSupply.processPowerKW < runScenario({}).chemicalSupply.processPowerKW,
+    'Battery-backed full-capture size below the no-storage annual peak'
+  );
+});
+
+test('sizing below 100% clips and lowers delivered energy against the same annual basis', () => {
+  const full = runScenario({});
+  const partial = runScenario({ chemicalSizingPercent: 70 });
+  close(partial.chemicalSupply.processPowerKW, full.chemicalSupply.processPowerKW * 0.7, 1e-9, '70% of full-capture size');
+  assert.ok(partial.chemicalSupply.clippedDailyKWh > 0, 'Undersized plant clips');
+  close(
+    (partial.chemicalSupply.dailyAvailableKWh + partial.chemicalSupply.clippedDailyKWh) * 365,
+    full.annualSolar.totalKWh,
+    1e-6 * full.annualSolar.totalKWh,
+    'delivered + clipped = solar without storage'
+  );
+});
+
+test('edge states produce finite energy results', () => {
+  const edgeStates = [
+    { systemSizeMW: 0 },
+    { systemSizeMW: 0, batteryCapacityMWh: 4 },
+    { systemSizeMW: 0, batteryCapacityMWh: 4, aiComputeEnabled: true },
+    { chemicalSizingPercent: 0 },
+    { chemicalSizingPercent: 0, batteryCapacityMWh: 2 },
+    { batteryEfficiency: 0, batteryCapacityMWh: 2 },
+    { batteryEfficiency: 0, batteryCapacityMWh: 2, aiComputeEnabled: true },
+    { latitude: 90 },
+    { latitude: -90, mountingType: 'single' },
+    { body: 'moon', latitude: -90, solarProfileModel: 'lunar-pel' },
+  ];
+  const findNaN = (value, path, out) => {
+    if (typeof value === 'number') { if (Number.isNaN(value)) out.push(path); return; }
+    if (Array.isArray(value)) { value.forEach((item, index) => findNaN(item, `${path}[${index}]`, out)); return; }
+    if (value && typeof value === 'object') Object.entries(value).forEach(([key, item]) => findNaN(item, `${path}.${key}`, out));
+  };
+  edgeStates.forEach(overrides => {
+    const result = runScenario(overrides);
+    const nan = [];
+    findNaN({ solar: result.solar, chemicalSupply: result.chemicalSupply, storage: result.storage, ai: result.ai }, 'result', nan);
+    assert.deepEqual(nan.slice(0, 5), [], `NaN in ${JSON.stringify(overrides)}`);
+    assert.ok(result.solar.capacityFactor <= 1 && result.chemicalSupply.effectiveCF <= 1 + 1e-12, `CF <= 1 for ${JSON.stringify(overrides)}`);
+  });
+  // Zero plant with storage: nothing to deliver, no phantom start-of-year charge.
+  const empty = runScenario({ systemSizeMW: 0, batteryCapacityMWh: 4 });
+  assert.equal(empty.annualDispatch.chemicalKWh, 0);
+  assert.equal(empty.annualDispatch.settleIterations, 0);
+});
+
+test('an unreachable site yield is capped and flagged instead of inventing energy', () => {
+  const result = runScenario({ siteYieldMwhPerMwdcYear: 9000 });
+  assert.equal(result.warnings.length, 1, 'Expected a capped-yield warning');
+  assert.ok(result.solar.annualMWh < result.solar.requestedAnnualMWh, 'Delivered energy below the request');
+  close(result.solar.annualMWh * 1000, result.annualSolar.totalKWh, 1e-6 * result.annualSolar.totalKWh, 'solar summary follows the capped series');
+  assert.ok(result.solar.capacityFactor <= 1, 'CF <= 1');
+  assert.deepEqual(runScenario({}).warnings, [], 'Default site is reachable');
 });
 
 test('site lookups use the nearest preset and respect an explicit zero yield', () => {

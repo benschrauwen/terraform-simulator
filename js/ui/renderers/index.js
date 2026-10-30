@@ -16,6 +16,12 @@ export const rendererMethods = {
     if (mountingYieldMultValue) {
       mountingYieldMultValue.textContent = `${FormatNumbers.fixed(r.solar.yieldMult, 3)}× vs ${r.solar.baseYieldReference}`;
     }
+    const solarYieldWarning = document.getElementById('solarYieldWarning');
+    if (solarYieldWarning) {
+      const messages = (r.warnings || []).map(warning => warning.message);
+      solarYieldWarning.textContent = messages.join(' ');
+      solarYieldWarning.hidden = messages.length === 0;
+    }
     document.getElementById('annualProduction').textContent = `${FormatNumbers.fixed(r.solar.annualMWh, 0)} MWh`;
     document.getElementById('capacityFactor').textContent = `${FormatNumbers.fixed(r.solar.capacityFactor * 100, 1)}%`;
     document.getElementById('lcoe').textContent = `$${FormatNumbers.fixed(r.solar.lcoe, 2)}/MWh`;
@@ -75,6 +81,14 @@ export const rendererMethods = {
     }
     if (aiFullRateValue) {
       aiFullRateValue.textContent = r.ai.enabled ? `${FormatNumbers.fixed(r.ai.fullPowerReliability * 100, 2)}%` : '—';
+    }
+    const aiBatterySeedNote = document.getElementById('aiBatterySeedNote');
+    if (aiBatterySeedNote) {
+      const seededMWh = r.ai.enabled ? (r.ai.batterySeededMWh || 0) : 0;
+      aiBatterySeedNote.textContent = seededMWh > 0
+        ? `The ${FormatNumbers.fixed(seededMWh, 1)} MWh battery was added automatically for AI sizing (1 MWh per GWh/yr of solar); change it under Battery Storage.`
+        : '';
+      aiBatterySeedNote.hidden = !(seededMWh > 0);
     }
     if (aiTokensAnnualValue) {
       aiTokensAnnualValue.textContent = r.ai.enabled ? `${FormatNumbers.fixed(r.ai.annualTokensM / 1000, 2)}B` : '—';

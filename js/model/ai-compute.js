@@ -11,6 +11,7 @@ import { hasBatteryStorage } from '../state/normalize.js';
 import { DEFAULT_STATE } from '../state/schema.js';
 import {
   applyBatteryLeakage,
+  batteryReceivesEnergy,
   chargeBattery,
   createAnnualBattery,
   dischargeBattery,
@@ -35,6 +36,7 @@ export const aiComputeMethods = {
       ? Math.max(0, options.opThresholdKW)
       : (chemicalCapacityKW !== null && chemicalCapacityKW > 0 ? chemicalCapacityKW * MODEL_ASSUMPTIONS.processOperatingThresholdFraction : null);
     const source = Array.isArray(annualSolar?.hourlyKW) ? annualSolar.hourlyKW : [];
+    const solarScale = Number.isFinite(options.solarScale) ? Math.max(0, options.solarScale) : 1;
     const hours = source.length;
     const summaryWindowHours = Math.max(1e-6, annualSolar?.windowHours || 24);
     const summaryBinCount = Math.max(1, Math.round(annualSolar?.windowBinCount || 24));
@@ -54,6 +56,8 @@ export const aiComputeMethods = {
     let minSocKWh = battery.socKWh;
     let maxSocKWh = battery.socKWh;
 
+    let solarKWh = 0;
+    let chargeInputKWh = 0;
     let aiServedKWh = 0;
     let aiShortfallKWh = 0;
     let chemicalKWh = 0;
@@ -66,7 +70,8 @@ export const aiComputeMethods = {
     for (let hour = 0; hour < hours; hour++) {
       applyBatteryLeakage(battery);
 
-      let solarKW = source[hour];
+      let solarKW = source[hour] * solarScale;
+      solarKWh += solarKW;
       let aiServed = Math.min(loadKW, solarKW);
       solarKW -= aiServed;
 
@@ -76,8 +81,9 @@ export const aiComputeMethods = {
 
       let chargeFromSolarKW = 0;
       if (solarKW > 1e-9 && battCapKWh > 0 && battery.socKWh < battCapKWh - 1e-9) {
-        chargeFromSolarKW = chargeBattery(battery, solarKW) / battery.chargeEff;
+        chargeFromSolarKW = Math.min(solarKW, chargeBattery(battery, solarKW) / battery.chargeEff);
         solarKW -= chargeFromSolarKW;
+        chargeInputKWh += chargeFromSolarKW;
         if (captureSeries) {
           batteryChargeHourlyKW[hour] = chargeFromSolarKW;
         }
@@ -133,6 +139,8 @@ export const aiComputeMethods = {
     return {
       hours,
       loadKW,
+      solarKWh,
+      chargeInputKWh,
       aiHourlyKW,
       chemicalHourlyKW,
       clippedHourlyKW,
@@ -159,6 +167,7 @@ export const aiComputeMethods = {
       chemicalOpHours: resolvedChemicalOpHours,
       chargeThroughputKWh: battery.chargeThroughputKWh,
       dischargeThroughputKWh: battery.dischargeThroughputKWh,
+      leakageKWh: battery.leakageKWh,
       startSocKWh: Math.max(0, Math.min(battCapKWh, startSocKWh)),
       endSocKWh: battery.socKWh,
       minSocKWh,
@@ -167,64 +176,48 @@ export const aiComputeMethods = {
     };
   },
 
+  /* Periodic-year dispatch at a constant AI load. With no chemical cap the
+     operating-hour threshold depends on the (unknown) residual peak, so
+     op hours need a second pass; sizing searches skip it (`skipOpHours`). */
   simulateAnnualDispatchWithConstantAiLoad(state, annualSolar, loadKW, options = {}) {
     const captureSeries = options.captureSeries !== false;
     const captureDailySummaries = Boolean(options.captureDailySummaries);
     const chemicalCapacityKW = Number.isFinite(options.chemicalCapacityKW) ? Math.max(0, options.chemicalCapacityKW) : null;
-    const batteryEnabled = hasBatteryStorage(state);
+    const solarScale = Number.isFinite(options.solarScale) ? Math.max(0, options.solarScale) : 1;
+    const passOptions = { chemicalCapacityKW, solarScale };
 
     const finalizeDispatch = dispatch => {
-      const resolvedOpThresholdKW = Number.isFinite(options.opThresholdKW)
-        ? Math.max(0, options.opThresholdKW)
-        : (chemicalCapacityKW !== null && chemicalCapacityKW > 0
-            ? chemicalCapacityKW * MODEL_ASSUMPTIONS.processOperatingThresholdFraction
-            : (dispatch.chemicalPeakKW > 0 ? dispatch.chemicalPeakKW * MODEL_ASSUMPTIONS.processOperatingThresholdFraction : null));
-      if (captureSeries || resolvedOpThresholdKW === null) {
-        return {
-          ...dispatch,
-          chemicalCapacityKW: chemicalCapacityKW ?? dispatch.chemicalPeakKW,
-        };
+      const needsSecondPass = !captureSeries && !options.skipOpHours &&
+        chemicalCapacityKW === null && dispatch.chemicalPeakKW > 0;
+      if (!needsSecondPass) {
+        return { ...dispatch, chemicalCapacityKW: chemicalCapacityKW ?? dispatch.chemicalPeakKW };
       }
       const summarized = this.simulateAnnualDispatchPass(state, annualSolar, loadKW, dispatch.startSocKWh, {
+        ...passOptions,
         captureSeries: false,
-        chemicalCapacityKW,
-        opThresholdKW: resolvedOpThresholdKW,
+        opThresholdKW: dispatch.chemicalPeakKW * MODEL_ASSUMPTIONS.processOperatingThresholdFraction,
       });
       return {
         ...dispatch,
         chemicalOpHours: summarized.chemicalOpHours,
-        chemicalCapacityKW: chemicalCapacityKW ?? dispatch.chemicalPeakKW,
+        chemicalCapacityKW: dispatch.chemicalPeakKW,
       };
     };
 
-    if (!batteryEnabled) {
-      return finalizeDispatch({
-        ...this.simulateAnnualDispatchPass(state, annualSolar, loadKW, 0, {
-          captureSeries,
-          captureDailySummaries,
-          chemicalCapacityKW,
-        }),
-        settleIterations: 1,
-        settleDeltaKWh: 0,
-      });
-    }
-
     const { startSocKWh, settleIterations } = settleAnnualStartSoc(
       createAnnualBattery(state).capacityKWh,
-      start => this.simulateAnnualDispatchPass(state, annualSolar, loadKW, start, {
-        captureSeries: false,
-        chemicalCapacityKW,
-      })
+      start => this.simulateAnnualDispatchPass(state, annualSolar, loadKW, start, { ...passOptions, captureSeries: false }),
+      { hasInput: batteryReceivesEnergy(state, annualSolar, solarScale) }
     );
 
     const captured = this.simulateAnnualDispatchPass(state, annualSolar, loadKW, startSocKWh, {
+      ...passOptions,
       captureSeries,
       captureDailySummaries,
-      chemicalCapacityKW,
     });
     return finalizeDispatch({
       ...captured,
-      settleIterations,
+      settleIterations: hasBatteryStorage(state) ? settleIterations : 1,
       settleDeltaKWh: Math.abs(captured.endSocKWh - captured.startSocKWh),
     });
   },
@@ -324,13 +317,16 @@ export const aiComputeMethods = {
     };
   },
 
+  /* Largest constant AI load whose full-power hour share meets the target on
+     the year-1 (clear-sky-equivalent) annual series, then the residual
+     chemical plant. Only called with AI enabled. */
   calculateAICompute(state, solar, annualSolar, options = {}) {
     const captureDispatchSeries = options.captureDispatchSeries !== false;
     const includeDisplayDispatchSeries = options.includeDisplayDispatchSeries !== false;
     const captureDailySummaries = Boolean(options.captureDailySummaries);
     const chemicalSizingFraction = this.getChemicalSizingFraction(state);
     const cyclesPerYear = this.getBodyConfig(state.body || 'earth').cyclesPerEarthYear;
-    const dispatchBasis = this.getAnnualDispatchBasis(state, solar, annualSolar, {
+    const dispatchBasis = options.dispatchBasis || this.getAnnualDispatchBasis(state, solar, annualSolar, {
       includeWindowSummaries: captureDispatchSeries || includeDisplayDispatchSeries,
     });
     const dispatchSolar = dispatchBasis.solar;
@@ -339,53 +335,19 @@ export const aiComputeMethods = {
     const hours = Array.isArray(dispatchSolar?.hourlyKW) ? dispatchSolar.hourlyKW.length : 0;
     const targetReliability = Math.max(0.0001, Math.min(0.99999, (state.aiReliabilityTarget || DEFAULT_STATE.aiReliabilityTarget) / 100));
     const { capex: batteryCapex, lifetimeYears: batteryLifeYears } = getBatteryCapexAndLife(state, cyclesPerYear);
-    const disabledDispatch = this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, 0, {
-      captureSeries: captureDispatchSeries,
-      captureDailySummaries,
+    const sizingDispatch = loadKW => this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, loadKW, {
+      captureSeries: false,
+      skipOpHours: true,
     });
-
-    if (!state.aiComputeEnabled || hours <= 0) {
-      const annualChemicalKWh = disabledDispatch.chemicalKWh * annualizationFactor;
-      return {
-        enabled: false,
-        reliabilityTarget: targetReliability * 100,
-        designLoadKW: 0,
-        annualAiServedKWh: 0,
-        annualTokensM: 0,
-        annualRevenue: 0,
-        tokensPerKWYearM: 0,
-        utilization: 0,
-        fullPowerReliability: 1,
-        fullPowerHours: hours * annualizationFactor,
-        curtailedHours: 0,
-        averageDailyTokensM: 0,
-        averageDailyChemicalMWh: annualChemicalKWh / Math.max(cyclesPerYear, 1) / 1000,
-        chemicalAnnualKWh: annualChemicalKWh,
-        chemicalPeakKW: disabledDispatch.chemicalPeakKW,
-        chemicalDailyOpHours: (disabledDispatch.chemicalOpHours * annualizationFactor) / Math.max(cyclesPerYear, 1),
-        capex: 0,
-        annualizedCapex: 0,
-        annualOM: 0,
-        assetLifeYears: state.aiAssetLifeYears || AI_COMPUTE_DEFAULTS.assetLifeYears,
-        dispatch: this.attachAnnualDispatchDisplaySeries(state, dispatchSolar, disabledDispatch, dispatchHorizonLabel, {
-          includeDisplaySeries: includeDisplayDispatchSeries,
-          includeSolarSummary: captureDispatchSeries || includeDisplayDispatchSeries,
-        }),
-        storage: this.buildAnnualStorageSummary(state, disabledDispatch, batteryCapex, batteryLifeYears),
-        chemicalSupply: this.buildAnnualChemicalSupplySummary(disabledDispatch, solar, cyclesPerYear, annualizationFactor, {
-          includeSeries: captureDispatchSeries,
-        }),
-      };
-    }
 
     const averageSolarKW = (dispatchSolar.totalKWh || 0) / Math.max(hours, 1);
     const peakSolarKW = Array.isArray(dispatchSolar?.hourlyKW) ? Math.max(...dispatchSolar.hourlyKW, 0) : 0;
     let lo = 0;
     let hi = Math.max(1, averageSolarKW / targetReliability, peakSolarKW);
-    let best = this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, 0, { captureSeries: false });
+    let best = sizingDispatch(0);
 
     while (hi < 1e9) {
-      const upperBoundDispatch = this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, hi, { captureSeries: false });
+      const upperBoundDispatch = sizingDispatch(hi);
       if (upperBoundDispatch.fullPowerReliability < targetReliability) {
         break;
       }
@@ -394,9 +356,12 @@ export const aiComputeMethods = {
       hi *= 2;
     }
 
-    for (let i = 0; i < 50; i++) {
+    // Reliability is a step function of the load; resolve it to 1e-5 of the
+    // search span (well below any displayed precision).
+    const loadToleranceKW = Math.max(1e-6, hi * 1e-5);
+    while (hi - lo > loadToleranceKW) {
       const mid = (lo + hi) / 2;
-      const dispatch = this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, mid, { captureSeries: false });
+      const dispatch = sizingDispatch(mid);
       if (dispatch.fullPowerReliability >= targetReliability) {
         best = dispatch;
         lo = mid;
@@ -405,14 +370,16 @@ export const aiComputeMethods = {
       }
     }
 
-    const fullCaptureDispatch = this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, best.loadKW, {
+    const designLoadKW = best.loadKW;
+    const fullCaptureDispatch = this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, designLoadKW, {
       captureSeries: false,
+      skipOpHours: true,
     });
     const chemicalCapacityKW = (fullCaptureDispatch.chemicalPeakKW || 0) * chemicalSizingFraction;
     const finalDispatch = {
-      ...this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, best.loadKW, {
+      ...this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, designLoadKW, {
         captureSeries: captureDispatchSeries,
-        captureDailySummaries,
+        captureDailySummaries: captureDailySummaries || !captureDispatchSeries,
         chemicalCapacityKW,
       }),
       fullCaptureChemicalKW: fullCaptureDispatch.chemicalPeakKW || 0,
@@ -423,18 +390,22 @@ export const aiComputeMethods = {
     const annualChemicalKWh = finalDispatch.chemicalKWh * annualizationFactor;
     const annualTokensM = (annualAiServedKWh / 1000) * (state.aiMillionTokensPerMWh || 0);
     const gpuCapexPerKW = state.aiGpuCapexPerKW ?? AI_COMPUTE_DEFAULTS.capexPerKW;
-    const capex = finalDispatch.loadKW * gpuCapexPerKW;
+    const capex = designLoadKW * gpuCapexPerKW;
     const annualizedCapex = capex * crf(state.discountRate / 100, state.aiAssetLifeYears || AI_COMPUTE_DEFAULTS.assetLifeYears);
     const annualOM = capex * ((AI_COMPUTE_DEFAULTS.omPercent || 0) / 100);
 
     return {
       enabled: true,
       reliabilityTarget: targetReliability * 100,
-      designLoadKW: finalDispatch.loadKW,
+      // Reliability is measured against a modeled year in which every day
+      // has the clear-sky shape scaled to the site's annual yield: multi-day
+      // weather (cloudy spells) is not modeled.
+      reliabilityBasis: 'clear-sky-equivalent',
+      designLoadKW,
       annualAiServedKWh,
       annualTokensM,
       annualRevenue: annualTokensM * (state.aiTokenPricePerM || 0),
-      tokensPerKWYearM: finalDispatch.loadKW > 0 ? annualTokensM / finalDispatch.loadKW : 0,
+      tokensPerKWYearM: designLoadKW > 0 ? annualTokensM / designLoadKW : 0,
       utilization: finalDispatch.utilization,
       fullPowerReliability: finalDispatch.fullPowerReliability,
       fullPowerHours: finalDispatch.fullPowerHours * annualizationFactor,
@@ -469,6 +440,7 @@ export const aiComputeMethods = {
       tokensPerKWYearM: 0,
       utilization: 0,
       fullPowerReliability: 1,
+      batterySeededMWh: 0,
       fullPowerHours: 0,
       curtailedHours: 0,
       averageDailyTokensM: 0,

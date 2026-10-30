@@ -1,8 +1,79 @@
-/* Electrolyzer, DAC, products */
+/* ============================================
+   Process chain
+   ============================================
+   Power/feed allocation across modules, electrolyzer and DAC output, the
+   supported H2 + CO2 reactors (Sabatier methane, methanol), and the generic
+   exploratory routes driven by data/modules.js. */
 
 import { CHEMISTRY } from '../data/reference-data.js';
 import { DEFAULT_STATE } from '../state/schema.js';
 import { ModuleCatalog } from './module-catalog.js';
+
+/* Sizes a two-feed (H2 + CO2) catalytic reactor. `h2PerKg` / `co2PerKg` are
+   the kg of each feed per kg of product and `conversion` the yield fraction.
+   Daily quantities are per cycle (day, sol, lunar cycle). Without a feed
+   buffer the reactor is sized for the hourly peak feed; with one, for the
+   cycle-average feed of the peak day, running the whole cycle. */
+function sizeTwoFeedReactor({
+  h2PerKg,
+  co2PerKg,
+  conversion,
+  bufferEnabled,
+  cycleHours,
+  opHours,
+  h2AvailableKg,
+  co2AvailableKg,
+  peakH2SizingKgPerHour,
+  peakCO2SizingKgPerHour,
+  peakH2DailyKg,
+  peakCO2DailyKg,
+}) {
+  const productFromH2 = h2AvailableKg / h2PerKg;
+  const productFromCO2 = co2AvailableKg / co2PerKg;
+  const grossDailyKg = Math.min(productFromH2, productFromCO2);
+  const dailyKg = grossDailyKg * conversion;
+  const peakProductFromH2 = peakH2SizingKgPerHour / h2PerKg;
+  const peakProductFromCO2 = peakCO2SizingKgPerHour / co2PerKg;
+  const sizingPeakH2DailyKg = Math.max(h2AvailableKg, Number.isFinite(peakH2DailyKg) ? peakH2DailyKg : 0);
+  const sizingPeakCO2DailyKg = Math.max(co2AvailableKg, Number.isFinite(peakCO2DailyKg) ? peakCO2DailyKg : 0);
+  const bufferedPeakProductFromH2 = cycleHours > 0
+    ? (sizingPeakH2DailyKg / cycleHours) / h2PerKg
+    : 0;
+  const bufferedPeakProductFromCO2 = cycleHours > 0
+    ? (sizingPeakCO2DailyKg / cycleHours) / co2PerKg
+    : 0;
+  const designGrossKgPerHour = bufferEnabled
+    ? Math.min(bufferedPeakProductFromH2, bufferedPeakProductFromCO2)
+    : Math.min(peakProductFromH2, peakProductFromCO2);
+  const designH2FeedKgPerHour = designGrossKgPerHour * h2PerKg;
+  const designCO2FeedKgPerHour = designGrossKgPerHour * co2PerKg;
+  const designFeedKgPerHour = designH2FeedKgPerHour + designCO2FeedKgPerHour;
+  const designHourlyOutputKg = designGrossKgPerHour * conversion;
+  const designRunHours = bufferEnabled ? cycleHours : opHours;
+  const grossDailyFeedKg = grossDailyKg * (h2PerKg + co2PerKg);
+  const averageGrossFeedKgPerHour = designRunHours > 0
+    ? grossDailyFeedKg / designRunHours
+    : 0;
+  const averageUtilization = designFeedKgPerHour > 0
+    ? Math.min(1, (grossDailyFeedKg / cycleHours) / designFeedKgPerHour)
+    : 0;
+  const operatingUtilization = designFeedKgPerHour > 0
+    ? Math.min(1, averageGrossFeedKgPerHour / designFeedKgPerHour)
+    : 0;
+
+  return {
+    productFromH2,
+    productFromCO2,
+    dailyKg,
+    designH2FeedKgPerHour,
+    designCO2FeedKgPerHour,
+    designFeedKgPerHour,
+    designHourlyOutputKg,
+    designRunHours,
+    averageUtilization,
+    operatingUtilization,
+  };
+}
 
 export const processMethods = {
   getProductMix(state) {
@@ -321,45 +392,24 @@ export const processMethods = {
     }
 
     const c = CHEMISTRY.sabatier;
-    const conv = state.sabatierConversion / 100;
     const bufferEnabled = this.isModuleFeedBufferEnabled(state, 'sabatier');
-    const ch4FromH2 = h2AvailableKg / c.h2MassPerKgCH4;
-    const ch4FromCO2 = co2AvailableKg / c.co2MassPerKgCH4;
-    const grossCh4DailyKg = Math.min(ch4FromH2, ch4FromCO2);
-    const ch4DailyKg = grossCh4DailyKg * conv;
-    const peakCh4FromH2 = peakH2SizingKgPerHour / c.h2MassPerKgCH4;
-    const peakCh4FromCO2 = peakCO2SizingKgPerHour / c.co2MassPerKgCH4;
-    const sizingPeakH2DailyKg = Math.max(h2AvailableKg, Number.isFinite(peakH2DailyKg) ? peakH2DailyKg : 0);
-    const sizingPeakCO2DailyKg = Math.max(co2AvailableKg, Number.isFinite(peakCO2DailyKg) ? peakCO2DailyKg : 0);
-    const bufferedPeakCh4FromH2 = body.cycleHours > 0
-      ? (sizingPeakH2DailyKg / body.cycleHours) / c.h2MassPerKgCH4
-      : 0;
-    const bufferedPeakCh4FromCO2 = body.cycleHours > 0
-      ? (sizingPeakCO2DailyKg / body.cycleHours) / c.co2MassPerKgCH4
-      : 0;
-    const designGrossCh4KgPerHour = bufferEnabled
-      ? Math.min(bufferedPeakCh4FromH2, bufferedPeakCh4FromCO2)
-      : Math.min(peakCh4FromH2, peakCh4FromCO2);
-    const designH2FeedKgPerHour = designGrossCh4KgPerHour * c.h2MassPerKgCH4;
-    const designCO2FeedKgPerHour = designGrossCh4KgPerHour * c.co2MassPerKgCH4;
-    const designFeedKgPerHour = designH2FeedKgPerHour + designCO2FeedKgPerHour;
-    const designHourlyOutputKg = designGrossCh4KgPerHour * conv;
-    const designOutputKW = designHourlyOutputKg * c.ch4LhvKwhPerKg;
-    const designHourlyRate = designHourlyOutputKg / c.ch4PerMCF;
+    const reactor = sizeTwoFeedReactor({
+      h2PerKg: c.h2MassPerKgCH4,
+      co2PerKg: c.co2MassPerKgCH4,
+      conversion: state.sabatierConversion / 100,
+      bufferEnabled,
+      cycleHours: body.cycleHours,
+      opHours,
+      h2AvailableKg,
+      co2AvailableKg,
+      peakH2SizingKgPerHour,
+      peakCO2SizingKgPerHour,
+      peakH2DailyKg,
+      peakCO2DailyKg,
+    });
+    const ch4DailyKg = reactor.dailyKg;
+    const designOutputKW = reactor.designHourlyOutputKg * c.ch4LhvKwhPerKg;
     const ch4DailyMCF = ch4DailyKg / c.ch4PerMCF;
-    const designRunHours = bufferEnabled ? body.cycleHours : opHours;
-    const hourlyRate = designRunHours > 0 ? ch4DailyMCF / designRunHours : 0;
-    const grossFeedMassPerKgCh4 = c.h2MassPerKgCH4 + c.co2MassPerKgCH4;
-    const grossDailyFeedKg = grossCh4DailyKg * grossFeedMassPerKgCh4;
-    const averageGrossFeedKgPerHour = designRunHours > 0
-      ? grossDailyFeedKg / designRunHours
-      : 0;
-    const averageUtilization = designFeedKgPerHour > 0
-      ? Math.min(1, (grossDailyFeedKg / body.cycleHours) / designFeedKgPerHour)
-      : 0;
-    const operatingUtilization = designFeedKgPerHour > 0
-      ? Math.min(1, averageGrossFeedKgPerHour / designFeedKgPerHour)
-      : 0;
     return {
       id: 'sabatier',
       enabled: true,
@@ -375,16 +425,16 @@ export const processMethods = {
       h2Consumed: ch4DailyKg * c.h2MassPerKgCH4,
       co2Consumed: ch4DailyKg * c.co2MassPerKgCH4,
       waterProducedDaily: ch4DailyKg * c.waterPerKgCH4,
-      designH2FeedKgPerHour,
-      designCO2FeedKgPerHour,
-      designFeedKgPerHour,
-      designHourlyOutputKg,
+      designH2FeedKgPerHour: reactor.designH2FeedKgPerHour,
+      designCO2FeedKgPerHour: reactor.designCO2FeedKgPerHour,
+      designFeedKgPerHour: reactor.designFeedKgPerHour,
+      designHourlyOutputKg: reactor.designHourlyOutputKg,
       designOutputKW,
-      limitingReagent: ch4FromH2 < ch4FromCO2 ? 'H2' : 'CO2',
-      hourlyRate,
-      designHourlyRate,
-      averageUtilization,
-      operatingUtilization,
+      limitingReagent: reactor.productFromH2 < reactor.productFromCO2 ? 'H2' : 'CO2',
+      hourlyRate: reactor.designRunHours > 0 ? ch4DailyMCF / reactor.designRunHours : 0,
+      designHourlyRate: reactor.designHourlyOutputKg / c.ch4PerMCF,
+      averageUtilization: reactor.averageUtilization,
+      operatingUtilization: reactor.operatingUtilization,
       capex: state.sabatierCapex * designOutputKW,
     };
   },
@@ -434,42 +484,22 @@ export const processMethods = {
     }
 
     const c = CHEMISTRY.methanol;
-    const eff = state.methanolEfficiency / 100;
     const bufferEnabled = this.isModuleFeedBufferEnabled(state, 'methanol');
-    const grossDailyKg = Math.min(
-      h2AvailableKg / c.h2MassPerKgMeOH,
-      co2AvailableKg / c.co2MassPerKgMeOH
-    );
-    const dailyKg = grossDailyKg * eff;
-    const peakMeohFromH2 = peakH2SizingKgPerHour / c.h2MassPerKgMeOH;
-    const peakMeohFromCO2 = peakCO2SizingKgPerHour / c.co2MassPerKgMeOH;
-    const sizingPeakH2DailyKg = Math.max(h2AvailableKg, Number.isFinite(peakH2DailyKg) ? peakH2DailyKg : 0);
-    const sizingPeakCO2DailyKg = Math.max(co2AvailableKg, Number.isFinite(peakCO2DailyKg) ? peakCO2DailyKg : 0);
-    const bufferedPeakMeohFromH2 = body.cycleHours > 0
-      ? (sizingPeakH2DailyKg / body.cycleHours) / c.h2MassPerKgMeOH
-      : 0;
-    const bufferedPeakMeohFromCO2 = body.cycleHours > 0
-      ? (sizingPeakCO2DailyKg / body.cycleHours) / c.co2MassPerKgMeOH
-      : 0;
-    const designGrossKgPerHour = bufferEnabled
-      ? Math.min(bufferedPeakMeohFromH2, bufferedPeakMeohFromCO2)
-      : Math.min(peakMeohFromH2, peakMeohFromCO2);
-    const designH2FeedKgPerHour = designGrossKgPerHour * c.h2MassPerKgMeOH;
-    const designCO2FeedKgPerHour = designGrossKgPerHour * c.co2MassPerKgMeOH;
-    const designFeedKgPerHour = designH2FeedKgPerHour + designCO2FeedKgPerHour;
-    const designHourlyOutputKg = designGrossKgPerHour * eff;
-    const designRunHours = bufferEnabled ? body.cycleHours : opHours;
-    const grossFeedMassPerKgMeoh = c.h2MassPerKgMeOH + c.co2MassPerKgMeOH;
-    const grossDailyFeedKg = grossDailyKg * grossFeedMassPerKgMeoh;
-    const averageGrossFeedKgPerHour = designRunHours > 0
-      ? grossDailyFeedKg / designRunHours
-      : 0;
-    const averageUtilization = designFeedKgPerHour > 0
-      ? Math.min(1, (grossDailyFeedKg / body.cycleHours) / designFeedKgPerHour)
-      : 0;
-    const operatingUtilization = designFeedKgPerHour > 0
-      ? Math.min(1, averageGrossFeedKgPerHour / designFeedKgPerHour)
-      : 0;
+    const reactor = sizeTwoFeedReactor({
+      h2PerKg: c.h2MassPerKgMeOH,
+      co2PerKg: c.co2MassPerKgMeOH,
+      conversion: state.methanolEfficiency / 100,
+      bufferEnabled,
+      cycleHours: body.cycleHours,
+      opHours,
+      h2AvailableKg,
+      co2AvailableKg,
+      peakH2SizingKgPerHour,
+      peakCO2SizingKgPerHour,
+      peakH2DailyKg,
+      peakCO2DailyKg,
+    });
+    const dailyKg = reactor.dailyKg;
     const annualKg = dailyKg * body.cyclesPerEarthYear;
     return {
       id: 'methanol',
@@ -493,13 +523,13 @@ export const processMethods = {
       h2Consumed: dailyKg * c.h2MassPerKgMeOH,
       co2Consumed: dailyKg * c.co2MassPerKgMeOH,
       waterProducedDaily: dailyKg * c.waterPerKgMeOH,
-      designH2FeedKgPerHour,
-      designCO2FeedKgPerHour,
-      designFeedKgPerHour,
-      designHourlyOutputKg,
-      averageUtilization,
-      operatingUtilization,
-      capex: state.methanolCapex * designFeedKgPerHour,
+      designH2FeedKgPerHour: reactor.designH2FeedKgPerHour,
+      designCO2FeedKgPerHour: reactor.designCO2FeedKgPerHour,
+      designFeedKgPerHour: reactor.designFeedKgPerHour,
+      designHourlyOutputKg: reactor.designHourlyOutputKg,
+      averageUtilization: reactor.averageUtilization,
+      operatingUtilization: reactor.operatingUtilization,
+      capex: state.methanolCapex * reactor.designFeedKgPerHour,
     };
   },
 
@@ -605,7 +635,6 @@ export const processMethods = {
       peakSizingKW = 0,
       effectiveDailyKWh = 0,
       peakDailyKWh = 0,
-      opHours = 0,
     } = context;
     const body = this.getBodyConfig(state.body || 'earth');
     const cyclesPerYear = body.cyclesPerEarthYear;

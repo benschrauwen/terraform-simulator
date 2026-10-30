@@ -340,7 +340,7 @@
               <div id="productMixControl" class="process-card product-mix-card" style="display:none;">
                 <div class="module-note-title">Shared feedstock split</div>
                 <div class="range-control">
-                  <label for="methaneFeedstockSplit">Methane share of downstream feedstock demand</label>
+                  <label for="methaneFeedstockSplit">Methane share of the methane + methanol product slate (by mass)</label>
                   <input type="range" id="methaneFeedstockSplit" min="0" max="100" step="1" value="50">
                   <span class="range-control-footer">
                     <span class="range-value" id="methaneFeedstockSplitValue">50% methane / 50% methanol</span>
@@ -353,7 +353,7 @@
                   </span>
                 </div>
                 <div class="field-note" id="productMixNote">
-                  Shared H2 and CO2 production auto-balance from the combined methane and methanol demand.
+                  H2 and CO2 production are sized to the stoichiometric feed of this split, so only reactor conversion losses go unused.
                 </div>
               </div>
               <div id="supportedModuleList"></div>

@@ -211,15 +211,24 @@ Average-day curves in the charts are hour-of-day averages of that annual dispatc
 Power and feed shares are then auto-balanced from the enabled downstream routes:
 
 ```text
+weight_i = product weight (methane/methanol split %, or exploratory priority weight)
+
+h2_power_demand  = sum_i weight_i * h2_kg_per_unit_i  * electrolyzer_kwh_per_kg
+co2_power_demand = sum_i weight_i * co2_kg_per_unit_i * dac_kwh_per_kg
+route_power_demand_i = weight_i * electricity_kwh_per_unit_i
+
 electrolyzer_share = h2_power_demand / total_power_demand
+dac_share          = co2_power_demand / total_power_demand
+exploratory_share_i = route_power_demand_i / total_power_demand
 
-dac_share = co2_power_demand / total_power_demand
-
-exploratory_share_i =
-  exploratory_pool_share * priority_weight_i / sum(priority_weights)
+h2_feed_share_i  = weight_i * h2_kg_per_unit_i  / sum_j weight_j * h2_kg_per_unit_j
+co2_feed_share_i = weight_i * co2_kg_per_unit_i / sum_j weight_j * co2_kg_per_unit_j
 ```
 
-That is a conceptual summary. In the code, the demand proxy also depends on each route's electricity intensity and required feedstocks.
+Feeds are split by the same weight x kg-per-unit product the power shares use,
+so every consumer receives H2 and CO2 in its stoichiometric ratio and the only
+unused feed is each reactor's unconverted fraction (methane + methanol 50/50 at
+95% / 80% conversion: 9.1% of H2 and 10.0% of CO2 unused).
 
 Buffered gas-fed routes can size from the most active modeled day without chasing the single highest intra-day spike:
 

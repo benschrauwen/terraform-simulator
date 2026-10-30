@@ -228,6 +228,16 @@ export const processMethods = {
       });
     });
 
+    // A consumer's weight is a share of gross product units, so its feed
+    // demand is weight x kg of feed per unit. Splitting H2 and CO2 by that
+    // same product (the one the electrolyzer/DAC power proxies below use)
+    // hands every consumer its feeds in stoichiometric ratio; splitting by
+    // weight alone strands whichever feed a consumer needs less of.
+    const toFeedDemandEntries = consumers => consumers.map(consumer => ({
+      id: consumer.id,
+      weight: Math.max(0, consumer.weight || 0) * Math.max(0, consumer.inputKgPerUnit || 0),
+    }));
+
     const h2PowerDemand = h2Consumers.reduce(
       (sum, consumer) => sum + consumer.weight * consumer.inputKgPerUnit * state.electrolyzerEfficiency,
       0
@@ -250,8 +260,8 @@ export const processMethods = {
       supported,
       exploratoryModules,
       feedShares: {
-        h2: this.buildWeightedShareMap(h2Consumers),
-        co2: this.buildWeightedShareMap(co2Consumers),
+        h2: this.buildWeightedShareMap(toFeedDemandEntries(h2Consumers)),
+        co2: this.buildWeightedShareMap(toFeedDemandEntries(co2Consumers)),
         methanol: this.buildWeightedShareMap([
           ...(state.methanolEnabled ? [{ id: 'methanolExport', weight: Math.max(0, 1 - mtgMethanolSplit) }] : []),
           ...(state.mtgEnabled ? [{ id: 'mtg', weight: Math.max(0, mtgMethanolSplit) }] : []),

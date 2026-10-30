@@ -194,7 +194,7 @@ export const uiStateMethods = {
     this.syncRangeDisplay('methaneFeedstockSplit', this.state.methaneFeedstockSplit);
     if (mixNote) {
       mixNote.textContent = mix.bothEnabled
-        ? 'Shared H2 and CO2 production auto-balance from the combined methane and methanol demand.'
+        ? 'H2 and CO2 production are sized to the stoichiometric feed of this split, so only reactor conversion losses go unused.'
         : 'Shared H2 and CO2 production auto-balance from the active downstream product requirements.';
     }
 

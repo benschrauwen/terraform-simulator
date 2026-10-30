@@ -22,6 +22,7 @@ import { datacenterControlMethods } from './controls.js';
 import { dispatchChartMethods } from './dispatch-chart.js';
 import { datacenterOptimizerClientMethods } from './optimizer-client.js';
 import { datacenterOptimizerMethods } from './optimizer-panel.js';
+import { plantMapMethods } from './plant-map.js';
 import { resultMethods } from './results.js';
 import { datacenterSensitivityMethods } from './sensitivity.js';
 import { datacenterShareMethods } from './share.js';
@@ -57,6 +58,7 @@ export class DatacenterApp {
     this.bindDatacenterControls();
     this.bindShareControls();
     this.bindFlowTabs();
+    this.bindLayoutTabs();
     this.bindDispatchControls();
     this.bindCashFlowControls();
     this.bindOptimizerPanel();
@@ -155,5 +157,6 @@ Object.assign(
   datacenterOptimizerClientMethods,
   datacenterOptimizerMethods,
   viewMethods,
+  plantMapMethods,
   resultMethods,
 );

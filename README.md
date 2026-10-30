@@ -483,7 +483,20 @@ gas waste heat = fuel x 293.07 kWh/MMBtu - electricity;  reactor = electricity x
 CO2            = grid MWh x grid intensity + fuel MMBtu x 52.91 kg/MMBtu
 ```
 
-CO2 is combustion only (eGRID-style; EU grids are Ember lifecycle values): no upstream methane, embodied or credit for exports. Flows for the Sankey views are lists of `{ from, to, value, unit }` for electricity, heat, water and CO2; footprints are building, cooling yard, solar field, battery, gas or reactor plant and substation (a reactor's emergency planning zone is reported as a note, not an area).
+CO2 is combustion only (eGRID-style; EU grids are Ember lifecycle values): no upstream methane, embodied or credit for exports. Flows for the Sankey views are lists of `{ from, to, value, unit }` for electricity, heat, water and CO2; footprints are building, cooling yard, solar field, battery, gas or reactor plant, substation and, when grid-connected, the utility switchyard at the delivery point (40 m² per MW of import cap, judgment; the line's right-of-way is not counted) (a reactor's emergency planning zone is reported as a note, not an area).
+
+### Starting designs (`starting-design.js`)
+
+Switching the power architecture in the UI resets the supply side to that architecture's starting design (`applyArchitectureDefaults` in `datacenter-schema.js`, sizes justified in `power.js` `ARCHITECTURE_STARTING_DESIGNS`); site, IT, cooling, prices, gas type and mounting are kept. The default state is the grid design.
+
+```text
+grid      firm connection; gas auto N+1 at the design peak (standby); no solar or battery
+hybrid    flexible connection; solar = 2 MWdc x IT MW; battery = 4 h x IT MW (4-hour);
+          gas units = ceil((design peak - battery MW) / unit size) + 1      (manual sizing)
+islanded  no grid; gas auto N+2 at the design peak; no solar or battery
+```
+
+The hybrid rule credits the battery's full power during a curtailment (the Camus study's flexible-connection pattern: grid, batteries and a little gas). With solar on site the battery shifts solar daily and is not always full when an event starts, so `buildStartingDesign` then adds one gas unit at a time until the design meets the uptime target (none at Abilene; up to four at the cloudier or hotter sites). In the hybrid merit order the gas still runs whenever it is cheaper than the grid. At Abilene the three designs give (uptime, NPV): grid 100%, $264M; hybrid 100%, $77M (5 x 10 MW engines; solar 34%, gas 39%, grid 21% of served energy); islanded 100%, $28M (16 x 10 MW). They are starting points, not optima.
 
 ### Schedule (`schedule.js`)
 
@@ -564,8 +577,9 @@ Limitations: it is a local search (coarse grid, then compass steps on two axes w
 
 `DatacenterApp` (`js/ui/datacenter/app.js`) owns the state (`DATACENTER_DEFAULT_STATE` or the `#s=` share link), recalculates once per animation frame while a slider moves and refreshes the sensitivity panel (tornado, break-even) debounced. Its pieces:
 
-- `control-spec.js`: every left-panel control, declared per section container in `datacenter.html` with its schema field, bounds (inside the schema range; unit sizes follow the selected type), formatter, visibility rule and, for a selection, the preset it resets (`applyDatacenterPresetDefaults`). `control-markup.js` renders them, `controls.js` binds them with the shared `control-binding.js` and shows or hides fields and whole sections (no grid section when islanded). A control whose field the schema lacks is dropped. `info-panels.js` and `firm-info.js` fill the read-only blocks: site data, live PUE/WUE, trade-off lines and comparison tables for gas and nuclear types, the earliest nuclear COD, N+x sizing, the architecture cards with real-world examples and the GPU platform.
-- `plant-layout.js`: blocks with area = footprint m² x (px per m)², skyline-packed at the largest scale that fits, with a scale bar and legend.
+- `control-spec.js`: every left-panel control, declared per section container in `datacenter.html` with its schema field, bounds (inside the schema range; unit sizes follow the selected type), formatter, visibility rule and, for a selection, the preset it resets (`applyDatacenterPresetDefaults`). `control-markup.js` renders them, `controls.js` binds them with the shared `control-binding.js` and shows or hides fields and whole sections (no grid section when islanded). Choosing an architecture applies its starting design and shows a dismissible note in the section saying what was set. A control whose field the schema lacks is dropped. `info-panels.js` and `firm-info.js` fill the read-only blocks: site data, live PUE/WUE, trade-off lines and comparison tables for gas and nuclear types, the earliest nuclear COD, N+x sizing, the architecture cards with real-world examples and the GPU platform.
+- `plant-layout.js`: blocks with area = footprint m² x (px per m)², skyline-packed at the largest scale that fits, with a scale bar and legend; every non-zero footprint area is a block. Grid-connected, a transmission line (solid firm, dashed flexible, labelled) runs along the top and taps into the utility switchyard, packed first next to the on-site substation; islanded, there is no line or switchyard. This is the Plant layout card's **Diagram** view.
+- `plant-map.js`: the card's **Map** view. `buildPlantMapLayout` lays the same blocks out in metres around the site's lat/lon (campus skyline-packed into a near-square with 15 m roads and centred on the pin, switchyard and substation on its north edge, the solar field east across a 30 m road, the transmission line running north from the switchyard), each with its exact footprint area. Leaflet draws them on the Esri World Imagery tiles that the plant builder's site map uses (`js/ui/map-geo.js` holds the shared tile source and metres-to-degrees helpers), with tooltips built from text nodes, colours from CSS classes and the view fitted to the footprint. If the tiles fail the blocks stay on a plain background and a note says so. The map is drawn only while its view is shown.
 - `sankey.js`: `result.flows` as columns (longest path from a source; sinks last) with node heights and band widths on one scale.
 - `timeline.js`: one Gantt row per schedule path (permitting / procurement / construction / wait for COD), the critical path outlined, first power marked.
 - `dispatch-chart.js`: a typical day of any month (MW by hour) or daily energy over the year, stacked by source, surplus below zero.
@@ -576,7 +590,7 @@ Every view renders with attributes and classes only (strict CSP) and escapes int
 
 ### Datacenter limitations
 
-- Temperatures are a typical day per month (no heat waves beyond the monthly mean profile). Solar has the TMY's day-to-day variability but a clear-sky shape within each day (no passing clouds), the GHI day factor stands in for plane-of-array (it understates the clear/overcast contrast for trackers), and TMY months are stitched from different years, so multi-day spells never cross a month boundary. One TMY year is not a design-year: at Abilene a 1 GWdc / 4 GWh islanded solar + battery site serves 99.45% of hours (a ~2-day overcast spell empties the battery); ~6.4 GWh reaches 99.9% in this year, and a multi-year record would need more.
+- Temperatures are a typical day per month (no heat waves beyond the monthly mean profile). Solar has the TMY's day-to-day variability but a clear-sky shape within each day (no passing clouds), the GHI day factor stands in for plane-of-array (it understates the clear/overcast contrast for trackers), and TMY months are stitched from different years, so multi-day spells never cross a month boundary. One TMY year is not a design-year: at Abilene a 1 GWdc (east-west) / 4 GWh islanded solar + battery site serves 99.05% of hours (a ~2-day overcast spell empties the battery); ~7.7 GWh reaches 99.9% in this year (~6.4 GWh with single-axis trackers), and a multi-year record would need more.
 - IT load is constant at its utilization; no AI training load swings, ramp limits or start times for gas.
 - Outages are deterministic blocks (planned maintenance), not random forced outages; grid outages exist only for flexible connections.
 - Solar degradation is not modeled in the dispatch (year-1 output every year); prices are constant real values with no taxes.

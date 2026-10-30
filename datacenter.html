@@ -135,8 +135,24 @@
 
     <!-- CENTER: Visualizations -->
     <section class="diagram-area mobile-open" id="diagramArea">
-      <div class="diagram-container" id="layoutView" role="region" aria-label="Plant layout">
-        <!-- Scaled plant layout (datacenter, cooling, solar, battery, gas, substation), rendered by JS -->
+      <div class="chart-section" id="layoutView" role="region" aria-label="Plant layout">
+        <div class="dc-view-header">
+          <h3>Plant layout <span class="chart-title-meta" id="layoutMeta">— area to scale</span></h3>
+          <div class="chart-tabs" id="layoutTabs" role="tablist" aria-label="Plant layout view">
+            <button type="button" class="chart-tab" id="layoutTabMap" data-layout-view="map" role="tab" aria-selected="false" aria-controls="layoutMapPanel" tabindex="-1">Map</button>
+            <button type="button" class="chart-tab active" id="layoutTabDiagram" data-layout-view="diagram" role="tab" aria-selected="true" aria-controls="layoutDiagram" tabindex="0">Diagram</button>
+          </div>
+        </div>
+        <div id="layoutNotes"></div>
+        <!-- Scaled plant layout (datacenter, cooling, solar, battery, gas, substation, grid tie), rendered by JS -->
+        <div class="plant-layout-canvas" id="layoutDiagram" role="tabpanel" aria-labelledby="layoutTabDiagram"></div>
+        <div class="plant-map-panel" id="layoutMapPanel" role="tabpanel" aria-labelledby="layoutTabMap" hidden>
+          <div class="plant-map-shell">
+            <div class="plant-map" id="plantMap" aria-label="Plant footprint on a satellite map"></div>
+          </div>
+          <div class="field-note compact-note" id="plantMapNote"></div>
+        </div>
+        <div id="layoutLegend"></div>
       </div>
 
       <div class="chart-section" id="flowCard">

@@ -1,9 +1,9 @@
-/* Center-column SVG views: the to-scale plant layout, the Sankey flow tabs (electricity, heat,
+/* Center-column views: the to-scale plant layout (Diagram, or Map via plant-map.js), the Sankey flow tabs (electricity, heat,
    water, CO2) and the project timeline. Each view is rendered by a pure builder (plant-layout.js,
    sankey.js, timeline.js); this mixin wires them to the DOM. */
 
 import { escapeHtml as esc } from '../renderers/markup.js';
-import { fixed, formatArea, formatFlowValue, formatMW, formatYearMonth } from './format.js';
+import { fixed, formatArea, formatFlowValue, formatYearMonth } from './format.js';
 import { buildPlantLayout, renderPlantLayoutSvg, renderPlantLegend } from './plant-layout.js';
 import { buildSankeyLayout, renderSankeySvg } from './sankey.js';
 import { renderTimelineLegend, renderTimelineSvg, timelineHeadline } from './timeline.js';
@@ -40,23 +40,64 @@ const EMPTY_FLOW_TEXT = {
 
 export const viewMethods = {
   updatePlantLayout(r) {
-    const container = document.getElementById('layoutView');
-    if (!container) return;
+    const diagram = document.getElementById('layoutDiagram');
+    if (!diagram) return;
     const layout = buildPlantLayout(r);
-    const largest = layout.blocks[0];
+    const blocksByArea = [...layout.blocks].sort((a, b) => b.areaM2 - a.areaM2);
+    const largest = blocksByArea[0];
     const building = layout.blocks.find(block => block.key === 'building');
     const comparison = largest && building && largest !== building
       ? `The ${largest.name.toLowerCase()} covers ${fixed(largest.areaM2 / building.areaM2, largest.areaM2 / building.areaM2 >= 10 ? 0 : 1)}× the datacenter building's footprint.`
       : 'The datacenter building is the largest block.';
-    const gridLabel = r.grid.connected ? `Grid connection: ${formatMW(r.grid.importCapMW)} (${r.grid.connection})` : 'Islanded: no grid connection';
     const notes = [
       `Areas to scale (one scale for every block). Total ${formatArea(layout.totalM2)}. ${comparison}`,
       r.footprint.nuclearExclusionZone ? `Reactor emergency planning zone: ${r.footprint.nuclearExclusionZone}` : '',
     ].filter(Boolean);
-    container.innerHTML = `<div class="dc-view-header"><h3>Plant layout <span class="chart-title-meta">— area to scale</span></h3></div>
-      ${notes.map(text => `<div class="field-note compact-note">${esc(text)}</div>`).join('')}
-      <div class="plant-layout-canvas">${renderPlantLayoutSvg(layout, { gridLabel })}</div>
-      ${renderPlantLegend(layout)}`;
+    const notesEl = document.getElementById('layoutNotes');
+    if (notesEl) notesEl.innerHTML = notes.map(text => `<div class="field-note compact-note">${esc(text)}</div>`).join('');
+    diagram.innerHTML = renderPlantLayoutSvg(layout);
+    const legend = document.getElementById('layoutLegend');
+    if (legend) legend.innerHTML = renderPlantLegend(layout);
+    this.updatePlantMap(r);
+  },
+
+  /** Map | Diagram toggle of the plant layout card (a UI setting, not part of the state). */
+  bindLayoutTabs() {
+    this.layoutViewMode = 'diagram';
+    const tabs = Array.from(document.querySelectorAll('#layoutTabs [data-layout-view]'));
+    const panels = { diagram: document.getElementById('layoutDiagram'), map: document.getElementById('layoutMapPanel') };
+    const select = (tab, focus = false) => {
+      this.layoutViewMode = tab.dataset.layoutView;
+      tabs.forEach(item => {
+        const active = item === tab;
+        item.classList.toggle('active', active);
+        item.setAttribute('aria-selected', String(active));
+        item.setAttribute('tabindex', active ? '0' : '-1');
+      });
+      Object.entries(panels).forEach(([mode, panel]) => {
+        if (panel) panel.hidden = mode !== this.layoutViewMode;
+      });
+      const meta = document.getElementById('layoutMeta');
+      if (meta) meta.textContent = this.layoutViewMode === 'map' ? '— to scale on the site' : '— area to scale';
+      if (focus) tab.focus();
+      if (this.layoutViewMode === 'map' && this.lastResults) {
+        if (!this.initPlantMap()) {
+          const note = document.getElementById('plantMapNote');
+          if (note) note.textContent = 'The map library did not load; the Diagram view shows the same footprint.';
+          return;
+        }
+        this.updatePlantMap(this.lastResults);
+      }
+    };
+    tabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => select(tab));
+      tab.addEventListener('keydown', event => {
+        const moves = { ArrowRight: 1, ArrowLeft: -1 };
+        if (!(event.key in moves)) return;
+        event.preventDefault();
+        select(tabs[(index + moves[event.key] + tabs.length) % tabs.length], true);
+      });
+    });
   },
 
   bindFlowTabs() {

@@ -108,7 +108,8 @@ test('a 1 GWdc solar field visibly dwarfs the building in the layout', () => {
   const ratio = r.footprint.areasM2.solarField / r.footprint.areasM2.building;
   assert.ok(ratio > 50, `solar / building footprint ${ratio}`);
   close((solar.w * solar.h) / (building.w * building.h), ratio, 1e-9, 'drawn area ratio');
-  const svg = renderPlantLayoutSvg(layout, { gridLabel: 'Grid <131 MW>' });
+  // The grid-tie label is escaped (the option moved from a scale-bar label to the transmission line).
+  const svg = renderPlantLayoutSvg({ ...layout, gridTie: { ...layout.gridTie, label: 'Grid <131 MW>' } });
   assert.match(svg, /data-key="solarField"/);
   assert.match(svg, /Grid &lt;131 MW&gt;/);
   assert.doesNotMatch(svg, /\sstyle=/);

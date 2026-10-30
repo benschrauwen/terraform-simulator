@@ -37,9 +37,9 @@
 
    Pure; no DOM. */
 
-import * as datacenterSchema from '../../state/datacenter-schema.js';
 import { DATACENTER_DEFAULT_STATE, normalizeDatacenterState } from '../../state/datacenter-schema.js';
 import { calculateDatacenterScenario } from './scenario.js';
+import { buildStartingDesign } from './starting-design.js';
 
 export const DEFAULT_OPTIMIZER_BUDGET = 800;
 export const OPTIMIZER_ARCHITECTURES = Object.freeze(['grid', 'hybrid', 'islanded']);
@@ -51,14 +51,13 @@ export const OPTIMIZER_BOUND_FACTORS = Object.freeze({
 const COARSE_LEVELS = 6; // non-zero coarse levels per axis: max, max/2, ..., max/32
 
 /**
- * The starting design of an architecture. The single place the optimizer
- * asks the schema for architecture defaults: uses applyArchitectureDefaults
- * when the schema exports it, otherwise switches the architecture only.
+ * The starting design of an architecture (starting-design.js: the schema's
+ * architecture defaults with the model's design peak, topped up with gas
+ * units until it meets the uptime target). The single place the optimizer
+ * asks for architecture defaults.
  */
 export function getArchitectureStartState(state, architecture) {
-  const apply = datacenterSchema.applyArchitectureDefaults;
-  const next = typeof apply === 'function' ? apply(state, architecture) : { ...state, architecture };
-  return normalizeDatacenterState({ ...next, architecture });
+  return normalizeDatacenterState({ ...buildStartingDesign(state, architecture).state, architecture });
 }
 
 /** Keys of `next` that differ from `reference` (both normalized), as a state patch. */

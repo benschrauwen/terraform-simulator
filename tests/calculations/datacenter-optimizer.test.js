@@ -126,7 +126,11 @@ test('infeasible bounds: says so and returns the highest uptime found', () => {
   const result = optimizeDatacenterDesign(solarOnly, { sizeFirm: false, budget: 120 });
   assert.equal(result.feasible, false);
   assert.ok(result.best.uptimePercent < solarOnly.uptimeTargetPercent);
-  assert.ok(result.best.uptimePercent > 90, 'it walks towards the highest uptime');
+  // Uptime never falls with more solar or storage, so the largest design in the bounds is
+  // the uptime ceiling; the optimizer must reach it rather than stop at a lower point.
+  const { solarMaxMWdc, batteryMaxMWh } = result.bounds;
+  const largest = calculateDatacenterScenario({ ...solarOnly, solarSizeMWdc: solarMaxMWdc, batteryCapacityMWh: batteryMaxMWh }, { fastMode: true });
+  assert.ok(result.best.uptimePercent >= largest.reliability.uptimePercent - 1e-9, 'it walks to the highest uptime in the bounds');
   assert.match(result.notes.join(' '), /No design within the bounds meets/);
   assert.ok(result.candidatesEvaluated <= 120);
 });

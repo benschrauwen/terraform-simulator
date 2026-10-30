@@ -220,6 +220,23 @@ test('datacenter.html flow tabs expose a complete tablist contract', () => {
   assert.equal(attr(panel, 'aria-labelledby'), attr(flowTabs.find(button => attr(button, 'aria-selected') === 'true'), 'id'));
 });
 
+test('datacenter.html plant layout Map | Diagram tabs control their own panels', () => {
+  const layoutTabs = datacenterTags('button').filter(button => button.includes('data-layout-view='));
+  assert.deepEqual(layoutTabs.map(button => attr(button, 'data-layout-view')), ['map', 'diagram']);
+  layoutTabs.forEach(button => {
+    assert.equal(attr(button, 'role'), 'tab');
+    const panelId = attr(button, 'aria-controls');
+    const panel = datacenterTags('div').find(div => attr(div, 'id') === panelId);
+    assert.ok(panel, `#${panelId}`);
+    assert.equal(attr(panel, 'role'), 'tabpanel');
+    assert.equal(attr(panel, 'aria-labelledby'), attr(button, 'id'));
+  });
+  // The diagram is the initial view; the map panel starts hidden.
+  assert.equal(attr(layoutTabs.find(button => attr(button, 'aria-selected') === 'true'), 'data-layout-view'), 'diagram');
+  assert.match(datacenterTags('div').find(div => attr(div, 'id') === 'layoutMapPanel'), /\shidden\b/);
+  ['plantMap', 'plantMapNote', 'layoutDiagram', 'layoutLegend', 'layoutNotes'].forEach(id => assert.ok(hasDatacenterId(id), `#${id}`));
+});
+
 test('datacenter.html buttons, mobile pane targets and new-tab links follow the shell rules', () => {
   datacenterTags('button').forEach(button => {
     assert.equal(attr(button, 'type'), 'button', `Expected explicit type="button" on ${button}`);

@@ -132,6 +132,42 @@ body.datacenter-app [hidden] {
   color: var(--text-muted);
 }
 
+/* Note after an architecture switch (controls.js showArchitectureNote) */
+.dc-arch-applied {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--electric);
+  border-radius: var(--radius);
+  background: rgba(95, 127, 184, 0.12);
+}
+
+.dc-arch-applied-text {
+  flex: 1;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.dc-arch-applied-dismiss {
+  flex: none;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dc-arch-applied-dismiss:hover,
+.dc-arch-applied-dismiss:focus-visible {
+  color: var(--text-primary);
+}
+
 .dc-example-list {
   margin: 0;
   list-style: none;
@@ -255,6 +291,39 @@ body.datacenter-app [hidden] {
 .pl-battery rect { fill: #2f8a74; }
 .pl-gasPlant rect { fill: #9a5530; }
 .pl-nuclearPlant rect { fill: #6b569a; }
+.pl-utilitySwitchyard rect { fill: #a8b2c0; }
+
+/* Grid tie: transmission line, pylons, tap and tie (plant-layout.js) */
+.pl-line {
+  stroke: var(--ai);
+  stroke-width: 2;
+  fill: none;
+}
+
+.pl-gridtie-flexible .pl-transmission {
+  stroke-dasharray: 8 5;
+}
+
+.pl-tap,
+.pl-tie {
+  stroke-width: 1.5;
+}
+
+.pl-pylon {
+  fill: none;
+  stroke: var(--ai);
+  stroke-width: 1;
+}
+
+.pl-gridtie .pl-grid {
+  font-size: 10px;
+  fill: var(--ai);
+}
+
+.pl-islanded {
+  font-size: 10px;
+  fill: var(--warning);
+}
 
 .pl-name {
   font-size: 12px;
@@ -324,6 +393,88 @@ body.datacenter-app [hidden] {
 .pl-battery .pl-swatch { background: #2f8a74; }
 .pl-gasPlant .pl-swatch { background: #9a5530; }
 .pl-nuclearPlant .pl-swatch { background: #6b569a; }
+.pl-utilitySwitchyard .pl-swatch { background: #a8b2c0; }
+
+/* Plant layout card: Map | Diagram toggle and the satellite map (plant-map.js) */
+#layoutView .dc-view-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+#layoutView .dc-view-header .chart-tabs {
+  margin-bottom: 6px;
+}
+
+.plant-map-shell {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #0f1215;
+}
+
+.plant-map {
+  position: absolute;
+  inset: 0;
+}
+
+.plant-map.leaflet-container,
+.plant-map.plant-map-offline {
+  background: #1b2128;
+}
+
+.plant-map-panel .field-note {
+  margin-top: 6px;
+}
+
+.pl-map-block {
+  stroke: #f8fafc;
+}
+
+.pl-map-block.pl-building { fill: #3f5f8f; }
+.pl-map-block.pl-coolingYard { fill: #3f8f9b; }
+.pl-map-block.pl-substation { fill: #7f8a99; }
+.pl-map-block.pl-solarField { fill: #8a6d2a; }
+.pl-map-block.pl-battery { fill: #2f8a74; }
+.pl-map-block.pl-gasPlant { fill: #9a5530; }
+.pl-map-block.pl-nuclearPlant { fill: #6b569a; }
+.pl-map-block.pl-utilitySwitchyard { fill: #a8b2c0; }
+
+.pl-map-line {
+  stroke: #9fd0ff;
+}
+
+.pl-map-pin {
+  stroke: #ffffff;
+  fill: #f43f5e;
+}
+
+.leaflet-tooltip.pl-map-tooltip {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  background: rgba(10, 14, 23, 0.92);
+  color: var(--text-primary);
+  font-size: 11px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.leaflet-tooltip.pl-map-tooltip::before {
+  display: none;
+}
+
+.pl-map-tip strong,
+.pl-map-tip span {
+  display: block;
+}
+
+.pl-map-tip span {
+  color: var(--text-secondary);
+}
 
 .pl-legend-num {
   color: var(--text-muted);

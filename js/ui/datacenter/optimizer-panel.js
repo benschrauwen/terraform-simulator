@@ -74,6 +74,7 @@ export function renderOptimizerResults(run) {
     const tags = [];
     if (column.best) tags.push('<span class="dc-opt-tag">best</span>');
     if (column.summary && !column.summary.feasible) tags.push('<span class="dc-opt-tag dc-opt-tag-warn">misses target</span>');
+    if (column.result?.reducesTo) tags.push(`<span class="dc-opt-tag dc-opt-tag-muted">= ${esc(shortArch(column.result.reducesTo).toLowerCase())}</span>`);
     return `<th scope="col"${column.best ? ' class="dc-opt-best"' : ''}>${esc(column.label)}${tags.length ? `<br>${tags.join(' ')}` : ''}</th>`;
   }).join('');
 
@@ -140,6 +141,7 @@ export const datacenterOptimizerMethods = {
       event.preventDefault();
       this.runDesignOptimizer();
     });
+    document.getElementById(OPTION_INPUTS.compare)?.addEventListener('change', () => this.syncOptimizerOptions());
     document.getElementById('optimizerResults')?.addEventListener('click', event => {
       const target = event.target?.closest?.('[data-optimizer-apply]');
       if (target && !target.disabled) this.applyOptimizerDesign(target.dataset.optimizerApply);
@@ -161,6 +163,26 @@ export const datacenterOptimizerMethods = {
         thorough: checked(OPTION_INPUTS.wide),
       },
     };
+  },
+
+  /**
+   * Grey out what the run cannot size: a single grid-connected run has no solar and firm service
+   * only (ARCHITECTURES.grid); comparing architectures, hybrid and islanded still use them.
+   */
+  syncOptimizerOptions() {
+    const compare = Boolean(document.getElementById(OPTION_INPUTS.compare)?.checked);
+    const rules = ARCHITECTURES[this.state.architecture] || {};
+    const applies = {
+      sizeSolar: compare || rules.resources?.solar !== 'none',
+      sizeGridConnection: compare || !rules.gridConnections || rules.gridConnections.length > 1,
+    };
+    Object.entries(applies).forEach(([option, enabled]) => {
+      const input = document.getElementById(OPTION_INPUTS[option]);
+      if (!input) return;
+      input.disabled = !enabled;
+      const label = input.closest?.('label');
+      if (label) label.title = enabled ? '' : `Not part of a ${archLabel(this.state.architecture).toLowerCase()} design; tick "Compare all architectures" to include it.`;
+    });
   },
 
   setOptimizerStatus(text = '', percent = null) {
@@ -228,6 +250,7 @@ export const datacenterOptimizerMethods = {
 
   /** Flag results that no longer describe the inputs (the user changed something since the run). */
   updateOptimizerStaleness() {
+    this.syncOptimizerOptions();
     const note = document.getElementById('optimizerStale');
     if (note) note.hidden = !this.optimizerRun || this.optimizerResultsCurrent();
   },

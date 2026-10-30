@@ -76,6 +76,11 @@ export const datacenterControlMethods = {
         this.applyArchitecture(radio.value);
       });
     });
+    // "Switch to Hybrid" buttons in the notes where an architecture rules out a supply.
+    ['solarControls', 'gasControls'].forEach(id => document.getElementById(id)?.addEventListener('click', event => {
+      const button = event.target?.closest?.('[data-switch-architecture]');
+      if (button) this.applyArchitecture(button.dataset.switchArchitecture);
+    }));
   },
 
   /** Switch architecture: apply its starting design (buildStartingDesign), recalculate, say what changed. */

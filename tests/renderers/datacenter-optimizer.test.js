@@ -89,6 +89,13 @@ test('results table escapes notes and flags infeasible designs and upper-bound c
   assert.doesNotMatch(html, /<b>low<\/b>/);
 });
 
+test('a hybrid design that reduces to the grid design is tagged as such', () => {
+  const run = compareRun();
+  assert.doesNotMatch(renderOptimizerResults(run), /dc-opt-tag-muted/);
+  run.result.rows.find(row => row.architecture === 'hybrid').result.reducesTo = 'grid';
+  assert.match(renderOptimizerResults(run), /<span class="dc-opt-tag dc-opt-tag-muted">= grid<\/span>/);
+});
+
 test('compact money keeps three significant figures', () => {
   assert.equal(compactMoney(581.32e6), '$581M');
   assert.equal(compactMoney(5.213e9), '$5.21B');
@@ -136,6 +143,32 @@ test('Apply puts the design (architecture included) into the state and recalcula
   const before = { ...app.state };
   app.applyOptimizerDesign('current');
   assert.deepEqual(app.state, before);
+});
+
+test('the solar and connection options are greyed out for a single grid-connected run', t => {
+  const label = { title: '' };
+  const elements = {
+    optimizerCompare: fakeElement({ checked: false }),
+    optimizerSizeSolar: fakeElement({ checked: true, closest: () => label }),
+    optimizerSizeGrid: fakeElement({ checked: true }),
+  };
+  globalThis.document = { getElementById: id => elements[id] || null };
+  t.after(() => { delete globalThis.document; });
+  const app = Object.assign(Object.create(datacenterOptimizerMethods), { state: { ...DATACENTER_DEFAULT_STATE } });
+  app.syncOptimizerOptions();
+  assert.equal(elements.optimizerSizeSolar.disabled, true);
+  assert.equal(elements.optimizerSizeGrid.disabled, true);
+  assert.match(label.title, /Compare all architectures/);
+  // Comparing architectures (hybrid and islanded use them) or a hybrid design: enabled.
+  elements.optimizerCompare.checked = true;
+  app.syncOptimizerOptions();
+  assert.equal(elements.optimizerSizeSolar.disabled, false);
+  assert.equal(label.title, '');
+  elements.optimizerCompare.checked = false;
+  app.state = normalizeDatacenterState({ ...DATACENTER_DEFAULT_STATE, architecture: 'hybrid' });
+  app.syncOptimizerOptions();
+  assert.equal(elements.optimizerSizeSolar.disabled, false);
+  assert.equal(elements.optimizerSizeGrid.disabled, false);
 });
 
 test('the optimizer client falls back to the main thread when the worker cannot start', async t => {

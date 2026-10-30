@@ -168,6 +168,26 @@ body.datacenter-app [hidden] {
   color: var(--text-primary);
 }
 
+/* "Switch to Hybrid" in the notes where the architecture rules out a supply (firm-info.js) */
+.dc-switch-arch {
+  margin: 2px 0 6px;
+  padding: 4px 10px;
+  border: 1px solid rgba(95, 127, 184, 0.4);
+  border-radius: var(--radius);
+  background: rgba(95, 127, 184, 0.16);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dc-switch-arch:hover,
+.dc-switch-arch:focus-visible {
+  background: rgba(95, 127, 184, 0.3);
+  outline: none;
+}
+
 .dc-example-list {
   margin: 0;
   list-style: none;
@@ -792,6 +812,11 @@ body.datacenter-app [hidden] {
 .dc-opt-tag-warn {
   background: rgba(199, 115, 121, 0.2);
   color: var(--danger);
+}
+
+.dc-opt-tag-muted {
+  background: rgba(127, 127, 127, 0.18);
+  color: var(--text-muted);
 }
 
 .dc-opt-apply {

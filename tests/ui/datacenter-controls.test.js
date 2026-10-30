@@ -17,6 +17,7 @@ import {
 } from '../../js/state/datacenter-schema.js';
 import { collectVisibilityRules, renderSectionMarkup, selectOptions, toSliderValue } from '../../js/ui/datacenter/control-markup.js';
 import { DATACENTER_SECTIONS, getControlRange, getDatacenterControlSpecs, getDatacenterSections } from '../../js/ui/datacenter/control-spec.js';
+import { FIRM_BLOCK_RENDERERS } from '../../js/ui/datacenter/firm-info.js';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const html = fs.readFileSync(path.join(ROOT, 'datacenter.html'), 'utf8');
@@ -25,11 +26,13 @@ const specs = getDatacenterControlSpecs();
 const field = key => DATACENTER_STATE_FIELDS.find(entry => entry.key === key);
 const options = key => field(key).options || field(key).getOptions();
 
-// States that exercise every selection-dependent range (each gas and nuclear type).
+// States that exercise every selection-dependent range (each gas and nuclear type; hybrid
+// allows them all, grid only standby generators and an existing-plant contract).
+const HYBRID = normalizeDatacenterState({ ...DATACENTER_DEFAULT_STATE, architecture: 'hybrid' });
 const VARIANT_STATES = [
   DATACENTER_DEFAULT_STATE,
-  ...Object.keys(GAS_GENSET_TYPES).map(gasType => applyDatacenterPresetDefaults({ ...DATACENTER_DEFAULT_STATE, firmFamily: 'gas', gasType }, 'gasType')),
-  ...Object.keys(NUCLEAR_TYPES).map(nuclearType => applyDatacenterPresetDefaults({ ...DATACENTER_DEFAULT_STATE, firmFamily: 'nuclear', nuclearType }, 'nuclearType')),
+  ...Object.keys(GAS_GENSET_TYPES).map(gasType => applyDatacenterPresetDefaults({ ...HYBRID, firmFamily: 'gas', gasType }, 'gasType')),
+  ...Object.keys(NUCLEAR_TYPES).map(nuclearType => applyDatacenterPresetDefaults({ ...HYBRID, firmFamily: 'nuclear', nuclearType }, 'nuclearType')),
 ];
 
 test('every control container exists in datacenter.html and no section of the registry is dropped', () => {
@@ -75,7 +78,10 @@ test('select options are valid schema values and include the default', () => {
     assert.equal(new Set(values).size, values.length, `#${spec.id} duplicate options`);
     assert.ok(values.includes(String(DATACENTER_DEFAULT_STATE[key])), `#${spec.id} lacks the default ${DATACENTER_DEFAULT_STATE[key]}`);
     if (field(key).type === 'enum') {
-      assert.deepEqual([...values].sort(), [...options(key)].map(String).sort(), `#${spec.id} options vs schema enum`);
+      // Every enum value is offered in hybrid, which allows them all (grid offers a subset: below).
+      const hybridValues = spec.options(HYBRID).map(option => String(option.value));
+      assert.ok(values.every(value => hybridValues.includes(value)), `#${spec.id} default options within hybrid's`);
+      assert.deepEqual([...hybridValues].sort(), [...options(key)].map(String).sort(), `#${spec.id} options vs schema enum`);
     } else {
       // Numeric selects (uptime target, tornado swing): every option normalizes to itself.
       values.forEach(value => assert.equal(normalizeDatacenterState({ [key]: Number(value) })[key], Number(value), `#${spec.id} option ${value}`));
@@ -105,4 +111,29 @@ test('rendered markup carries every control once with its default value', () => 
     const match = selector.match(/(?:#dcBlock-|data-details="|data-control-wrap=")([^"\]]+)/);
     assert.ok(match && markup.includes(match[1]), `${selector} has a rendered element`);
   });
+});
+
+test('grid-connected: no solar controls, firm service and standby generators only, a switch to hybrid', () => {
+  const spec = id => specs.find(entry => entry.id === id);
+  const values = (id, state) => spec(id).options(state).map(option => option.value);
+  const grid = DATACENTER_DEFAULT_STATE;
+  assert.equal(grid.architecture, 'grid');
+  assert.deepEqual(values('gridConnection', grid), ['firm']);
+  assert.deepEqual(values('gasType', grid), ['standby-diesel']);
+  assert.deepEqual(values('nuclearType', grid), ['contracted-existing']);
+  assert.deepEqual(values('gridConnection', HYBRID), ['firm', 'flexible']);
+  assert.ok(values('gasType', HYBRID).includes('recip'));
+  // Solar: every control and block hidden, the note with its switch button shown instead (and the
+  // reverse in hybrid).
+  const solarRules = collectVisibilityRules(getDatacenterSections().solarControls);
+  const noteRule = solarRules.find(([selector]) => selector === '#dcBlock-solarArchitectureNote');
+  assert.ok(noteRule && noteRule[1](grid) && !noteRule[1](HYBRID));
+  solarRules.filter(rule => rule !== noteRule).forEach(([selector, visible]) => {
+    assert.equal(visible(grid), false, `${selector} hidden on grid`);
+    assert.equal(visible(HYBRID), true, `${selector} shown in hybrid`);
+  });
+  assert.ok(getDatacenterControlSpecs().filter(entry => ['solarSizeMWdc', 'mountingType'].includes(entry.id)).every(entry => !entry.visible(grid)));
+  const note = FIRM_BLOCK_RENDERERS.solarArchitectureNote(grid);
+  assert.match(note, /<button type="button" class="dc-switch-arch" data-switch-architecture="hybrid">Switch to Hybrid to add on-site generation<\/button>/);
+  assert.match(FIRM_BLOCK_RENDERERS.firmArchitectureNote(grid), /data-switch-architecture="hybrid"/);
 });

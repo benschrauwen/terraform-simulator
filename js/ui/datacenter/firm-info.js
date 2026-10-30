@@ -1,5 +1,6 @@
 /* Firm generation and power-architecture blocks: the selected gas / nuclear type's trade-offs,
-   unit sizing (N+x), a comparison table of all types, and the architecture radio cards.
+   unit sizing (N+x), a comparison table of all types, the architecture radio cards and the notes
+   where an architecture rules out a supply (with a button that switches to hybrid).
    Pure HTML builders over js/data/datacenter/power.js; every value is escaped. */
 
 import { ARCHITECTURES, GAS_GENSET_TYPES, NUCLEAR_TYPES, POWER_LEAD_TIMES } from '../../data/datacenter/power.js';
@@ -162,4 +163,19 @@ export function renderArchitectureCards(selected) {
   return `<div class="dc-arch-cards" role="radiogroup" aria-label="Power architecture">${cards}</div>`;
 }
 
-export const FIRM_BLOCK_RENDERERS = { gasInfo, nuclearInfo, firmSizing, firmCompare };
+/** A note and a button that switches architecture (controls.js handles [data-switch-architecture]). */
+function switchArchitectureNote(text, architecture, label) {
+  return `${note(text)}<button type="button" class="dc-switch-arch" data-switch-architecture="${attr(architecture)}">${esc(label)}</button>`;
+}
+
+// Grid-connected designs have no on-site generation (ARCHITECTURES.grid).
+const solarArchitectureNote = () => switchArchitectureNote(
+  'Grid-connected: the utility carries the load, so there is no on-site solar (an off-site renewable PPA is not modeled).',
+  'hybrid', 'Switch to Hybrid to add on-site generation',
+);
+const firmArchitectureNote = () => switchArchitectureNote(
+  'Grid-connected: on-site generators are standby backup for utility outages only (or a grid-delivered existing-plant nuclear contract). Gas engines, turbines, fuel cells and own reactors run in Hybrid.',
+  'hybrid', 'Switch to Hybrid to add on-site generation',
+);
+
+export const FIRM_BLOCK_RENDERERS = { gasInfo, nuclearInfo, firmSizing, firmCompare, solarArchitectureNote, firmArchitectureNote };

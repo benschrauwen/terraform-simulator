@@ -79,7 +79,7 @@ function gridNote(state, r) {
 }
 
 function solarInfo(state, r) {
-  if (!(state.solarSizeMWdc > 0)) return note('Solar is optional in every architecture. Add an array to cut grid energy or fuel; islanded designs can run on solar + battery alone.');
+  if (!(state.solarSizeMWdc > 0)) return note('Solar is optional in hybrid and islanded designs. Add an array to cut grid energy or fuel; islanded designs can run on solar + battery alone.');
   if (!r) return '';
   const a = r.dispatch.annual;
   return [

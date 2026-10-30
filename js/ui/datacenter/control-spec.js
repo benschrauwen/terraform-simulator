@@ -27,7 +27,7 @@
 
 import { COOLING_TECHNOLOGIES } from '../../data/datacenter/cooling.js';
 import { FACILITY_DEFAULTS } from '../../data/datacenter/facility.js';
-import { GAS_GENSET_TYPES, NUCLEAR_TYPES } from '../../data/datacenter/power.js';
+import { ARCHITECTURES, GAS_GENSET_TYPES, NUCLEAR_TYPES } from '../../data/datacenter/power.js';
 import { DATACENTER_SITES } from '../../data/datacenter/sites.js';
 import { MOUNTING_TYPES } from '../../data/reference-data.js';
 import { DATACENTER_DEFAULT_STATE, DATACENTER_STATE_FIELDS } from '../../state/datacenter-schema.js';
@@ -62,6 +62,17 @@ const gasType = state => GAS_GENSET_TYPES[state.gasType] || Object.values(GAS_GE
 const nuclearType = state => NUCLEAR_TYPES[state.nuclearType] || Object.values(NUCLEAR_TYPES)[0];
 const isContractedNuclear = state => (nuclearType(state).capexPerKW?.default || 0) === 0;
 const ownsIt = state => state.revenueBasis !== 'colocation';
+
+// What the architecture allows (ARCHITECTURES; the schema clamps the state to
+// it): selections offer only the allowed values, solar hides where it has none.
+const rulesOf = state => ARCHITECTURES[state.architecture] || {};
+const allowedBy = list => ([value]) => !list || list.includes(value);
+const solarAllowed = state => rulesOf(state).resources?.solar !== 'none';
+const backupOnly = state => state.architecture === 'grid';
+const CONNECTION_LABELS = {
+  firm: 'Firm service (always available)',
+  flexible: 'Flexible / conditional (curtailable hours)',
+};
 
 /* Bounds of a unit-size slider from the selected type's { min, max } (hidden when min = max). */
 function unitSizeRange({ min, max }) {
@@ -146,10 +157,7 @@ export const DATACENTER_SECTIONS = {
   gridControls: [
     {
       type: 'select', id: 'gridConnection', label: 'Connection type',
-      options: () => [
-        { value: 'firm', label: 'Firm service (always available)' },
-        { value: 'flexible', label: 'Flexible / conditional (curtailable hours)' },
-      ],
+      options: state => Object.entries(CONNECTION_LABELS).filter(allowedBy(rulesOf(state).gridConnections)).map(([value, label]) => ({ value, label })),
     },
     {
       type: 'range', id: 'gridUnavailableHoursPerYear', label: 'Grid unavailable', min: 0, max: 500, step: 2, format: value => `${fixed(value, 0)} h/yr`,
@@ -185,17 +193,19 @@ export const DATACENTER_SECTIONS = {
   ],
 
   solarControls: [
+    { block: 'solarArchitectureNote', visible: state => !solarAllowed(state) },
     {
-      type: 'range', id: 'solarSizeMWdc', label: 'Solar array', min: 0, max: 5000, step: 5,
+      type: 'range', id: 'solarSizeMWdc', label: 'Solar array', min: 0, max: 5000, step: 5, visible: solarAllowed,
       format: value => (value > 0 ? `${formatMW(value)}dc` : 'None'),
     },
     {
-      type: 'select', id: 'mountingType', label: 'Mounting', preset: 'mountingType',
+      type: 'select', id: 'mountingType', label: 'Mounting', preset: 'mountingType', visible: solarAllowed,
       options: () => Object.entries(MOUNTING_TYPES).map(([value, type]) => ({ value, label: type.label })),
     },
-    { block: 'solarInfo' },
+    { block: 'solarInfo', visible: solarAllowed },
     {
       details: 'Solar cost basis',
+      visible: solarAllowed,
       items: [
         { type: 'range', id: 'panelCostPerW', label: 'Module price', min: 0.05, max: 1, step: 0.01, format: per(2, 'W') },
         { type: 'range', id: 'bosCostPerW', label: 'Structure + install BOS', min: 0.05, max: 1.5, step: 0.01, format: per(2, 'W') },
@@ -227,20 +237,21 @@ export const DATACENTER_SECTIONS = {
   gasControls: [
     {
       type: 'select', id: 'firmFamily', label: 'Firm generation',
-      options: () => [
+      options: state => [
         { value: 'none', label: 'None' },
-        { value: 'gas', label: 'Generators: diesel standby, gas engines, turbines, fuel cells' },
-        { value: 'nuclear', label: 'Nuclear' },
+        { value: 'gas', label: backupOnly(state) ? 'Standby generators (diesel)' : 'Generators: diesel standby, gas engines, turbines, fuel cells' },
+        { value: 'nuclear', label: backupOnly(state) ? 'Nuclear: existing-plant contract (grid-delivered)' : 'Nuclear' },
       ],
     },
+    { block: 'firmArchitectureNote', visible: backupOnly },
     {
       type: 'select', id: 'gasType', label: 'Generator technology', preset: 'gasType', visible: state => state.firmFamily === 'gas',
-      options: () => Object.entries(GAS_GENSET_TYPES).map(([value, type]) => ({ value, label: type.label })),
+      options: state => Object.entries(GAS_GENSET_TYPES).filter(allowedBy(rulesOf(state).gasTypes)).map(([value, type]) => ({ value, label: type.label })),
     },
     { block: 'gasInfo', visible: state => state.firmFamily === 'gas' },
     {
       type: 'select', id: 'nuclearType', label: 'Nuclear option', preset: 'nuclearType', visible: state => state.firmFamily === 'nuclear',
-      options: () => Object.entries(NUCLEAR_TYPES).map(([value, type]) => ({ value, label: type.label })),
+      options: state => Object.entries(NUCLEAR_TYPES).filter(allowedBy(rulesOf(state).nuclearTypes)).map(([value, type]) => ({ value, label: type.label })),
     },
     { block: 'nuclearInfo', visible: state => state.firmFamily === 'nuclear' },
     {

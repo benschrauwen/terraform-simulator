@@ -19,7 +19,7 @@ Today it supports:
 - Exploratory industrial routes with selectable pathways, priority weights, rough throughput modeling, CAPEX basis controls, shared exploratory O&M, sale-price inputs, and inclusion in CAPEX, revenue, NPV, and IRR.
 - MTG (`methanol -> gasoline-range hydrocarbons`) as an exploratory downstream route that diverts a configurable share of methanol away from export.
 - Optional on-site AI datacenter mode: a reliability-targeted constant IT load sized against the modeled solar and battery system, with token revenue, GPU CAPEX, AI O&M, and annual dispatch.
-- A data-driven incentive layer aligned to the policy parameter sheet: US `48E`, `45Y`, `45V`, `45Q`, Hydrogen / DAC Hub grants, EU Hydrogen Bank and Innovation Fund style support, Germany / Netherlands / UK / Spain program proxies, framework-only backdrops, and a custom mixed-support mode.
+- A data-driven incentive layer with sourced, dated scheme parameters (see Sources): US `48E`, `45Y`, `45V`, `45Q`, Hydrogen / DAC Hub grants, EU Hydrogen Bank and Innovation Fund style support, Germany / Netherlands / UK / Spain program proxies, framework-only backdrops, and a custom mixed-support mode.
 - NPV, project IRR, optional equity IRR with debt financing, ROI, payback, replacement-aware discounted cash flow outputs, and price sensitivity charts.
 - Daily power, annual dispatch, economics, sensitivity, environmental, and site-footprint views.
 - Inline IRR optimizers for battery capacity, chemical peak sizing, and methane-vs-methanol feedstock split.
@@ -415,7 +415,7 @@ The current default state is roughly a `1 MW` Mojave-style methane scenario:
 - AI compute: off by default
 - Financing: off by default
 - Policy mode: `US 45V hydrogen PTC`
-- Default 45V input: `$3.00/kg H2`
+- Default 45V input: `$3.28/kg H2` (2026 inflation-adjusted top tier with prevailing wage; IRS Notice 2026-41)
 - Solar O&M: `1.5%/yr`
 - Process O&M: `3.0%/yr`
 - Battery O&M: `1.5%/yr`
@@ -504,15 +504,40 @@ This repo is based on public materials and should be read as an independent inte
 - [To Conquer the Primary Energy Consumption Layer of Our Entire Civilization](https://terraformindustries.wordpress.com/2025/04/03/to-conquer-the-primary-energy-consumption-layer-of-our-entire-civilization/)
 - [The Future Of Solar Doesn't Track The Sun](https://terraformindustries.wordpress.com/2025/04/29/the-future-of-solar-doesnt-track-the-sun/)
 - [The Core Pillars at Terraform Industries](https://terraformindustries.wordpress.com/2025/06/12/the-core-pillars-at-terraform-industries/)
+- [Direct Current Data Centers](https://terraformindustries.wordpress.com/2026/01/30/direct-current-data-centers/) (2026-01-30)
+- [Capturing Carbon I: The Base](https://terraformindustries.wordpress.com/2026/04/02/capturing-carbon-i-the-base/) (2026-04-02)
+- [The enormous size of the oil and gas market drives adoption of synthetic fuel production](https://terraformindustries.wordpress.com/2026/06/16/the-enormous-size-of-the-oil-and-gas-market-drives-adoption-of-synthetic-fuel-production/) (2026-06-16)
+- [Terraform 2026 Update](https://terraformindustries.wordpress.com/2026/10/21/terraform-2026-update/) (2026-10-21)
+- [How Terraform built the cheapest solar in North America](https://terraformindustries.wordpress.com/2026/10/27/how-terraform-built-the-cheapest-solar-in-north-america/) (2026-10-27)
 
 ### Supporting references
 
 - [Jurchen PEG FAQs](https://www.jurchen-technology.com/products/solar-mounting/peg/faq/)
 - [Jurchen PEG Design](https://www.jurchen-technology.de/peg-design/)
 - [26 CFR 1.45V-2](https://www.law.cornell.edu/cfr/text/26/1.45V-2)
-- [NREL Utility-Scale PV ATB](https://atb.nrel.gov/electricity/2023/2023/utility-scale_pv)
+- [Utility-Scale PV ATB 2025](https://atb.nlr.gov/electricity/2025/utility-scale_pv) (NREL, renamed National Laboratory of the Rockies in Dec 2025)
 - [PVGIS](https://joint-research-centre.ec.europa.eu/pvgis-online-tool_en)
 - [Global Solar Atlas](https://globalsolaratlas.info/)
+
+### Incentive scheme references (retrieved 2026-10)
+
+Each value in `js/data/policies.js` carries its own source comment; the main references are:
+
+- US tax credits: IRC [§48E](https://www.law.cornell.edu/uscode/text/26/48E), [§45Y](https://www.law.cornell.edu/uscode/text/26/45Y), [§45V](https://www.law.cornell.edu/uscode/text/26/45V), [§45Q](https://www.law.cornell.edu/uscode/text/26/45Q) as amended by the One Big Beautiful Bill Act (P.L. 119-21)
+- [IRS Notice 2026-47](https://www.irs.gov/irb/2026-41_IRB) (2026 §45Y amounts) and [IRS Notice 2026-41](https://www.irs.gov/irb/2026-29_IRB) (2026 §45V amounts)
+- Notice 2025-42 vacatur: [KPMG, 2026-06](https://kpmg.com/us/en/taxnewsflash/news/2026/06/court-vacates-notice-2025-42-eliminated-safe-harbor-construction-wind-solar.html); appeal status: [Clifford Chance, 2026-09-04](https://www.cliffordchance.com/content/dam/cliffordchance/briefings/2026/09/IRS%20Notice%202025-42%20Appeal%20Deadline%20Nears.pdf)
+- US hub status: [DOE retained list, Apr 2026 (reported)](https://decarbonfuse.com/posts/doe-restores-1-2b-for-dac-hubs-and-5-hydrogen-projects)
+- EU Hydrogen Bank: [2nd auction (IEA)](https://www.iea.org/policies/27897-second-auction-of-european-hydrogen-bank-ehb), [3rd auction results](https://timharper.net/european-hydrogen-auction-explained-if25/)
+- Germany: [Bundesnetzagentur PV tenders](https://www.bundesnetzagentur.de/1091186), [July 2026 round](https://www.bundesnetzagentur.de/1114090), [DGS solar market values 2025](https://www.dgs.de/wp-content/uploads/2026/01/DGS_Jahres-Monatsmarktwerte-Solar_2025.pdf), [auctions-as-a-service winners 2026-05-29](https://www.bundeswirtschaftsministerium.de/Redaktion/DE/Pressemitteilungen/2026/05/20260529-gewinner-auctions-as-a-service-fenster.html)
+- Netherlands: [RVO SDE++](https://www.rvo.nl/subsidies-financiering/sde/orienteren), [RVO OWE](https://www.rvo.nl/subsidies-financiering/owe/waterstof-produceren)
+- UK: [CfD AR7 results](https://www.gov.uk/government/publications/contracts-for-difference-cfd-allocation-round-7-results/contracts-for-difference-allocation-round-7-results-accessible-webpage), [Hydrogen allocation rounds](https://www.gov.uk/government/collections/hydrogen-allocation-rounds)
+- FX: [ECB euro reference rates](https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html) (2026-10-29)
+
+### Market benchmarks used for slider markers (retrieved 2026-10)
+
+- Battery: [BNEF Energy Storage System Cost Survey 2025 (via Energy-Storage.news)](https://www.energy-storage.news/behind-the-numbers-bnef-finds-40-year-on-year-drop-in-bess-costs/): turnkey BESS $117/kWh global, $73 China, $177 Europe, $219 US
+- Modules: OPIS via pv magazine, [FOB China TOPCon, 2026-07-31](https://www.pv-magazine.com/2026/07/31/chinese-topcon-module-prices-fall-as-high-efficiency-supply-adds-pressure/) and [DDP US TOPCon, 2026-03-06](https://www.pv-magazine.com/2026/03/06/china-topcon-module-prices-edge-higher-as-march-cargoes-clear/)
+- Methanol: [CFR China spot, Oct 2026 (Procurement Resource)](https://www.procurementresource.com/news-and-articles/asian-methanol-jumps-64-percent), [Methanex posted contract prices](https://www.methanex.com/about-methanol/pricing/)
 
 ## License
 

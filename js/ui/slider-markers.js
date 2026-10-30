@@ -18,24 +18,40 @@ export const SLIDER_MARKERS = {
     { value: 1000, label: 'Balanced default case' },
     { value: 1600, label: 'Lighter models / higher throughput' },
   ],
+  // Market benchmarks below were checked 2026-10; each carries its source.
   methanePrice: [
     { value: 3, label: 'Low US spot gas' },
+    // Whitepaper 2.0 revenue case "at a gas price of $10/kcf":
+    // https://terraformindustries.wordpress.com/2023/01/09/terraform-industries-whitepaper-2-0/
     { value: 10, label: 'Whitepaper commodity case' },
     { value: 20, label: 'Generic green methane case' },
-    { value: 35, label: '2024 premium CH4 sale' },
+    // "Currently we can produce methane for under $30/MCF" (2026-06-16):
+    // https://terraformindustries.wordpress.com/2026/06/16/the-enormous-size-of-the-oil-and-gas-market-drives-adoption-of-synthetic-fuel-production/
+    { value: 30, label: 'Terraform reported production cost (<$30/MCF, Jun 2026)' },
   ],
   methanolPrice: [
-    { value: 350, label: 'China spot price' },
-    { value: 600, label: 'Europe' },
-    { value: 1000, label: 'Green methanol' },
+    // CFR China spot $0.54/kg on 2026-10-08 (Procurement Resource, 2026-10-19):
+    // https://www.procurementresource.com/news-and-articles/asian-methanol-jumps-64-percent
+    { value: 540, label: 'China CFR spot, Oct 2026 (reported)' },
+    // Methanex European posted contract EUR 875/t for Q4 2026 x 1.113 USD/EUR (ECB 2026-10-29):
+    // https://www.methanex.com/about-methanol/pricing/
+    { value: 970, label: 'Europe posted contract, Q4 2026 (Methanex, EUR 875/t)' },
   ],
   batteryCost: [
-    { value: 80, label: 'China' },
-    { value: 150, label: 'Europe / US' },
+    // BNEF Energy Storage System Cost Survey 2025 (Dec 2025), turnkey systems excl. EPC
+    // and grid connection: https://www.energy-storage.news/behind-the-numbers-bnef-finds-40-year-on-year-drop-in-bess-costs/
+    { value: 73, label: 'China turnkey BESS avg (BNEF 2025)' },
+    { value: 117, label: 'Global turnkey BESS avg (BNEF 2025)' },
+    { value: 177, label: 'Europe turnkey BESS avg (BNEF 2025)' },
+    { value: 219, label: 'US turnkey BESS avg (BNEF 2025)' },
   ],
   panelCost: [
-    { value: 0.11, label: 'Mono-crystalline, no tariffs' },
-    { value: 0.3, label: 'Mono-crystalline, with tariffs' },
+    // OPIS Chinese Module Marker $0.109/W, 2026-07-31:
+    // https://www.pv-magazine.com/2026/07/31/chinese-topcon-module-prices-fall-as-high-efficiency-supply-adds-pressure/
+    { value: 0.11, label: 'TOPCon module FOB China, Jul 2026 (OPIS)' },
+    // OPIS DDP US TOPCon 600 W+ $0.290/W, 2026-03-06:
+    // https://www.pv-magazine.com/2026/03/06/china-topcon-module-prices-edge-higher-as-march-cargoes-clear/
+    { value: 0.29, label: 'TOPCon module DDP US, Mar 2026 (OPIS)' },
   ],
   landCost: [
     { value: 2500, label: 'Cheap ag / desert land' },

@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { POLICY_SCHEMES } from '../../js/data/policies.js';
+import { SLIDER_MARKERS } from '../../js/ui/slider-markers.js';
 
 const input = (schemeId, key) => POLICY_SCHEMES[schemeId].inputs.find(entry => entry.key === key);
 const roundTo = (value, step) => Math.round(value / step) * step;
@@ -71,4 +72,9 @@ test('user-facing policy text cites no internal sheet', () => {
     const text = [scheme.note, scheme.basis, scheme.stackingOrExclusivity, ...(scheme.inputs || []).map(entry => entry.label)].join(' ');
     assert.doesNotMatch(text, /policy (parameter )?sheet/i, `${id} must not reference an internal policy sheet`);
   });
+});
+
+test('BNEF 2025 turnkey BESS markers keep the published regional ordering', () => {
+  const values = SLIDER_MARKERS.batteryCost.map(marker => marker.value);
+  assert.deepEqual(values, [73, 117, 177, 219]);
 });

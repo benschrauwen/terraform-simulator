@@ -13,7 +13,7 @@ import { dayViewMethods } from './day-view.js';
 import { layoutMethods } from './layout.js';
 import { moduleControlMethods } from './module-controls.js';
 import { optimizerMethods } from './optimizer-client.js';
-import { rendererMethods } from './renderers.js';
+import { rendererMethods } from './renderers/index.js';
 import { selectOptionMethods } from './select-options.js';
 import { shareMethods } from './share.js';
 import { siteControlMethods } from './site-controls.js';

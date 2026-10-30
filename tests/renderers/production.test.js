@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { rendererMethods } from '../../js/ui/renderers.js';
+import { rendererMethods } from '../../js/ui/renderers/index.js';
+import { econMetric, econRow } from '../../js/ui/renderers/markup.js';
 
 function loadRendererMethods() {
   const productionGrid = { innerHTML: '' };
@@ -27,9 +28,6 @@ function createHarness() {
   const app = {
     getCycleRateUnit(result) {
       return result.solar.cycleUnitCompact;
-    },
-    prodItem(...args) {
-      return methods.prodItem.call(this, ...args);
     },
   };
 
@@ -91,14 +89,12 @@ test('production summary omits disabled process rows', () => {
 });
 
 test('economics renderer uses custom tooltip attributes on labels', () => {
-  const { methods } = createHarness();
-
-  const rowHtml = methods.econRow('IRR', '12.4%', '', 'Project "return" & hurdle comparison');
+  const rowHtml = econRow('IRR', '12.4%', '', 'Project "return" & hurdle comparison');
   assert.ok(rowHtml.includes('class="econ-label tooltip-label"'));
   assert.ok(rowHtml.includes('data-tooltip="Project &quot;return&quot; &amp; hurdle comparison"'));
   assert.equal(rowHtml.includes('title='), false);
 
-  const metricHtml = methods.econMetric('Levelized cost', '$42', 'negative', 'CRF capital + O&M');
+  const metricHtml = econMetric('Levelized cost', '$42', 'negative', 'CRF capital + O&M');
   assert.ok(metricHtml.includes('class="econ-metric-label tooltip-label"'));
   assert.ok(metricHtml.includes('data-tooltip="CRF capital + O&amp;M"'));
 });

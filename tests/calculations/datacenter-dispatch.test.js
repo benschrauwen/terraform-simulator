@@ -130,17 +130,57 @@ test('islanded gas: N+1 units serve every hour; too few units leave exactly the 
 
 test('a flexible connection is unavailable exactly the set number of hours', () => {
   for (const hours of [0, 40, 50, 70, 500]) {
-    const r = calculateDatacenterScenario({ gridConnection: 'flexible', gridUnavailableHoursPerYear: hours, firmFamily: 'none' }, { fastMode: true });
+    // Utility outages off: this checks the curtailment hours alone.
+    const r = calculateDatacenterScenario({ gridConnection: 'flexible', gridUnavailableHoursPerYear: hours, firmGridOutageHoursPerYear: 0, firmFamily: 'none' }, { fastMode: true });
     assert.equal(r.grid.unavailableHours, hours);
     assert.equal(r.grid.events.reduce((sum, event) => sum + event.hours, 0), hours);
     // Nothing on site: every unavailable hour goes unserved, and only those.
     assert.equal(r.reliability.unservedHours, hours);
   }
-  // A reserve battery charged from the grid rides through 4-hour events.
+  // A reserve battery charged from the grid rides through 4-hour curtailments
+  // and the 3-hour utility outages.
   const withBattery = calculateDatacenterScenario(ARCHITECTURES.gridFlexibleBattery, { fastMode: true });
   assert.equal(withBattery.dispatch.batteryRole, 'reserve');
   assert.equal(withBattery.reliability.uptimePercent, 100);
   assert.ok(withBattery.dispatch.annual.gridToBatteryMWh > 0);
+});
+
+test('utility outages: a firm connection fails N hours a year; flexible curtailments add to them', () => {
+  // Default: 3 h/yr (Electricity Canada transmission delivery points, 2.68 h
+  // mean T-SAIDI, rounded to whole hours), one 3-hour event on 15 July
+  // (day index 195) from 15:00: hours 195 x 24 + 15 = 4695 to 4697.
+  const bare = calculateDatacenterScenario({ firmFamily: 'none' });
+  assert.equal(bare.state.firmGridOutageHoursPerYear, 3);
+  assert.equal(bare.grid.connection, 'firm');
+  assert.deepEqual(bare.grid.events, [{ startHour: 4695, hours: 3, kind: 'outage' }]);
+  assert.equal(bare.grid.outageHours, 3);
+  [4695, 4696, 4697].forEach(h => assert.equal(bare.dispatch.hourly.gridMW[h], 0));
+  // Without backup the load goes unserved in exactly those hours:
+  // uptime = 8757 / 8760 = 99.9658%, below the Tier III 99.982% (1.6 h/yr).
+  assert.equal(bare.reliability.unservedHours, 3);
+  assert.ok(Math.abs(bare.reliability.uptimePercent - 100 * 8757 / 8760) < 1e-9);
+  assert.equal(bare.state.uptimeTargetPercent, 99.982);
+  assert.equal(bare.reliability.meetsTarget, false);
+  assert.ok(bare.warnings.some(warning => warning.key === 'uptime-below-target'));
+  // Standby gas (default N+1 engines) or a reserve battery restores it.
+  const gas = calculateDatacenterScenario({});
+  assert.equal(gas.reliability.uptimePercent, 100);
+  assert.ok(gas.reliability.meetsTarget);
+  assert.equal(gas.dispatch.annual.gasRunHours, 3);
+  const battery = calculateDatacenterScenario({ firmFamily: 'none', batteryCapacityMWh: 400 }, { fastMode: true });
+  assert.equal(battery.reliability.uptimePercent, 100);
+  // n = ceil(N / 3) events spread over the year; the last one shorter.
+  const ten = calculateDatacenterScenario({ firmFamily: 'none', firmGridOutageHoursPerYear: 10 }, { fastMode: true });
+  assert.deepEqual(ten.grid.events.map(event => event.hours).sort(), [1, 3, 3, 3]);
+  assert.equal(ten.reliability.unservedHours, 10);
+  // Flexible: 50 curtailed hours on other days + 3 outage hours = 53.
+  const flexible = calculateDatacenterScenario({ gridConnection: 'flexible', firmFamily: 'none' }, { fastMode: true });
+  assert.equal(flexible.grid.curtailmentHours, 50);
+  assert.equal(flexible.grid.outageHours, 3);
+  assert.equal(flexible.grid.unavailableHours, 53);
+  assert.equal(flexible.reliability.unservedHours, 53);
+  // Islanded sites have no utility outages to model.
+  assert.equal(calculateDatacenterScenario({ architecture: 'islanded' }, { fastMode: true }).grid.outageHours, 0);
 });
 
 test('hybrid dispatch orders grid and gas by marginal cost', () => {
@@ -151,11 +191,13 @@ test('hybrid dispatch orders grid and gas by marginal cost', () => {
   assert.equal(cheapGas.dispatch.annual.gridMWh, 0);
   const dearGas = calculateDatacenterScenario({ architecture: 'hybrid', gasFuelPricePerMMBtu: 9 }, { fastMode: true });
   assert.equal(dearGas.dispatch.order, 'grid-first');
-  assert.equal(dearGas.dispatch.annual.gasMWh, 0);
+  // Gas runs only while the utility is out (it used to never run here).
+  assert.equal(dearGas.dispatch.annual.gasRunHours, dearGas.grid.outageHours);
 });
 
 test('nuclear runs as must-take baseload with its refuelling outage', () => {
-  const r = calculateDatacenterScenario(ARCHITECTURES.nuclearContracted, { fastMode: true });
+  // Utility outages off: this checks the reactor's refuelling block alone.
+  const r = calculateDatacenterScenario({ ...ARCHITECTURES.nuclearContracted, firmGridOutageHoursPerYear: 0 }, { fastMode: true });
   // Auto contract = average facility load; out (1 - 0.92) x 8760 = 700.8 -> 701 h.
   assert.ok(Math.abs(r.firm.capacityMW - r.load.meanFacilityMW) < 1e-9);
   assert.ok(Math.abs(r.dispatch.annual.nuclearMWh - r.firm.capacityMW * (8760 - 701)) < 1e-6);

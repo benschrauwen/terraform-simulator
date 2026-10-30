@@ -157,6 +157,10 @@ export const DATACENTER_SECTIONS = {
       tooltip: 'Hours a year the utility may cut a flexible connection, placed as 4-hour events on the hottest afternoons. On-site generation or storage must cover them.',
     },
     {
+      type: 'range', id: 'firmGridOutageHoursPerYear', label: 'Utility outages', min: 0, max: 24, step: 1, format: value => `${fixed(value, 0)} h/yr`,
+      tooltip: 'Unplanned utility interruptions, firm service included: ~2.7 h a year at transmission delivery points (Electricity Canada), 6-11 h for US distribution customers (EIA 2023-24). Placed as 3-hour events from 15 July; a flexible connection\'s curtailments come on top. Covering them takes backup generation or storage.',
+    },
+    {
       type: 'range', id: 'gridEnergyPricePerMWh', label: 'Grid energy price', min: 0, max: 300, step: 0.5, format: per(1, 'MWh'),
       tooltip: 'Defaults to the site\'s all-in average industrial price (resets when the site changes).',
     },

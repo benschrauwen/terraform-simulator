@@ -141,6 +141,9 @@ export const DATACENTER_STATE_FIELDS = [
   // 0 = sized to the design facility peak (IT nameplate x peak PUE).
   { key: 'gridImportCapMW', type: 'number', min: 0, max: 100000, defaultValue: 0 },
   { key: 'gridUnavailableHoursPerYear', type: 'integer', min: 0, max: 8760, defaultValue: GRID_DEFAULTS.flexibleUnavailableHoursPerYear },
+  // Utility outages of any connection, firm included (power.js: transmission
+  // delivery points ~2.7 h/yr); flexible curtailments come on top.
+  { key: 'firmGridOutageHoursPerYear', type: 'integer', min: 0, max: 8760, defaultValue: GRID_DEFAULTS.outageHoursPerYear },
   // The site's EIA year-to-date ALL-IN industrial price (sites.js
   // electricityPriceAltUsdPerMWh), so the demand charge defaults to 0.
   { key: 'gridEnergyPricePerMWh', type: 'number', min: 0, max: 1000, derive: state => getDatacenterSite(state.siteId).electricityPriceAltUsdPerMWh },

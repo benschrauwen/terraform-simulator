@@ -24,7 +24,8 @@
              peakFacilityMW (dispatch year), designPeakMW (IT nameplate x peak PUE) },
      solar: { enabled, sizeMWdc, annualMWh, capacityFactor, siteYield, yieldMultiplier, areaM2, acres, lcoe,
               dailyVariability (TMY day-to-day factor applied), reachable },
-     grid: { connected, connection, importCapMW, unavailableHours, events[{ startHour, hours }] },
+     grid: { connected, connection, importCapMW, unavailableHours (outages + curtailments), outageHours,
+             curtailmentHours, events[{ startHour, hours, kind: 'outage' | 'curtailment' }] },
      gpu: { enabled (revenueBasis 'gpu-rental'), platform, label, count (fractional), itKWPerGpu,
             capexPerGpu, rentalPricePerHour, occupancyPercent, priceDeclinePercentPerYear, lifeYears,
             itLoadFraction, marketIndex, ownerTcoPerGpuHour, gpuHoursSoldPerYear },
@@ -65,9 +66,11 @@
                  capexItems[{ key, label, capex, group, paidAtYear, parts? }], totalCapex,
                  netCapexAtClose, annualOM, revenue{ gpuRental, tokens, colocation, powerPassThrough,
                  export, policyCredits } (full year; GPU rental at the new-GPU price), yearlyCashFlows[]
-                 also carry operatingFraction, rentalPriceFactor, deferredCapexOutflow, totalAnnualRevenue, levelizedAnnualCost, levelizedAnnualProfit,
-                 discountRatePercent) plus opexLines[], fixedOmLines[], deferredCapex,
-                 energizationYears, annualGpuHoursSold, annualTokensM, levelized{ costOfPowerPerMWh,
+                 also carry operatingFraction, rentalPriceFactor (average over the operating time),
+                 gpuHoursSold, deferredCapexOutflow, totalAnnualRevenue, levelizedAnnualCost, levelizedAnnualProfit,
+                 discountRatePercent) plus opexLines[], fixedOmLines[], deferredCapex{ year, atYears, total,
+                 byYear[{ year, total }], items }, energizationYears, annualGpuHoursSold, totalGpuHoursSold,
+                 annualTokensM, levelized{ costOfPowerPerMWh,
                  costPerMWhIT, costPerMToken, costPerGpuHour, revenuePerMWhIT }, breakEven{ paramKey, label, unit, currentPrice,
                  breakEvenPrice, npvPerUnitPrice, ratioToCurrent },
      warnings: [{ key, message }],
@@ -105,7 +108,7 @@ function getCoolingProfile(site, tech) {
 // except through the hybrid merit order, which is part of the key).
 const DISPATCH_KEYS = [
   'siteId', 'itCapacityMW', 'itUtilizationPercent', 'revenueBasis', 'gpuOccupancyPercent', 'coolingTechnology', 'architecture', 'gridConnection', 'gridImportCapMW',
-  'gridUnavailableHoursPerYear', 'gridExportEnabled', 'solarSizeMWdc', 'mountingType', 'siteYieldMwhPerMwdcYear',
+  'gridUnavailableHoursPerYear', 'firmGridOutageHoursPerYear', 'gridExportEnabled', 'solarSizeMWdc', 'mountingType', 'siteYieldMwhPerMwdcYear',
   'batteryCapacityMWh', 'batteryDurationHours', 'batteryEfficiency', 'firmFamily', 'firmSizingMode', 'firmSpareUnits', 'firmUnits',
   'gasType', 'gasUnitSizeMW', 'gasHeatRateMMBtuPerMWh', 'gasAvailabilityPercent',
   'nuclearType', 'nuclearUnitSizeMW', 'nuclearCapacityFactorPercent',
@@ -306,6 +309,8 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
       connection: grid.connection,
       importCapMW: grid.capKW / 1000,
       unavailableHours: grid.connected ? grid.unavailableHours : HOURS_PER_YEAR,
+      outageHours: grid.outageHours,
+      curtailmentHours: grid.curtailmentHours,
       events: grid.events,
     },
     firm: {

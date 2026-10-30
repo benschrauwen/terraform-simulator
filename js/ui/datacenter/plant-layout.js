@@ -59,9 +59,10 @@ function blockDetail(key, r) {
 /** Label of the grid connection (the transmission line), or of its absence. */
 export function gridTieLabel(r) {
   if (!r.grid?.connected) return 'Islanded: no grid connection';
+  const outages = r.grid.outageHours > 0 ? `, ~${fixed(r.grid.outageHours, 0)} h/yr outages` : '';
   const kind = r.grid.connection === 'flexible'
-    ? `flexible connection, curtailable ${fixed(r.grid.unavailableHours, 0)} h/yr`
-    : 'firm service';
+    ? `flexible connection, curtailable ${fixed(r.grid.curtailmentHours ?? r.grid.unavailableHours, 0)} h/yr${outages}`
+    : `firm service${outages}`;
   return `Transmission line to the utility grid: ${formatMW(r.grid.importCapMW)}, ${kind}`;
 }
 

@@ -465,7 +465,7 @@ Annual PUE is facility energy / IT energy. At the cooling.js calibration climate
   ```text
   solar(h) = s x clearSkyPOA(h) x dailySolarFactor(day(h)),  capped at MWdc;  s: sum_h solar(h) = MWdc x yield x multiplier
   ```
-- **Grid**: connected in `grid` and `hybrid`, import cap 0 = design peak. A flexible connection is unavailable for N hours a year, placed as contiguous 4-hour events (the low end of the 4-16 h curtailments in the Camus study) on the days of highest facility load, i.e. hot afternoons.
+- **Grid**: connected in `grid` and `hybrid`, import cap 0 = design peak. Firm service is not uninterruptible: every connection has `firmGridOutageHoursPerYear` of utility outages (default 3 h/yr). Electricity Canada's transmission composite (BC Hydro's F2024 reliability filing) averages 2.68 h and 0.82 sustained interruptions per delivery point a year over F2015-F2023, about 3.3 h each; US distribution customers see more (EIA Table 11.1, IEEE 1366: SAIDI 6.1 h with major event days, 2.1 h without, in 2023; 11.0 h and 2.2 h in 2024), but most of that starts on the distribution system, which a transmission-served load bypasses. The default rounds the transmission figure to whole hours (judgment). Outages come as ceil(N / 3) events of up to 3 h, the first on 15 July from 15:00 local standard time and the rest spread evenly over the year at the same hour (deterministic, judgment). Without backup, 3 h/yr gives 8757 / 8760 = 99.966% uptime, below the Tier III 99.982% (1.6 h/yr) target, so standby generation or a reserve battery is needed to meet it, which is what the Uptime Institute's Tier Standard assumes (it treats the utility as an economic alternative to the engine-generator plant). A flexible connection is in addition curtailed for N hours a year, placed as contiguous 4-hour events (the low end of the 4-16 h curtailments in the Camus study) on the days of highest facility load, i.e. hot afternoons, skipping days with an outage so the two add up.
 - **Firm generation**, one family at a time. Gas: `auto` = ceil(design peak / unit size) + spare units (default N+1); each unit is out (1 - availability) x 8760 h in a block, units maintained one after another from 1 March. Fuel uses the plant's committed units at equal loading, with the heat rate rising linearly to the 50%-load penalty (floored at the minimum stable load). Nuclear: must-take baseload at full rating except a (1 - capacity factor) x 8760 h refuelling/maintenance block per unit from 1 April; `auto` = enough units for the average facility load (an existing-plant contract exactly that). A contract is take-or-pay; an own reactor backs down instead of curtailing.
 - **Order**, each hour: solar + nuclear serve the load; surplus charges the battery, then is exported (if enabled, grid available, up to the connection) or curtailed. A deficit is met by a shifting battery, then grid → reserve battery → gas (`grid`: gas is backup) or, in `hybrid` when gas is cheaper (fuel x heat rate + VOM < grid energy price), gas → grid → reserve battery; `islanded` has no grid. The rest is unserved.
 - **Battery**: with a surplus source (solar or nuclear) it shifts surplus only and discharges first. Without one it is a reserve: topped up from the grid (islanded: from spare gas) and used only when the grid cannot carry the load. It never buys grid energy to shift it. Power limit, efficiency, leakage and the periodic start state of charge are the plant builder's battery primitives; life = min(12 yr, rated cycles / equivalent full cycles).
@@ -505,20 +505,23 @@ Each component is a parallel path from notice-to-proceed (January 2027, judgment
 ### Economics (`economics.js`)
 
 ```text
-t0           = energization month / 12;   f_y = clamp(y - t0, 0, 1)
+t0           = energization month / 12;   year y = (y - 1, y];   f_y = clamp(y - t0, 0, 1)
 capex        = facility (x tier) + land + cooling + IT + substation
                + grid interconnection + solar + battery + gas or nuclear
-               paid at close; GPUs at energization by default (year floor(t0))
-replacements = every life after energization, year ceil(t0 + k x life); salvage straight-line at N
+               paid at close; GPUs at energization t0 by default
+replacements = at exactly t0 + k x life; salvage straight-line at N
+lump at tau  = booked (ceil(tau) - tau) at year floor(tau), (tau - floor(tau)) at year ceil(tau)
 opex         = fixed O&M (facility, cooling, IT, solar, battery, firm $/kW-yr) + grid energy
                + demand (monthly peak import x $/kW-month) + fuel + variable O&M
                + nuclear fuel or PPA + water
-revenue      = GPU rental (default): GPUs x 8760 x occupancy x served share x $/GPU-hr x (1 - decline)^fleet age
+revenue      = GPU rental (default): GPUs x 8760 x occupancy x served share x $/GPU-hr x R_y
                tokens: served IT MWh x M tokens/MWh-IT x $/M
                colocation: $/kW-month x IT kW x 12 x served share (+ energy costs passed through)
                + export MWh x export price
-cf_y         = f_y x (revenue - opex) - replacements_y - deferred capex_y + [y = N] salvage
+cf_y         = f_y x (revenue - opex) + (R_y - f_y) x GPU rental - replacements_y - deferred capex_y + [y = N] salvage
 ```
+
+Time is continuous within the annual end-of-year grid, so NPV moves smoothly with the first-power date: revenue and every opex line run for the operating time f_y of each year, the GPU rental price is integrated over that time (`R_y`, below), and a lump paid at a fractional time (the GPUs at first power, any replacement) is split between the two year-ends around it so that its mean booking time is exact. Booking a whole lump at one year-end would make NPV jump by C x r / (1 + r)^tau each time tau crossed a year, and taking each year at the fleet's mid-year age made revenue jump by about one year's decline whenever a replacement crossed mid-year; together these made NPV swing by hundreds of $M between neighbouring schedules (tested: continuity in 0.25% schedule steps, and monotone in the schedule for a clearly profitable or loss-making design).
 
 **GPU cloud rental** (the default business model, `gpu.js`): the operator owns the GPUs and rents them by the hour. Per platform (`js/data/datacenter/gpu.js`: H100, H200, B200, GB200 NVL72, GB300 NVL72, default GB300 NVL72 as the 2026 mainstream) the data give the rated IT kW per GPU (server or rack maximum / GPUs, +10% for scale-out network and storage), the all-in capex per GPU and a rental price (default: SemiAnalysis's retail rate per GPU-hour, below 2026 spot indexes because a large fleet rents mostly on term contracts).
 
@@ -526,11 +529,16 @@ cf_y         = f_y x (revenue - opex) - replacements_y - deferred capex_y + [y =
 GPUs        = IT capacity kW / IT kW per GPU            (fractional, so results scale linearly)
 IT draw     = nameplate x (occupancy x 0.8 + (1 - occupancy) x 0.2)   # LBNL rented vs idle draw; replaces utilization
 IT capex    = GPUs x capex per GPU, replaced every GPU life (5 yr)
-price_y     = price x (1 - decline)^age_y               # default decline 15%/yr
-age_y       = age at mid-operation of year y of the fleet in service; the first fleet is bought at
-              energization (or at NTP with itCapexTiming 'ntp'); each replacement buys the then-current
-              generation at the same $/GPU and rents at the new-GPU price again (age resets)
+price(t)    = price x (1 - decline)^age(t)              # default decline 15%/yr
+R_y         = integral over the operating time of year y of (1 - decline)^age(t) dt
+            = sum over fleets in service of (q^(b - p) - q^(a - p)) / ln q,  q = 1 - decline
+age(t)      = t - p, p = purchase time of the fleet in service at t; fleet k serves
+              [t0 + k x life, t0 + (k + 1) x life); the first is bought at energization (or at NTP
+              with itCapexTiming 'ntp'), each replacement buys the then-current generation at the same
+              $/GPU and rents at the new-GPU price again (age resets)
 ```
+
+`yearlyCashFlows[].rentalPriceFactor` is R_y / f_y (the average price factor over the year's operating time); `gpuHoursSold` per year and `economics.totalGpuHoursSold` count GPUs x occupancy x served share x hours operating.
 
 The decline default (15%/yr, judgment) sits between the within-tier H100 declines (~6-10%/yr, Silicon Data 2023-2026), the B200 12-month forward (12% below spot) and the ~30%/yr cross-tier fall from 2023's $7-10/hr. Occupancy (default 85%) is judgment. The break-even is the rental $/GPU-hour at NPV = 0; `economics.levelized.costPerGpuHour` is the all-in cost per GPU-hour sold.
 
@@ -592,7 +600,8 @@ Every view renders with attributes and classes only (strict CSP) and escapes int
 
 - Temperatures are a typical day per month (no heat waves beyond the monthly mean profile). Solar has the TMY's day-to-day variability but a clear-sky shape within each day (no passing clouds), the GHI day factor stands in for plane-of-array (it understates the clear/overcast contrast for trackers), and TMY months are stitched from different years, so multi-day spells never cross a month boundary. One TMY year is not a design-year: at Abilene a 1 GWdc (east-west) / 4 GWh islanded solar + battery site serves 99.05% of hours (a ~2-day overcast spell empties the battery); ~7.7 GWh reaches 99.9% in this year (~6.4 GWh with single-axis trackers), and a multi-year record would need more.
 - IT load is constant at its utilization; no AI training load swings, ramp limits or start times for gas.
-- Outages are deterministic blocks (planned maintenance), not random forced outages; grid outages exist only for flexible connections.
+- Outages are deterministic blocks (planned maintenance, utility outages at fixed dates, flexible curtailments on the highest-load days), not random forced outages, so uptime is one representative year rather than an expected value; the utility-outage default is a Canadian transmission average, and a given site's history (feeds, voltage, storm exposure) can differ by several times. A contracted existing nuclear plant keeps delivering through a utility outage. Generators and batteries pick up an outage within the hour (no start-up time; the UPS bridges the seconds in practice).
+- The schedule does not make standby generation a required path for a firm grid connection, although meeting a Tier III target needs it; the economics may therefore start revenue before the backup plant could be built.
 - Solar degradation is not modeled in the dispatch (year-1 output every year); prices are constant real values with no taxes.
 - One firm-generation family per design; the battery cannot arbitrage grid prices.
 - The schedule treats paths as independent and the dispatch runs every component from energization.

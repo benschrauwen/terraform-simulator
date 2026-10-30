@@ -107,8 +107,9 @@ test('switching architecture changes the result and the footprint as the design 
   assert.ok(r.hybrid.dispatch.annual.solarMWh > 0);
   assert.equal(r.islanded.dispatch.annual.solarMWh, 0);
   assert.ok(r.hybrid.dispatch.battery.capacityMWh > 0);
-  // Gas: standby on a firm grid (never runs), the whole load islanded.
-  assert.equal(r.grid.dispatch.annual.gasMWh, 0);
+  // Gas: standby on a firm grid runs only through the utility outages; islanded it carries the whole load.
+  assert.ok(r.grid.dispatch.annual.gasMWh > 0);
+  assert.ok(r.grid.dispatch.annual.gasMWh <= r.grid.grid.outageHours * r.grid.load.designPeakMW + 1e-6);
   assert.ok(Math.abs(r.islanded.dispatch.annual.gasMWh - r.islanded.dispatch.annual.servedMWh) < 1e-6 * r.islanded.dispatch.annual.servedMWh);
   // Footprint: the switchyard exists iff grid-connected; solar field and battery iff sized.
   const areas = key => r[key].footprint.areasM2;

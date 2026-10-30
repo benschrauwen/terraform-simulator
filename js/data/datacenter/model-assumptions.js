@@ -44,6 +44,19 @@ export const DATACENTER_MODEL_ASSUMPTIONS = Object.freeze({
   // judgment.
   flexibleEventHours: 4,
 
+  // Utility outages (any grid connection, power.js GRID_DEFAULTS
+  // .outageHoursPerYear): events of up to 3 h (Electricity Canada
+  // transmission delivery points average 2.68 h over 0.82 sustained
+  // interruptions a year = 3.3 h each, rounded down to whole hours;
+  // judgment), the first on 15 July (day index 195) from 15:00 local
+  // standard time (summer storms on a hot, high-load afternoon; judgment),
+  // further events spread evenly over the year (event k on day
+  // 195 + floor(k x 365 / n), wrapping) at the same hour. Flexible-connection
+  // curtailments are placed after them, on other days, and add to them.
+  gridOutageEventHours: 3,
+  gridOutageStartDayOfYear: 195,
+  gridOutageStartHour: 15,
+
   // Deterministic planned outages, placed in shoulder seasons (judgment):
   // each gas unit is out (1 - availability) x 8760 h per year, units one
   // after another from 1 March; each nuclear unit's refuelling/maintenance

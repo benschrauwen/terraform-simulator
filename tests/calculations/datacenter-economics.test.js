@@ -61,15 +61,60 @@ test('operations and revenue start at energization; capex at notice-to-proceed',
     assert.equal(entry.operatingCashFlow, 0);
   });
   assert.ok(close(e.yearlyCashFlows[4].totalRevenue, 0.5 * e.totalAnnualRevenue));
-  // GPUs bought for first power: paid in year floor(54 / 12) = 4.
-  assert.equal(e.deferredCapex.year, 4);
-  assert.ok(close(e.yearlyCashFlows[3].deferredCapexOutflow, e.capex.it));
-  // First IT replacement 5 years after energization: 4.5 + 5 = 9.5 -> year 10.
-  assert.ok(e.yearlyCashFlows[9].replacementItems.some(item => item.key === 'it'));
+  // IT hardware bought for first power at 4.5 yr: booked half at the end of
+  // year 4, half at the end of year 5 (mean booking time = 4.5 yr; it used
+  // to be paid wholly in year floor(t0), a step when t0 crossed a year).
+  assert.equal(e.deferredCapex.atYears, 4.5);
+  assert.ok(close(e.yearlyCashFlows[3].deferredCapexOutflow, 0.5 * e.capex.it));
+  assert.ok(close(e.yearlyCashFlows[4].deferredCapexOutflow, 0.5 * e.capex.it));
+  // First IT replacement 5 years after energization: 4.5 + 5 = 9.5, split
+  // between the ends of years 9 and 10.
+  [8, 9].forEach(i => assert.ok(e.yearlyCashFlows[i].replacementItems.some(item => item.key === 'it' && item.scheduledAtYear === 9.5)));
+});
+
+/* NPV vs first-power date: sweep scheduleScalePercent 50-150% in 0.25%
+   steps (~0.14 months of the 54-month default path each). A lump that
+   jumped a year-end, or a rental-price step, used to move NPV by hundreds
+   of $M between neighbouring steps. */
+function scheduleSweep(overrides) {
+  const points = [];
+  for (let scale = 50; scale <= 150; scale += 0.25) {
+    const r = calculateDatacenterScenario({ ...overrides, scheduleScalePercent: scale }, { fastMode: true });
+    points.push({ scale, npv: r.economics.npv, capex: r.economics.totalCapex });
+  }
+  return points;
+}
+
+test('NPV is continuous in the first-power date (no jumps between neighbouring schedules)', () => {
+  for (const overrides of [{}, { gpuRentalPricePerHour: 6 }, { itCapexTiming: 'ntp' }, { revenueBasis: 'tokens' }, { revenueBasis: 'colocation' }]) {
+    const points = scheduleSweep(overrides);
+    for (let i = 1; i < points.length; i++) {
+      const step = Math.abs(points[i].npv - points[i - 1].npv);
+      // A smooth NPV moves at most ~(r x capex + annual cash) x dt per step;
+      // 0.5% of capex per 0.14 months is far above that and far below a jump.
+      assert.ok(step < 0.005 * points[i].capex, `${JSON.stringify(overrides)} ${points[i].scale}%: step ${step}`);
+    }
+  }
+});
+
+test('NPV falls monotonically with a later first power for a profitable design, rises for a loss-making one', () => {
+  const profitable = scheduleSweep({ gpuRentalPricePerHour: 6 });
+  assert.ok(profitable[0].npv > 0 && profitable.at(-1).npv > 0);
+  for (let i = 1; i < profitable.length; i++) assert.ok(profitable[i].npv <= profitable[i - 1].npv, `${profitable[i].scale}%`);
+  const tokens = scheduleSweep({ revenueBasis: 'tokens', tokenPricePerM: 0.6 });
+  for (let i = 1; i < tokens.length; i++) assert.ok(tokens[i].npv <= tokens[i - 1].npv, `tokens ${tokens[i].scale}%`);
+  // At $3/GPU-hour every GPU fleet loses money (rent < its capex + opex), so
+  // a later start (GPUs bought later, fewer fleets in the horizon) loses
+  // less. (Near break-even, e.g. $4, the slope is ~0 and the annual
+  // end-of-year grid leaves sub-$0.1M wiggles, so no sign is asserted there.)
+  const lossMaking = scheduleSweep({ gpuRentalPricePerHour: 3 });
+  assert.ok(lossMaking[0].npv < 0);
+  for (let i = 1; i < lossMaking.length; i++) assert.ok(lossMaking[i].npv >= lossMaking[i - 1].npv, `loss ${lossMaking[i].scale}%`);
 });
 
 test('a longer schedule delays revenue and lowers NPV (profitable design)', () => {
-  const base = { tokenPricePerM: 0.6 };
+  // Token revenue: this test predates GPU rental becoming the default basis.
+  const base = { revenueBasis: 'tokens', tokenPricePerM: 0.6 };
   const onTime = calculateDatacenterScenario(base, { fastMode: true });
   const late = calculateDatacenterScenario({ ...base, scheduleScalePercent: 150 }, { fastMode: true });
   assert.ok(onTime.economics.npv > 0);

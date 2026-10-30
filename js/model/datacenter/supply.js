@@ -7,8 +7,9 @@
      datacenter site's own diffuse fraction, shifted from solar time to local
      standard time), varied day by day with the site's PVGIS TMY daily factor
      and scaled to the site's PVGIS yield x mounting multiplier;
-   - grid: connected or not, import cap, and, for a flexible connection, the
-     hours it is unavailable;
+   - grid: connected or not, import cap, the utility outage hours every
+     connection sees and, for a flexible connection, the curtailed hours on
+     top of them;
    - firm generation (gas or nuclear): unit sizing and the hourly available
      capacity after deterministic planned outages.
    Pure; no DOM. */
@@ -112,15 +113,20 @@ export function buildSolarSupply(state, site) {
  * window carries the most facility load, highest first (ties: earlier day
  * and hour), until N hours are taken. With typical-day climate these are
  * the hottest afternoons of the hottest month: a heat-wave curtailment.
+ * Days with an hour in `excluded` (the utility outages) are skipped, so
+ * curtailments add to outages instead of overlapping them; only if every
+ * other day is taken do the remaining hours fill the first free hours.
  */
-export function selectFlexibleOutageHours(loadKW, hours) {
+export function selectFlexibleOutageHours(loadKW, hours, excluded = null) {
   const unavailable = new Uint8Array(HOURS_PER_YEAR);
   const events = [];
-  const target = Math.max(0, Math.min(HOURS_PER_YEAR, Math.round(hours)));
+  const free = HOURS_PER_YEAR - (excluded ? excluded.reduce((sum, value) => sum + (value ? 1 : 0), 0) : 0);
+  const target = Math.max(0, Math.min(free, Math.round(hours)));
   if (!target) return { unavailable, events };
   const eventHours = Math.min(24, Math.max(A.flexibleEventHours, Math.ceil(target / 365)));
   const days = [];
   for (let day = 0; day < 365; day++) {
+    if (excluded && excluded.subarray(day * 24, day * 24 + 24).some(Boolean)) continue;
     let best = -Infinity;
     let bestStart = 0;
     for (let start = 0; start + eventHours <= 24; start++) {
@@ -140,7 +146,42 @@ export function selectFlexibleOutageHours(loadKW, hours) {
     const length = Math.min(eventHours, remaining);
     const startHour = day * 24 + start;
     unavailable.fill(1, startHour, startHour + length);
-    events.push({ startHour, hours: length });
+    events.push({ startHour, hours: length, kind: 'curtailment' });
+    remaining -= length;
+  }
+  for (let h = 0; h < HOURS_PER_YEAR && remaining > 0; h++) {
+    if (unavailable[h] || excluded?.[h]) continue;
+    unavailable[h] = 1;
+    events.push({ startHour: h, hours: 1, kind: 'curtailment' });
+    remaining -= 1;
+  }
+  events.sort((a, b) => a.startHour - b.startHour);
+  return { unavailable, events };
+}
+
+/*
+ * Utility outage hours of any grid connection (firm service included):
+ * n = ceil(N / gridOutageEventHours) events of gridOutageEventHours (the
+ * last one shorter), event k on day gridOutageStartDayOfYear +
+ * floor(k x 365 / n) (wrapping) from gridOutageStartHour local standard
+ * time: deterministic, documented hours (model-assumptions.js), not random
+ * draws.
+ */
+export function selectGridOutageHours(hours) {
+  const unavailable = new Uint8Array(HOURS_PER_YEAR);
+  const events = [];
+  const target = Math.max(0, Math.min(HOURS_PER_YEAR, Math.round(hours)));
+  if (!target) return { unavailable, events };
+  const eventHours = Math.max(A.gridOutageEventHours, Math.ceil(target / 365));
+  const count = Math.ceil(target / eventHours);
+  let remaining = target;
+  for (let k = 0; k < count; k++) {
+    const day = (A.gridOutageStartDayOfYear + Math.floor((k * 365) / count)) % 365;
+    const length = Math.min(eventHours, remaining);
+    // Long events (N > 3 x 365 h) start earlier so they stay within the day.
+    const startHour = day * 24 + Math.min(A.gridOutageStartHour, 24 - length);
+    unavailable.fill(1, startHour, startHour + length);
+    events.push({ startHour, hours: length, kind: 'outage' });
     remaining -= length;
   }
   events.sort((a, b) => a.startHour - b.startHour);
@@ -149,26 +190,36 @@ export function selectFlexibleOutageHours(loadKW, hours) {
 
 /**
  * Grid supply: { connected, connection, capKW, available (Uint8Array 1/0
- * per hour, null when not connected), unavailableHours, events }.
- * Import cap 0 = the design facility peak.
+ * per hour, null when not connected), unavailableHours (outages +
+ * curtailments), outageHours, curtailmentHours, events [{ startHour,
+ * hours, kind: 'outage' | 'curtailment' }] }. Import cap 0 = the design
+ * facility peak. Every connection has the utility outages
+ * (firmGridOutageHoursPerYear); a flexible one is also curtailed for
+ * gridUnavailableHoursPerYear on other days.
  */
 export function buildGridSupply(state, loadKW, designPeakKW) {
   const connected = state.architecture !== 'islanded';
   if (!connected) {
-    return { connected: false, connection: null, capKW: 0, available: null, unavailableHours: HOURS_PER_YEAR, events: [] };
+    return { connected: false, connection: null, capKW: 0, available: null, unavailableHours: HOURS_PER_YEAR, outageHours: 0, curtailmentHours: 0, events: [] };
   }
   const capKW = state.gridImportCapMW > 0 ? state.gridImportCapMW * 1000 : designPeakKW;
-  const flexible = state.gridConnection === 'flexible';
-  const { unavailable, events } = flexible
-    ? selectFlexibleOutageHours(loadKW, state.gridUnavailableHoursPerYear)
+  const outages = selectGridOutageHours(state.firmGridOutageHoursPerYear);
+  const curtailments = state.gridConnection === 'flexible'
+    ? selectFlexibleOutageHours(loadKW, state.gridUnavailableHoursPerYear, outages.unavailable)
     : { unavailable: new Uint8Array(HOURS_PER_YEAR), events: [] };
   const available = new Uint8Array(HOURS_PER_YEAR);
-  let unavailableHours = 0;
+  let outageHours = 0;
+  let curtailmentHours = 0;
   for (let h = 0; h < HOURS_PER_YEAR; h++) {
-    available[h] = unavailable[h] ? 0 : 1;
-    unavailableHours += unavailable[h];
+    available[h] = outages.unavailable[h] || curtailments.unavailable[h] ? 0 : 1;
+    outageHours += outages.unavailable[h];
+    curtailmentHours += curtailments.unavailable[h] && !outages.unavailable[h] ? 1 : 0;
   }
-  return { connected, connection: state.gridConnection, capKW, available, unavailableHours, events };
+  const events = [...outages.events, ...curtailments.events].sort((a, b) => a.startHour - b.startHour);
+  return {
+    connected, connection: state.gridConnection, capKW, available,
+    unavailableHours: outageHours + curtailmentHours, outageHours, curtailmentHours, events,
+  };
 }
 
 /* ---------- Firm generation ---------- */

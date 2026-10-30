@@ -25,7 +25,7 @@ export function describeStartingDesign(r, addedUnits = 0) {
   const parts = [];
   if (r.grid.connected) {
     parts.push(r.grid.connection === 'flexible'
-      ? `flexible grid connection (${formatMW(r.grid.importCapMW)}, curtailable ${fixed(r.grid.unavailableHours, 0)} h/yr)`
+      ? `flexible grid connection (${formatMW(r.grid.importCapMW)}, curtailable ${fixed(r.grid.curtailmentHours ?? r.grid.unavailableHours, 0)} h/yr)`
       : `firm grid connection (${formatMW(r.grid.importCapMW)})`);
   } else {
     parts.push('no grid connection');

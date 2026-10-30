@@ -50,7 +50,27 @@ export function getTornadoRowLabel(bar) {
 }
 
 function getTornadoRange(bar) {
-  return `${formatSensitivityValue(bar.variable, bar.lowValue)} → ${formatSensitivityValue(bar.variable, bar.highValue)}`;
+  const range = `${formatSensitivityValue(bar.variable, bar.lowValue)} → ${formatSensitivityValue(bar.variable, bar.highValue)}`;
+  const position = getCurrentPosition(bar);
+  return position ? `${range} · now ${position}` : range;
+}
+
+/**
+ * Where the current value sits when it is on or past a bound, because that
+ * side's bar then has no length (moving to that bound changes nothing) or
+ * points the "wrong" way. Null when the current value is strictly inside.
+ */
+export function getCurrentPosition(bar) {
+  const current = Number(bar.baseValue);
+  const low = Math.min(bar.lowValue, bar.highValue);
+  const high = Math.max(bar.lowValue, bar.highValue);
+  const tolerance = 1e-9 * Math.max(1, Math.abs(current));
+  if (!Number.isFinite(current)) return null;
+  if (Math.abs(current - high) <= tolerance) return 'at high';
+  if (Math.abs(current - low) <= tolerance) return 'at low';
+  if (current > high) return `above (${formatSensitivityValue(bar.variable, current)})`;
+  if (current < low) return `below (${formatSensitivityValue(bar.variable, current)})`;
+  return null;
 }
 
 /** Text clipped with an ellipsis to fit `maxWidth` pixels in the current font. */

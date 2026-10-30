@@ -6,32 +6,20 @@
      stateKey   state field that is varied
      label      short row label
      format     { prefix, suffix, digits, scale } for showing input values
-     bounds     { kind: 'absolute', low, high }  values in the field's units
-                (numbers, or (state) => number when they depend on another
-                input such as the mounting type), or
-                { kind: 'relative', low, high } multipliers of the current
-                value, used where no absolute range is meaningful across
-                builds (site yield, a chosen technology's capex or energy use)
+     bounds     optional. Without it the input swings by the chosen
+                +/- percentage around its current value (the tornado's swing
+                selector, state.tornadoSwingPercent). Only inputs with a real
+                range set it: { kind: 'absolute', low, high } in the field's
+                units (numbers or (state) => number), e.g. an incentive credit
+                from the scheme's floor to its current value.
      appliesTo  (state, result) => whether the input matters for this build;
                 `state` is normalized and `result` is its scenario result
-   Bounds are clamped to the field's schema range when resolved
-   (js/model/tornado.js). Market and solar bounds are the sourced slider
-   benchmarks (js/ui/slider-markers.js, SOLAR_COST_PRESETS, AI_COMPUTE_DEFAULTS);
-   the rest say where they come from.
+   All values are clamped to the field's schema range (js/model/tornado.js),
+   so a 95% conversion efficiency cannot swing past 100%.
 
-   Adding a variable: append an entry here. The model, chart and tests pick it
-   up; the registry test checks its bounds against the schema. */
+   Adding a variable: append an entry here. The model, chart and tests pick it up. */
 
 import { POLICY_SCHEMES } from './policies.js';
-import { getSolarCostPresetValues } from './reference-data.js';
-
-// AACE International Recommended Practice 18R-97: a Class 4 (feasibility-study)
-// capital estimate is expected to land within -15..-30% / +20..+50% of the final
-// cost. Terraform's process capex is pre-commercial, so the wide end is used.
-const PROCESS_CAPEX_RANGE = Object.freeze({ kind: 'relative', low: 0.7, high: 1.5 });
-// Energy use of the selected electrolyzer / DAC technology, +/-10%: a judgment
-// covering stack/sorbent degradation and scale-up, not a sourced range.
-const PROCESS_ENERGY_RANGE = Object.freeze({ kind: 'relative', low: 0.9, high: 1.1 });
 
 const hasProcess = state => Boolean(state.electrolyzerEnabled || state.dacEnabled);
 const sellsMethane = (state, result) => Boolean(result?.sabatier?.enabled) && (result.sabatier.ch4AnnualMCF || 0) > 0;
@@ -45,10 +33,6 @@ export const SENSITIVITY_VARIABLES = Object.freeze([
     stateKey: 'panelCostPerW',
     label: 'Module price',
     format: { prefix: '$', suffix: '/W', digits: 2 },
-    // OPIS TOPCon module FOB China $0.109/W (Jul 2026) to DDP US $0.290/W (Mar 2026):
-    // https://www.pv-magazine.com/2026/07/31/chinese-topcon-module-prices-fall-as-high-efficiency-supply-adds-pressure/
-    // https://www.pv-magazine.com/2026/03/06/china-topcon-module-prices-edge-higher-as-march-cargoes-clear/
-    bounds: { kind: 'absolute', low: 0.11, high: 0.29 },
     appliesTo: state => state.systemSizeMW > 0,
   },
   {
@@ -56,14 +40,6 @@ export const SENSITIVITY_VARIABLES = Object.freeze([
     stateKey: 'bosCostPerW',
     label: 'Solar BOS',
     format: { prefix: '$', suffix: '/W', digits: 2 },
-    // Terraform's target stack to the BOS implied by its measured 2026 build
-    // (SOLAR_COST_PRESETS), each with the selected mounting's premium:
-    // https://terraformindustries.wordpress.com/2026/10/27/how-terraform-built-the-cheapest-solar-in-north-america/
-    bounds: {
-      kind: 'absolute',
-      low: state => getSolarCostPresetValues('terraform-target', state.mountingType).bosCostPerW,
-      high: state => getSolarCostPresetValues('terraform-2026-build', state.mountingType).bosCostPerW,
-    },
     appliesTo: state => state.systemSizeMW > 0,
   },
   {
@@ -71,10 +47,6 @@ export const SENSITIVITY_VARIABLES = Object.freeze([
     stateKey: 'siteYieldMwhPerMwdcYear',
     label: 'Site yield',
     format: { suffix: ' MWh/MWdc-yr', digits: 0 },
-    // +/-10% of the current site's yield: a judgment spanning weather-year
-    // variability and disagreement between resource datasets (PVGIS vs Global
-    // Solar Atlas). Relative because sites differ by a factor of three.
-    bounds: { kind: 'relative', low: 0.9, high: 1.1 },
     appliesTo: state => state.systemSizeMW > 0,
   },
   {
@@ -82,7 +54,6 @@ export const SENSITIVITY_VARIABLES = Object.freeze([
     stateKey: 'electrolyzerCapex',
     label: 'Electrolyzer CAPEX',
     format: { prefix: '$', suffix: '/kW', digits: 0 },
-    bounds: PROCESS_CAPEX_RANGE,
     appliesTo: state => Boolean(state.electrolyzerEnabled),
   },
   {
@@ -90,7 +61,6 @@ export const SENSITIVITY_VARIABLES = Object.freeze([
     stateKey: 'electrolyzerEfficiency',
     label: 'Electrolyzer energy use',
     format: { suffix: ' kWh/kg', digits: 1 },
-    bounds: PROCESS_ENERGY_RANGE,
     appliesTo: state => Boolean(state.electrolyzerEnabled),
   },
   {
@@ -98,7 +68,6 @@ export const SENSITIVITY_VARIABLES = Object.freeze([
     stateKey: 'dacCapex',
     label: 'DAC CAPEX',
     format: { prefix: '$', suffix: '/t-yr', digits: 0 },
-    bounds: PROCESS_CAPEX_RANGE,
     appliesTo: state => Boolean(state.dacEnabled),
   },
   {
@@ -106,7 +75,6 @@ export const SENSITIVITY_VARIABLES = Object.freeze([
     stateKey: 'dacEnergy',
     label: 'DAC energy use',
     format: { suffix: ' kWh/t', digits: 0 },
-    bounds: PROCESS_ENERGY_RANGE,
     appliesTo: state => Boolean(state.dacEnabled),
   },
   {
@@ -114,7 +82,6 @@ export const SENSITIVITY_VARIABLES = Object.freeze([
     stateKey: 'sabatierCapex',
     label: 'Methane reactor CAPEX',
     format: { prefix: '$', suffix: '/kW-CH4', digits: 0 },
-    bounds: PROCESS_CAPEX_RANGE,
     appliesTo: sellsMethane,
   },
   {
@@ -122,7 +89,6 @@ export const SENSITIVITY_VARIABLES = Object.freeze([
     stateKey: 'methanolCapex',
     label: 'Methanol reactor CAPEX',
     format: { prefix: '$', suffix: '/kg-feed-hr', digits: 0 },
-    bounds: PROCESS_CAPEX_RANGE,
     appliesTo: state => Boolean(state.methanolEnabled),
   },
   {
@@ -130,11 +96,6 @@ export const SENSITIVITY_VARIABLES = Object.freeze([
     stateKey: 'methanePrice',
     label: 'Methane price',
     format: { prefix: '$', suffix: '/MCF', digits: 0 },
-    // Whitepaper 2.0 "$10/kcf" commodity case to Terraform's reported production
-    // cost "under $30/MCF" (Jun 2026):
-    // https://terraformindustries.wordpress.com/2023/01/09/terraform-industries-whitepaper-2-0/
-    // https://terraformindustries.wordpress.com/2026/06/16/the-enormous-size-of-the-oil-and-gas-market-drives-adoption-of-synthetic-fuel-production/
-    bounds: { kind: 'absolute', low: 10, high: 30 },
     appliesTo: sellsMethane,
   },
   {
@@ -142,11 +103,6 @@ export const SENSITIVITY_VARIABLES = Object.freeze([
     stateKey: 'methanolPrice',
     label: 'Methanol price',
     format: { prefix: '$', suffix: '/t', digits: 0 },
-    // China CFR spot $540/t (Oct 2026) to Methanex European posted contract
-    // EUR 875/t = $970/t (Q4 2026):
-    // https://www.procurementresource.com/news-and-articles/asian-methanol-jumps-64-percent
-    // https://www.methanex.com/about-methanol/pricing/
-    bounds: { kind: 'absolute', low: 540, high: 970 },
     appliesTo: sellsMethanol,
   },
   {
@@ -154,9 +110,6 @@ export const SENSITIVITY_VARIABLES = Object.freeze([
     stateKey: 'discountRate',
     label: 'Discount rate',
     format: { suffix: '%', digits: 1 },
-    // Judgment: ~5% for contracted, infrastructure-like cash flows to ~11% for
-    // a merchant first-of-a-kind plant, around the 8% default.
-    bounds: { kind: 'absolute', low: 5, high: 11 },
     appliesTo: () => true,
   },
   {
@@ -164,9 +117,6 @@ export const SENSITIVITY_VARIABLES = Object.freeze([
     stateKey: 'processOmPercent',
     label: 'Process O&M',
     format: { suffix: '% of CAPEX/yr', digits: 1 },
-    // Judgment: the usual 2-5%/yr screening range for maintenance and
-    // operating costs of a small process plant, around the 3% default.
-    bounds: { kind: 'absolute', low: 2, high: 5 },
     appliesTo: hasProcess,
   },
   {
@@ -174,9 +124,6 @@ export const SENSITIVITY_VARIABLES = Object.freeze([
     stateKey: 'batteryCostPerKWh',
     label: 'Battery cost',
     format: { prefix: '$', suffix: '/kWh', digits: 0 },
-    // BNEF 2025 turnkey BESS averages: China $73/kWh to US $219/kWh:
-    // https://www.energy-storage.news/behind-the-numbers-bnef-finds-40-year-on-year-drop-in-bess-costs/
-    bounds: { kind: 'absolute', low: 73, high: 219 },
     appliesTo: hasBattery,
   },
   {
@@ -184,11 +131,6 @@ export const SENSITIVITY_VARIABLES = Object.freeze([
     stateKey: 'aiTokenPricePerM',
     label: 'AI token price',
     format: { prefix: '$', suffix: '/M tokens', digits: 2 },
-    // Blended open-model list prices (Oct 2026): commodity open models ~$0.15
-    // to premium open / reasoning models ~$1 per M tokens:
-    // https://artificialanalysis.ai/models/comparisons/deepseek-v3-2-reasoning-vs-gpt-oss-120b
-    // https://deepinfra.com/pricing
-    bounds: { kind: 'absolute', low: 0.15, high: 1 },
     appliesTo: sellsTokens,
   },
   {
@@ -196,11 +138,6 @@ export const SENSITIVITY_VARIABLES = Object.freeze([
     stateKey: 'aiMillionTokensPerMWh',
     label: 'AI throughput',
     format: { suffix: ' M tokens/MWh', digits: 0 },
-    // InferenceX peak for DeepSeek-R1 on GB200 / B200 is ~9,000-12,000 M tokens
-    // per facility MWh; the default halves it for real traffic. Low = half the
-    // low peak, high = the full high peak (no real-traffic derate):
-    // https://inferencex.semianalysis.com/compare/deepseek-r1-gb200-vs-h100
-    bounds: { kind: 'absolute', low: 4500, high: 12000 },
     appliesTo: sellsTokens,
   },
   {
@@ -208,11 +145,6 @@ export const SENSITIVITY_VARIABLES = Object.freeze([
     stateKey: 'aiGpuCapexPerKW',
     label: 'AI GPU CAPEX',
     format: { prefix: '$', suffix: '/kW', digits: 0 },
-    // Epoch AI GB200 hyperscale build (~$33k per facility kW) to Terraform's
-    // "around $50,000/kW":
-    // https://epoch.ai/data-insights/ai-datacenter-cost-breakdown
-    // https://terraformindustries.wordpress.com/2026/01/30/direct-current-data-centers/
-    bounds: { kind: 'absolute', low: 33000, high: 50000 },
     appliesTo: (state, result) => Boolean(result?.ai?.enabled) && (result.ai.designLoadKW || 0) > 0,
   },
 ]);

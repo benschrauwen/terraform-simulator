@@ -118,6 +118,7 @@ export const CONTROL_SPECS = Object.freeze([
   },
   { type: 'select', id: 'aiReliabilityTarget', parse: parseFloat },
   { type: 'select', id: 'aiSizingMode' },
+  { type: 'select', id: 'tornadoSwingPercent', parse: parseFloat },
   // Log scale; its max follows the array DC peak (ui-state.js syncAiSizingControls).
   { type: 'range', id: 'aiLoadKW', format: formatPowerKW },
   { type: 'range', id: 'aiGpuCapexPerKW', format: value => `${wholeDollars(value)}/kW` },

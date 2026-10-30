@@ -81,49 +81,52 @@ test('inputs that do not apply to the build are left out', () => {
   assert.ok(!noPolicy.includes('policyCredit'));
 });
 
-test('every registry bound lies inside its field’s schema range, low below high', () => {
-  const states = Object.keys(MOUNTING_TYPES).map(mountingType => Calc.normalizeState(createState({ mountingType })));
+test('every registry variable is a numeric schema field and swings around its current value', () => {
+  const defaults = Calc.normalizeState(createState({ methanolEnabled: true, batteryCapacityMWh: 2, aiComputeEnabled: true }));
   SENSITIVITY_VARIABLES.forEach(variable => {
     const range = getStateFieldRange(variable.stateKey);
     assert.ok(range, `${variable.stateKey} is a numeric schema field`);
-    const { kind, low, high } = variable.bounds;
-    if (kind === 'relative') {
-      assert.ok(low > 0 && low < 1 && high > 1, `${variable.id}: relative bounds bracket the current value`);
-      return;
-    }
-    assert.equal(kind, 'absolute');
-    states.forEach(state => {
-      const lowValue = typeof low === 'function' ? low(state) : low;
-      const highValue = typeof high === 'function' ? high(state) : high;
-      assert.ok(lowValue < highValue, `${variable.id}: ${lowValue} < ${highValue}`);
-      assert.ok(lowValue >= range.min && highValue <= range.max, `${variable.id} within [${range.min}, ${range.max}]`);
-    });
-  });
-
-  // Every relative bound resolves inside the schema range at the defaults.
-  const defaults = Calc.normalizeState(createState({ methanolEnabled: true }));
-  SENSITIVITY_VARIABLES.filter(variable => variable.bounds.kind === 'relative').forEach(variable => {
-    const bounds = resolveVariableBounds(variable, defaults);
-    const range = getStateFieldRange(variable.stateKey);
-    assert.ok(bounds && bounds.low >= range.min && bounds.high <= range.max, variable.id);
+    // Only inputs with a real range (incentives) carry their own bounds.
+    assert.equal(variable.bounds, undefined, `${variable.id} swings by the chosen percentage`);
+    const current = defaults[variable.stateKey];
+    const bounds = resolveVariableBounds(variable, defaults, 0.2);
+    assert.ok(bounds, variable.id);
+    close(bounds.low, Math.max(range.min, current * 0.8));
+    close(bounds.high, Math.min(range.max, current * 1.2));
   });
 });
 
-test('relative bounds scale the current value and are clamped to the schema range', () => {
+test('the swing scales the current value and is clamped to the schema range', () => {
   const siteYield = SENSITIVITY_VARIABLES.find(variable => variable.id === 'siteYield');
-  const bounds = resolveVariableBounds(siteYield, createState({ siteYieldMwhPerMwdcYear: 2000 }));
-  // ±10% of 2,000 MWh/MWdc-yr.
+  const state = createState({ siteYieldMwhPerMwdcYear: 2000 });
+  // +/-20% (default) and +/-10% of 2,000 MWh/MWdc-yr.
+  let bounds = resolveVariableBounds(siteYield, state);
+  close(bounds.low, 1600);
+  close(bounds.high, 2400);
+  bounds = resolveVariableBounds(siteYield, state, 0.1);
   close(bounds.low, 1800);
   close(bounds.high, 2200);
 
-  // 95 kWh/kg x 1.1 = 104.5 would pass the 100 kWh/kg slider ceiling.
+  // 95 kWh/kg x 1.2 = 114 would pass the 100 kWh/kg slider ceiling.
   const energy = SENSITIVITY_VARIABLES.find(variable => variable.id === 'electrolyzerEnergy');
-  const clamped = resolveVariableBounds(energy, createState({ electrolyzerEfficiency: 95 }));
-  close(clamped.low, 85.5);
+  const clamped = resolveVariableBounds(energy, createState({ electrolyzerEfficiency: 95 }), 0.2);
+  close(clamped.low, 76);
   assert.equal(clamped.high, getStateFieldRange('electrolyzerEfficiency').max);
 
-  // A zero-width range (zero current value) has nothing to show.
+  // A zero current value has no range to show.
   assert.equal(resolveVariableBounds(siteYield, createState({ siteYieldMwhPerMwdcYear: 0 })), null);
+});
+
+test('the chosen swing comes from state and widens every non-incentive bar', () => {
+  const narrow = runTornado(createState({ tornadoSwingPercent: 10 }));
+  const wide = runTornado(createState({ tornadoSwingPercent: 30 }));
+  assert.equal(narrow.swingPercent, 10);
+  assert.equal(wide.swingPercent, 30);
+  const methane = result => result.bars.find(bar => bar.id === 'methanePrice');
+  close(methane(narrow).lowValue, 18);
+  close(methane(wide).highValue, 26);
+  // NPV is linear in price, so a 3x wider swing gives a 3x wider bar.
+  close(methane(wide).swing, 3 * methane(narrow).swing, 1e-6);
 });
 
 test('the policy credit runs from the scheme’s floor to the current value', () => {

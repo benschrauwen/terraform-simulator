@@ -4,7 +4,7 @@ import test from 'node:test';
 import { Calc, DEFAULT_STATE } from '../../js/model/index.js';
 import { runTornado } from '../../js/model/tornado.js';
 import { chartMethods } from '../../js/ui/charts/index.js';
-import { getTornadoRowLabel, getTornadoSpans } from '../../js/ui/charts/tornado-chart.js';
+import { getCurrentPosition, getTornadoRowLabel, getTornadoSpans } from '../../js/ui/charts/tornado-chart.js';
 
 function createElement(id) {
   return {
@@ -90,7 +90,7 @@ test('updateTornadoChart draws one horizontal floating bar per applicable input'
   config.data.datasets.forEach(dataset => assert.equal(dataset.data.length, expected.bars.length));
   assert.equal(config.options.plugins.tornadoReferenceLines.baseNpv, expected.baseNpv);
   assert.match(wrapper.style.height, /^\d+px$/);
-  assert.match(canvas.attributes['aria-label'], new RegExp(expected.bars[0].label));
+  assert.ok(canvas.attributes['aria-label'].includes(expected.bars[0].label));
 
   // A redraw replaces the previous chart instead of stacking a second one.
   app.updateTornadoChart(result);
@@ -122,4 +122,17 @@ test('updateSensitivityCharts refreshes the tornado and the price curves togethe
   app.updateSensitivityChart = r => calls.push(['prices', r]);
   app.updateSensitivityCharts('result');
   assert.deepEqual(calls, [['tornado', 'result'], ['prices', 'result']]);
+});
+
+// Shared scenario where methanol is already at the top of its range ($970/t):
+// the high-side bar has zero length, so the row says why instead of looking broken.
+test('rows flag a current value sitting on or beyond a bound', () => {
+  const bar = { label: 'Methanol price', variable: { format: 'currency_per_ton' }, lowValue: 540, highValue: 970 };
+  assert.equal(getCurrentPosition({ ...bar, baseValue: 970 }), 'at high');
+  assert.equal(getCurrentPosition({ ...bar, baseValue: 540 }), 'at low');
+  assert.equal(getCurrentPosition({ ...bar, baseValue: 600 }), null);
+  assert.match(getCurrentPosition({ ...bar, baseValue: 1200 }), /^above/);
+  assert.match(getCurrentPosition({ ...bar, baseValue: 300 }), /^below/);
+  assert.match(getTornadoRowLabel({ ...bar, baseValue: 970 }), /· now at high\)$/);
+  assert.doesNotMatch(getTornadoRowLabel({ ...bar, baseValue: 600 }), /now/);
 });

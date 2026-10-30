@@ -294,8 +294,20 @@ test('I6 energy: delivered + clipped <= solar, allocations sum to delivered, CF 
     const allocated = result.electrolyzer.dailyKWh + result.dac.dailyKWh +
       sum(result.exploratoryModules.map(module => module.dailyKWh || 0));
     relClose(allocated, delivered, 1e-9, `${name}: process allocations = delivered`, 1e-6);
-    if (!result.state.aiComputeEnabled && result.state.body === 'earth') {
-      relClose(delivered * cycles, dispatch.chemicalKWh, 1e-9, `${name}: daily x cycles = annual delivered`, 1e-6);
+    // The dispatch runs over its own basis (Earth year; Mars orbital year),
+    // so compare delivered fractions of solar, which do not depend on it.
+    const annualSolarKWh = result.solar.annualMWh * 1000;
+    if (annualSolarKWh > 0) {
+      relClose(
+        (delivered * cycles) / annualSolarKWh,
+        dispatch.chemicalKWh / solarKWh,
+        1e-9,
+        `${name}: annual chemical energy / solar on both bases`,
+        1e-9
+      );
+      if (result.state.aiComputeEnabled) {
+        relClose(result.ai.annualAiServedKWh / annualSolarKWh, dispatch.aiServedKWh / solarKWh, 1e-9, `${name}: AI served / solar`, 1e-9);
+      }
     }
 
     const cf = result.chemicalSupply.effectiveCF;
@@ -304,6 +316,36 @@ test('I6 energy: delivered + clipped <= solar, allocations sum to delivered, CF 
     if (!result.warnings.length) {
       relClose(result.annualSolar.totalKWh, result.solar.annualMWh * 1000, 1e-6, `${name}: series total = annual MWh`, 1e-6);
     }
+  });
+});
+
+test('I6b revenue lines are physical output x price and follow their energy over the years', () => {
+  forEachScenario((result, name) => {
+    const { economics, state, lifetimeEnergy } = result;
+    const revenue = economics.revenue;
+    relClose(revenue.methane, result.sabatier.enabled ? result.sabatier.ch4AnnualMCF * state.methanePrice : 0, 1e-12, `${name} methane revenue`);
+    relClose(revenue.methanol, result.methanol.enabled ? result.methanol.exportAnnualTons * state.methanolPrice : 0, 1e-12, `${name} methanol revenue`);
+    relClose(
+      revenue.exploratory,
+      sum(result.exploratoryModules.filter(module => module.enabled).map(module => module.annualOutputUnits * state[`${module.id}Price`])),
+      1e-12,
+      `${name} exploratory revenue`
+    );
+    relClose(revenue.ai, result.ai.enabled ? (result.ai.annualAiServedKWh / 1000) * state.aiMillionTokensPerMWh * state.aiTokenPricePerM : 0, 1e-12, `${name} AI revenue`);
+    relClose(economics.totalAnnualRevenue, sum(Object.values(revenue)), 1e-12, `${name} total revenue`);
+    // Product revenue in year t scales with that year's delivered chemical
+    // energy; AI revenue with the AI-served energy.
+    economics.yearlyCashFlows.forEach((entry, index) => {
+      const product = revenue.methane + revenue.methanol + revenue.exploratory;
+      const yearProduct = entry.revenue.methane + entry.revenue.methanol + entry.revenue.exploratory;
+      relClose(yearProduct, product * lifetimeEnergy.chemicalFactorByYear[index], 1e-9, `${name} product revenue year ${entry.year}`, 1e-6);
+      relClose(entry.revenue.ai, revenue.ai * lifetimeEnergy.aiServedFactorByYear[index], 1e-9, `${name} AI revenue year ${entry.year}`, 1e-6);
+      relClose(lifetimeEnergy.chemicalKWhByYear[index], lifetimeEnergy.chemicalKWhByYear[0] * lifetimeEnergy.chemicalFactorByYear[index], 1e-9, `${name} chemical energy factor year ${entry.year}`, 1e-6);
+    });
+    // Hardware is priced on its own sizing basis.
+    relClose(result.electrolyzer.capex, result.electrolyzer.allocKW * state.electrolyzerCapex, 1e-12, `${name} electrolyzer capex`);
+    relClose(economics.capex.battery, state.batteryCapacityMWh * 1000 * state.batteryCostPerKWh, 1e-12, `${name} battery capex`);
+    relClose(economics.capexBreakdown.solarModules, state.systemSizeMW * 1e6 * state.panelCostPerW, 1e-12, `${name} module capex`);
   });
 });
 

@@ -52,6 +52,9 @@ export const scenarioMethods = {
         });
     const storage = ai.enabled ? ai.storage : batterySummary.storage;
     const chemicalSupply = ai.enabled ? ai.chemicalSupply : batterySummary.chemicalSupply;
+    // Earth display series for the battery-firmed chemical plant. It differs
+    // from the zero-load AI pass above (where the battery charges but never
+    // discharges), so both dispatches are needed.
     const annualChemicalDisplayDispatch = (!ai.enabled &&
       includeDisplayDispatchSeries &&
       normalizedState.body === 'earth' &&
@@ -87,15 +90,7 @@ export const scenarioMethods = {
       ? ai.chemicalDailyOpHours
       : chemicalSupply.dailyOpHours;
     const allocationPlan = this.buildProcessAllocationPlan(normalizedState);
-    const allocation = {
-      source: 'auto',
-      label: allocationPlan.label,
-      electrolyzer: allocationPlan.powerShares.electrolyzer,
-      dac: allocationPlan.powerShares.dac,
-      exploratory: allocationPlan.powerShares.exploratory,
-      feedShares: allocationPlan.feedShares,
-      supported: allocationPlan.supported,
-    };
+    const allocation = this.getAllocationFromPlan(allocationPlan);
     const reactorSizingPeakKW = effectivePeakKW;
 
     const electrolyzer = this.calculateElectrolyzer(normalizedState, effectivePeakKW, effectiveDailyKWh, allocation);

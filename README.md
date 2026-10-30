@@ -29,14 +29,20 @@ The app is still a mostly static front-end project built from native ES modules 
 - `index.html`: app layout and control surfaces; loads the self-hosted vendor scripts plus a single `js/main.js` module entry
 - `style.css`: visual styling
 - `js/main.js`: browser bootstrap (creates the `App` once the DOM is ready)
-- `js/data/reference-data.js`: presets, chemistry constants, methane market presets, and shared assumptions
+- `js/data/`: reference data only, no logic
+  - `reference-data.js`: planetary bodies (incl. orbital constants), site presets, mounting types, chemistry constants, methane market notes, AI defaults
+  - `assumptions.js`: fixed model heuristics (`MODEL_ASSUMPTIONS`, GHI/cloudiness tables, mounting yield adjustments, layout reference site)
+  - `modules.js`: supported and exploratory process modules and their routes (add a route or module here)
+  - `policies.js`: the incentive scheme registry and policy picker groups (add a scheme here)
 - `js/model/`: the DOM-free calculation engine shared by the UI, the optimizer worker, and the Node tests
   - `index.js`: assembles and exports the `Calc` facade (plus `ModuleCatalog`, `PolicyModel`, `SolarGeometry`, `DEFAULT_STATE`)
-  - `core.js`, `solar.js`, `battery.js`, `series-ai.js`, `process.js`, `economics.js`: finance, solar, battery, AI dispatch, process, and economics logic
-  - `module-catalog.js`: supported/exploratory module metadata and route assumptions
-  - `policy.js`: named policy schemes, per-scheme inputs, cash-flow formulas, framework-only entries, and legacy-policy normalization
+  - `solar.js`, `annual-series.js`, `battery.js`, `ai-compute.js`, `process.js`, `economics.js`: solar resource and plant, hourly annual series, battery storage and chemical dispatch, AI datacenter dispatch, process chain, and project economics
+  - `scenario.js`: the end-to-end scenario pipeline (`calculateAll`, `calculateIrr`, `runSensitivity`)
+  - `finance.js`, `util.js`, `optimizer-search.js`: financial primitives (CRF, debt, payback, IRR), numeric helpers, and the IRR slider search
+  - `module-catalog.js`: the `ModuleCatalog` API over `data/modules.js`
+  - `policy.js`: policy evaluation over `data/policies.js`
   - `solar-geometry.js`: Earth, Mars, and Moon solar-profile shaping
-- `js/state/`: `schema.js` (shared defaults, normalization, and dependency rules), `share-codec.js` (shareable URL hash encoding), `saved-site-presets.js` (locally saved sites)
+- `js/state/`: `schema.js` (field definitions and `DEFAULT_STATE`), `normalize.js` (state normalization and dependency rules), `migrations.js` (legacy state rewrites), `share-codec.js` (shareable URL hash encoding), `saved-site-presets.js` (locally saved sites)
 - `js/ui/`: the `App` class (`app.js`) plus the method mixins it is assembled from: `controls.js`, `ui-state.js`, `charts.js`, `renderers.js`, `site-map.js`, `share.js`, `optimizer-client.js`; and the `diagram.js`, `format-numbers.js`, and `slider-markers.js` helpers
 - `js/workers/optimizer-worker.js`: module worker running the IRR search for the inline optimize buttons
 - `scripts/build.mjs` + `scripts/dev.mjs`: minimal build and static-serving scripts for local development and deployment output

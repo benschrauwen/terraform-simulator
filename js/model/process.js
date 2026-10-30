@@ -272,7 +272,11 @@ export const processMethods = {
   },
 
   getBalancedAllocation(state) {
-    const allocationPlan = this.buildProcessAllocationPlan(state);
+    return this.getAllocationFromPlan(this.buildProcessAllocationPlan(state));
+  },
+
+  /* The power-share view of an allocation plan used by the process blocks. */
+  getAllocationFromPlan(allocationPlan) {
     return {
       source: 'auto',
       label: allocationPlan.label,

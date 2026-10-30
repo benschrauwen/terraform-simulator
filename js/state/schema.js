@@ -1,7 +1,11 @@
 /* ============================================
    Shared state schema and defaults
-   ============================================ */
+   ============================================
+   Field definitions (type, range, default) for the core state, plus
+   DEFAULT_STATE assembled from them, the policy inputs and the module
+   catalog. Normalization rules live in state/normalize.js. */
 
+import { POLICY_SCHEMES } from '../data/policies.js';
 import {
   AI_COMPUTE_DEFAULTS,
   METHANE_MARKET_PRESETS,
@@ -9,7 +13,6 @@ import {
   PLANETARY_BODIES,
 } from '../data/reference-data.js';
 import { ModuleCatalog } from '../model/module-catalog.js';
-import { POLICY_SCHEMES } from '../data/policies.js';
 
 export const SOLAR_PROFILE_DEFAULTS_BY_BODY = {
   earth: 'earth',
@@ -149,10 +152,6 @@ export function getStateFieldOptions(field) {
   return field.options || [];
 }
 
-function getModuleDefaultRoute(module) {
-  return ModuleCatalog.getDefaultRoute(module);
-}
-
 function buildCoreDefaultState() {
   const defaults = {
     solarProfileModel: SOLAR_PROFILE_DEFAULTS_BY_BODY.earth,
@@ -183,7 +182,7 @@ function buildModuleDefaultState() {
       defaults[assetLifeKey] = ModuleCatalog.getDefaultAssetLife(module);
     }
 
-    const defaultRoute = getModuleDefaultRoute(module);
+    const defaultRoute = ModuleCatalog.getDefaultRoute(module);
     if (defaultRoute) {
       defaults[`${module.id}Route`] = defaultRoute;
     }

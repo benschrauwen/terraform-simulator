@@ -1,7 +1,17 @@
+/* ============================================
+   Share-link codec
+   ============================================
+   Encodes the non-default part of the state as an lz-string compressed JSON
+   payload in the URL hash (#s=...), and decodes / validates it back. */
+
 export const ShareStateCodec = (function () {
   const VERSION = 1;
   const HASH_KEY = 's';
   const EXCLUDED_STATE_KEYS = ['batteryEnabled'];
+  // Real share links are a few hundred characters; the caps bound the work
+  // (and memory) a crafted link can cause before validation.
+  const MAX_ENCODED_LENGTH = 16384;
+  const MAX_DECODED_LENGTH = 200000;
 
   function getLzString(explicitLzString) {
     const lzString = explicitLzString || globalThis.LZString;
@@ -57,10 +67,18 @@ export const ShareStateCodec = (function () {
 
   function decodePayload(encodedPayload, options = {}) {
     const lzString = getLzString(options.lzString);
+    if (typeof encodedPayload === 'string' && encodedPayload.length > MAX_ENCODED_LENGTH) {
+      throw new Error('Shared state payload is too large.');
+    }
+
     const json = lzString.decompressFromEncodedURIComponent(encodedPayload);
 
     if (!json) {
       throw new Error('Unable to decompress shared state payload.');
+    }
+
+    if (json.length > MAX_DECODED_LENGTH) {
+      throw new Error('Shared state payload is too large once decompressed.');
     }
 
     let payload;
@@ -149,6 +167,8 @@ export const ShareStateCodec = (function () {
     VERSION,
     HASH_KEY,
     EXCLUDED_STATE_KEYS,
+    MAX_ENCODED_LENGTH,
+    MAX_DECODED_LENGTH,
     buildDiff,
     decodePayload,
     encodePayload,

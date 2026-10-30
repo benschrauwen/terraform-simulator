@@ -91,3 +91,51 @@ test('share hash parser rejects unsupported payload versions', () => {
     'Expected version mismatches to fail loudly so future migrations are explicit.'
   );
 });
+
+test('share hash parser rejects oversized encoded payloads before decompressing', () => {
+  const oversized = 'A'.repeat(ShareStateCodec.MAX_ENCODED_LENGTH + 1);
+  let decompressCalls = 0;
+  const spyLzString = {
+    compressToEncodedURIComponent: LZString.compressToEncodedURIComponent,
+    decompressFromEncodedURIComponent(value) {
+      decompressCalls += 1;
+      return LZString.decompressFromEncodedURIComponent(value);
+    },
+  };
+
+  assert.throws(
+    () => ShareStateCodec.parseHash(`#s=${oversized}`, { lzString: spyLzString }),
+    /payload is too large/,
+    'Expected an oversized share link to be rejected outright.'
+  );
+  assert.equal(decompressCalls, 0, 'Expected no decompression work for an oversized payload.');
+});
+
+test('share hash parser rejects payloads that decompress beyond the size cap', () => {
+  // Highly repetitive JSON compresses far below the encoded-length cap.
+  const expanding = LZString.compressToEncodedURIComponent(JSON.stringify({
+    v: ShareStateCodec.VERSION,
+    d: { customSiteLabel: 'x'.repeat(ShareStateCodec.MAX_DECODED_LENGTH) },
+  }));
+  assert.ok(
+    expanding.length <= ShareStateCodec.MAX_ENCODED_LENGTH,
+    'Test payload should pass the encoded-length cap.'
+  );
+
+  assert.throws(
+    () => ShareStateCodec.parseHash(`#s=${expanding}`, { lzString: LZString }),
+    /too large once decompressed/,
+    'Expected an expanding payload to be rejected before JSON parsing.'
+  );
+});
+
+test('share hash parser still accepts a large realistic diff', () => {
+  const defaults = Object.fromEntries(Array.from({ length: 300 }, (_, index) => [`key${index}`, 0]));
+  const state = Object.fromEntries(Object.keys(defaults).map((key, index) => [key, index * 1.2345]));
+  const hash = ShareStateCodec.serializeHashFromState(state, defaults, { lzString: LZString });
+
+  const { key0, ...expectedDiff } = state; // key0 equals its default
+  assert.equal(key0, 0);
+  assert.ok(hash.length < ShareStateCodec.MAX_ENCODED_LENGTH);
+  assert.deepEqual(ShareStateCodec.parseHash(hash, { lzString: LZString }).diff, expectedDiff);
+});

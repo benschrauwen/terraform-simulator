@@ -17,6 +17,10 @@ import {
   getStateFieldOptions,
 } from './schema.js';
 
+// C0 controls, DEL, zero-width / directional marks, and bidi embedding,
+// override and isolate controls (which can visually reorder text).
+const UNSAFE_LABEL_CHARS = /[\u0000-\u001F\u007F\u200B-\u200F\u202A-\u202E\u2066-\u2069]/g;
+
 export function hasBatteryStorage(state) {
   const batteryCapacityMWh = Number(state?.batteryCapacityMWh);
   return Number.isFinite(batteryCapacityMWh) && batteryCapacityMWh > 1e-9;
@@ -57,7 +61,7 @@ export function normalizeCoreStateFields(input = {}, normalized = {}) {
     }
 
     if (field.type === 'boolean') {
-      normalized[field.key] = Boolean(normalized[field.key]);
+      normalized[field.key] = normalized[field.key] === true;
       return;
     }
 
@@ -69,7 +73,7 @@ export function normalizeCoreStateFields(input = {}, normalized = {}) {
       }
       const maxLen = Number.isFinite(field.maxLength) ? field.maxLength : 200;
       normalized[field.key] = value
-        .replace(/[\u0000-\u001F\u007F]/g, '')
+        .replace(UNSAFE_LABEL_CHARS, '')
         .trim()
         .slice(0, maxLen);
     }
@@ -79,8 +83,8 @@ export function normalizeCoreStateFields(input = {}, normalized = {}) {
 export function normalizeModuleStateFields(input = {}, normalized = {}) {
   ModuleCatalog.getAll().forEach(module => {
     const enabledKey = `${module.id}Enabled`;
-    normalized[enabledKey] = Boolean(normalized[enabledKey]);
-    normalized[`${module.id}BufferEnabled`] = Boolean(normalized[`${module.id}BufferEnabled`]);
+    normalized[enabledKey] = normalized[enabledKey] === true;
+    normalized[`${module.id}BufferEnabled`] = normalized[`${module.id}BufferEnabled`] === true;
 
     ModuleCatalog.getConfigFields(module).forEach(config => {
       const fallback = Object.prototype.hasOwnProperty.call(config, 'defaultValue')
@@ -174,10 +178,12 @@ export function normalizeState(rawState = {}, { seedAiBatteryMWh = () => 0 } = {
   const input = migrateLegacyState(
     rawState && typeof rawState === 'object' ? rawState : {}
   );
-  const normalized = {
-    ...DEFAULT_STATE,
-    ...input,
-  };
+  // Only schema keys survive: unknown input keys would otherwise be carried
+  // along and persisted (localStorage, share links).
+  const normalized = { ...DEFAULT_STATE };
+  Object.keys(DEFAULT_STATE).forEach(key => {
+    if (Object.hasOwn(input, key)) normalized[key] = input[key];
+  });
   normalizeCoreStateFields(input, normalized);
 
   const solarProfileFallback =

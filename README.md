@@ -1,653 +1,399 @@
 # Solar Chemical/AI Plant Builder
 
-An unofficial, MIT-licensed browser app for exploring a Terraform Industries-style solar-to-chemical plant. The current simulator is best understood as an educational techno-economic model for a direct-coupled solar + electrolysis + DAC + methane/methanol system, with an optional colocated **AI compute** load that competes for the same solar and battery resources. It is not a bankable engineering model.
+An unofficial, MIT-licensed browser app that simulates a Terraform Industries-style plant: cheap local solar DC driving electrolysis and direct air capture, with the hydrogen and CO2 turned into methane or methanol. It is an educational techno-economic model for exploring trade-offs, not a bankable engineering or investment model.
 
-The app is intentionally centered on the idea that very cheap local solar DC, low-capex intermittent hardware, and colocated conversion can matter more than chasing maximum utilization or maximum electrical efficiency.
+The model leans into the Terraform thesis: very cheap solar, low-capex hardware that runs intermittently, and colocated conversion can matter more than high utilization or peak electrical efficiency.
 
-## Current State
+What it models:
 
-Today it supports:
+- Annual solar yield from PVGIS-based Earth site presets, a fallback estimate, or a manual value, on four mountings (fixed tilt, east-west, single-axis, dual-axis), plus rough Mars and Moon presets.
+- An hour-by-hour annual dispatch of solar, an optional battery and the chemical plant, with intentional undersizing (clipping) via `chemicalSizingPercent`.
+- Supported products: methane (Sabatier) and methanol, with H2 and CO2 shared between them by stoichiometry.
+- Exploratory industrial routes with rough economics: MTG gasoline, CO2 to CO, ammonia, specialty carbon, lime, cement, steel, silicon, aluminum, titanium and desalination.
+- An optional colocated AI datacenter: a constant IT load sized to a reliability target, served before the chemicals.
+- Sourced and dated incentive schemes for the US, EU, Germany, the Netherlands, the UK and Spain, plus a custom mix.
+- Project finance: replacements, salvage, NPV, IRR/MIRR, payback, levelized metrics, optional debt with DSCR, inline IRR optimizers and price sensitivities.
+- CO2 accounting (captured, bound, vented, net avoided), water and land use.
 
-- Yield-driven annual solar modeling with preset Earth sites, stylized Mars and Moon presets, and manual `MWh / MWdc / year` input.
-- Earth `Annual Average` and `Specific Day` views, plus average-cycle Mars and Moon modes with annual dispatch built on local-cycle and orbital-year assumptions.
-- Solar mounting comparisons across fixed tilt, East-West fixed, single-axis tracking, and dual-axis tracking.
-- Chemical peak sizing via `chemicalSizingPercent`, so you can compare full-capture sizing against intentional solar clipping.
-- A direct-coupled allocation model that auto-balances electrolyzer, DAC, and exploratory-route power shares from the enabled downstream demand.
-- Fully modeled supported product paths for methane and methanol, including mass balance, CAPEX, revenue, replacement timing, and finance outputs.
-- Methane and methanol co-production with a shared feedstock split when both supported product routes are enabled.
-- Default-on feed buffers for methane, methanol, and selected lower-electricity exploratory routes, so CAPEX sizing can use the peak daily average gas-feed rate of the most active modeled day instead of the instantaneous peak flow.
-- Exploratory industrial routes with selectable pathways, priority weights, rough throughput modeling, CAPEX basis controls, shared exploratory O&M, sale-price inputs, and inclusion in CAPEX, revenue, NPV, and IRR.
-- MTG (`methanol -> gasoline-range hydrocarbons`) as an exploratory downstream route that diverts a configurable share of methanol away from export.
-- Optional on-site AI datacenter mode: a reliability-targeted constant IT load sized against the modeled solar and battery system, with token revenue, GPU CAPEX, AI O&M, and annual dispatch.
-- A data-driven incentive layer with sourced, dated scheme parameters (see Sources): US `48E`, `45Y`, `45V`, `45Q`, Hydrogen / DAC Hub grants, EU Hydrogen Bank and Innovation Fund style support, Germany / Netherlands / UK / Spain program proxies, framework-only backdrops, and a custom mixed-support mode.
-- NPV, project IRR, optional equity IRR with debt financing, ROI, payback, replacement-aware discounted cash flow outputs, and price sensitivity charts.
-- Daily power, annual dispatch, economics, sensitivity, environmental, and site-footprint views.
-- Inline IRR optimizers for battery capacity, chemical peak sizing, and methane-vs-methanol feedstock split.
+## Running locally
 
-The app is still a mostly static front-end project built from native ES modules (no bundler), with a lightweight Node build that generates versioned `dist/` assets for deployment. The source is split into clearer modules:
-
-- `index.html`: app layout and control surfaces; loads the self-hosted vendor scripts plus a single `js/main.js` module entry
-- `style.css`: visual styling
-- `js/main.js`: browser bootstrap (creates the `App` once the DOM is ready)
-- `js/data/`: reference data only, no logic
-  - `reference-data.js`: planetary bodies (incl. orbital constants), site presets, mounting types, chemistry constants, methane market notes, AI defaults
-  - `assumptions.js`: fixed model heuristics (`MODEL_ASSUMPTIONS`, GHI/cloudiness tables, diffuse-fraction fallback, layout reference site)
-  - `modules.js`: supported and exploratory process modules and their routes (add a route or module here)
-  - `policies.js`: the incentive scheme registry and policy picker groups (add a scheme here)
-- `js/model/`: the DOM-free calculation engine shared by the UI, the optimizer worker, and the Node tests
-  - `index.js`: assembles and exports the `Calc` facade (plus `ModuleCatalog`, `PolicyModel`, `SolarGeometry`, `DEFAULT_STATE`)
-  - `solar.js`, `annual-series.js`, `battery.js`, `ai-compute.js`, `lifetime-energy.js`, `process.js`, `economics.js`: solar resource and plant, hourly annual series, battery storage and chemical dispatch, AI datacenter dispatch, per-year energy on the degrading array, process chain, and project economics
-  - `scenario.js`: the end-to-end scenario pipeline (`calculateAll`, `calculateIrr`, `runSensitivity`)
-  - `finance.js`, `util.js`, `optimizer-search.js`: financial primitives (CRF, debt, payback, IRR), numeric helpers, and the IRR slider search
-  - `module-catalog.js`: the `ModuleCatalog` API over `data/modules.js`
-  - `policy.js`: policy evaluation over `data/policies.js`
-  - `solar-geometry.js`: sun position, clear-sky irradiance, plane-of-array transposition per mounting, and Earth, Mars, and Moon solar profiles
-- `js/state/`: `schema.js` (field definitions and `DEFAULT_STATE`), `normalize.js` (state normalization and dependency rules), `migrations.js` (legacy state rewrites), `share-codec.js` (shareable URL hash encoding), `saved-site-presets.js` (locally saved sites)
-- `js/ui/`: the `App` class (`app.js`: state, init, recalculation) plus the method mixins it is assembled from
-  - `control-spec.js` + `controls.js`: one declarative list of state-backed controls drives both input binding and state -> control sync; `module-controls.js`, `site-controls.js`, and `select-options.js` cover the dynamic module cards, site presets, and data-generated option lists
-  - `ui-state.js`, `day-view.js`, `layout.js`, `tooltips.js`, `slider-markers.js`: visibility sync, specific-day display, section/mobile layout, tooltips, slider guides
-  - `renderers/` (result panels; `economics.js` builds the economics breakdown), `charts/` (one module per chart), `diagram.js`, `site-map.js`, `share.js`, `optimizer-client.js`
-  - `formatters.js` and `format-numbers.js`: display formatting shared by controls and renderers
-- `js/workers/optimizer-worker.js`: module worker running the IRR search for the inline optimize buttons
-- `scripts/build.mjs` + `scripts/dev.mjs`: minimal build and static-serving scripts for local development and deployment output
-- `tests/`: Node-based regression tests for calculations and renderer output
-
-## What Is Modeled Well Enough Today
-
-These are the parts of the app that are currently structured well enough to be useful for scenario exploration:
-
-- Yield-driven annual solar production with mounting-specific yield plus location-adjusted land-use and solar-BOS effects layered on top of a base site yield.
-- Earth annual-average and specific-day views, plus Mars and Moon annual-dispatch paths based on representative local-cycle assumptions.
-- A methane and methanol product system with shared H2 and CO2 allocation, explicit conversion assumptions, and export accounting.
-- Optional MTG diversion of methanol into a downstream hydrocarbon product rather than treating all methanol as exported sale volume.
-- Optional AI compute economics: constant IT load sizing, token throughput and price assumptions, GPU CAPEX, AI O&M, and revenue integrated into project economics.
-- Distinct CAPEX buckets for solar modules, BOS, land, site prep, battery, core process modules, exploratory route blocks, and AI IT when enabled.
-- Separate asset lives, replacement CAPEX events, panel degradation, and policy-duration limits inside the discounted cash flow.
-- A centralized policy registry that maps one-time capex support, per-output support, strike-minus-reference schemes, base-minus-correction schemes, framework-only policy backdrops, and a custom mixed-support stack into the cash-flow model.
-- Optional debt financing that switches the headline IRR from unlevered project IRR to sponsor-style equity IRR while keeping project NPV unlevered.
-- Exploratory route economics driven by route-specific electricity intensity, required feedstocks, cycling penalties, peak-throughput sizing, CAPEX basis, O&M, and sale-price assumptions.
-- A lean IRR calculation path plus worker-backed search used by the inline optimization controls.
-
-## What Is Still Simplified Or Missing
-
-The simulator is useful, but it still has important limitations:
-
-- Earth fallback solar yield still relies on a latitude/GHI irradiance heuristic and a fixed performance ratio when the user is not using a preset or manual annual yield.
-- Every modeled day has the clear-sky profile shape; multi-day weather is not modeled, so AI reliability and battery-firmed chemical hours are clear-sky-equivalent.
-- Hydrogen-only sales are not yet modeled as a revenue line.
-- DAC-only and hydrogen-only operating modes are still stylized fallback cases rather than dedicated product modes.
-- Exploratory routes are rough techno-economic placeholders, not full first-principles process designs with validated thermal, logistics, startup, or quality constraints.
-- O&M is still represented as simple percentages of CAPEX rather than a detailed fixed-plus-variable cost model.
-- Financing is limited to a simple upfront debt share, fee, and amortizing annual debt service. Taxes, depreciation, inflation, working capital, tax equity, and ownership structure are not modeled. Salvage is straight-line book value (land at nominal cost), not a market resale estimate.
-- Policy eligibility is not legally validated against full lifecycle, jurisdictional, wage, certification, ownership, or contractual requirements.
-- Bid-based grants, premiums, CfDs, and correction mechanisms still depend on user-entered award assumptions rather than live auction or tariff datasets.
-- The battery model is a simplified firming heuristic, not a full storage engineering model or year-round plant-control system.
-- AI compute is a stylized constant-load and token-pricing layer, not a GPU, network, or datacenter engineering model.
-- Planetary modes are exploratory and use literature-inspired benchmarks rather than bankable resource datasets.
-
-## Key Assumptions
-
-The current implementation makes several deliberate assumptions that should stay visible:
-
-- Annual economics are driven by `siteYieldMwhPerMwdcYear`; the day selector mainly changes charting and Earth day-level visualization, not the annual non-AI economics.
-- `siteYieldMwhPerMwdcYear` is treated as a base annual yield for the reference mounting (fixed optimal tilt; vertical sun-tracking at the lunar pole). Mounting effects are applied on top of that base yield rather than asking the user for a fully mounting-adjusted number.
-- With AI compute enabled, the model builds an annual dispatch path and serves AI first; the chemical plant and battery charging use residual solar after the AI load.
-- `chemicalSizingPercent` scales the full-capture chemical peak and allows intentional clipping of the highest-solar hours.
-- Feed buffers, when enabled, let a reactor run at a constant rate across the cycle; the H2 and CO2 inventory they hold (peak-day feed x (1 - operating hours / cycle hours), a flat-supply upper bound) is costed per kg H2 / t CO2 of working capacity ($750/kg and $1,000/t by default, both assumptions), carries process O&M and is replaced every 20 years. At the default $50/kW-CH4 reactor cost, buffering the Sabatier reactor costs more in storage than it saves in reactor size.
-- Supported products and exploratory routes share H2, CO2, methanol, and power through an auto-balanced weighted allocation rather than a user-entered process-flow sheet.
-- Panel efficiency affects panel area and land use, not annual energy yield, because the model is framed around user-set fixed MWdc nameplate rather than auto-resizing solar capacity to a target output.
-- Earth-site acreage and solar BOS keep the user-selected installed MWdc fixed, then apply location-aware layout heuristics on top of the mounting baseline instead of solving a new required MWdc for each site.
-- Stored energy always loses a fixed `2%/month` through standing leakage, and the battery charges or discharges at most `capacity / duration` per hour (default 4 h).
-- Revenue follows the year-by-year energy of the fixed plant design re-dispatched on the degrading array (AI token revenue degrades less than PV output, residual chemistry more); degradation restarts after a solar replacement.
-- Weather is represented only through the annual yield and the site's diffuse fraction: every modeled day has the clear-sky shape, so there are no multi-day cloudy spells.
-- Named incentive schemes are non-stacked by default except in `Custom mixed support`, framework-only entries do not change cash flow, and time-limited support ends after the modeled support duration.
-- Upfront capex support is applied at close against the eligible capex basis only; later replacement CAPEX is not automatically re-subsidized in the current model.
-- Default methane volume conversion assumes `19.25 kg CH4 / MCF`.
-- Fossil gas displacement uses `0.0528 tCO2 / MCF`: combustion CO2 of pure CH4 at 19.25 kg/MCF (EPA's ~0.055 t/MCF is for pipeline gas at ~1,036 Btu/scf). Upstream emissions and methane leakage of the displaced gas, and of the synthetic gas itself, are excluded.
-- Captured CO2 that ends up in a fuel returns to the air when the fuel is burned, so the plant is not a removal: net avoided CO2 is only the displaced fossil combustion CO2 of its fuels (methane, methanol, MTG hydrocarbons). Exploratory non-fuel products are counted as bound, not avoided.
-- Default low-capex Terraform-style process presets are approximate, not universal truths.
-- Integrated unit costs (H2, CO2, CH4, methanol) are levelized costs allocated by a cost cascade (power by electrolyzer/DAC power share, feeds by reactor feed share, vented feed charged to the product that vents it), excluding policy credits.
-
-## Core Formula Summary
-
-The formulas below are the current conceptual backbone of the app.
-
-### Solar
-
-`base_yield` is the yield of a reference mounting: on Earth and Mars a fixed,
-equator-facing array at its optimal tilt; at the lunar peak of eternal light
-(PEL) vertical, sun-tracking panels. Earth presets carry PVGIS v5.3 yields
-(crystalline Si, 14% system loss, optimal tilt) and horizontal irradiation,
-plus the Global Solar Atlas annual diffuse fraction (sources and retrieval date
-in `js/data/reference-data.js`).
-
-```text
-base_yield_mwh_per_mwdc_year =
-  manual_or_preset_or_estimated_yield
-
-site_yield_mwh_per_mwdc_year =
-  base_yield_mwh_per_mwdc_year * mounting_yield_multiplier
-
-annual_solar_mwh = solar_mwdc * site_yield_mwh_per_mwdc_year
-
-daily_solar_kwh_avg = annual_solar_mwh * 1000 / cycles_per_year
-
-capacity_factor = annual_solar_mwh / (solar_mwdc * 8760)
-
-lcoe = (solar_capex * crf(r, life) + land * r + solar_om)
-       / (annual_solar_mwh * sum_y f_y / (1 + r)^y * crf(r, life))   # discounted energy
-
-panel_area_m2 = solar_mwdc * 1e6 / (module_efficiency * 1000)
-
-ground_coverage_ratio =
-  mounting_baseline adjusted by Earth-site latitude/cloudiness heuristics
-
-site_area_m2 = panel_area_m2 / ground_coverage_ratio
-
-solar_bos_cost_per_w =
-  user_selected_bos_baseline adjusted by mounting + Earth-site layout heuristics
-```
-
-Earth sky and mounting geometry (`solar-geometry.js`):
-
-```text
-dni_clear = 1353 * 0.7^(air_mass^0.678) * earth_sun_distance_factor   (Meinel)
-dhi_clear = 0.1 * dni_clear
-ghi       = dni_clear * sin(elevation) + dhi_clear
-
-# clouds/aerosols move a share (1 - t) of the beam into diffuse, conserving
-# GHI; t is solved so the annual DHI/GHI matches the site's diffuse fraction
-dni = t * dni_clear
-dhi = dhi_clear + (1 - t) * dni_clear * sin(elevation)
-
-# Hay-Davies transposition (A = dni / extraterrestrial dni, Rb = cos(aoi) / cos(zenith))
-poa = dni * cos(aoi) + dhi * (A * Rb + (1 - A) * (1 + cos(tilt)) / 2)
-      + 0.2 * ghi * (1 - cos(tilt)) / 2
-
-mounting_yield_multiplier (Earth) =
-  annual_poa(mounting) / annual_poa(fixed at the modeled optimal tilt)
-```
-
-Mountings: fixed tilt at the modeled optimum (golden-section search on annual
-POA), 8 deg east-west racks, horizontal N-S single-axis trackers limited to
-+/-60 deg with backtracking at the row ground-coverage ratio, and ideal
-dual-axis tracking. At Mojave this gives E-W 0.86, single-axis 1.21, dual 1.43
-(PVGIS: 0.85, 1.30 and 1.46 for unconstrained, unshaded trackers); London E-W
-0.84 (PVGIS 0.82). At the lunar PEL the Sun circles ~1 deg above the horizon,
-so the multiplier vs vertical sun-tracking panels is ~0.52 for a horizontal-axis
-tracker, ~1/pi for a fixed vertical panel and ~0.05 for low-tilt E-W racks.
-Mars and the generic Moon profile use the `MOUNTING_TYPES` table.
-
-The hourly annual series has the modeled clear-sky shape scaled to the annual
-energy, with every hour capped at DC nameplate. A yield that cannot fit under
-that cap during modeled daylight is capped (and flagged in the UI) rather than
-inventing energy.
-
-For Earth sites away from a preset, the base-yield estimate is:
-
-```text
-diffuse_fraction = 0.18 + 0.38 * cloudiness            (preset: measured)
-estimated_base_yield = ghi * modeled_poa_gain(optimal_tilt) * 0.78
-```
-
-That fallback is a heuristic (PVGIS performance ratios span 0.73-0.81), not a project-grade solar dataset.
-
-### Chemical sizing and allocation
-
-Chemical energy, clipping, operating hours and process sizing all come from
-one hour-by-hour dispatch over the annual solar series (Earth: 8760 h; Mars:
-one orbital year of sols, annualized; Moon: the local cycle repeated over an
-Earth year). Solar feeds the process first, the battery covers shortfalls and
-absorbs surplus within its power rating, the rest is clipped; the year is
-settled to a periodic battery state. The 100% size is the smallest constant
-capacity that clips nothing over that year:
-
-```text
-full_capture_kw = annual solar peak                        (no battery)
-                = min { P : clipped_kwh(P, battery) = 0 }  (battery; bisection)
-
-chemical_peak_kw = full_capture_kw * chemical_sizing_fraction
-
-battery_power_kw = battery_capacity_kwh / battery_duration_hours
-```
-
-Average-day curves in the charts are hour-of-day averages of that annual dispatch.
-
-Power and feed shares are then auto-balanced from the enabled downstream routes:
-
-```text
-weight_i = product weight (methane/methanol split %, or exploratory priority weight)
-
-h2_power_demand  = sum_i weight_i * h2_kg_per_unit_i  * electrolyzer_kwh_per_kg
-co2_power_demand = sum_i weight_i * co2_kg_per_unit_i * dac_kwh_per_kg
-route_power_demand_i = weight_i * electricity_kwh_per_unit_i
-
-electrolyzer_share = h2_power_demand / total_power_demand
-dac_share          = co2_power_demand / total_power_demand
-exploratory_share_i = route_power_demand_i / total_power_demand
-
-h2_feed_share_i  = weight_i * h2_kg_per_unit_i  / sum_j weight_j * h2_kg_per_unit_j
-co2_feed_share_i = weight_i * co2_kg_per_unit_i / sum_j weight_j * co2_kg_per_unit_j
-```
-
-Feeds are split by the same weight x kg-per-unit product the power shares use,
-so every consumer receives H2 and CO2 in its stoichiometric ratio and the only
-unused feed is each reactor's unconverted fraction (methane + methanol 50/50 at
-95% / 80% conversion: 9.1% of H2 and 10.0% of CO2 unused).
-
-Buffered gas-fed routes can size from the most active modeled day without chasing the single highest intra-day spike:
-
-```text
-buffered_peak_feed_kg_per_hour = peak_day_feed_kg / cycle_hours
-
-buffer_working_kg = peak_day_feed_kg * (1 - op_hours / cycle_hours)
-buffer_capex = h2_working_kg * h2_buffer_cost_per_kg + co2_working_t * co2_buffer_cost_per_t
-```
-
-For methane, methanol, and the exploratory routes that expose the buffer toggle, this buffered rate replaces the instantaneous peak-feed rate for nameplate CAPEX sizing when the checkbox is on.
-
-### Electrolysis
-
-Reaction:
-
-```text
-2 H2O -> 2 H2 + O2
-```
-
-Core formulas:
-
-```text
-h2_kg = electrolyzer_input_kwh / electrolyzer_kwh_per_kg_h2
-
-water_reacted_kg = h2_kg * 9            # stoichiometric (8.94)
-feed_water_kg    = h2_kg * 12           # incl. purification rejects (typ. 10-15)
-```
-
-Current default-style values:
-
-- Thermoneutral (HHV) energy: `39.4 kWh/kg H2` (the efficiency slider starts at 40; the reversible Gibbs minimum is `32.7 kWh/kg`)
-- Hydrogen LHV used for efficiency framing: `33.33 kWh/kg H2`
-- Terraform-style low-capex preset: `79 kWh/kg H2`
-
-### Direct Air Capture
-
-Core formulas:
-
-```text
-co2_tons = dac_input_kwh / dac_kwh_per_tco2
-
-co2_kg = co2_tons * 1000
-
-dac_capex = dac_capex_per_tpy * dac_peak_kw * 8760 * 0.25 / dac_kwh_per_tco2
-```
-
-DAC CAPEX is entered per t-CO2/yr of capacity at a 25% reference solar
-utilization (the basis of Terraform's whitepaper 2.0 figure of $40.35/t-yr)
-and applied to the DAC's nameplate power, so the same hardware costs the same
-at a sunny and a cloudy site.
-
-Current reference preset:
-
-- DAC energy: `3440 kWh/t-CO2`
-
-### Methane (Sabatier)
-
-Reaction:
-
-```text
-CO2 + 4 H2 -> CH4 + 2 H2O
-```
-
-Stoichiometric constants used in the app:
-
-```text
-h2_per_kg_ch4 = 0.503
-co2_per_kg_ch4 = 2.744
-water_per_kg_ch4 = 2.25
-kg_ch4_per_mcf = 19.25
-```
-
-Core formulas:
-
-```text
-ch4_kg_from_h2 = h2_kg / 0.503
-ch4_kg_from_co2 = co2_kg / 2.744
-
-ch4_kg = min(ch4_kg_from_h2, ch4_kg_from_co2) * sabatier_conversion
-
-ch4_mcf = ch4_kg / 19.25
-```
-
-### Methanol
-
-Reaction:
-
-```text
-CO2 + 3 H2 -> CH3OH + H2O
-```
-
-Stoichiometric constants used in the app:
-
-```text
-h2_per_kg_meoh = 0.189
-co2_per_kg_meoh = 1.374
-water_per_kg_meoh = 0.562
-```
-
-Core formulas:
-
-```text
-gross_meoh_kg = min(h2_kg / 0.189, co2_kg / 1.374) * methanol_conversion
-
-export_meoh_kg = max(0, gross_meoh_kg - mtg_methanol_consumption)
-```
-
-### Exploratory routes
-
-Route electricity intensities exclude the H2 they consume (made upstream by
-the electrolyzer), and electricity plus H2 at its HHV never falls below the
-product's reaction enthalpy (e.g. CO2 -> C + O2 9.1 MWh/t C, CaCO3 -> CaO
-0.88 MWh/t, CO2 -> CO 2.8 MWh/t); routes with a carbon, magnesium or gas
-reductant are exempt because that feed carries part of the energy. Each
-`electricityKwhPerUnit` in `js/data/modules.js` states its basis.
-
-Each exploratory route uses a rough throughput limit from electricity plus any required feedstocks:
-
-```text
-output_units =
-  min(
-    daily_kwh / electricity_kwh_per_unit,
-    h2_available_kg / h2_kg_per_unit,
-    co2_available_kg / co2_kg_per_unit,
-    methanol_available_kg / methanol_kg_per_unit
-  )
-```
-
-Peak-throughput sizing drives route CAPEX:
-
-```text
-peak_nameplate_units_per_hour =
-  min(
-    peak_alloc_kw / electricity_kwh_per_unit,
-    peak_h2_kg_per_hour / h2_kg_per_unit,
-    peak_co2_kg_per_hour / co2_kg_per_unit,
-    peak_methanol_kg_per_hour / methanol_kg_per_unit
-  )
-
-route_capex =
-  peak_nameplate_capacity * capex_basis * cycling_penalty
-
-annual_route_revenue = annual_output_units * sale_price
-```
-
-For buffer-capable exploratory routes, the model can instead size the block from:
-
-```text
-peak_nameplate_units_per_hour =
-  peak_output_daily_units / cycle_hours
-```
-
-Most exploratory routes size CAPEX on `$/ton/yr capacity`; desalination routes use `$/m3/day`.
-
-### AI compute (optional)
-
-When enabled, a constant `load_kw` is chosen so simulated delivered utilization meets the selected reliability target. Tokens and revenue follow throughput and price inputs:
-
-```text
-annual_tokens_m = ai_served_mwh * million_tokens_per_mwh
-
-annual_ai_revenue = annual_tokens_m * price_per_million_tokens
-```
-
-GPU CAPEX uses `$ / kW` of installed IT load at the solved `load_kw`. The UI also reports full-rate reliability, integrated `$ / M token`, and token margin versus the token price.
-
-Reliability is clear-sky-equivalent: every modeled day has the clear-sky shape
-scaled to the site's annual yield, so multi-day cloudy spells are not modeled
-and the battery needed for a real-world uptime target is larger. AI sizing
-needs storage; with the battery at 0 the model adds 1 MWh per GWh/yr of solar
-and says so in the AI panel.
-
-### Lifetime energy (degradation)
-
-The plant is sized on year-1 solar. The same design (AI load, chemical
-capacity, battery) is re-dispatched at four PV output factors spanning the
-horizon, and energies are interpolated per year:
-
-```text
-solar_factor_y = (1 - degradation)^((y - 1) mod solar_asset_life)   # resets after repowering
-
-ai_factor_y       = ai_served_kwh(solar_factor_y)  / ai_served_kwh(1)
-chemical_factor_y = chemical_kwh(solar_factor_y)   / chemical_kwh(1)
-
-revenue_ai_y       = revenue_ai_1 * ai_factor_y
-revenue_products_y = revenue_products_1 * chemical_factor_y
-policy_credits_y   = credits_1 * (solar_factor_y for solar-output credits,
-                                  chemical_factor_y for H2/CO2 credits)
-```
-
-AI is served first, so it loses less than the PV output while the residual
-chemistry loses more; the AI panel reports the lowest yearly (late-life)
-reliability of the fixed design load.
-
-### Policy layer
-
-The policy model now uses a small set of direct cash-flow archetypes plus framework-only backdrop modes:
-
-```text
-upfront_capex_support = eligible_capex * chosen_share
-
-annual_output_support = qualifying_output * unit_support
-
-two_way_support = qualifying_output * (strike_price - reference_price)
-
-base_minus_correction_support =
-  qualifying_output * max(base_amount - correction_amount, 0)
-```
-
-Implementation assumptions:
-
-- Named schemes model one program or framework at a time.
-- `Custom mixed support` can stack total-capex support with solar, hydrogen, and CO2 annual support.
-- Upfront support reduces net CAPEX at close and the annualized capital charge on the supported initial build.
-- Annual support is paid on qualifying output only and stops when the scheme duration expires: solar electricity delivered to the plant (generation minus clipping), H2 converted into products and CO2 utilized in them (vented surplus earns nothing). Solar schemes on self-consumed power (45Y, EEG, SDE++, CfD) are proxies: real schemes pay metered or sold output, and a CfD's strike-minus-reference has no reference price for power used on site. 45Q utilization into fuel is further limited to the lifecycle net reduction (IRC 45Q(f)(5)(B)), which is not modeled, so 45Q here is an upper bound.
-- `Custom mixed support` applies its capex share to total installed CAPEX including land.
-- Framework-only entries intentionally change scenario context without inventing a cash flow.
-
-### Finance
-
-The app uses capital recovery factor annualization plus a discounted cash flow path with explicit replacement years.
-
-```text
-crf(r, n) = r * (1 + r)^n / ((1 + r)^n - 1)
-
-annualized_capex_i = capex_i * crf(discount_rate, asset_life_i)
-annualized_land    = land_capex * discount_rate        # land does not wear out
-
-asset_life_charge = sum(annualized_capex_i) + annualized_land     # cost breakdown
-
-levelized_cost    = (net_capex_at_close + PV(replacements) - PV(salvage_N)) * crf(r, N) + annual_om
-levelized_revenue = PV(yearly_revenue_y incl. credits while paid) * crf(r, N)
-levelized_profit  = levelized_revenue - levelized_cost = npv * crf(r, N)
-
-solar_capex          = modules + bos + site_prep       # 48E basis; land excluded
-solar_replacement    = modules + bos                   # repowering reuses the site
-
-salvage_N = sum_i last_install_cost_i * remaining_life_i / life_i + land_capex
-
-net_cash_flow_y =
-  yearly_revenue_y -
-  annual_om -
-  replacement_capex_y +
-  (y == N ? salvage_N : 0)
-
-npv =
-  -initial_capex +
-  sum(net_cash_flow_y / (1 + discount_rate)^y)
-```
-
-When debt financing is enabled, the model also tracks a simple upfront debt structure:
-
-```text
-debt_amount = total_capex * debt_share
-
-equity_upfront = total_capex - debt_amount + upfront_fee
-
-annual_debt_service = debt_amount * crf(interest_rate, debt_term)
-balloon_N = outstanding balance at the horizon if debt_term > N   # repaid in year N
-
-equity_cash_flow_y = net_cash_flow_y - debt_service_y
-
-dscr_y = (operating_cash_flow_y - replacement_capex_y) / scheduled_debt_service_y
-sponsor_support_y = max(0, -equity_cash_flow_y)        # debt service and/or replacements
-```
-
-The economics panel reports minimum and average DSCR (flagged below 1.0x),
-total and peak sponsor support, and equity MIRR next to equity IRR: with
-70-90% debt, equity IRR is inflated by the small upfront equity and later
-sponsor injections, while MIRR finances and reinvests at the discount rate.
-
-Important implementation detail:
-
-- Yearly revenue streams follow the lifetime energy vectors (see Lifetime energy): AI revenue the AI-served energy, product and exploratory revenue the delivered chemical energy, with degradation restarting after each solar replacement.
-- Time-limited policy modes only apply for their modeled support duration.
-- Replacement CAPEX appears as discrete outflows when asset life rolls over within the analysis horizon, paid at the end of the year the (possibly fractional) life ends in; the schedule does not drift (an 11.3-year battery is paid in years 12, 23, ...).
-- The final year returns each asset's straight-line residual value (a 7-year block replaced in year 28 of 30 returns 5/7 of its cost), so lengthening the horizon no longer charges late replacements in full.
-- With financing enabled, the headline IRR switches from project IRR to equity IRR, while project NPV remains unlevered.
-
-IRR is reported only when a single economically meaningful root exists:
-
-```text
-cf_0 >= 0                                   -> n/a (no net investment)
-one sign change (conventional)              -> the unique root
-several sign changes, sum(cf) >= 0          -> the single root >= 0, else "ambiguous (see MIRR)"
-several sign changes, sum(cf) <  0          -> n/a: any root is an artefact of late outflows
-
-mirr = (sum max(cf_y, 0) * (1 + r)^(n - y) / -sum min(cf_y, 0) / (1 + r)^y)^(1/n) - 1
-```
-
-MIRR (finance and reinvest at the discount rate `r`) is always shown next to
-IRR; it is unique and exceeds `r` exactly when NPV is positive. The inline
-optimizers maximize IRR, and rank the whole sweep by MIRR instead whenever
-IRR is undefined for any value in the range (by NPV if MIRR is undefined too).
-
-### Environmental outputs
-
-```text
-co2_captured_tpy = annual_co2_captured_kg / 1000
-co2_bound_tpy    = co2 converted into methane, methanol and exploratory products
-co2_vented_tpy   = co2_captured_tpy - co2_bound_tpy          # unconverted feed
-
-net_avoided_tpy  = annual_ch4_mcf * 0.0528                   # 19.25 kg CH4 x 44.01/16.04
-                 + annual_meoh_t * 1.374                     # methanol carbon (export + MTG feed)
-
-water_recycled_kgpd =
-  ch4_daily_kg * 2.25 +
-  meoh_daily_kg * 0.562
-
-net_water_needed_kgpd =
-  max(0, electrolyzer_feed_water_kgpd - water_recycled_kgpd)
-```
-
-## Current Defaults In The App
-
-The current default state is roughly a `1 MW` Mojave-style methane scenario:
-
-- Site: Mojave Desert Earth preset
-- Analysis cycle: `Annual Average`
-- Annual base yield: `1974 MWh / MWdc / year` (PVGIS v5.3, fixed optimal tilt)
-- Mounting: East-West fixed
-- System size: `1 MW`
-- Panel efficiency: `20%`
-- Module cost: `$0.20/W`
-- BOS cost: `$0.12/W`
-- Panel degradation: `0.65%/yr`
-- Battery: off by default (`0 MWh`), with `$150/kWh` storage cost and a `4 h` duration (power = capacity / 4 h) when enabled
-- Chemical peak sizing: `100%`
-- Electrolyzer: `79 kWh/kg H2`, `$100/kW`
-- DAC: `3440 kWh/t-CO2`, `$450 per t-CO2/yr of capacity at 25% utilization` (applied to nameplate: `$450 x 8760 x 0.25 / 3440 = $286/kW` of DAC power)
-- Sabatier conversion: `95%`
-- Sabatier reactor CAPEX: `$50/kW CH4`
-- Feed buffers: on by default for methane and methanol, and default on for exploratory modules whenever the selected route supports buffered gas-feed sizing
-- Methane market preset: `Commodity gas / whitepaper-style case`
-- Methane price: `$20/MCF`
-- Methanol price: `$600/t`
-- AI compute: off by default
-- Financing: off by default
-- Policy mode: `US 45V hydrogen PTC`
-- Default 45V input: `$3.28/kg H2` (2026 inflation-adjusted top tier with prevailing wage; IRS Notice 2026-41)
-- Solar O&M: `1.5%/yr`
-- Process O&M: `3.0%/yr`
-- Battery O&M: `1.5%/yr`
-- Exploratory O&M: `4.0%/yr`
-- Solar asset life: `30 years`
-- Core process asset life defaults: `7 years`
-- Analysis horizon: `30 years`
-- Discount rate: `8%`
-
-## Supported vs Exploratory Coverage
-
-### Supported today
-
-- Electrolyzer
-- Direct air capture
-- Methane / Sabatier
-- Methanol
-
-### Exploratory routes with rough economics
-
-- MTG (`methanol -> gasoline-range hydrocarbons`)
-- CO2 -> CO
-- Ammonia
-- Specialty Electrocarbon
-- Lime
-- Cement
-- Steel
-- Silicon
-- Aluminum
-- Titanium
-- Desalination
-
-These exploratory routes are no longer UI-only scaffolds. They now carry rough throughput, CAPEX, O&M, replacement, and revenue assumptions into project economics, but they should still be treated as high-level placeholders rather than validated process designs.
-
-## Future Improvements
-
-The most important next steps are:
-
-- Replace fallback annual-yield heuristics with a stronger site-yield workflow or imported PV datasets.
-- Add explicit hydrogen sales and dedicated hydrogen-first business cases.
-- Deepen exploratory routes with better feedstock, logistics, thermal-balance, and intermittency assumptions.
-- Improve variable OPEX and maintenance treatment for both supported and exploratory modules.
-- Expand financing beyond simple amortizing debt into taxes, depreciation, inflation, and ownership structure.
-- Make policy qualification logic more explicit and jurisdiction-aware.
-
-## Running Locally
-
-Use the npm scripts:
-
-1. `npm run dev` to serve the source files locally with caching disabled.
-2. `npm run build` to generate a versioned `dist/` folder for deployment.
-3. `npm run preview` to serve the built `dist/` output locally.
-
-Notes:
-
-- Run `npm install` first: `Chart.js`, `Leaflet`, and `lz-string` are self-hosted from `node_modules/` in development and copied into `dist/` by the build.
-- Earth satellite imagery depends on external map tiles.
-- Manual annual yield input is still the best option if you want to use a site-specific PV benchmark.
-- Vercel can deploy directly from `dist/`; the repo includes `vercel.json` so `npm run build` is used automatically.
-
-## Tests
-
-From the repo root, run:
+Requires Node 20 or later.
 
 ```bash
-node --test
+npm ci            # installs Chart.js, Leaflet and lz-string (self-hosted, no CDN)
+npm run dev       # serves the repo root at http://127.0.0.1:4173 (no caching)
+npm test          # node --test over tests/ (no build step needed)
+npm run build     # writes a versioned dist/
+npm run preview   # serves dist/ the same way
 ```
 
-The test suite covers calculations, planetary dispatch behavior, exploratory-route economics, optimizer behavior, and renderer formatting.
+`PORT` and `HOST` override the dev server address. There is no bundler or framework: `index.html` loads the vendor scripts from `node_modules/` and one native ES module entry, `js/main.js`.
+
+`npm run build` copies an allowlist (`index.html`, `style.css`, `js/`, the vendor files, `README.md`, `LICENSE`) into `dist/`. Assets go under `dist/assets/<buildId>/`, where the build ID comes from `BUILD_ID`, the Vercel or GitHub commit SHA, or `git rev-parse`, and `index.html` is rewritten to point at them. Vercel deploys `dist/` using `vercel.json`, which runs the build, marks `/assets/*` immutable and sets a strict Content-Security-Policy. The only external host the CSP allows is the Esri satellite tile server used by the site map.
+
+## Architecture
+
+```text
+js/data/      reference data, no logic: bodies, site presets, mountings, chemistry,
+   |          MODEL_ASSUMPTIONS, process module/route catalog, policy registry
+js/model/     calculation engine; index.js assembles the Calc facade
+   |  ^       (the model reads DEFAULT_STATE/normalizeState from state/;
+   v  |        state/ reads ModuleCatalog and numeric helpers from model/)
+js/state/     schema + DEFAULT_STATE, normalization, legacy migrations,
+   |          share-link codec, saved sites
+js/ui/        App class + mixins, declarative controls, renderers, charts, diagram, site map
+js/workers/   optimizer-worker.js: runs the IRR search through Calc off the main thread
+```
+
+- `js/data/`: `reference-data.js` (bodies, `LOCATION_PRESETS`, `MOUNTING_TYPES`, `CHEMISTRY`, AI defaults), `assumptions.js` (`MODEL_ASSUMPTIONS` and the GHI/cloudiness heuristics), `modules.js` (supported and exploratory process modules), `policies.js` (incentive schemes and picker groups).
+- `js/model/`: one file per concern: `solar.js` + `solar-geometry.js` (resource, sky model, mountings), `annual-series.js` (hourly year), `battery.js` (storage + chemical dispatch), `ai-compute.js`, `lifetime-energy.js`, `process.js` (allocation, electrolyzer, DAC, reactors, exploratory routes, buffers), `economics.js`, `finance.js`, `policy.js`, `module-catalog.js`, `optimizer-search.js`, and `scenario.js` (the pipeline).
+- `js/state/`: `schema.js` is the single source of state fields and defaults.
+- `js/ui/`: `app.js` plus mixins, `control-spec.js` + `controls.js`, `renderers/`, `charts/` (one module per chart), `diagram.js`, `site-map.js`, `share.js`, `optimizer-client.js`, `formatters.js`.
+- `scripts/`: `dev.mjs` (hardened static server) and `build.mjs`.
+
+**Key rule:** `data/`, `model/` and `state/` never touch the DOM. They run unchanged in the browser, in the worker and under Node tests. (`state/saved-site-presets.js` uses `localStorage` behind a guard.) The UI talks to the engine through the `Calc` facade, `ModuleCatalog`, `PolicyModel` and the schema exports (`DEFAULT_STATE`, `CORE_STATE_FIELDS`). It imports `data/` directly only for option lists and labels.
+
+**Calc.** Each model file exports a plain method object (`solarMethods`, `processMethods`, `economicsMethods`, ...). `model/index.js` merges them with `Object.assign` into one `Calc` object. Methods call each other through `this`, so always call them through `Calc` (for example `Calc.calculateAll(state)`) and never detach them. Pure helpers such as `finance.js`, `util.js` and `state/normalize.js` are plain functions that the facade re-exposes. The main entry points are:
+
+- `calculateAll(state)` / `calculateScenario(state, { fastMode })`: the full result tree.
+- `calculateIrr` / `calculateReturnMetrics`: the lean path, which skips display series.
+- `runSensitivity`, `findBestRangeValueForIrr` and `normalizeState`.
+
+`scenario.js` runs this pipeline:
+
+```text
+normalizeState -> calculateSolar -> buildAnnualSolarSeries
+  -> calculateBattery (chemicals only) | calculateAICompute (AI first)
+  -> buildProcessAllocationPlan -> electrolyzer, DAC -> methane/methanol reactors
+  -> exploratory routes -> feed-buffer storage -> calculateEconomics -> calculateEnvironmental
+```
+
+**App mixins.** `App` (`ui/app.js`) owns `state`, `init()` and `recalculate()`. All other behavior lives in mixin objects (`controlMethods`, `rendererMethods`, `chartMethods`, `siteControlMethods`, ...) that are `Object.assign`ed onto `App.prototype`. Each mixin method runs with the App instance as `this`. State-backed inputs are declared once in `CONTROL_SPECS` and `getModuleControlSpecs()` (`ui/control-spec.js`). That one list drives both input-to-state binding and state-to-control sync.
+
+## Extending
+
+After any of these changes, run `npm test`. Every recipe that changes the result tree also needs a characterization fixture regeneration (see [Testing](#testing-and-validation)).
+
+**Add an exploratory route** (to an existing module):
+
+1. In `js/data/modules.js`, add an entry under the module's `routes` with these fields:
+   - `label`
+   - `electricityKwhPerUnit`: electricity per output unit, excluding the H2 the route consumes. Add a comment stating its basis.
+   - `capexPerAnnualUnit` with `capexUnit`: `'tpa'` for $ per t/yr, or `'m3pd'` for $ per m3/day.
+   - `cyclingPenalty`
+   - `feedstocks`: `{ h2Kg, co2Kg }` per output unit. `methanolKg` is only delivered to the `mtg` module.
+   - `feedstockSummary`, `outputLabel` and `outputUnit`
+   - `diagramInputs`: `{ h2, co2, methanol }` flags for the diagram
+   - Optional: `supportsFeedBuffer`, a route-level `market` (overrides the module's sale-price slider), and `assetLifeYears` (default 10).
+   - If the route needs another module, add it to the module's `routeDependencies`.
+2. Add the route to `FLOORS` in `tests/calculations/energy-floor.test.js`. The value is its reaction-enthalpy floor, or `null` with the reason (an external reductant supplies the energy). Unlisted routes fail that test.
+3. Regenerate the characterization fixture.
+
+The catalog generates everything else: the state keys, normalization, the route select, the capex slider (0.25-4x the route default), the buffer toggle, the diagram card and the economics rows. A new exploratory **module** is a new `MODULE_DEFINITIONS` entry with `exploratory: true`, a `family` key from `MODULE_FAMILY_LABELS`, a `market`, `routes` and `missingInputs`. Its `<id>Enabled`, `BufferEnabled`, `Route`, `PriorityWeight`, `CapexBasis` and `Price` state keys are generated. A new *supported* product (beside methane and methanol) is not data-driven: it needs code in `process.js`, `scenario.js`, `economics.js`, the renderers and the diagram.
+
+**Add a policy scheme:**
+
+1. In `js/data/policies.js`, add a `POLICY_SCHEMES` entry. It needs display metadata (`label`, `jurisdiction`, `note`, `basis`, `implementationFormula`, ...) and `durationYears`: years of annual support, `0` for one-off support, or `null` to pay over the whole horizon. It also needs a `cashflowType` whose `inputs` are read in this order:
+   - `capex_share`: `inputs[0]` is the share (0-1) of `eligibleCapexBasis` (`'solar' | 'electrolyzer' | 'dac' | 'total'`), paid once at close.
+   - `unit_support`: `inputs[0]` is $ per unit of `outputBasis` (`'solar_kwh' | 'solar_mwh' | 'hydrogen_kg' | 'co2_ton'`).
+   - `strike_minus_reference`: `inputs[0]` is the strike and `inputs[1]` the reference. Support can go negative.
+   - `base_minus_correction`: `inputs[0]` is the base and `inputs[1]` the correction, floored at 0.
+   - `framework_only`: no cash flow.
+
+   Each input has `key`, `label`, `min`/`max`/`step`, `defaultValue` and `format` (`'share'`, `'currency_per_kwh'`, `'currency_per_mwh'`, `'currency_per_kg'`, `'currency_per_ton'`). Each key becomes a state field automatically (`POLICY_INPUT_FIELDS`), so share a key between schemes only when it is the same quantity. Put a source comment next to every number.
+2. List the id in a `POLICY_SELECT_GROUPS` group. A scheme that is not listed is still valid in state but cannot be picked.
+3. Add re-derived facts to `tests/calculations/policy-facts.test.js` and regenerate the fixture (every selectable scheme is a snapshot scenario).
+
+The input controls render from `inputs` (`renderPolicyInputs`). A new cash-flow type or basis needs code in `model/policy.js` (`evaluatePolicy`, `getOutputMetric`, `getEligibleCapexBreakdown`) and in `economics.getYearlyEnergyFactors`.
+
+**Add an Earth site preset:**
+
+1. Add an entry to `LOCATION_PRESETS` in `js/data/reference-data.js`:
+   - `name`, `lat`, `lon`
+   - `ghi`: PVGIS `H(i)_y` at 0 deg tilt, in kWh/m2/yr.
+   - `baseYield`: PVGIS v5.3 PVcalc `E_y` for crystalline Si, 14% loss, free-standing, optimal tilt.
+   - `diffuseFraction`: Global Solar Atlas DIF/GHI. Omit it to use the cloudiness heuristic.
+   - `region`: `desert | temperate | tropical | cloudy`. This drives layout/BOS cloudiness and the fallback diffuse fraction.
+2. Run the tests. `energy-model.test.js` checks that yield/GHI is 0.72-1.0 and the diffuse fraction is 0.1-0.7.
+
+The dropdown lists the new preset automatically. A selected preset is stored as lat/lon/yield and matched back within 0.1 deg, so the array order does not matter. The preset also becomes the "nearby preset" (its GHI, diffuse fraction and estimated yield) for any location within 2 deg latitude and 3 deg longitude.
+
+**Add a state field and its control:**
+
+1. Add `{ key, type, min, max, defaultValue }` to `CORE_STATE_FIELDS` in `js/state/schema.js`. `type` is `number`, `integer`, `boolean`, `enum` or `string`. `DEFAULT_STATE`, clamping in `normalizeState` and share links then follow automatically. Share links store only differences from defaults, so changing a default later changes what old links mean. Exceptions:
+   - A per-module slider belongs in that module's `configs` (`data/modules.js`).
+   - A policy input belongs in the scheme's `inputs`.
+   - A fixed constant that users cannot change belongs in `MODEL_ASSUMPTIONS` (`data/assumptions.js`).
+2. Add the element to `index.html`. Give it the default as its static `value`, plus a `<span id="<id>Value">` read-out that shows the formatted default.
+3. Add `{ type: 'range' | 'checkbox' | 'select' | 'number', id, stateKey?, format?, onChange? }` to `CONTROL_SPECS` in `js/ui/control-spec.js`. Binding and sync come from that entry. `tests/ui/control-spec.test.js` checks that the element exists and that its pre-JS value and read-out match `DEFAULT_STATE`.
+4. Read the value from the normalized state in the model.
+
+**Add a result row:**
+
+1. If the value is not on the result yet, compute it in the model, typically in `calculateEconomics` (`js/model/economics.js`), and return it. That changes the characterization tree, so regenerate the fixture.
+2. Render it. The economics panel is built group by group in `js/ui/renderers/economics.js` (`buildSummaryMetrics`, `buildReturnsRows`, `buildCostRows`, `buildRevenueRows`, `buildFinancingRows`, `buildUnitRows`, `buildContextRows`). Rows use `econRow(label, value, cssClass, tooltip)` from `renderers/markup.js`. The production and impact grids in `renderers/index.js` use `prodItem`. Format values with `FormatNumbers` and `ui/formatters.js`.
+3. Optionally assert on the HTML in `tests/renderers/`. Those tests render real results with stubbed DOM elements.
+
+## Model summary
+
+### Solar resource
+
+```text
+site_yield  = base_yield * mounting_multiplier          # MWh/MWdc/yr
+annual_MWh  = MWdc * site_yield
+```
+
+`base_yield` is the yield of a reference mounting. On Earth and Mars that is a fixed, equator-facing array at its optimal tilt. At the lunar peak of eternal light it is vertical sun-tracking panels. Earth presets carry PVGIS v5.3 yields and horizontal irradiation, plus the Global Solar Atlas diffuse fraction. Away from a preset, the base yield is `GHI * modeled optimal-tilt gain * 0.78` (PVGIS performance ratios span 0.73-0.81), where GHI comes from latitude bands with a desert uplift. Panel efficiency changes area and land, not energy, because nameplate MWdc is the input. Ground coverage and BOS $/W get latitude/cloudiness layout adjustments relative to a Mojave reference.
+
+The Earth sky model in `solar-geometry.js`:
+
+```text
+dni_clear = 1353 * 0.7^(AM^0.678) * sun_distance_factor        (Meinel)
+dhi_clear = 0.1 * dni_clear
+# beam transmittance t moves (1 - t) of the beam into diffuse, conserving GHI;
+# t is solved so annual DHI/GHI equals the site diffuse fraction
+poa = dni*cos(aoi) + dhi*(A*Rb + (1-A)*(1+cos tilt)/2) + 0.2*ghi*(1-cos tilt)/2   (Hay-Davies)
+mounting_multiplier (Earth) = annual_poa(mounting) / annual_poa(fixed at modeled optimal tilt)
+```
+
+The mountings are:
+
+- Fixed tilt at the modeled optimum (golden-section search on annual POA).
+- 8 deg east-west racks.
+- Horizontal N-S single-axis trackers, limited to +/-60 deg and backtracking at the row ground-coverage ratio.
+- Ideal dual-axis tracking.
+
+At Mojave this gives east-west 0.86, single-axis 1.21 and dual-axis 1.43 (PVGIS: 0.85, 1.30, 1.46). At the lunar PEL the Sun grazes the horizon, so a horizontal-axis tracker captures about 0.52, a fixed vertical panel about 1/pi and low-tilt east-west racks about 0.05. Mars and the generic Moon profile use the `MOUNTING_TYPES` table.
+
+**Hourly year.** The dispatch runs over one hourly year:
+
+- Earth: 8,760 h.
+- Mars: one orbital year of sols, annualized to an Earth year.
+- Moon: the local cycle repeated over an Earth year.
+
+The series has the clear-sky shape scaled to the annual energy, with every hour capped at DC nameplate. If the yield cannot fit under that cap, the output is capped and a warning is shown. The day selector only changes the displayed day, never the economics.
+
+### Dispatch and sizing (`battery.js`, `ai-compute.js`)
+
+Chemicals-only mode works hour by hour. Solar feeds the process first. The battery covers shortfalls and absorbs surplus, limited to `capacity / batteryDurationHours` per hour (default 4 h), with `sqrt(round-trip)` efficiency each way and 2%/month self-discharge. Everything else is clipped. The start state of charge is iterated until the year is periodic. Operating hours are hours at 5% of capacity or more. The 100% size is defined by the annual dispatch:
+
+```text
+full_capture_kW = annual solar peak                          (no battery)
+                = min { P : clipped_kWh(P, battery) = 0 }    (battery: bisection)
+process_kW      = full_capture_kW * chemicalSizingPercent / 100
+```
+
+AI mode serves solar in this order: the constant AI load, then battery charging (the battery discharges only to AI), then the chemicals. The AI load is the largest constant load whose clear-sky-equivalent full-power reliability meets the target (bisection). Chemical 100% is the peak residual power at that load. With no battery, AI mode seeds 1 MWh per GWh/yr of solar and says so. GPU CAPEX is `$/kW * load`, O&M is 4%/yr of it, and `revenue = served MWh * M tokens/MWh * $/M tokens`.
+
+Battery CAPEX is `$/kWh * capacity`. Its life is `min(12 yr, rated cycles / cycles per year)`, counting one cycle per day, sol or lunar cycle.
+
+### Lifetime energy (`lifetime-energy.js`)
+
+The plant is sized on year-1 solar. The fixed design (AI load, chemical capacity, battery) is then re-dispatched at four PV output factors spanning the horizon, and the energies are interpolated per project year:
+
+```text
+solar_factor_y = (1 - degradation)^((y - 1) mod solar_asset_life)    # resets after repowering
+ai_factor_y    = ai_served(solar_factor_y)   / ai_served(1)
+chem_factor_y  = chemical_kWh(solar_factor_y) / chemical_kWh(1)
+```
+
+AI has first call on solar, so it loses less than the PV output while the residual chemistry loses more. The AI panel reports the lowest yearly reliability.
+
+### Process chain (`process.js`)
+
+Power and feeds are auto-balanced from the enabled consumers. A consumer's weight is its methane/methanol by-mass share of the product slate (x100), or an exploratory route's priority weight (0-100) in its own output units:
+
+```text
+h2_power   = sum_i w_i * h2_kg_per_unit_i  * electrolyzer_kWh_per_kg
+co2_power  = sum_i w_i * co2_kg_per_unit_i * dac_kWh_per_kg
+expl_pool  = sum_j w_j * electricity_kWh_per_unit_j
+electrolyzer_share = h2_power / total;  dac_share = co2_power / total
+exploratory_share_j = (expl_pool / total) * w_j / sum_k w_k      # pool split by weight only
+h2_feed_share_i  = w_i * h2_kg_per_unit_i  / sum_k w_k * h2_kg_per_unit_k   (same for CO2)
+```
+
+Because the feed split uses the same `weight * kg/unit` as the power split, each consumer gets H2 and CO2 in stoichiometric ratio. The only unused feed is each reactor's unconverted fraction. For example, methane + methanol 50/50 at 95%/80% conversion leaves 9.1% of the H2 and 10.0% of the CO2 unused. With no product enabled, the split falls back to 50/50 and everything is vented.
+
+```text
+H2 kg      = electrolyzer_kWh / kWh_per_kg      (LHV efficiency = 33.33 / kWh_per_kg; HHV floor 39.4)
+CO2 t      = dac_kWh / kWh_per_t
+CO2 + 4 H2 -> CH4 + 2 H2O:  CH4 = min(H2/0.503, CO2/2.744) * conversion;  MCF = kg / 19.25
+CO2 + 3 H2 -> CH3OH + H2O:  MeOH = min(H2/0.189, CO2/1.374) * conversion; export = reactor - MTG offtake
+exploratory units/day = min(kWh / kWh_per_unit, H2 / h2_per_unit, CO2 / co2_per_unit, MeOH / meoh_per_unit)
+water: stoichiometric 9 kg/kg H2; feed water 12 kg/kg H2 (incl. purification rejects);
+       recycled = 2.25 kg/kg CH4 + 0.562 kg/kg MeOH
+```
+
+CAPEX sizing works as follows:
+
+- The electrolyzer is sized on `$/kW * process_kW * share`.
+- DAC is priced per t-CO2/yr of capacity at a 25% reference utilization (the basis of Terraform's whitepaper 2.0 $40.35/t-yr), applied to nameplate. Identical hardware therefore costs the same at any site:
+
+  ```text
+  dac_capex = $/t-yr * dac_kW * 8760 * 0.25 / kWh_per_t      # $450/t-yr at 3,440 kWh/t = $286/kW
+  ```
+
+- The Sabatier reactor costs `$/kW-CH4` on its design output (LHV 13.9 kWh/kg). The methanol reactor costs `$/(kg/h)` on its design H2 + CO2 feed. Both are sized on the hourly peak feed.
+- An exploratory route is sized on its peak hourly output. CAPEX is that rate times `cycle hours * cycles per year * $/t-yr * cycling penalty` (or `* cycle hours * $/m3/day * penalty` for water), with a 10-year life and the shared exploratory O&M %.
+
+Feed buffers are off by default. They can be opted into per module (methane, methanol, routes with `supportsFeedBuffer`). A buffered reactor runs at a constant rate, so it is sized on the peak day's feed / cycle hours, but it must hold that feed:
+
+```text
+buffer_working_kg = peak_day_feed_kg * (1 - op_hours / cycle_hours)    # flat-supply upper bound
+buffer_capex      = H2_kg * $750/kg + CO2_t * $1,000/t                  # both stated assumptions
+```
+
+The buffer carries process O&M and is replaced every 20 years. At the default $50/kW-CH4 Sabatier cost, buffering the reactor costs more in storage than it saves in reactor size.
+
+### Policy (`policy.js`)
+
+```text
+upfront   = eligible_capex * share                       # initial build only, not replacements
+annual    = qualifying_output * unit_support
+          | qualifying_output * (strike - reference)
+          | qualifying_output * max(base - correction, 0)
+```
+
+Annual support is paid only on qualifying output:
+
+- Solar: power delivered to the plant (generation minus clipping).
+- H2: hydrogen converted into products.
+- CO2: CO2 utilized in products. Vented feed earns nothing.
+
+Support stops after `durationYears`. Solar-output credits follow delivered solar each year, and H2/CO2 credits follow the chemical-energy factor. Named schemes apply one at a time. `Custom mixed support` stacks a capex share of total CAPEX (including land) with solar, H2 and CO2 support for the whole horizon. Framework-only entries add context but no cash.
+
+### Finance (`economics.js`, `finance.js`)
+
+```text
+CAPEX blocks: solar (modules + BOS + site prep), land, battery, AI, electrolyzer, DAC,
+              methane reactor, methanol reactor, feed buffers, each exploratory route
+net_capex_0 = total_capex - upfront_support
+replacement : at each multiple of an asset's life strictly inside the horizon, paid in year
+              ceil(k * life) (no drift); solar repowering = modules + BOS; land never replaced
+salvage_N   = sum_i last_install_cost_i * remaining_life_i / life_i  +  land at cost
+O&M (flat)  = solar% * (modules + BOS) + battery% * battery + 4% * AI
+              + process% * (electrolyzer + DAC + reactors + buffers) + exploratory% * routes
+revenue_y   = AI_1 * ai_factor_y + (products_1 + exploratory_1) * chem_factor_y
+              + credits_1 * policy_factor_y * [y <= support years]
+cf_y        = revenue_y - O&M - replacements_y + [y == N] * salvage_N
+NPV         = -net_capex_0 + sum_y cf_y / (1 + r)^y
+```
+
+Levelized metrics:
+
+```text
+crf(r, n)         = r (1+r)^n / ((1+r)^n - 1)
+levelized cost    = (net_capex_0 + PV(replacements) - PV(salvage)) * crf(r, N) + O&M
+levelized revenue = PV(revenue_y) * crf(r, N)
+levelized profit  = levelized revenue - levelized cost = NPV * crf(r, N)
+cost breakdown    = sum_i net_capex_i * crf(r, life_i) + land * r + O&M   (+ reconciling timing/salvage row)
+solar LCOE        = (solar_capex * crf(r, solar_life) + land * r + solar O&M)
+                    / (annual_MWh * sum_y f_y (1+r)^-y * crf(r, solar_life))     # gross of incentives
+```
+
+Unit costs ($/kg H2, $/t CO2, $/MCF, $/t methanol) use a cost cascade:
+
+1. Power cost is solar, land and battery, annualized net of upfront support, plus their O&M. In AI mode only the chemical share of served energy counts.
+2. Power cost is split by the electrolyzer/DAC power shares.
+3. H2 and CO2 costs pass to each reactor by its feed share, so vented feed is charged to the product that vents it. Buffers are allocated by module.
+4. Each cost is divided by year-1 output times the levelized chemical-energy factor.
+
+Output-based credits are excluded.
+
+IRR is reported only when one economically meaningful root exists. MIRR (finance and reinvest at `r`) is always shown next to it. MIRR is unique and exceeds `r` exactly when NPV is positive.
+
+```text
+cf_0 >= 0                                -> n/a (no net investment); also n/a if no later cash is positive
+one sign change                          -> the unique root
+several sign changes, sum(cf) >= 0       -> the single root >= 0, else "ambiguous (see MIRR)"
+several sign changes, sum(cf) <  0       -> n/a: any root is an artefact of late outflows
+mirr = (FV_r(inflows) / -PV_r(outflows))^(1/n) - 1
+```
+
+The inline optimizers sweep one slider at a time: battery size, chemical sizing or the methane/methanol split. They maximize IRR, or MIRR across the whole sweep if IRR is undefined anywhere in it (NPV as a last resort). Payback is reported as simple and as sustained (never dips negative again).
+
+With debt enabled, the headline IRR becomes equity IRR and equity MIRR is shown next to it. Project NPV stays unlevered (equity NPV is computed on the result but not displayed).
+
+```text
+debt        = debt_share (<= 90%) * net_capex_0;   fee = fee% * debt, paid by equity at close
+payment     = debt * crf(i, term); a term longer than N leaves a balloon repaid in year N
+equity_cf_y = cf_y - debt_service_y
+DSCR_y      = (operating_cf_y - replacements_y) / scheduled_debt_service_y      # min/avg, flagged < 1.0x
+sponsor_y   = max(0, -equity_cf_y)                     # debt service and/or replacement shortfalls
+```
+
+### CO2 and impact (`calculateEnvironmental`)
+
+```text
+captured    = DAC output
+bound       = CO2 converted into methane, methanol and exploratory products
+vented      = captured - bound                      # unconverted feed
+net avoided = CH4_MCF * 0.0528 + MeOH_t * 1.374     # fossil fuel displaced (methanol incl. MTG feed)
+```
+
+0.0528 t/MCF is the combustion CO2 of pure CH4 (19.25 kg x 44.01/16.04). EPA's ~0.055 t/MCF is for pipeline gas. Carbon in a fuel returns to the air when it is burned, so capture is not removal: net avoided counts only displaced fossil combustion. Upstream emissions and leakage are excluded, and non-fuel exploratory products are counted as bound, not avoided.
+
+## Defaults
+
+All defaults live in `js/state/schema.js` (`CORE_STATE_FIELDS`), with the module, route and policy defaults in `js/data/modules.js` and `js/data/policies.js`. Print the full set with:
+
+```bash
+node --input-type=module -e "import {DEFAULT_STATE} from './js/model/index.js'; console.log(DEFAULT_STATE)"
+```
+
+The headline default scenario is:
+
+- **Site:** Mojave Desert preset with base yield 1,974 MWh/MWdc-yr (PVGIS) on east-west fixed racking (x0.86). Earth annual-average view.
+- **Plant:** 1 MWdc ($0.20/W modules, $0.12/W BOS), no battery, 100% chemical sizing. 30-year solar life with 0.65%/yr degradation.
+- **Products:** methane only. Electrolyzer at 79 kWh/kg and $100/kW, DAC at 3,440 kWh/t and $450 per t-yr, Sabatier at 95% and $50/kW-CH4, 7-year process lives. Methane sells at $20/MCF. Methanol, MTG, exploratory routes, feed buffers, AI and debt are all off.
+- **Policy and finance:** US 45V at $3.28/kg H2 for 10 years, an 8% discount rate and a 30-year horizon.
+
+## Limitations
+
+- **Weather is clear-sky-equivalent.** Every day has the clear-sky shape, scaled to the annual yield and diffuse fraction, with no multi-day cloudy spells. AI reliability and battery firming are therefore optimistic. Off-preset Earth yields use a latitude/GHI heuristic, so a manual PVGIS value is better.
+- **Policy is simplified.**
+  - Credits for self-consumed solar under 45Y, EEG, SDE++ and the CfD are a proxy, since real schemes pay metered or sold output and a CfD reference price has no meaning for on-site use.
+  - Eligibility (lifecycle, wage, ownership, location, certification) is not legally validated, and award values are user inputs.
+  - Upfront support is not re-applied to replacements, and custom support runs for the whole horizon.
+- **45Q on CO2 made into fuel is an upper bound.** The IRC 45Q(f)(5)(B) lifecycle limit is not modeled.
+- **Exploratory routes are rough placeholders.** Each has one electricity intensity, a flat cycling penalty, a generic 10-year life and a shared O&M %, with no thermal, startup, purity or logistics constraints. Their shared power pool is split by priority weight, not by each route's energy demand. Methanol feed reaches only MTG.
+- **Process blocks follow solar freely,** with no minimum turndown, ramp limits or startup losses beyond the cycling penalty.
+- **Feed-buffer inventory is a flat-supply upper bound,** and its $/kg and $/t costs are assumptions. Methanol tankage is ignored.
+- **Some modes are stylized fallbacks.**
+  - There is no hydrogen sales line, and with no product enabled H2 and CO2 are simply vented.
+  - The battery has no capacity fade, and its life assumes one cycle per day.
+  - AI compute is a constant-load token model, not a datacenter design.
+  - Mars and Moon modes use literature-style benchmarks.
+- **Finance is minimal.**
+  - Prices and costs are constant real values: no inflation, escalation, taxes, depreciation, tax equity or working capital.
+  - O&M is a flat % of CAPEX.
+  - Salvage is straight-line book value (land at cost), not a resale estimate.
+  - Debt is a single amortizing tranche sized on net CAPEX.
+
+## Testing and validation
+
+`npm test` runs `node --test` over `tests/`. The tests import the real modules, so no build step is needed.
+
+- **Characterization snapshot** (`tests/calculations/characterization.test.js`): pins a digest of the full result tree for a matrix of scenarios (mountings, battery, sizing, product mixes, all exploratory routes, AI, Mars, Moon, financing, every selectable policy, sensitivity) against `tests/fixtures/characterization.json`. It is a refactor safety net, not a correctness check: it proves a restructuring changed nothing. When a model or result-shape change is intentional, regenerate it and review the diff:
+
+  ```bash
+  UPDATE_CHARACTERIZATION=1 node --test tests/calculations/characterization.test.js
+  ```
+
+- **Physics and invariants:**
+  - The Meinel clear-sky formula, diffuse-fraction conservation, and mounting multipliers and optimal tilt within PVGIS ranges.
+  - Energy balance and power limits of the dispatch, and the 100% sizing definition.
+  - H2/CO2 mass balance.
+  - CO2 captured = bound + vented, with net avoided never above the carbon bound in fuels.
+  - Every exploratory route above its reaction-enthalpy floor.
+  - Qualifying-output credit bases.
+- **Hand-derived goldens:** CRF, IRR verdicts, MIRR, debt schedules and balloons, levelized identities, replacement timing and salvage, and buffer inventory.
+- **Policy facts:** scheme defaults are re-derived from the IRS notices, auction results and ECB rates instead of being copied from `policies.js`.
+- **UI and tooling:** control-spec and `index.html` contracts, renderers, charts, diagram, share links, saved sites, the optimizer worker, the build allowlist and dev-server hardening. These run in Node with small DOM stubs.
 
 ## Sources
 
-This repo is based on public materials and should be read as an independent interpretation of those sources.
+This repo is based on public materials and should be read as an independent interpretation of those sources. Model data cite their own sources inline: PVGIS and Global Solar Atlas values in `js/data/reference-data.js`, and every incentive figure in `js/data/policies.js`.
 
 ### Primary Terraform sources
 

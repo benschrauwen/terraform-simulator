@@ -12,6 +12,14 @@ export function formatSystemSizeMW(value) {
   return `${FormatNumbers.fixed(mw, 1)} MW`;
 }
 
+/* Power given in kW: kW below 1 MW, then MW / GW. */
+export function formatPowerKW(value) {
+  const kw = parseFloat(value);
+  if (!Number.isFinite(kw)) return '—';
+  if (kw >= 1000) return formatSystemSizeMW(kw / 1000);
+  return `${FormatNumbers.fixed(kw, kw < 10 ? 1 : 0)} kW`;
+}
+
 export function formatYears(value) {
   return `${FormatNumbers.fixed(parseInt(value, 10), 0)} years`;
 }

@@ -3,7 +3,7 @@
 import { SolarGeometry } from '../../model/solar-geometry.js';
 import { Diagram } from '../diagram.js';
 import { FormatNumbers } from '../format-numbers.js';
-import { formatIrrWithStatus, formatMirr, formatSystemSizeMW } from '../formatters.js';
+import { formatIrrWithStatus, formatMirr, formatPowerKW } from '../formatters.js';
 import { renderEconomicsBreakdown } from './economics.js';
 import { applyTooltip, EDUCATIONAL_TOOLTIPS, escapeAttribute, escapeHtml, prodItem } from './markup.js';
 
@@ -70,7 +70,34 @@ export const rendererMethods = {
     const aiFullRateValue = document.getElementById('aiFullRateValue');
     const aiTokensAnnualValue = document.getElementById('aiTokensAnnualValue');
     if (aiDesignLoadValue) {
-      aiDesignLoadValue.textContent = r.ai.enabled ? formatSystemSizeMW(r.ai.designLoadKW / 1000) : 'Off';
+      aiDesignLoadValue.textContent = r.ai.enabled ? formatPowerKW(r.ai.designLoadKW) : 'Off';
+    }
+    const fixedLoad = r.ai.enabled && r.ai.sizingMode === 'fixed';
+    const aiDesignLoadLabel = document.getElementById('aiDesignLoadLabel');
+    if (aiDesignLoadLabel) {
+      aiDesignLoadLabel.textContent = fixedLoad ? 'Set GPU IT load:' : 'Auto-sized AI load:';
+      applyTooltip(
+        aiDesignLoadLabel,
+        fixedLoad
+          ? 'Constant GPU IT load you set; the battery is auto-sized to keep it at the reliability target.'
+          : 'AI load size the current solar-plus-battery system can support at the selected reliability target.'
+      );
+    }
+    const aiSizedBatteryRow = document.getElementById('aiSizedBatteryRow');
+    const aiSizedBatteryValue = document.getElementById('aiSizedBatteryValue');
+    if (aiSizedBatteryRow) aiSizedBatteryRow.hidden = !fixedLoad;
+    if (aiSizedBatteryValue) {
+      const sizing = fixedLoad ? r.ai.batterySizing : null;
+      aiSizedBatteryValue.textContent = sizing
+        ? `${FormatNumbers.fixed(sizing.batteryMWh, 2)} MWh (${FormatNumbers.fixed(sizing.loadKW > 0 ? (sizing.batteryMWh * 1000) / sizing.loadKW : 0, 1)} h of IT load)${sizing.feasible ? '' : ', capped'}`
+        : '—';
+    }
+    const aiEnergySplitValue = document.getElementById('aiEnergySplitValue');
+    if (aiEnergySplitValue) {
+      const solarKWh = r.annualDispatch?.solarKWh || 0;
+      aiEnergySplitValue.textContent = r.ai.enabled && solarKWh > 0
+        ? `${FormatNumbers.fixed((r.annualDispatch.aiServedKWh / solarKWh) * 100, 1)}% / ${FormatNumbers.fixed((r.annualDispatch.chemicalKWh / solarKWh) * 100, 1)}% (${FormatNumbers.fixed(r.ai.annualAiServedKWh / 1000, 0)} / ${FormatNumbers.fixed(r.ai.chemicalAnnualKWh / 1000, 0)} MWh/yr)`
+        : '—';
     }
     if (aiUtilizationValue) {
       aiUtilizationValue.textContent = r.ai.enabled ? `${FormatNumbers.fixed(r.ai.utilization * 100, 2)}%` : '—';

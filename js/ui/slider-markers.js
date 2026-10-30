@@ -164,38 +164,44 @@ export const sliderMarkerMethods = {
 
   initLogSliderTicks() {
     document.querySelectorAll('input[type="range"][data-scale="log"]').forEach(input => {
-      const wrap = ensureRangeInputWrap(input);
-      wrap.classList.add('has-log-ticks');
-
-      const tickLayer = ensureLayer(wrap, 'slider-log-ticks');
-      tickLayer.innerHTML = '';
-
-      const bounds = readSliderBounds(input);
-      if (!bounds) return;
-
-      const realMin = Math.pow(10, bounds.min);
-      const realMax = Math.pow(10, bounds.max);
-
-      for (let decade = Math.floor(bounds.min); decade <= Math.ceil(bounds.max); decade++) {
-        for (const m of [1, 2, 5]) {
-          const realValue = m * Math.pow(10, decade);
-          if (realValue < realMin * 0.999 || realValue > realMax * 1.001) continue;
-
-          const tick = document.createElement('span');
-          tick.className = m === 1 ? 'slider-log-tick major' : 'slider-log-tick minor';
-          if (m === 1) {
-            const label = document.createElement('span');
-            label.className = 'slider-log-tick-label';
-            label.textContent = realValue >= 1000
-              ? `${(realValue / 1000).toLocaleString()}k`
-              : `${realValue}`;
-            tick.appendChild(label);
-          }
-          tickLayer.appendChild(tick);
-          this.logTickBindings.push({ input, element: tick, ...bounds, value: Math.log10(realValue) });
-        }
-      }
+      this.renderLogSliderTicks(input);
     });
+  },
+
+  /* (Re)draws one log slider's decade ticks, e.g. after its bounds changed. */
+  renderLogSliderTicks(input) {
+    this.logTickBindings = (this.logTickBindings || []).filter(binding => binding.input !== input);
+    const wrap = ensureRangeInputWrap(input);
+    wrap.classList.add('has-log-ticks');
+
+    const tickLayer = ensureLayer(wrap, 'slider-log-ticks');
+    tickLayer.innerHTML = '';
+
+    const bounds = readSliderBounds(input);
+    if (!bounds) return;
+
+    const realMin = Math.pow(10, bounds.min);
+    const realMax = Math.pow(10, bounds.max);
+
+    for (let decade = Math.floor(bounds.min); decade <= Math.ceil(bounds.max); decade++) {
+      for (const m of [1, 2, 5]) {
+        const realValue = m * Math.pow(10, decade);
+        if (realValue < realMin * 0.999 || realValue > realMax * 1.001) continue;
+
+        const tick = document.createElement('span');
+        tick.className = m === 1 ? 'slider-log-tick major' : 'slider-log-tick minor';
+        if (m === 1) {
+          const label = document.createElement('span');
+          label.className = 'slider-log-tick-label';
+          label.textContent = realValue >= 1000
+            ? `${(realValue / 1000).toLocaleString()}k`
+            : `${realValue}`;
+          tick.appendChild(label);
+        }
+        tickLayer.appendChild(tick);
+        this.logTickBindings.push({ input, element: tick, ...bounds, value: Math.log10(realValue) });
+      }
+    }
   },
 
   positionSliderMarkers() {

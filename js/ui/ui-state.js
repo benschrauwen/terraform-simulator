@@ -3,6 +3,7 @@
 import { Calc } from '../model/index.js';
 import { ModuleCatalog } from '../data/module-catalog.js';
 import { FormatNumbers } from './format-numbers.js';
+import { formatPowerKW } from './formatters.js';
 import { escapeHtml } from './renderers/markup.js';
 
 const ALLOCATION_KIND_LABELS = {
@@ -183,6 +184,66 @@ export const uiStateMethods = {
       this.syncModuleMarketControl(module.id);
       this.syncModuleBufferControl(module.id);
     });
+  },
+
+  /* GPU cluster sizing ("Max for battery" / "Set load"): the load slider
+     follows the array DC peak, and in "Set load" the battery capacity
+     slider shows the auto-sized battery read-only while the user's own
+     value stays in state for "Max for battery". */
+  syncAiSizingControls(r) {
+    const fixedMode = this.state.aiSizingMode === 'fixed';
+    const loadControl = document.getElementById('aiLoadControl');
+    // Tick positions need the slider's laid-out width.
+    let repositionTicks = false;
+    if (loadControl) {
+      repositionTicks = loadControl.hidden && fixedMode;
+      loadControl.hidden = !fixedMode;
+    }
+
+    const loadInput = document.getElementById('aiLoadKW');
+    if (loadInput) {
+      const peakKW = Math.max(10, (this.state.systemSizeMW || 0) * 1000);
+      const sliderMax = String(Math.log10(peakKW));
+      if (loadInput.max !== sliderMax) {
+        loadInput.max = sliderMax;
+        this.syncControlSpec(this.controlSpecs.find(spec => spec.id === 'aiLoadKW'));
+        this.renderLogSliderTicks(loadInput);
+        repositionTicks = true;
+      }
+    }
+    if (repositionTicks) window.requestAnimationFrame(() => this.positionSliderMarkers());
+
+    const sizing = r?.ai?.enabled ? r.ai.batterySizing : null;
+    const batteryInput = document.getElementById('batteryCapacity');
+    const optimizeButton = document.getElementById('optimizeBatteryCapacity');
+    const autoNote = document.getElementById('batteryAutoSizeNote');
+    if (batteryInput) {
+      const wasAutoSized = batteryInput.disabled;
+      batteryInput.disabled = Boolean(sizing);
+      if (sizing) {
+        batteryInput.value = String(sizing.batteryMWh);
+        this.syncRangeDisplay('batteryCapacity', sizing.batteryMWh, value => `${FormatNumbers.fixed(value, 1)} MWh (auto)`);
+      } else if (wasAutoSized) {
+        this.syncControlSpec(this.controlSpecs.find(spec => spec.id === 'batteryCapacity'));
+      }
+    }
+    // Sweeping the battery does nothing while it is auto-sized.
+    if (optimizeButton) optimizeButton.hidden = Boolean(sizing);
+    if (autoNote) {
+      autoNote.hidden = !sizing;
+      autoNote.textContent = sizing
+        ? `Auto-sized for the ${formatPowerKW(sizing.loadKW)} GPU load at ${FormatNumbers.fixed(r.ai.reliabilityTarget, 2)}% uptime (AI Compute: Set load). Your ${FormatNumbers.fixed(this.state.batteryCapacityMWh, 1)} MWh setting returns with Max for battery.`
+        : '';
+    }
+
+    const warning = document.getElementById('aiLoadFeasibilityWarning');
+    if (warning) {
+      const infeasible = Boolean(sizing && !sizing.feasible);
+      warning.hidden = !infeasible;
+      warning.textContent = infeasible
+        ? `${formatPowerKW(sizing.loadKW)} cannot hold ${FormatNumbers.fixed(r.ai.reliabilityTarget, 2)}% full-rate uptime even with the largest battery searched (${FormatNumbers.fixed(sizing.maxBatteryMWh, 1)} MWh, ${FormatNumbers.fixed((sizing.maxBatteryMWh * 1000) / sizing.loadKW, 0)} h of the load): it reaches ${FormatNumbers.fixed(r.ai.fullPowerReliability * 100, 2)}%. The largest load that meets the target is about ${formatPowerKW(sizing.maxFeasibleLoadKW)}.`
+        : '';
+    }
   },
 
   syncDerivedFeedControls() {

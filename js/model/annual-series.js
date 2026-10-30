@@ -8,32 +8,105 @@
 import { PLANETARY_BODIES } from '../data/reference-data.js';
 import { SolarGeometry } from './solar-geometry.js';
 
+/* Normalized (fraction-of-nameplate) Earth series keyed by the cached
+   geometry entry, then by full-load hours, so optimizer sweeps that only
+   change plant size, storage or prices reuse the scaled shape. */
+const earthNormalizedSeriesCache = new WeakMap();
+
 export const annualSeriesMethods = {
+  /* Scales an irradiance-shaped series to `targetKWh` with every step capped
+     at `peakKW` (nameplate). Returns { hourlyKW, totalKWh, reachable }: when
+     even running every lit step at nameplate cannot reach the target, the
+     series is that maximum and `reachable` is false (no energy is invented). */
+  scaleRawSeriesToEnergy(rawSeries, targetKWh, peakKW) {
+    const length = rawSeries?.length || 0;
+    if (!length || !Number.isFinite(targetKWh) || targetKWh <= 0 || !Number.isFinite(peakKW) || peakKW <= 0) {
+      return { hourlyKW: new Array(length).fill(0), totalKWh: 0, reachable: !(targetKWh > 0) };
+    }
+
+    const safeSeries = Float64Array.from(rawSeries, value => Math.max(0, Number(value) || 0));
+    let maxRaw = 0;
+    let rawSum = 0;
+    let litSteps = 0;
+    for (let i = 0; i < length; i++) {
+      const value = safeSeries[i];
+      if (value > maxRaw) maxRaw = value;
+      rawSum += value;
+      if (value > 0) litSteps += 1;
+    }
+    if (maxRaw <= 0) return { hourlyKW: new Array(length).fill(0), totalKWh: 0, reachable: false };
+
+    const maximumKWh = litSteps * peakKW;
+    const reachable = targetKWh <= maximumKWh * (1 - 1e-9);
+    const producedAt = scale => {
+      let sum = 0;
+      for (let i = 0; i < length; i++) {
+        const value = safeSeries[i] * scale;
+        sum += value < peakKW ? value : peakKW;
+      }
+      return sum;
+    };
+
+    let scale;
+    if (!reachable) {
+      scale = Infinity;
+    } else {
+      let lo = targetKWh / rawSum;
+      let hi = lo;
+      while (producedAt(hi) < targetKWh && hi < 1e12) hi *= 2;
+      // Below nameplate everywhere the scale is exact; otherwise bisect.
+      if (hi === lo) {
+        scale = lo;
+      } else {
+        for (let i = 0; i < 60 && (hi - lo) > lo * 1e-13; i++) {
+          const mid = (lo + hi) / 2;
+          if (producedAt(mid) < targetKWh) lo = mid;
+          else hi = mid;
+        }
+        scale = (lo + hi) / 2;
+      }
+    }
+
+    const hourlyKW = new Array(length);
+    let totalKWh = 0;
+    for (let i = 0; i < length; i++) {
+      const value = safeSeries[i] > 0 ? Math.min(safeSeries[i] * scale, peakKW) : 0;
+      hourlyKW[i] = value;
+      totalKWh += value;
+    }
+    return { hourlyKW, totalKWh, reachable };
+  },
+
   scaleRawSeriesToAnnualEnergy(rawSeries, annualKWhTarget, peakKW) {
-    if (!Array.isArray(rawSeries) || !rawSeries.length || !Number.isFinite(annualKWhTarget) || annualKWhTarget <= 0 || !Number.isFinite(peakKW) || peakKW <= 0) {
-      return Array.isArray(rawSeries) ? rawSeries.map(() => 0) : [];
+    return this.scaleRawSeriesToEnergy(rawSeries, annualKWhTarget, peakKW).hourlyKW;
+  },
+
+  /* Earth hourly series in kW for the modeled site, via the per-site
+     geometry cache and a per-full-load-hours shape cache. */
+  buildEarthHourlySolarKW(state, solar, annualKWhTarget, peakKW) {
+    const latitude = Math.max(-90, Math.min(90, Number(state.latitude) || 0));
+    const geometry = SolarGeometry.annualHourlyPlaneOfArray(latitude, state.mountingType, solar.skyModel || {});
+    if (!(peakKW > 0) || !(annualKWhTarget > 0)) {
+      return { hourlyKW: new Array(geometry.hourly.length).fill(0), totalKWh: 0, reachable: !(annualKWhTarget > 0) };
     }
-
-    const safeSeries = rawSeries.map(value => Math.max(0, Number(value) || 0));
-    const maxRaw = Math.max(...safeSeries, 0);
-    if (maxRaw <= 0) return safeSeries.map(() => 0);
-
-    const producedAt = scale => safeSeries.reduce((sum, value) => sum + Math.min(value * scale, peakKW), 0);
-    let lo = 0;
-    let hi = Math.max(peakKW / maxRaw, annualKWhTarget / safeSeries.reduce((sum, value) => sum + value, 0), 1e-6);
-
-    while (producedAt(hi) < annualKWhTarget && hi < 1e9) {
-      hi *= 2;
+    const fullLoadHours = annualKWhTarget / peakKW;
+    let byHours = earthNormalizedSeriesCache.get(geometry);
+    if (!byHours) {
+      byHours = new Map();
+      earthNormalizedSeriesCache.set(geometry, byHours);
     }
-
-    for (let i = 0; i < 60; i++) {
-      const mid = (lo + hi) / 2;
-      if (producedAt(mid) < annualKWhTarget) lo = mid;
-      else hi = mid;
+    const key = fullLoadHours.toPrecision(12);
+    let normalized = byHours.get(key);
+    if (!normalized) {
+      normalized = this.scaleRawSeriesToEnergy(geometry.hourly, fullLoadHours, 1);
+      if (byHours.size >= 32) byHours.delete(byHours.keys().next().value);
+      byHours.set(key, normalized);
     }
-
-    const scale = (lo + hi) / 2;
-    return safeSeries.map(value => Math.min(value * scale, peakKW));
+    return {
+      hourlyKW: normalized.hourlyKW.map(value => value * peakKW),
+      totalKWh: normalized.totalKWh * peakKW,
+      reachable: normalized.reachable,
+    };
   },
 
   aggregateSeriesByWindow(series, windowSize) {
@@ -241,21 +314,16 @@ export const annualSeriesMethods = {
     const peakKW = Math.max(0, solar.peakPowerKW || 0);
 
     if (bodyKey === 'earth') {
-      const rawHourly = [];
-      for (let day = 1; day <= 365; day++) {
-        const geo = SolarGeometry.dailyProfile(state.latitude, day, state.mountingType);
-        geo.rawProfile.forEach(value => rawHourly.push(Math.max(0, value)));
-      }
-      const hourlyKW = this.scaleRawSeriesToAnnualEnergy(rawHourly, annualKWhTarget, peakKW);
+      const scaled = this.buildEarthHourlySolarKW(state, solar, annualKWhTarget, peakKW);
+      const hourlyKW = scaled.hourlyKW;
       const windowHours = 24;
-      const totalKWh = hourlyKW.reduce((sum, value) => sum + value, 0);
       return {
         bodyKey,
         hourlyKW,
         dayLabels: includeWindowSummaries ? this.buildAnnualWindowLabels(bodyKey, 365, windowHours, hourlyKW.length) : [],
         dailyKWh: includeWindowSummaries ? this.aggregateSeriesByWindow(hourlyKW, windowHours) : [],
         averageDayKW: includeWindowSummaries ? this.averageHourlyByWindow(hourlyKW, windowHours) : [],
-        totalKWh,
+        ...this.describeSeriesTarget(scaled, annualKWhTarget),
         windowHours,
         windowBinCount: 24,
         seasonalVariation: true,
@@ -271,19 +339,31 @@ export const annualSeriesMethods = {
     }
 
     const normalized = this.sampleRepeatingProfileByHour(solar.hourlyProfile, cycleHours, totalHours);
-    const hourlyKW = this.scaleRawSeriesToAnnualEnergy(normalized, annualKWhTarget, peakKW);
+    const scaled = this.scaleRawSeriesToEnergy(normalized, annualKWhTarget, peakKW);
+    const hourlyKW = scaled.hourlyKW;
     const windowCount = Math.ceil(hourlyKW.length / cycleHours);
-    const totalKWh = hourlyKW.reduce((sum, value) => sum + value, 0);
     return {
       bodyKey,
       hourlyKW,
       dayLabels: includeWindowSummaries ? this.buildAnnualWindowLabels(bodyKey, windowCount, cycleHours, hourlyKW.length) : [],
       dailyKWh: includeWindowSummaries ? this.aggregateSeriesBySpanHours(hourlyKW, cycleHours) : [],
       averageDayKW: includeWindowSummaries ? this.averageSeriesByCyclePhase(hourlyKW, cycleHours, binCount) : [],
-      totalKWh,
+      ...this.describeSeriesTarget(scaled, annualKWhTarget),
       windowHours: cycleHours,
       windowBinCount: binCount,
       seasonalVariation: false,
+    };
+  },
+
+  /* Energy bookkeeping for a scaled series: what was asked for, what the
+     nameplate-capped profile delivers, and the shortfall when unreachable. */
+  describeSeriesTarget(scaled, targetKWh) {
+    const requestedKWh = Math.max(0, Number(targetKWh) || 0);
+    return {
+      totalKWh: scaled.totalKWh,
+      requestedKWh,
+      targetReachable: scaled.reachable,
+      shortfallKWh: scaled.reachable ? 0 : Math.max(0, requestedKWh - scaled.totalKWh),
     };
   },
 
@@ -307,9 +387,10 @@ export const annualSeriesMethods = {
       return SolarGeometry.applyMountingShape(geo.rawProfile, state.mountingType, cycleHours).rawProfile;
     });
     const normalized = this.sampleProfileSequenceByHour(dailyProfiles, cycleHours, safeTotalHours);
-    const hourlyKW = this.scaleRawSeriesToAnnualEnergy(normalized, Math.max(0, Number(seriesKWhTarget) || 0), peakKW);
+    const targetKWh = Math.max(0, Number(seriesKWhTarget) || 0);
+    const scaled = this.scaleRawSeriesToEnergy(normalized, targetKWh, peakKW);
+    const hourlyKW = scaled.hourlyKW;
     const windowCount = Math.ceil(hourlyKW.length / cycleHours);
-    const totalKWh = hourlyKW.reduce((sum, value) => sum + value, 0);
 
     return {
       bodyKey,
@@ -317,7 +398,7 @@ export const annualSeriesMethods = {
       dayLabels: includeWindowSummaries ? this.buildAnnualWindowLabels(bodyKey, windowCount, cycleHours, hourlyKW.length) : [],
       dailyKWh: includeWindowSummaries ? this.aggregateSeriesBySpanHours(hourlyKW, cycleHours) : [],
       averageDayKW: includeWindowSummaries ? this.averageSeriesByCyclePhase(hourlyKW, cycleHours, binCount) : [],
-      totalKWh,
+      ...this.describeSeriesTarget(scaled, targetKWh),
       windowHours: cycleHours,
       windowBinCount: binCount,
       seasonalVariation: true,

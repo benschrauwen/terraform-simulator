@@ -12,6 +12,10 @@ export const rendererMethods = {
     document.getElementById('ghiValue').textContent = `${FormatNumbers.fixed(r.solar.ghi, 0)} kWh/m²/yr`;
     document.getElementById('sunHoursValue').textContent = `${FormatNumbers.fixed(r.solar.sunHours, 1)} ${r.solar.hoursPerCycleLabel}`;
     document.getElementById('baseYieldValue').textContent = `${FormatNumbers.fixed(r.solar.baseYield, 0)} MWh/MWdc-yr`;
+    const mountingYieldMultValue = document.getElementById('mountingYieldMultValue');
+    if (mountingYieldMultValue) {
+      mountingYieldMultValue.textContent = `${FormatNumbers.fixed(r.solar.yieldMult, 3)}× vs ${r.solar.baseYieldReference}`;
+    }
     document.getElementById('annualProduction').textContent = `${FormatNumbers.fixed(r.solar.annualMWh, 0)} MWh`;
     document.getElementById('capacityFactor').textContent = `${FormatNumbers.fixed(r.solar.capacityFactor * 100, 1)}%`;
     document.getElementById('lcoe').textContent = `$${FormatNumbers.fixed(r.solar.lcoe, 2)}/MWh`;

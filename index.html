@@ -136,8 +136,8 @@
               <input type="number" id="longitude" value="-117.60" min="-180" max="180" step="0.1">
             </label>
           </div>
-          <label>Annual Yield (MWh / MWdc / year)
-            <input type="number" id="siteYield" value="2050" min="500" max="3500" step="10">
+          <label><span class="tooltip-label" data-tooltip="Annual PV output per MWdc of the reference mounting: a fixed, equator-facing array at its optimal tilt (vertical sun-tracking panels at the lunar pole). Other mountings scale it by the modeled mounting multiplier.">Annual Yield (MWh / MWdc / year)</span>
+            <input type="number" id="siteYield" value="1974" min="0" max="10000" step="10">
           </label>
           <div class="field-note" id="siteYieldNote">
             This is the long-run annual PV output per MWdc. For a more accurate site-specific number, use a
@@ -199,8 +199,12 @@
             <span class="range-value" id="sitePrepCostValue">$15,000/acre</span>
           </label>
           <div class="info-row">
-            <span class="tooltip-label" data-tooltip="Modeled yearly solar output per MWdc before multiplying by plant size.">Base Yield:</span>
+            <span class="tooltip-label" data-tooltip="Site yield of the reference mounting (named below), per MWdc, before the mounting multiplier and plant size.">Base Yield:</span>
             <span id="baseYieldValue" class="highlight">— MWh/MWdc-yr</span>
+          </div>
+          <div class="info-row">
+            <span class="tooltip-label" data-tooltip="Selected mounting's annual yield relative to the reference mounting, from the model's sun geometry with the site's diffuse-light share (Hay-Davies sky, trackers limited to ±60° with backtracking).">Mounting Multiplier:</span>
+            <span id="mountingYieldMultValue" class="highlight">—</span>
           </div>
           <div class="info-row">
             <span class="tooltip-label" data-tooltip="Total electricity the solar array generates in a typical year.">Annual Production:</span>

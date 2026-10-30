@@ -20,6 +20,8 @@ function npvAt(cashFlows, rate) {
 }
 
 const SABATIER_POSITIVE_ROOT_CAPEX = 100;
+// IRR regression values below re-pinned when site yields moved to PVGIS and
+// the mounting multipliers to the modeled sky geometry (lower default energy).
 const SABATIER_UPPER_BRANCH_METHANE_PRICE = 22;
 
 test('default scenario stays numerically sane', () => {
@@ -332,12 +334,12 @@ test('headline IRR stays on the discount-rate root when replacement cycles creat
     ].join(' ')
   );
   assert.ok(
-    Math.abs(higherConversionResult.economics.irr - 9.343476546909224) <= 1e-6,
-    `Expected the 85% Sabatier regression case to stay near a 9.343477% headline IRR, got ${higherConversionResult.economics.irr}.`
+    Math.abs(higherConversionResult.economics.irr - 8.04894178989769) <= 1e-6,
+    `Expected the 85% Sabatier regression case to stay near a 8.048942% headline IRR, got ${higherConversionResult.economics.irr}.`
   );
   assert.ok(
-    Math.abs(lowerConversionResult.economics.irr - 9.172778734473585) <= 1e-6,
-    `Expected the 84% Sabatier regression case to stay near a 9.172779% headline IRR, got ${lowerConversionResult.economics.irr}.`
+    Math.abs(lowerConversionResult.economics.irr - 7.878750812604041) <= 1e-6,
+    `Expected the 84% Sabatier regression case to stay near a 7.878751% headline IRR, got ${lowerConversionResult.economics.irr}.`
   );
   assert.ok(
     Math.abs(lowerConversionResult.economics.irr - leanLowerConversionIrr) <= 1e-9,
@@ -383,12 +385,12 @@ test('equity IRR stays on the positive branch when longer debt terms add another
     ].join(' ')
   );
   assert.ok(
-    Math.abs(twentyYearDebtResult.economics.equityIrr - 31.034426174126008) <= 1e-6,
-    `Expected the 20-year debt regression case to stay near a 31.034426% equity IRR, got ${twentyYearDebtResult.economics.equityIrr}.`
+    Math.abs(twentyYearDebtResult.economics.equityIrr - 25.944007538378965) <= 1e-6,
+    `Expected the 20-year debt regression case to stay near a 25.944008% equity IRR, got ${twentyYearDebtResult.economics.equityIrr}.`
   );
   assert.ok(
-    Math.abs(twentyOneYearDebtResult.economics.equityIrr - 31.733603550541922) <= 1e-6,
-    `Expected the 21-year debt regression case to stay near a 31.733604% equity IRR, got ${twentyOneYearDebtResult.economics.equityIrr}.`
+    Math.abs(twentyOneYearDebtResult.economics.equityIrr - 26.707831933584558) <= 1e-6,
+    `Expected the 21-year debt regression case to stay near a 26.707832% equity IRR, got ${twentyOneYearDebtResult.economics.equityIrr}.`
   );
   assert.ok(
     Math.abs(twentyOneYearDebtResult.economics.equityIrr - leanTwentyOneYearEquityIrr) <= 1e-9,
@@ -499,16 +501,16 @@ test('30-year financed equity IRR stays on the upper branch until no real root r
     ].join(' ')
   );
   assert.ok(
-    Math.abs(ninePointFivePercent.equityIrr - 31.000077689350793) <= 1e-6,
-    `Expected the 9.5% debt-interest regression case to stay near a 31.000078% equity IRR, got ${ninePointFivePercent.equityIrr}.`
+    Math.abs(ninePointFivePercent.equityIrr - 25.40978820799208) <= 1e-6,
+    `Expected the 9.5% debt-interest regression case to stay near a 25.409788% equity IRR, got ${ninePointFivePercent.equityIrr}.`
   );
   assert.ok(
-    Math.abs(ninePointSeventyFivePercent.equityIrr - 30.215313636780284) <= 1e-6,
-    `Expected the 9.75% debt-interest regression case to stay near a 30.215314% equity IRR, got ${ninePointSeventyFivePercent.equityIrr}.`
+    Math.abs(ninePointSeventyFivePercent.equityIrr - 24.4350954745889) <= 1e-6,
+    `Expected the 9.75% debt-interest regression case to stay near a 24.435095% equity IRR, got ${ninePointSeventyFivePercent.equityIrr}.`
   );
   assert.ok(
-    Math.abs(tenPointFivePercent.equityIrr - 27.668819939303756) <= 1e-6,
-    `Expected the 10.5% debt-interest regression case to stay near a 27.668820% equity IRR, got ${tenPointFivePercent.equityIrr}.`
+    Math.abs(tenPointFivePercent.equityIrr - 20.89972761977422) <= 1e-6,
+    `Expected the 10.5% debt-interest regression case to stay near a 20.899728% equity IRR, got ${tenPointFivePercent.equityIrr}.`
   );
   assert.ok(
     !Number.isFinite(twelvePointFivePercent.equityIrr),
@@ -1498,8 +1500,10 @@ test('off-earth ai dispatch follows local cycles instead of Earth days', () => {
   assert.match(moon.annualSolar.dayLabels[0], /^Cycle 1/, 'Expected lunar cycle labels to start with generic cycle labels.');
 });
 
+// Sun-pointing panels (the PEL reference mounting) see the illumination
+// pattern itself; low-tilt racks add a strong azimuth swing on top.
 test('lunar polar proxy stays mostly on with short shadow outages', () => {
-  const moon = runScenario({ body: 'moon' });
+  const moon = runScenario({ body: 'moon', latitude: -89.5, longitude: 0, mountingType: 'dual' });
   const profile = moon.annualSolar.averageDayKW;
   const peak = Math.max(...profile, 0);
   const litThreshold = peak * 0.02;

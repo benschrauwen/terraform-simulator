@@ -28,17 +28,19 @@ export const PLANETARY_BODIES = {
     chartLabelMode: 'clock',
     supportsSpecificDay: false,
     // Orbital parameters for the seasonal irradiance model (orbitalDays is
-    // the Mars year in sols; Ls = areocentric solar longitude).
+    // the Mars year in sols; Ls = areocentric solar longitude). Obliquity
+    // 25.19 deg, perihelion at Ls ~251 deg, mean top-of-atmosphere solar
+    // constant 586 W/m2 (NASA Mars fact sheet; Allison & McEwen 2000).
     orbit: {
       orbitalDays: 668.6,
-      axialTiltDeg: 24.936,
-      solarConstant: 590,
+      axialTiltDeg: 25.19,
+      solarConstant: 586,
       diffuseFraction: 0,
       eccentricity: 0.093377,
-      perihelionLsDeg: 248,
+      perihelionLsDeg: 251,
     },
     chartNote: 'Representative average local-sol profile; annual dispatch includes modeled Mars orbital seasonality. Annual economics remain normalized to an Earth year.',
-    siteYieldNote: 'Mars presets use literature-inspired annual-yield benchmarks; Earth cloud datasets and latitude heuristics are disabled.',
+    siteYieldNote: 'Mars presets use a rough annual-yield benchmark (horizontal irradiation x ~0.85 performance ratio, dust deposition not modeled); Earth cloud datasets and latitude heuristics are disabled.',
   },
   moon: {
     label: 'Moon',
@@ -49,18 +51,48 @@ export const PLANETARY_BODIES = {
     hoursPerCycleLabel: 'hrs/cycle',
     chartLabelMode: 'days',
     supportsSpecificDay: false,
-    // Synodic month as the "orbit" for the generic (non-polar) lunar profile.
+    // Seasonal cycle for the generic (non-polar) lunar profile, counted in
+    // local cycles (lunations): the Sun's declination seen from the Moon
+    // (amplitude = 1.54 deg obliquity to the ecliptic) repeats with the
+    // eclipse (draconic) year, 346.62 d = 11.74 synodic months.
     orbit: {
-      orbitalDays: 29.53,
+      orbitalDays: 11.74,
       axialTiltDeg: 1.54,
       solarConstant: 1361,
       diffuseFraction: 0,
     },
-    chartNote: 'Representative south-polar ridge profile: mostly-on illumination with terrain-shadow dips and brief outages, not a clean two-week day/night cycle. Mounting still matters because the Sun stays low on the horizon. Annual economics remain normalized to an Earth year.',
-    siteYieldNote: 'Lunar presets use literature-inspired annual-yield benchmarks; Earth cloud datasets and latitude heuristics are disabled.',
+    chartNote: 'Representative south-polar ridge profile: mostly-on illumination with terrain-shadow dips and brief outages, not a clean two-week day/night cycle. The Sun circles within ~1.5 deg of the horizon, so only near-vertical, sun-facing panels capture it well; low-tilt racks see almost nothing. Annual economics remain normalized to an Earth year.',
+    siteYieldNote: 'Lunar polar yield is relative to vertical sun-tracking panels: ~85% of the time lit by 1361 W/m2, with output capped at DC nameplate. Earth cloud datasets and latitude heuristics are disabled.',
   },
 };
 
+/* Site presets. `baseYield` (MWh/MWdc/yr) is the yield of the reference
+   mounting the mounting multipliers are relative to: on Earth and Mars a
+   fixed, equator-facing array at its optimal tilt; at the lunar
+   peak-of-eternal-light (PEL) vertical, sun-tracking panels. `ghi` is
+   annual irradiation (kWh/m2/yr) on a horizontal surface, except at the
+   lunar PEL where it is on a sun-facing surface (the Sun grazes the horizon).
+
+   Earth: baseYield = PVGIS v5.3 PVcalc E_y, crystalline-Si, 14% system loss,
+   free-standing, optimal tilt facing the equator; ghi = PVGIS H(i)_y at 0 deg
+   tilt (SARAH3 where covered, otherwise ERA5). Retrieved 2026-10-30 from
+   https://re.jrc.ec.europa.eu/api/v5_3/PVcalc. `diffuseFraction` = annual
+   DIF / GHI from the Global Solar Atlas long-term averages (Solargis v2.2,
+   api.globalsolaratlas.info, retrieved 2026-10-30); Reykjavik is outside its
+   coverage and uses the cloudy-region estimate. For Mojave, GSA's PVOUT
+   (2034) is ~3% above PVGIS-ERA5 (1974); PVGIS is kept for consistency.
+
+   Mars (Noctis Labyrinthus, 7 S): top-of-atmosphere horizontal irradiation
+   at the equator ~ 586 W/m2 / pi x 8766 h ~ 1640 kWh/m2 per Earth year; a
+   clear-season dusty atmosphere (optical depth ~0.5) passes ~70% of it
+   (Appelbaum & Flood 1990), ~1150 kWh/m2; x 0.85 performance ratio ~ 980.
+
+   Moon PEL: 1361 W/m2 x 0.85 illuminated x 8760 h ~ 10,130 kWh/m2/yr on a
+   sun-facing plane. While lit, a panel rated 1 kW at STC (1000 W/m2) sees
+   1.36x that irradiance and, after AM0 spectral mismatch (~0.95), hot
+   panels (~0.90) and wiring (~0.98), would deliver ~1.14 kW; the model
+   caps output at DC nameplate (inverter loading ratio 1), so the yield is
+   ~nameplate x the lit hours of the terrain profile ~ 7,400. */
 export const LOCATION_PRESETS = [
   {
     name: 'Mars - Noctis Labyrinthus',
@@ -68,8 +100,8 @@ export const LOCATION_PRESETS = [
     profile: 'mars-average',
     lat: -7.0,
     lon: -102.0,
-    ghi: 900,
-    baseYield: 1150,
+    ghi: 1150,
+    baseYield: 980,
     region: 'planetary',
   },
   {
@@ -78,34 +110,36 @@ export const LOCATION_PRESETS = [
     profile: 'lunar-pel',
     lat: -89.5,
     lon: 0.0,
-    ghi: 3200,
-    baseYield: 3000,
+    ghi: 10130,
+    baseYield: 7400,
     region: 'planetary',
   },
-  { name: 'Los Angeles, CA', lat: 34.05, lon: -118.24, ghi: 2050, baseYield: 1680, region: 'desert' },
-  { name: 'Phoenix, AZ', lat: 33.45, lon: -112.07, ghi: 2380, baseYield: 1940, region: 'desert' },
-  { name: 'Mojave Desert, CA', lat: 35.05, lon: -117.60, ghi: 2450, baseYield: 2050, region: 'desert' },
-  { name: 'Atacama, Chile', lat: -24.50, lon: -69.25, ghi: 2800, baseYield: 2300, region: 'desert' },
-  { name: 'Sahara (Algeria)', lat: 30.05, lon: 2.88, ghi: 2500, baseYield: 2100, region: 'desert' },
-  { name: 'Rajasthan, India', lat: 26.92, lon: 70.90, ghi: 2200, baseYield: 1820, region: 'desert' },
-  { name: 'Pilbara, Australia', lat: -22.30, lon: 118.30, ghi: 2400, baseYield: 1980, region: 'desert' },
-  { name: 'Dubai, UAE', lat: 25.20, lon: 55.27, ghi: 2150, baseYield: 1780, region: 'desert' },
-  { name: 'Austin, TX', lat: 30.27, lon: -97.74, ghi: 1900, baseYield: 1550, region: 'temperate' },
-  { name: 'Denver, CO', lat: 39.74, lon: -104.99, ghi: 1950, baseYield: 1640, region: 'temperate' },
-  { name: 'Miami, FL', lat: 25.76, lon: -80.19, ghi: 1800, baseYield: 1475, region: 'tropical' },
-  { name: 'Madrid, Spain', lat: 40.42, lon: -3.70, ghi: 1850, baseYield: 1530, region: 'temperate' },
-  { name: 'Berlin, Germany', lat: 52.52, lon: 13.41, ghi: 1050, baseYield: 890, region: 'cloudy' },
-  { name: 'London, UK', lat: 51.51, lon: -0.13, ghi: 950, baseYield: 790, region: 'cloudy' },
-  { name: 'Tokyo, Japan', lat: 35.68, lon: 139.69, ghi: 1350, baseYield: 1120, region: 'temperate' },
-  { name: 'Nairobi, Kenya', lat: -1.29, lon: 36.82, ghi: 2000, baseYield: 1660, region: 'tropical' },
-  { name: 'São Paulo, Brazil', lat: -23.55, lon: -46.63, ghi: 1600, baseYield: 1320, region: 'tropical' },
-  { name: 'Beijing, China', lat: 39.90, lon: 116.40, ghi: 1400, baseYield: 1180, region: 'temperate' },
-  { name: 'Reykjavik, Iceland', lat: 64.15, lon: -21.94, ghi: 750, baseYield: 620, region: 'cloudy' },
-  { name: 'Cape Town, SA', lat: -33.93, lon: 18.42, ghi: 1950, baseYield: 1620, region: 'temperate' },
+  { name: 'Los Angeles, CA', lat: 34.05, lon: -118.24, ghi: 2041, baseYield: 1782, diffuseFraction: 0.273, region: 'desert' },
+  { name: 'Phoenix, AZ', lat: 33.45, lon: -112.07, ghi: 2145, baseYield: 1831, diffuseFraction: 0.225, region: 'desert' },
+  { name: 'Mojave Desert, CA', lat: 35.05, lon: -117.60, ghi: 2199, baseYield: 1974, diffuseFraction: 0.196, region: 'desert' },
+  { name: 'Atacama, Chile', lat: -24.50, lon: -69.25, ghi: 2664, baseYield: 2311, diffuseFraction: 0.145, region: 'desert' },
+  { name: 'Sahara (Algeria)', lat: 30.05, lon: 2.88, ghi: 2268, baseYield: 1941, diffuseFraction: 0.357, region: 'desert' },
+  { name: 'Rajasthan, India', lat: 26.92, lon: 70.90, ghi: 2109, baseYield: 1771, diffuseFraction: 0.438, region: 'desert' },
+  { name: 'Pilbara, Australia', lat: -22.30, lon: 118.30, ghi: 2211, baseYield: 1787, diffuseFraction: 0.186, region: 'desert' },
+  { name: 'Dubai, UAE', lat: 25.20, lon: 55.27, ghi: 2172, baseYield: 1722, diffuseFraction: 0.416, region: 'desert' },
+  { name: 'Austin, TX', lat: 30.27, lon: -97.74, ghi: 1727, baseYield: 1451, diffuseFraction: 0.386, region: 'temperate' },
+  { name: 'Denver, CO', lat: 39.74, lon: -104.99, ghi: 1886, baseYield: 1834, diffuseFraction: 0.297, region: 'temperate' },
+  { name: 'Miami, FL', lat: 25.76, lon: -80.19, ghi: 1855, baseYield: 1529, diffuseFraction: 0.365, region: 'tropical' },
+  { name: 'Madrid, Spain', lat: 40.42, lon: -3.70, ghi: 1779, baseYield: 1620, diffuseFraction: 0.325, region: 'temperate' },
+  { name: 'Berlin, Germany', lat: 52.52, lon: 13.41, ghi: 1109, baseYield: 1053, diffuseFraction: 0.525, region: 'cloudy' },
+  { name: 'London, UK', lat: 51.51, lon: -0.13, ghi: 1070, baseYield: 1023, diffuseFraction: 0.558, region: 'cloudy' },
+  { name: 'Tokyo, Japan', lat: 35.68, lon: 139.69, ghi: 1391, baseYield: 1284, diffuseFraction: 0.474, region: 'temperate' },
+  { name: 'Nairobi, Kenya', lat: -1.29, lon: 36.82, ghi: 1996, baseYield: 1521, diffuseFraction: 0.440, region: 'tropical' },
+  { name: 'São Paulo, Brazil', lat: -23.55, lon: -46.63, ghi: 1678, baseYield: 1362, diffuseFraction: 0.456, region: 'tropical' },
+  { name: 'Beijing, China', lat: 39.90, lon: 116.40, ghi: 1587, baseYield: 1546, diffuseFraction: 0.521, region: 'temperate' },
+  { name: 'Reykjavik, Iceland', lat: 64.15, lon: -21.94, ghi: 729, baseYield: 703, region: 'cloudy' },
+  { name: 'Cape Town, SA', lat: -33.93, lon: 18.42, ghi: 1954, baseYield: 1730, diffuseFraction: 0.285, region: 'temperate' },
 ];
 
-/* yieldMult is the yield multiple vs. the site's fixed-tilt yield (Earth
-   sites also get MOUNTING_YIELD_ADJUSTMENTS from data/assumptions.js). The
+/* On Earth the mounting yield multiplier is derived from the model's own
+   sky geometry (solar.js getMountingYieldMultiplier); at the lunar PEL from
+   the polar sun geometry. `yieldMult` is the fallback table for the other
+   off-Earth profiles (Mars, generic Moon), relative to fixed tilt. The
    spacing and BOS sensitivities scale layout and balance-of-system cost with
    latitude and cloudiness relative to SOLAR_LAYOUT_REFERENCE. */
 export const MOUNTING_TYPES = {

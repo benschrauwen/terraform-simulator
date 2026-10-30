@@ -7,9 +7,17 @@
 export const SQUARE_METERS_PER_ACRE = 4047;
 
 export const MODEL_ASSUMPTIONS = {
-  // Annual yield (kWh/kWp) per unit of annual GHI (kWh/m2) when no site
-  // yield is given: a typical performance ratio.
-  fallbackYieldFromGhi: 0.82,
+  // Estimated Earth base yield when no preset is near: annual GHI x the
+  // modeled optimal-tilt plane-of-array gain x this performance ratio
+  // (yield per kWh/m2 in-plane). PVGIS v5.3 at 14% system loss gives
+  // 0.73 (hot desert) - 0.81 (cool, cloudy) across the Earth presets.
+  fallbackPerformanceRatio: 0.78,
+  // Annual diffuse fraction (DIF/GHI) for sites without a measured value:
+  // clearSkyDiffuseFraction + cloudiness * diffuseFractionPerCloudiness
+  // (desert ~0.20, temperate ~0.29, tropical ~0.39, overcast ~0.56, which
+  // brackets the Global Solar Atlas values of the presets in each region).
+  clearSkyDiffuseFraction: 0.18,
+  diffuseFractionPerCloudiness: 0.38,
   // Battery calendar-life cap (years) regardless of cycle count.
   batteryNominalLifeYears: 12,
   // Battery self-discharge per average month (fraction of stored energy).
@@ -78,15 +86,6 @@ export const CLOUDINESS_BY_GHI = [
   { maxGhi: 1800, cloudiness: 0.40 },
   { maxGhi: Infinity, cloudiness: 0.10 },
 ];
-
-/* Earth yield adjustment per mounting type, added to MOUNTING_TYPES[].yieldMult:
-   latitudeSlope * latitudeFactor + cloudinessSlope * cloudiness, where
-   latitudeFactor ramps 0 -> 1 over 20-45 deg |lat|. Fixed tilt has none. */
-export const MOUNTING_YIELD_ADJUSTMENTS = {
-  ew: { latitudeSlope: -0.02, cloudinessSlope: 0.08 },
-  single: { latitudeSlope: 0.05, cloudinessSlope: -0.18 },
-  dual: { latitudeSlope: 0.07, cloudinessSlope: -0.15 },
-};
 
 /* Reference site the layout/BOS adjustments are relative to (Mojave-like). */
 export const SOLAR_LAYOUT_REFERENCE = {

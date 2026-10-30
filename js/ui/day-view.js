@@ -25,7 +25,7 @@ export const dayViewMethods = {
 
   getDisplaySolarGeometry(r = this.lastResults) {
     if (r?.solar?.bodyKey === 'earth' && this.state.dayMode === 'specific') {
-      return SolarGeometry.dailyProfile(this.state.latitude, this.state.dayOfYear, this.state.mountingType);
+      return SolarGeometry.dailyProfile(this.state.latitude, this.state.dayOfYear, this.state.mountingType, r.solar.skyModel || {});
     }
     return r?.solar?.solarGeo || null;
   },

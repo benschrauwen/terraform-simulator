@@ -74,7 +74,8 @@ export const CORE_STATE_FIELDS = [
     defaultValue: '',
     maxLength: 80,
   },
-  { key: 'siteYieldMwhPerMwdcYear', type: 'number', min: 0, max: 1e6, defaultValue: 2050 },
+  // Default = Mojave Desert preset (PVGIS v5.3, fixed optimal tilt).
+  { key: 'siteYieldMwhPerMwdcYear', type: 'number', min: 0, max: 1e6, defaultValue: 1974 },
   { key: 'systemSizeMW', type: 'number', min: 0, max: 1e6, defaultValue: 1.0 },
   { key: 'panelEfficiency', type: 'number', min: 1, max: 100, defaultValue: 20 },
   { key: 'panelCostPerW', type: 'number', min: 0, max: 1e6, defaultValue: 0.20 },

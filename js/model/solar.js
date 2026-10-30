@@ -12,7 +12,6 @@ import {
   GHI_ESTIMATE_RANGE,
   GHI_LATITUDE_BANDS,
   MODEL_ASSUMPTIONS,
-  MOUNTING_YIELD_ADJUSTMENTS,
   SOLAR_LAYOUT_REFERENCE,
   SQUARE_METERS_PER_ACRE,
 } from '../data/assumptions.js';
@@ -24,6 +23,7 @@ import {
 import { DEFAULT_STATE } from '../state/schema.js';
 import { crf, getAverageSolarDegradationFactor } from './finance.js';
 import { SolarGeometry } from './solar-geometry.js';
+import { clampNumber } from './util.js';
 
 function isInAridRegion(lat, lon) {
   return ARID_GHI_REGIONS.boxes.some(box =>
@@ -36,11 +36,22 @@ export const solarMethods = {
     return PLANETARY_BODIES[bodyKey] || PLANETARY_BODIES.earth;
   },
 
+  /* Nearest preset of the body within 2 deg latitude / 3 deg longitude. */
   getNearbyPreset(lat, lon, bodyKey = 'earth') {
-    return LOCATION_PRESETS.find(loc =>
-      (loc.body || 'earth') === bodyKey &&
-      Math.abs(lat - loc.lat) < 2 && Math.abs(lon - loc.lon) < 3
-    );
+    let nearest;
+    let nearestDistance = Infinity;
+    LOCATION_PRESETS.forEach(loc => {
+      if ((loc.body || 'earth') !== bodyKey) return;
+      const dLat = Math.abs(lat - loc.lat);
+      const dLon = Math.abs(lon - loc.lon);
+      if (!(dLat < 2 && dLon < 3)) return;
+      const distance = Math.hypot(dLat, dLon * Math.cos(((lat + loc.lat) / 2) * SolarGeometry.DEG));
+      if (distance < nearestDistance) {
+        nearest = loc;
+        nearestDistance = distance;
+      }
+    });
+    return nearest;
   },
 
   estimateGHI(lat, lon, bodyKey = 'earth') {
@@ -64,17 +75,51 @@ export const solarMethods = {
     return Math.round(Math.max(GHI_ESTIMATE_RANGE.min, Math.min(GHI_ESTIMATE_RANGE.max, baseGHI)));
   },
 
+  /* Base yield (fixed optimal-tilt reference) for a site: the preset value,
+     else GHI x modeled optimal-tilt plane-of-array gain x a typical
+     performance ratio. */
   estimateBaseYield(lat, lon, ghi, bodyKey = 'earth') {
     const preset = this.getNearbyPreset(lat, lon, bodyKey);
     if (preset) return preset.baseYield;
     if (bodyKey !== 'earth') return Math.round(Math.max(0, ghi));
-    return Math.round(ghi * MODEL_ASSUMPTIONS.fallbackYieldFromGhi);
+    const sky = this.getEarthSkyModel(lat, preset, ghi);
+    const tilted = SolarGeometry.sampledAnnualPlaneOfArrayKWh(lat, 'fixed', sky);
+    const horizontal = SolarGeometry.sampledAnnualPlaneOfArrayKWh(lat, 'fixed', { ...sky, fixedTiltDeg: 0 });
+    const tiltGain = horizontal > 0 ? tilted / horizontal : 1;
+    return Math.round(Math.max(0, ghi) * tiltGain * MODEL_ASSUMPTIONS.fallbackPerformanceRatio);
   },
 
-  getSolarGeometry(state, body, mountingKey) {
+  /* Annual diffuse fraction (DIF/GHI): measured for presets, else from the
+     cloudiness heuristic. */
+  getSiteDiffuseFraction(preset, ghi) {
+    if (Number.isFinite(preset?.diffuseFraction)) return preset.diffuseFraction;
+    const cloudiness = this.getCloudinessFactor(preset?.region, ghi, 'earth');
+    return clampNumber(
+      MODEL_ASSUMPTIONS.clearSkyDiffuseFraction + (cloudiness * MODEL_ASSUMPTIONS.diffuseFractionPerCloudiness),
+      0.1,
+      0.9
+    );
+  },
+
+  /* Earth sky/mounting options shared by the yield multipliers and the
+     hourly profiles: beam transmittance matching the site's diffuse
+     fraction, the modeled optimal fixed tilt, and the tracker row spacing. */
+  getEarthSkyModel(latitude, preset, ghi, groundCoverageRatio = 0) {
+    const safeLatitude = clampNumber(latitude, -90, 90, 0);
+    const diffuseFraction = this.getSiteDiffuseFraction(preset, ghi);
+    const beamTransmittance = SolarGeometry.beamTransmittanceForDiffuseFraction(safeLatitude, diffuseFraction);
+    return {
+      diffuseFraction,
+      beamTransmittance,
+      fixedTiltDeg: SolarGeometry.optimalFixedTiltDeg(safeLatitude, beamTransmittance),
+      groundCoverageRatio,
+    };
+  },
+
+  getSolarGeometry(state, body, mountingKey, skyModel = null) {
     const profileModel = state.solarProfileModel || state.body || 'earth';
     if ((state.body || 'earth') === 'earth') {
-      return SolarGeometry.annualAverageProfile(state.latitude, mountingKey);
+      return SolarGeometry.annualAverageProfile(state.latitude, mountingKey, skyModel || {});
     }
 
     let solarGeo;
@@ -135,24 +180,41 @@ export const solarMethods = {
     };
   },
 
-  getMountingYieldMultiplier(state, preset, ghi) {
+  /* Annual yield of the selected mounting relative to the base-yield
+     reference mounting. Earth: ratio of modeled annual plane-of-array
+     insolation (same sky model and hourly series the dispatch uses) vs a
+     fixed array at the modeled optimal tilt. Lunar PEL: vs sun-pointing
+     vertical panels. Other off-Earth profiles: MOUNTING_TYPES table. */
+  getMountingYieldMultiplier(state, preset, ghi, skyModel = null) {
     const mounting = MOUNTING_TYPES[state.mountingType];
     if (!mounting) return 1;
-    if ((state.body || 'earth') !== 'earth' || state.mountingType === 'fixed') {
-      return mounting.yieldMult;
+    const bodyKey = state.body || 'earth';
+    if (bodyKey === 'moon' && state.solarProfileModel === 'lunar-pel') {
+      return SolarGeometry.lunarPolarMountingFactor(state.mountingType, MODEL_ASSUMPTIONS.lunarPolarIlluminatedFraction);
     }
+    if (bodyKey !== 'earth') return mounting.yieldMult;
+    if (state.mountingType === 'fixed') return 1;
 
-    const latitudeFactor = Math.max(0, Math.min(1, (Math.abs(state.latitude) - 20) / 25));
-    const cloudiness = this.getCloudinessFactor(preset?.region, ghi, state.body || 'earth');
+    const sky = skyModel || this.getEarthSkyModel(state.latitude, preset, ghi);
+    const latitude = clampNumber(state.latitude, -90, 90, 0);
+    const reference = SolarGeometry.annualHourlyPlaneOfArray(latitude, 'fixed', { ...sky, groundCoverageRatio: 0 });
+    const mounted = SolarGeometry.annualHourlyPlaneOfArray(latitude, state.mountingType, this.getMountingSkyOptions(state.mountingType, sky));
+    return reference.sum > 0 ? mounted.sum / reference.sum : 1;
+  },
 
-    const adjustment = Object.hasOwn(MOUNTING_YIELD_ADJUSTMENTS, state.mountingType)
-      ? MOUNTING_YIELD_ADJUSTMENTS[state.mountingType]
-      : null;
-    if (!adjustment) return mounting.yieldMult;
+  /* Only single-axis trackers backtrack, so only they depend on row spacing. */
+  getMountingSkyOptions(mountingKey, skyModel) {
+    return {
+      ...skyModel,
+      groundCoverageRatio: mountingKey === 'single' ? (skyModel?.groundCoverageRatio || 0) : 0,
+    };
+  },
 
-    return mounting.yieldMult +
-      (latitudeFactor * adjustment.latitudeSlope) +
-      (cloudiness * adjustment.cloudinessSlope);
+  describeBaseYieldReference(state, skyModel) {
+    const bodyKey = state.body || 'earth';
+    if (bodyKey === 'moon' && state.solarProfileModel === 'lunar-pel') return 'vertical sun-tracking panels';
+    if (bodyKey === 'earth' && skyModel) return `fixed tilt, equator-facing at ${Math.round(skyModel.fixedTiltDeg)}°`;
+    return 'fixed tilt, equator-facing';
   },
 
   getLocationAdjustedGroundCoverageRatio(state, preset, ghi, mounting) {
@@ -222,8 +284,16 @@ export const solarMethods = {
     const ghi = this.estimateGHI(state.latitude, state.longitude, bodyKey);
     const preset = this.getNearbyPreset(state.latitude, state.longitude, bodyKey);
     const mounting = MOUNTING_TYPES[state.mountingType];
-    const baseYield = state.siteYieldMwhPerMwdcYear || this.estimateBaseYield(state.latitude, state.longitude, ghi, bodyKey);
-    const yieldMult = this.getMountingYieldMultiplier(state, preset, ghi);
+    const coverageModel = this.getLocationAdjustedGroundCoverageRatio(state, preset, ghi, mounting);
+    const groundCoverageRatio = coverageModel.groundCoverageRatio;
+    const skyModel = bodyKey === 'earth'
+      ? this.getEarthSkyModel(state.latitude, preset, ghi, groundCoverageRatio)
+      : null;
+    // An explicit 0 is a valid (if empty) yield; only a missing value falls back.
+    const baseYield = Number.isFinite(state.siteYieldMwhPerMwdcYear)
+      ? Math.max(0, state.siteYieldMwhPerMwdcYear)
+      : this.estimateBaseYield(state.latitude, state.longitude, ghi, bodyKey);
+    const yieldMult = this.getMountingYieldMultiplier(state, preset, ghi, skyModel);
     const siteYield = baseYield * yieldMult;
     const annualMWh = state.systemSizeMW * siteYield;
     const dailyMWh = annualMWh / body.cyclesPerEarthYear;
@@ -232,8 +302,6 @@ export const solarMethods = {
     const totalPanelCost = state.systemSizeMW * 1e6 * state.panelCostPerW;
 
     const panelArea = (state.systemSizeMW * 1e6) / ((state.panelEfficiency / 100) * 1000);
-    const coverageModel = this.getLocationAdjustedGroundCoverageRatio(state, preset, ghi, mounting);
-    const groundCoverageRatio = coverageModel.groundCoverageRatio;
     const landArea = panelArea / groundCoverageRatio;
     const acres = landArea / SQUARE_METERS_PER_ACRE;
     const bosModel = this.getLocationAdjustedBosCostPerW(
@@ -258,7 +326,12 @@ export const solarMethods = {
     );
     const lcoe = lifetimeAverageAnnualMWh > 0 ? (annualizedSolar + annualSolarOm) / lifetimeAverageAnnualMWh : 0;
 
-    const solarGeo = this.getSolarGeometry(state, body, state.mountingType);
+    const solarGeo = this.getSolarGeometry(
+      state,
+      body,
+      state.mountingType,
+      skyModel ? this.getMountingSkyOptions(state.mountingType, skyModel) : null
+    );
     const binHours = body.cycleHours / solarGeo.profile.length;
 
     return {
@@ -275,11 +348,13 @@ export const solarMethods = {
       binHours,
       ghi,
       baseYield,
+      baseYieldReference: this.describeBaseYieldReference(state, skyModel),
       yieldMult,
       siteYield,
+      skyModel: skyModel ? this.getMountingSkyOptions(state.mountingType, skyModel) : null,
       panelDegradationAnnual: state.panelDegradationAnnual,
       sunHours: parseFloat(solarGeo.dayLengthHours.toFixed(1)),
-      capacityFactor: annualMWh / (state.systemSizeMW * 8760),
+      capacityFactor: state.systemSizeMW > 0 ? annualMWh / (state.systemSizeMW * 8760) : 0,
       annualMWh,
       lifetimeAverageAnnualMWh,
       dailyMWh,

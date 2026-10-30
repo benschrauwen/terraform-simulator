@@ -293,7 +293,7 @@ solar LCOE        = (solar_capex * crf(r, solar_life) + land * r + solar O&M)
 
 Unit costs ($/kg H2, $/t CO2, $/MCF, $/t methanol) use a cost cascade:
 
-1. Power cost is solar, land and battery, annualized net of upfront support, plus their O&M. In AI mode only the chemical share of served energy counts.
+1. Power cost is solar, land and battery, annualized net of upfront support, plus their O&M. In AI mode the battery (it discharges only to the AI load) goes wholly to AI, and solar + land are split by AI-served vs chemical energy; AI cost + chemical-plant cost = the total asset-life annual cost. The AI token cost is divided by levelized token output (AI-served energy factor).
 2. Power cost is split by the electrolyzer/DAC power shares.
 3. H2 and CO2 costs pass to each reactor by its feed share, so vented feed is charged to the product that vents it. Buffers are allocated by module.
 4. Each cost is divided by year-1 output times the levelized chemical-energy factor.

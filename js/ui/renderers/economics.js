@@ -443,7 +443,12 @@ function buildUnitRows({ r, e }) {
   const rows = [];
   if (r.ai.enabled) {
     rows.push(
-      econRow('Integrated AI cost', `$${FormatNumbers.fixed(e.costPerMToken, 2)} / 1M tokens`),
+      econRow(
+        'Integrated AI cost',
+        `$${FormatNumbers.fixed(e.costPerMToken, 2)} / 1M tokens`,
+        '',
+        'AI datacenter capital charge and O&M, the whole battery (it discharges only to the AI load) and the AI-served energy share of solar + land, divided by levelized token output. The chemical plant pays the rest of solar + land, so no cost is counted twice.'
+      ),
       econRow(
         'Token margin',
         `${e.tokenMarginPerM >= 0 ? '+' : ''}$${FormatNumbers.fixed(e.tokenMarginPerM, 2)} / 1M`,

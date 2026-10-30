@@ -543,3 +543,27 @@ test('I11 payback is earned from operating cash minus replacements, never from s
   assert.ok(short.cumulativeOperatingCashFlow < short.netCapexAtClose);
   assert.equal(short.paybackYears, Infinity);
 });
+
+test('I12 cost allocation: AI + chemical plant = total asset-life annual cost; AI pays the battery in AI mode', () => {
+  forEachScenario((result, name) => {
+    const economics = result.economics;
+    const u = economics.unitCosts;
+    // Total annual cost on the asset-life basis, rebuilt from its parts.
+    const total = sum(Object.values(economics.annualizedCapex)) + economics.annualOM;
+    relClose(economics.assetLifeAnnualCost, total, 1e-12, `${name} asset-life cost`, 1e-6);
+    relClose(u.aiAnnualCost + u.chemicalPlantAnnualCost, total, 1e-9, `${name} AI + chemical = total`, 1e-6);
+    const batteryCost = economics.annualizedCapex.battery + economics.capex.battery * result.state.batteryOmPercent / 100;
+    const solarLandCost = economics.annualizedCapex.solar + economics.annualizedCapex.land + result.solar.annualSolarOm;
+    if (result.ai.enabled) {
+      // The battery discharges only to the AI load (ai-compute.js), so the
+      // chemical plant's power is its energy share of solar + land alone.
+      const chemShare = result.ai.chemicalAnnualKWh / (result.ai.chemicalAnnualKWh + result.ai.annualAiServedKWh);
+      relClose(u.chemicalPowerCost, solarLandCost * chemShare, 1e-9, `${name} chemical power cost`, 1e-6);
+      relClose(u.aiPowerCost, batteryCost + solarLandCost * (1 - chemShare), 1e-9, `${name} AI power cost`, 1e-6);
+      relClose(u.aiAnnualCost, u.aiPowerCost + economics.annualizedCapex.ai + result.ai.annualOM, 1e-9, `${name} AI cost`, 1e-6);
+    } else {
+      assert.equal(u.aiAnnualCost, 0, `${name} no AI cost without AI`);
+      relClose(u.chemicalPowerCost, solarLandCost + batteryCost, 1e-9, `${name} chemical power cost`, 1e-6);
+    }
+  });
+});

@@ -6,7 +6,13 @@
    for any latitude and day of year.
 */
 
-import { FormatNumbers } from '../ui/format-numbers.js';
+/* en-US one-decimal formatting (matches the UI's FormatNumbers.fixed). */
+function formatOneDecimal(value) {
+  return Number(value).toLocaleString('en-US', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+}
 
 export const SolarGeometry = {
 
@@ -651,7 +657,7 @@ export const SolarGeometry = {
 
   hoursToDisplayString(hours, cycleHours = 24) {
     if (!isFinite(hours)) return '—';
-    if (cycleHours > 48) return `${FormatNumbers.fixed(hours / 24, 1)} Earth d`;
+    if (cycleHours > 48) return `${formatOneDecimal(hours / 24)} Earth d`;
     return this.hoursToTimeString(hours);
   },
 

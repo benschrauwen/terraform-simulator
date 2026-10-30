@@ -4,6 +4,7 @@
    Each model file contributes a plain method object; methods call each other
    through `this`, so they must always be invoked via the assembled facade. */
 
+import { catalogMethods } from './module-catalog.js';
 import { coreMethods } from './core.js';
 import { solarMethods } from './solar.js';
 import { batteryMethods } from './battery.js';
@@ -13,6 +14,7 @@ import { economicsMethods } from './economics.js';
 
 export const Calc = Object.assign(
   {},
+  catalogMethods,
   coreMethods,
   solarMethods,
   batteryMethods,

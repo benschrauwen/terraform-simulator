@@ -9,7 +9,7 @@ import {
   PLANETARY_BODIES,
 } from '../data/reference-data.js';
 import { ModuleCatalog } from '../model/module-catalog.js';
-import { POLICY_INPUT_FIELDS, POLICY_SCHEMES } from '../model/policy.js';
+import { POLICY_SCHEMES } from '../data/policies.js';
 
 export const SOLAR_PROFILE_DEFAULTS_BY_BODY = {
   earth: 'earth',
@@ -22,6 +22,30 @@ export const SOLAR_PROFILE_OPTIONS_BY_BODY = {
   mars: ['mars', 'mars-average'],
   moon: ['moon', 'lunar-pel'],
 };
+
+/* One numeric state field per distinct policy input key across all schemes. */
+function buildPolicyInputFields() {
+  const seen = new Set();
+  const fields = [];
+
+  Object.values(POLICY_SCHEMES).forEach(policy => {
+    (policy.inputs || []).forEach(input => {
+      if (seen.has(input.key)) return;
+      seen.add(input.key);
+      fields.push({
+        key: input.key,
+        type: 'number',
+        min: input.min,
+        max: input.max,
+        defaultValue: input.defaultValue,
+      });
+    });
+  });
+
+  return fields;
+}
+
+export const POLICY_INPUT_FIELDS = buildPolicyInputFields();
 
 export const CORE_STATE_FIELDS = [
   { key: 'loadConfigTab', type: 'enum', options: ['chemicals', 'ai'], defaultValue: 'chemicals' },

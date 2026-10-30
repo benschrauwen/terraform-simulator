@@ -48,34 +48,6 @@ export const processMethods = {
     };
   },
 
-  getModuleRouteConfig(moduleId, route) {
-    return ModuleCatalog.getRouteConfig(moduleId, route);
-  },
-
-  getExploratoryRouteConfig(moduleId, route) {
-    return this.getModuleRouteConfig(moduleId, route);
-  },
-
-  getModuleCapexControlConfig(moduleId, route) {
-    const routeConfig = this.getModuleRouteConfig(moduleId, route);
-    const defaultValue = routeConfig?.capexPerAnnualUnit || 0;
-    const unitLabel = routeConfig?.capexUnit === 'm3pd' ? '$/m3/day' : '$/ton/yr capacity';
-    const step = defaultValue >= 5000 ? 100 : defaultValue >= 1000 ? 50 : defaultValue >= 250 ? 10 : 5;
-    const min = Math.max(step, Math.floor((defaultValue * 0.25) / step) * step);
-    const max = Math.max(min + step, Math.ceil((defaultValue * 4) / step) * step);
-    return {
-      min,
-      max,
-      step,
-      defaultValue,
-      unitLabel,
-    };
-  },
-
-  getExploratoryCapexControlConfig(moduleId, route) {
-    return this.getModuleCapexControlConfig(moduleId, route);
-  },
-
   getExploratoryPriorityWeight(state, moduleId) {
     return this.clampNumber(
       state?.[`${moduleId}PriorityWeight`],

@@ -12,7 +12,7 @@ import {
   getStateFieldOptions,
 } from '../state/schema.js';
 import { ModuleCatalog } from './module-catalog.js';
-import { PolicyModel } from './policy.js';
+import { migrateLegacyState } from '../state/migrations.js';
 
 export const coreMethods = {
   hasBatteryStorage(state) {
@@ -217,46 +217,6 @@ export const coreMethods = {
     };
   },
 
-  getModuleById(moduleId) {
-    return ModuleCatalog.getById(moduleId);
-  },
-
-  moduleSupportsFeedBuffer(moduleId, route = null) {
-    const module = this.getModuleById(moduleId);
-    if (!module) return false;
-    if (module.supportsFeedBuffer) return true;
-    if (!ModuleCatalog.hasRoutes(module)) return false;
-
-    const routeToCheck = route || ModuleCatalog.getDefaultRoute(module);
-    const routeConfig = routeToCheck ? ModuleCatalog.getRouteConfig(moduleId, routeToCheck) : null;
-    return Boolean(routeConfig?.supportsFeedBuffer);
-  },
-
-  hasModuleFeedBufferSupport(moduleId) {
-    const module = this.getModuleById(moduleId);
-    if (!module) return false;
-    if (module.supportsFeedBuffer) return true;
-    return Boolean(ModuleCatalog.getRouteOptions(module).some(option => this.moduleSupportsFeedBuffer(moduleId, option.value)));
-  },
-
-  getModuleFeedBufferLabel(moduleId, route = null) {
-    const module = this.getModuleById(moduleId);
-    if (!module) return 'Feed buffer (cycle-average sizing)';
-    if (module.bufferLabel) return module.bufferLabel;
-
-    const routeToCheck = route || ModuleCatalog.getDefaultRoute(module);
-    const routeConfig = routeToCheck ? ModuleCatalog.getRouteConfig(moduleId, routeToCheck) : null;
-    return routeConfig?.bufferLabel || 'Feed buffer (cycle-average sizing)';
-  },
-
-  isModuleFeedBufferEnabled(state = {}, moduleId, route = null) {
-    return this.moduleSupportsFeedBuffer(moduleId, route) && Boolean(state?.[`${moduleId}BufferEnabled`]);
-  },
-
-  getDirectModuleDependencies(moduleId, state = {}) {
-    return ModuleCatalog.getDependencies(moduleId, state);
-  },
-
   normalizeCoreStateFields(input = {}, normalized = {}) {
     const enumOrDefault = (value, allowed, fallback) => (allowed.has(value) ? value : fallback);
 
@@ -403,7 +363,7 @@ export const coreMethods = {
   },
 
   normalizeState(rawState = {}) {
-    const input = PolicyModel.normalizeLegacyState(
+    const input = migrateLegacyState(
       rawState && typeof rawState === 'object' ? rawState : {}
     );
     const normalized = {

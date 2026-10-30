@@ -3,12 +3,21 @@
    builder's SLIDER_MARKERS); the labels name the source the data file cites. */
 
 import { FACILITY_DEFAULTS } from '../../data/datacenter/facility.js';
-import { GAS_DEFAULTS, GRID_DEFAULTS } from '../../data/datacenter/power.js';
+import { BATTERY_COSTS, GAS_DEFAULTS, GRID_DEFAULTS } from '../../data/datacenter/power.js';
 import { SLIDER_MARKERS } from '../slider-markers.js';
 
 export const DATACENTER_SLIDER_MARKERS = {
   tokenPricePerM: SLIDER_MARKERS.aiTokenPrice,
-  batteryCostPerKWh: SLIDER_MARKERS.batteryCost,
+  // Energy and power components (power.js BATTERY_COSTS); the plant builder's
+  // all-in $/kWh markers do not apply to a component.
+  batteryCostPerKWh: [
+    { value: BATTERY_COSTS.globalBasis.energyPerKWh, label: 'Energy component, global market (Ember / BNEF 2025, ~$150/kWh at 4 h)' },
+    { value: BATTERY_COSTS.nrel2024.energyPerKWh, label: 'Energy component, NREL 2024 (US, 2024$)' },
+  ],
+  batteryPowerCostPerKW: [
+    { value: BATTERY_COSTS.globalBasis.powerPerKW, label: 'Power component, global market (judgment split of Ember / BNEF 2025)' },
+    { value: BATTERY_COSTS.nrel2024.powerPerKW, label: 'Power component, NREL 2024 (US, 2024$)' },
+  ],
   panelCostPerW: SLIDER_MARKERS.panelCost,
   itUtilizationPercent: [
     { value: FACILITY_DEFAULTS.itUtilization.aiInference * 100, label: 'AI inference (LBNL 2024)' },

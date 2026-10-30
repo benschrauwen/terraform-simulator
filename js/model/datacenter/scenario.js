@@ -47,7 +47,8 @@
                  gridToBatteryMWh, gasToBatteryMWh, fuelMMBtu, gasRunHours, gasOutageRunHours, gridImportHours,
                  peakGridMW, monthlyPeakGridMW[12], peakExportMW,
                  sharesOfServed: { solar, nuclear, grid, gas, battery } },
-       battery: { capacityMWh, powerMW, equivalentFullCyclesPerYear, lifetimeYears,
+       battery: { capacityMWh, powerMW, capex (energy + power parts), energyCapex, powerCapex,
+                  costPerKWh (effective at this duration), equivalentFullCyclesPerYear, lifetimeYears,
                   startSocMWh, endSocMWh, lossesMWh },
        hourly (full mode only): { loadMW, itMW, solarMW, nuclearMW, gridMW, gasMW,
                  batteryDischargeMW, batteryChargeMW, exportMW, curtailedMW, unservedMW,
@@ -188,7 +189,11 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
 
   const capacityKWh = state.batteryCapacityMWh * 1000;
   const efc = capacityKWh > 0 ? run.battery.dischargeThroughputKWh / capacityKWh : 0;
-  const batteryCost = getBatteryCapexAndLife(state, efc);
+  // Energy part ($/kWh, the plant builder's primitive) + power part ($/kW of
+  // capacity / duration); O&M and replacements apply to the total.
+  const batteryEnergy = getBatteryCapexAndLife(state, efc);
+  const batteryPowerCapex = getBatteryPowerKW(state) * state.batteryPowerCostPerKW;
+  const batteryCost = { ...batteryEnergy, energyCapex: batteryEnergy.capex, powerCapex: batteryPowerCapex, capex: batteryEnergy.capex + batteryPowerCapex };
   const batteryLossesKWh = totals.batteryChargeKWh - totals.batteryDischargeKWh - (run.battery.endSocKWh - run.battery.startSocKWh);
 
   const energy = splitFacilityEnergy({ itKW, cooling, tech, loadKW, unservedKW: run.unservedKW });
@@ -249,6 +254,11 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
     battery: {
       capacityMWh: state.batteryCapacityMWh,
       powerMW: getBatteryPowerKW(state) / 1000,
+      capex: batteryCost.capex,
+      energyCapex: batteryCost.energyCapex,
+      powerCapex: batteryCost.powerCapex,
+      // Effective $/kWh at this duration = energy $/kWh + power $/kW / duration.
+      costPerKWh: state.batteryCapacityMWh > 0 ? batteryCost.capex / (state.batteryCapacityMWh * 1000) : 0,
       equivalentFullCyclesPerYear: efc,
       lifetimeYears: batteryCost.lifetimeYears,
       startSocMWh: mwh(run.battery.startSocKWh),

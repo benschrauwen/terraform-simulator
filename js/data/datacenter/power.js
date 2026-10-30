@@ -8,9 +8,9 @@
    power architectures, power-side project lead times and a few industry
    context facts for the datacenter simulator. Pure data.
 
-   Solar and battery costs reuse data/reference-data.js (SOLAR_COST_PRESETS)
-   and the battery defaults of the existing schema; only their lead times
-   live here. Building, IT and cooling live in facility.js and cooling.js.
+   Solar costs reuse data/reference-data.js (SOLAR_COST_PRESETS); battery
+   costs are split into energy and power components here (BATTERY_COSTS),
+   its other parameters reuse the existing schema's defaults. Building, IT and cooling live in facility.js and cooling.js.
 
    Conventions: money in US$ (dollar year noted where the source states one),
    $/MWh, $/kW, $/kW-yr; heat rates in MMBtu/MWh (= thousand Btu/kWh) on a
@@ -584,6 +584,58 @@ export const GAS_REDUNDANCY_GUIDANCE = {
   // https://www.power-eng.com/onsite-power/onsite-gas-turbines-reciprocating-engines-to-power-meta-data-center/ (retrieved 2026-10)
   islanded: { spareUnits: 2, defaultGensetType: 'recip' },
   backup: { spareUnits: 1, defaultGensetType: 'standby-diesel' },
+};
+
+/* ---------- Battery storage cost (energy + power components) ----------
+   capex = MWh x energy $/kWh + MW x power $/kW (MW = MWh / duration), so a
+   shorter battery of the same MWh costs more: its inverters, transformers
+   and switchgear are sized for more MW. The energy part is cells, racks,
+   containers and energy-related BOS; the power part PCS/inverters, MV
+   transformers, switchgear and the BESS's own grid tie.
+
+   - NREL, Cost Projections for Utility-Scale Battery Storage: 2025 Update
+     (NREL/TP-6A40-93281, June 2025; 2024$, US, overnight incl. EPC,
+     contingency, interconnection): "Total Cost ($/kW) = Energy Cost ($/kWh)
+     * Duration (hr) + Power Cost ($/kW)"; 2024: "the energy cost is
+     $241/kWh, and the power cost is $372/kW" (4 h: $334/kWh); Table 2 mid
+     case 4 h: $321/kWh (2025), $308/kWh (2026); low case 2026 $255.
+     https://docs.nlr.gov/docs/fy25osti/93281.pdf
+     https://atb.nlr.gov/electricity/2024/utility-scale_battery_storage
+   - PNNL Energy Storage Cost and Performance Database v2024 (LFP, 100 MW,
+     2023, US installed): 4 h $372.72/kWh; 2 h $423, 8 h $352.91, 10 h
+     $349.07/kWh; a linear fit of the 2 h and 10 h totals gives ~$331/kWh +
+     ~$185/kW (EPC and development booked per kWh).
+     https://www.pnnl.gov/sites/default/files/media/file/ESGC_Cost_Performance_Database_v2024.xlsx
+   - Lazard LCOE+ (Jul 2026), utility-scale standalone 100 MW, US, total
+     capital cost: 2 h $270-580/kWh, 4 h $270-365/kWh (tariffs and FEOC rules
+     on Chinese cells raised US prices).
+     https://lazard.com/media/sdvdrvc5/lazards-lcoeplus_vf.pdf
+   - Global basis (outside the US and China): Ember (2025-12-11) ~$125/kWh
+     all-in for >= 4 h ("$75/kWh for the core equipment shipped from China
+     and around $50/kWh for installation and grid connection"); BNEF ESS cost
+     survey 2025: $117/kWh average turnkey (equipment, global), US ~$219/kWh
+     (search summary, not opened).
+     https://ember-energy.org/latest-insights/how-cheap-is-battery-storage/
+     https://about.bnef.com/insights/clean-energy/battery-storage-costs-hit-record-lows
+     https://www.energy-storage.news/behind-the-numbers-bnef-finds-40-year-on-year-drop-in-bess-costs/
+     (all retrieved 2026-10)
+   Default: the US 2026 basis, because the default site is in Texas and the
+   US sources all sit well above the former $150/kWh (a global-market
+   figure): NREL's 2024 split scaled to its 2026 mid case (x 308 / 334),
+   energy $222/kWh + power $343/kW = $308/kWh at 4 h, inside Lazard's
+   $270-365. A behind-the-meter battery shares the site substation, so the
+   power part is slightly conservative (judgment). Effective $/kWh = energy +
+   power / duration: 1 h $565, 2 h $394, 4 h $308, 8 h $265. */
+export const BATTERY_COSTS = {
+  energyPerKWh: 222,
+  powerPerKW: 343,
+  nrel2024: { energyPerKWh: 241, powerPerKW: 372, fourHourPerKWh: 334 },
+  nrel2026MidFourHourPerKWh: 308,
+  lazard2026FourHourPerKWh: { low: 270, high: 365 },
+  pnnl2023FourHourPerKWh: 372.72,
+  // Global (ex-US/China) basis: Ember's ~$125/kWh at 4 h with a ~20% power
+  // share (judgment between PNNL's 12% and NREL's 28%): 120 + 120 / 4 = $150/kWh.
+  globalBasis: { energyPerKWh: 120, powerPerKW: 120 },
 };
 
 /* ---------- Nuclear ---------- */

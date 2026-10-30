@@ -105,6 +105,7 @@ function batteryInfo(state, r) {
   const b = r.dispatch.battery;
   return [
     infoRow('Power', formatMW(b.powerMW)),
+    infoRow('Effective cost', `$${fixed(b.costPerKWh, 0)}/kWh at ${fixed(state.batteryDurationHours, state.batteryDurationHours % 1 ? 1 : 0)} h`, 'Energy $/kWh + power $/kW / duration: shorter batteries carry more inverter and transformer capacity per kWh.'),
     infoRow('Full cycles', `${fixed(b.equivalentFullCyclesPerYear, 0)}/yr`),
     infoRow('Life', `${fixed(b.lifetimeYears, 1)} years`),
     infoRow('Discharged', `${formatMWh(r.dispatch.annual.batteryDischargeMWh)}/yr`),

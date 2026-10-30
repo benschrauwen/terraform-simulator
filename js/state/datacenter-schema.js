@@ -37,6 +37,7 @@ import { DATACENTER_MODEL_ASSUMPTIONS } from '../data/datacenter/model-assumptio
 import {
   ARCHITECTURE_STARTING_DESIGNS,
   ARCHITECTURES,
+  BATTERY_COSTS,
   DEFAULT_ARCHITECTURE,
   DEFAULT_GAS_GENSET_TYPE,
   DEFAULT_NUCLEAR_TYPE,
@@ -173,7 +174,11 @@ export const DATACENTER_STATE_FIELDS = [
   /* ---------- Battery (optional; same fields and defaults as the plant builder) ---------- */
   { key: 'batteryCapacityMWh', type: 'number', min: 0, max: 1e7, defaultValue: 0 },
   { key: 'batteryDurationHours', type: 'number', min: 0.25, max: 24, defaultValue: DEFAULT_STATE.batteryDurationHours },
-  { key: 'batteryCostPerKWh', type: 'number', min: 0, max: 5000, defaultValue: DEFAULT_STATE.batteryCostPerKWh },
+  // Battery capex = MWh x energy $/kWh + MW x power $/kW (power.js
+  // BATTERY_COSTS: NREL 2026 mid case split, $308/kWh at 4 h). The plant
+  // builder's single $/kWh (150) is a global-market all-in figure.
+  { key: 'batteryCostPerKWh', type: 'number', min: 0, max: 5000, defaultValue: BATTERY_COSTS.energyPerKWh },
+  { key: 'batteryPowerCostPerKW', type: 'number', min: 0, max: 5000, defaultValue: BATTERY_COSTS.powerPerKW },
   { key: 'batteryEfficiency', type: 'number', min: 1, max: 100, defaultValue: DEFAULT_STATE.batteryEfficiency },
   { key: 'batteryCycles', type: 'number', min: 1, max: 1e6, defaultValue: DEFAULT_STATE.batteryCycles },
   { key: 'batteryOmPercent', type: 'number', min: 0, max: 100, defaultValue: DEFAULT_STATE.batteryOmPercent },

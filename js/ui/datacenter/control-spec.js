@@ -216,7 +216,8 @@ export const DATACENTER_SECTIONS = {
     {
       details: 'Battery costs',
       items: [
-        { type: 'range', id: 'batteryCostPerKWh', label: 'Installed cost', min: 50, max: 500, step: 1, format: per(0, 'kWh') },
+        { type: 'range', id: 'batteryCostPerKWh', label: 'Battery energy cost ($/kWh)', min: 50, max: 500, step: 1, format: per(0, 'kWh'), tooltip: 'Cells, racks, containers and energy-related balance of system, per kWh of capacity.' },
+        { type: 'range', id: 'batteryPowerCostPerKW', label: 'Battery power cost ($/kW)', min: 0, max: 1000, step: 5, format: per(0, 'kW'), tooltip: 'Inverters (PCS), transformers and switchgear, per kW of power (capacity / duration). A shorter battery of the same MWh has more kW, so it costs more per kWh.' },
         { type: 'range', id: 'batteryEfficiency', label: 'Round-trip efficiency', min: 70, max: 98, step: 0.5, format: pct(1) },
         { type: 'range', id: 'batteryOmPercent', label: 'Battery O&M', min: 0, max: 5, step: 0.1, format: pct(1, '% of capex/yr') },
       ],

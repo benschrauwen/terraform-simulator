@@ -89,7 +89,15 @@ export function buildDatacenterAssets(state, { solar, battery, firm, gridCapKW, 
     assets.push({ key: 'solarLand', label: 'Solar land', group: 'power', capex: model.landCapex, lifeYears: Infinity, perpetual: true, salvageAtCost: true, annualFixedOm: 0 });
   }
   if (battery.capex > 0) {
-    assets.push({ key: 'battery', label: 'Battery', group: 'power', capex: battery.capex, lifeYears: battery.lifetimeYears, annualFixedOm: battery.capex * state.batteryOmPercent / 100 });
+    assets.push({
+      key: 'battery', label: 'Battery', group: 'power', capex: battery.capex, lifeYears: battery.lifetimeYears, annualFixedOm: battery.capex * state.batteryOmPercent / 100,
+      ...(battery.powerCapex > 0 ? {
+        parts: [
+          { label: 'Energy (cells, racks, enclosures)', capex: battery.energyCapex },
+          { label: 'Power (inverters, transformers, switchgear)', capex: battery.powerCapex },
+        ],
+      } : {}),
+    });
   }
   if (firm.family === 'gas') {
     assets.push({ key: 'gas', label: firm.label, group: 'power', capex: state.gasCapexPerKW * firmKW, lifeYears: A.assetLifeYears.gas, annualFixedOm: state.gasFixedOmPerKWYear * firmKW });

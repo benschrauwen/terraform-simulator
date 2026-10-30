@@ -44,7 +44,8 @@ export const DATACENTER_SENSITIVITY_VARIABLES = Object.freeze([
   { id: 'nuclearPpa', stateKey: 'nuclearPpaPricePerMWh', label: 'Nuclear PPA price', format: { prefix: '$', suffix: '/MWh', digits: 0 }, appliesTo: (state, result) => state.firmFamily === 'nuclear' && state.nuclearPpaPricePerMWh > 0 && hasFirm(state, result) },
   { id: 'panelCost', stateKey: 'panelCostPerW', label: 'Module price', format: { prefix: '$', suffix: '/W', digits: 2 }, appliesTo: hasSolar },
   { id: 'bosCost', stateKey: 'bosCostPerW', label: 'Solar BOS', format: { prefix: '$', suffix: '/W', digits: 2 }, appliesTo: hasSolar },
-  { id: 'batteryCost', stateKey: 'batteryCostPerKWh', label: 'Battery cost', format: { prefix: '$', suffix: '/kWh', digits: 0 }, appliesTo: hasBattery },
+  { id: 'batteryCost', stateKey: 'batteryCostPerKWh', label: 'Battery energy cost', format: { prefix: '$', suffix: '/kWh', digits: 0 }, appliesTo: hasBattery },
+  { id: 'batteryPowerCost', stateKey: 'batteryPowerCostPerKW', label: 'Battery power cost', format: { prefix: '$', suffix: '/kW', digits: 0 }, appliesTo: hasBattery },
   { id: 'waterPrice', stateKey: 'waterPricePerM3', label: 'Water price', format: { prefix: '$', suffix: '/m³', digits: 2 }, appliesTo: (state, result) => (result?.water?.withdrawnM3 || 0) > 0 },
   // Time to power: every lead-time phase x (1 +/- swing).
   { id: 'schedule', stateKey: 'scheduleScalePercent', label: 'Schedule (time to power)', format: { suffix: '% of lead times', digits: 0 }, appliesTo: () => true },

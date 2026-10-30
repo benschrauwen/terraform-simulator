@@ -56,7 +56,7 @@ export const scenarioMethods = {
           batterySeededMWh: this.getSeededAiBatteryMWh(state, normalizedState, solarModel.annualMWh),
         }
       : this.buildDisabledAiSummary(normalizedState);
-    const { storage, chemicalSupply } = supply;
+    const { storage, chemicalSupply, lifetimeEnergy } = supply;
     const annualDispatch = supply.dispatch || null;
     const cyclesPerYear = this.getBodyConfig(normalizedState.body || 'earth').cyclesPerEarthYear;
     const effectiveDailyKWh = chemicalSupply.dailyAvailableKWh;
@@ -157,6 +157,7 @@ export const scenarioMethods = {
       h2Surplus,
       co2Surplus,
       exploratoryModules,
+      lifetimeEnergy,
     });
     const environmental = includeEnvironmental
       ? this.calculateEnvironmental(solar, dac, sabatier, methanol, electrolyzer)
@@ -170,6 +171,7 @@ export const scenarioMethods = {
       chemicalSupply,
       ai,
       annualDispatch,
+      lifetimeEnergy,
       warnings: [...(solar.warnings || [])],
       allocation,
       electrolyzer,

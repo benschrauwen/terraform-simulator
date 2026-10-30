@@ -1,7 +1,7 @@
 /*
  * Energy-model physics and invariants: clear-sky irradiance, mounting
  * multipliers vs PVGIS, lunar polar geometry, annual series and dispatch
- * energy balances and sizing definitions.
+ * energy balances, sizing definitions and lifetime (degradation) vectors.
  * Expected values are independent references (published formulas, PVGIS
  * v5.3 outputs, conservation laws), not snapshots of the model.
  */
@@ -317,3 +317,37 @@ test('site lookups use the nearest preset and respect an explicit zero yield', (
   assert.equal(solarFor({ systemSizeMW: 0 }).capacityFactor, 0, 'CF is 0, not NaN, for a 0 MW plant');
 });
 
+test('lifetime energy re-dispatches the fixed design on the degraded, repowered array', () => {
+  // Without storage at 100% sizing nothing clips, so chemical energy is exactly
+  // proportional to PV output: chemical factor == solar factor every year.
+  const linear = runScenario({});
+  linear.lifetimeEnergy.solarFactorByYear.forEach((factor, index) => {
+    close(linear.lifetimeEnergy.chemicalFactorByYear[index], factor, 1e-9, `year ${index + 1} chemical factor`);
+  });
+  close(linear.lifetimeEnergy.solarFactorByYear[29], Math.pow(1 - 0.0065, 29), 1e-12, 'year-30 PV factor');
+
+  // Repowering at the end of a 30-year solar life restarts degradation in year 31.
+  const repowered = runScenario({ analysisHorizonYears: 40 });
+  assert.equal(repowered.lifetimeEnergy.solarFactorByYear[30], 1);
+  close(repowered.lifetimeEnergy.solarFactorByYear[31], 1 - 0.0065, 1e-12, 'year-32 factor after repowering');
+
+  // AI is served first, so it loses less than PV output and the residual
+  // chemistry loses more; reliability of the fixed design load falls.
+  const ai = runScenario({ aiComputeEnabled: true });
+  const last = ai.lifetimeEnergy.horizonYears - 1;
+  const pvFactor = ai.lifetimeEnergy.solarFactorByYear[last];
+  assert.ok(ai.lifetimeEnergy.aiServedFactorByYear[last] > pvFactor, 'AI-served energy degrades less than PV');
+  assert.ok(ai.lifetimeEnergy.chemicalFactorByYear[last] < pvFactor, 'Residual chemistry degrades more than PV');
+  assert.ok(ai.ai.lateLifeReliability < ai.ai.fullPowerReliability, 'Late-life reliability below year 1');
+  const direct = Calc.simulateAnnualDispatchWithConstantAiLoad(ai.state, ai.annualSolar, ai.ai.designLoadKW, {
+    captureSeries: false,
+    chemicalCapacityKW: ai.chemicalSupply.processPowerKW,
+    solarScale: pvFactor,
+  });
+  close(ai.ai.lateLifeReliability, direct.fullPowerReliability, 1e-12, 'late-life reliability = re-dispatch at the year-30 PV factor');
+
+  // Economics apply the vectors to the matching revenue streams.
+  const year30 = ai.economics.yearlyCashFlows[last];
+  close(year30.revenue.ai, ai.economics.revenue.ai * ai.lifetimeEnergy.aiServedFactorByYear[last], 1e-6, 'year-30 AI revenue');
+  close(year30.revenue.methane, ai.economics.revenue.methane * ai.lifetimeEnergy.chemicalFactorByYear[last], 1e-6, 'year-30 methane revenue');
+});

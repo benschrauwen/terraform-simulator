@@ -181,7 +181,7 @@
             <span class="range-value" id="panelDegradationAnnualValue">0.65%/yr</span>
           </label>
           <div class="field-note compact-note">
-            Multi-year economics fade solar-linked output by the selected annual PV degradation rate.
+            Multi-year economics re-dispatch the fixed plant design on the degraded array each year (degradation restarts after a solar replacement).
           </div>
           <label>Mounting Type
             <select id="mountingType"></select>
@@ -423,6 +423,10 @@
                 <div class="info-row">
                   <span class="tooltip-label" data-tooltip="Share of hours the AI load runs at full design output in year 1, on a clear-sky-equivalent year (no multi-day weather).">Full-rate reliability (clear-sky eq.):</span>
                   <span id="aiFullRateValue" class="highlight">—</span>
+                </div>
+                <div class="info-row">
+                  <span class="tooltip-label" data-tooltip="Lowest yearly full-rate reliability over the analysis horizon: the year-1 design load re-dispatched on the degraded array (degradation restarts after a solar replacement).">Late-life reliability:</span>
+                  <span id="aiLateLifeReliabilityValue" class="highlight">—</span>
                 </div>
                 <div class="info-row">
                   <span class="tooltip-label" data-tooltip="Total yearly AI tokens produced and sold in the model.">Annual tokens:</span>

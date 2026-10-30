@@ -306,7 +306,8 @@ export const batteryMethods = {
   },
 
   /* Chemical-only plant on the annual dispatch basis (Earth year; Mars
-     orbital year, annualized). Returns { storage, chemicalSupply, dispatch }. */
+     orbital year, annualized). Returns { storage, chemicalSupply, dispatch,
+     lifetimeEnergy }. */
   calculateBattery(state, solar, annualSolar, options = {}) {
     const includeSeries = options.includeSeries !== false;
     const cyclesPerYear = this.getBodyConfig(state.body || 'earth').cyclesPerEarthYear;
@@ -332,6 +333,18 @@ export const batteryMethods = {
       chemicalSizingPercent: state.chemicalSizingPercent ?? DEFAULT_STATE.chemicalSizingPercent,
     };
     const { capex, lifetimeYears } = getBatteryCapexAndLife(state, cyclesPerYear);
+    const lifetimeEnergy = this.buildLifetimeEnergyProfile(state, {
+      year1: { aiServedKWh: 0, chemicalKWh: dispatch.chemicalKWh, clippedKWh: dispatch.clippedSolarKWh, reliability: 1 },
+      annualizationFactor,
+      solarKWh: dispatchSolar.totalKWh ?? sumSeries(dispatchSolar.hourlyKW || []),
+      evaluate: solarScale => {
+        const degraded = this.simulateAnnualChemicalDispatch(state, dispatchSolar, processPowerKW, {
+          captureSeries: false,
+          solarScale,
+        });
+        return { aiServedKWh: 0, chemicalKWh: degraded.chemicalKWh, clippedKWh: degraded.clippedSolarKWh, reliability: 1 };
+      },
+    });
 
     return {
       storage: this.buildAnnualStorageSummary(state, dispatch, capex, lifetimeYears),
@@ -342,6 +355,7 @@ export const batteryMethods = {
         includeDisplaySeries: includeSeries,
         includeSolarSummary: includeSeries,
       }),
+      lifetimeEnergy,
     };
   },
 };

@@ -82,6 +82,12 @@ export const rendererMethods = {
     if (aiFullRateValue) {
       aiFullRateValue.textContent = r.ai.enabled ? `${FormatNumbers.fixed(r.ai.fullPowerReliability * 100, 2)}%` : '—';
     }
+    const aiLateLifeReliabilityValue = document.getElementById('aiLateLifeReliabilityValue');
+    if (aiLateLifeReliabilityValue) {
+      aiLateLifeReliabilityValue.textContent = r.ai.enabled && Number.isFinite(r.ai.lateLifeReliability)
+        ? `${FormatNumbers.fixed(r.ai.lateLifeReliability * 100, 2)}% (year ${FormatNumbers.fixed(r.ai.lateLifeReliabilityYear, 0)}, PV at ${FormatNumbers.fixed(r.ai.lateLifeSolarFactor * 100, 1)}%)`
+        : '—';
+    }
     const aiBatterySeedNote = document.getElementById('aiBatterySeedNote');
     if (aiBatterySeedNote) {
       const seededMWh = r.ai.enabled ? (r.ai.batterySeededMWh || 0) : 0;

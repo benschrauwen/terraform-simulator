@@ -319,7 +319,8 @@ export const aiComputeMethods = {
 
   /* Largest constant AI load whose full-power hour share meets the target on
      the year-1 (clear-sky-equivalent) annual series, then the residual
-     chemical plant. Only called with AI enabled. */
+     chemical plant, then the same fixed design re-dispatched on degraded
+     solar for the per-year energy vectors. Only called with AI enabled. */
   calculateAICompute(state, solar, annualSolar, options = {}) {
     const captureDispatchSeries = options.captureDispatchSeries !== false;
     const includeDisplayDispatchSeries = options.includeDisplayDispatchSeries !== false;
@@ -386,6 +387,30 @@ export const aiComputeMethods = {
       fullCaptureChemicalKWh: fullCaptureDispatch.chemicalKWh || 0,
       chemicalSizingPercent: state.chemicalSizingPercent ?? DEFAULT_STATE.chemicalSizingPercent,
     };
+    const lifetimeEnergy = this.buildLifetimeEnergyProfile(state, {
+      year1: {
+        aiServedKWh: finalDispatch.aiServedKWh,
+        chemicalKWh: finalDispatch.chemicalKWh,
+        clippedKWh: finalDispatch.clippedSolarKWh,
+        reliability: finalDispatch.fullPowerReliability,
+      },
+      annualizationFactor,
+      solarKWh: dispatchSolar.totalKWh || 0,
+      evaluate: solarScale => {
+        const degraded = this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, designLoadKW, {
+          captureSeries: false,
+          skipOpHours: true,
+          chemicalCapacityKW,
+          solarScale,
+        });
+        return {
+          aiServedKWh: degraded.aiServedKWh,
+          chemicalKWh: degraded.chemicalKWh,
+          clippedKWh: degraded.clippedSolarKWh,
+          reliability: degraded.fullPowerReliability,
+        };
+      },
+    });
     const annualAiServedKWh = finalDispatch.aiServedKWh * annualizationFactor;
     const annualChemicalKWh = finalDispatch.chemicalKWh * annualizationFactor;
     const annualTokensM = (annualAiServedKWh / 1000) * (state.aiMillionTokensPerMWh || 0);
@@ -393,6 +418,7 @@ export const aiComputeMethods = {
     const capex = designLoadKW * gpuCapexPerKW;
     const annualizedCapex = capex * crf(state.discountRate / 100, state.aiAssetLifeYears || AI_COMPUTE_DEFAULTS.assetLifeYears);
     const annualOM = capex * ((AI_COMPUTE_DEFAULTS.omPercent || 0) / 100);
+    const minReliabilityYearIndex = lifetimeEnergy.aiReliabilityByYear.indexOf(lifetimeEnergy.minAiReliability);
 
     return {
       enabled: true,
@@ -408,6 +434,9 @@ export const aiComputeMethods = {
       tokensPerKWYearM: designLoadKW > 0 ? annualTokensM / designLoadKW : 0,
       utilization: finalDispatch.utilization,
       fullPowerReliability: finalDispatch.fullPowerReliability,
+      lateLifeReliability: lifetimeEnergy.minAiReliability,
+      lateLifeReliabilityYear: minReliabilityYearIndex >= 0 ? minReliabilityYearIndex + 1 : 1,
+      lateLifeSolarFactor: lifetimeEnergy.minSolarFactor,
       fullPowerHours: finalDispatch.fullPowerHours * annualizationFactor,
       curtailedHours: finalDispatch.curtailedHours * annualizationFactor,
       averageDailyTokensM: annualTokensM / Math.max(cyclesPerYear, 1),
@@ -427,6 +456,7 @@ export const aiComputeMethods = {
       chemicalSupply: this.buildAnnualChemicalSupplySummary(finalDispatch, solar, cyclesPerYear, annualizationFactor, {
         includeSeries: captureDispatchSeries,
       }),
+      lifetimeEnergy,
     };
   },
 
@@ -440,6 +470,9 @@ export const aiComputeMethods = {
       tokensPerKWYearM: 0,
       utilization: 0,
       fullPowerReliability: 1,
+      lateLifeReliability: 1,
+      lateLifeReliabilityYear: 1,
+      lateLifeSolarFactor: 1,
       batterySeededMWh: 0,
       fullPowerHours: 0,
       curtailedHours: 0,
@@ -455,6 +488,7 @@ export const aiComputeMethods = {
       dispatch: null,
       storage: null,
       chemicalSupply: null,
+      lifetimeEnergy: null,
     };
   },
 };

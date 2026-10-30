@@ -114,7 +114,7 @@ export const rendererMethods = {
     document.getElementById('metricRevenue').textContent = `${FormatNumbers.formatMoney(e.totalAnnualRevenue)}/yr`;
     document.getElementById('metricPayback').textContent = e.noNetInvestment
       ? 'n/a (no net investment)'
-      : Number.isFinite(e.paybackYears) ? `${FormatNumbers.fixed(e.paybackYears, 1)} yrs` : 'No payback';
+      : Number.isFinite(e.paybackYears) ? `${FormatNumbers.fixed(e.paybackYears, 1)} yrs` : 'Not within horizon';
     const irrLabel = document.getElementById('metricIrrLabel');
     const irrAnalysis = e.financing.enabled ? e.equityIrrAnalysis : e.projectIrrAnalysis;
     const irrAvailable = Number.isFinite(e.irr);
@@ -161,10 +161,14 @@ export const rendererMethods = {
     const label = document.getElementById('metricViabilityValue');
     viability.classList.remove('viable', 'marginal', 'not-viable');
 
-    if (e.npv > 0 && e.paybackYears < this.state.analysisHorizonYears) {
+    // Payback excludes salvage, so "Viable" needs operating cash to recover
+    // the outlay inside the horizon; a positive NPV carried only by the
+    // final-year book value is "Marginal" at best.
+    const recovered = Number.isFinite(e.paybackYears) && e.paybackYears <= this.state.analysisHorizonYears;
+    if (e.npv > 0 && recovered) {
       viability.classList.add('viable');
       label.textContent = 'Viable';
-    } else if (e.npv > 0 || e.finalCumulativeNetCash > 0) {
+    } else if (e.npv > 0 || recovered) {
       viability.classList.add('marginal');
       label.textContent = 'Marginal';
     } else {

@@ -8,11 +8,14 @@ const money = FormatNumbers.formatMoney;
 const signClass = value => (value >= 0 ? 'positive' : 'negative');
 const irrClass = irr => (Number.isFinite(irr) ? signClass(irr) : '');
 const NO_INVESTMENT_LABEL = 'n/a (no net investment)';
+// Payback is Infinity when operating cash never recovers the outlay inside
+// the analysis horizon.
+const NOT_RECOVERED_LABEL = 'Not within horizon';
 const formatPaybackShort = (years, noNetInvestment = false) => (
-  noNetInvestment ? NO_INVESTMENT_LABEL : Number.isFinite(years) ? `${FormatNumbers.fixed(years, 1)} yrs` : 'N/A'
+  noNetInvestment ? NO_INVESTMENT_LABEL : Number.isFinite(years) ? `${FormatNumbers.fixed(years, 1)} yrs` : NOT_RECOVERED_LABEL
 );
 const formatPaybackLong = (years, noNetInvestment = false) => (
-  noNetInvestment ? NO_INVESTMENT_LABEL : Number.isFinite(years) ? `${FormatNumbers.fixed(years, 1)} years` : 'N/A'
+  noNetInvestment ? NO_INVESTMENT_LABEL : Number.isFinite(years) ? `${FormatNumbers.fixed(years, 1)} years` : NOT_RECOVERED_LABEL
 );
 // The IRR tooltip explains why no IRR is shown when the model withholds it.
 const irrTooltip = (value, analysis, fallback) => (
@@ -166,7 +169,7 @@ function buildReturnsRows({ e, labels }) {
       labels.payback,
       formatPaybackLong(e.paybackYears, e.noNetInvestment),
       '',
-      'Simple payback on cumulative net cash versus upfront CAPEX. This is the first point where cumulative net cash turns positive.'
+      'Simple payback: the first point where cumulative operating cash flow minus replacement CAPEX recovers net CAPEX at close. Final-year salvage is not counted (it is a book value, not cash earned).'
     )
   );
   if (differsFromSimplePayback(e.sustainedPaybackYears, e.paybackYears)) {
@@ -175,7 +178,7 @@ function buildReturnsRows({ e, labels }) {
         labels.sustainedPayback,
         formatPaybackLong(e.sustainedPaybackYears),
         '',
-        'Payback only if the project stays cumulative-cash positive through the full selected horizon after scheduled replacements.'
+        'Payback only if the project stays cumulative-cash positive through the full selected horizon after scheduled replacements (salvage not counted).'
       )
     );
   }
@@ -185,7 +188,7 @@ function buildReturnsRows({ e, labels }) {
         'Equity payback',
         formatPaybackLong(e.equityPaybackYears),
         '',
-        'Simple payback on cumulative sponsor equity cash after scheduled debt service.'
+        'Simple payback on cumulative sponsor equity cash after scheduled debt service and replacements, without final-year salvage.'
       )
     );
     if (differsFromSimplePayback(e.sustainedEquityPaybackYears, e.equityPaybackYears)) {
@@ -194,7 +197,7 @@ function buildReturnsRows({ e, labels }) {
           'Sustained equity payback',
           formatPaybackLong(e.sustainedEquityPaybackYears),
           '',
-          'Equity payback only if sponsor cash stays cumulative-positive through the full selected horizon after debt service and replacements.'
+          'Equity payback only if sponsor cash stays cumulative-positive through the full selected horizon after debt service and replacements (salvage not counted).'
         )
       );
     }
@@ -215,7 +218,7 @@ function buildReturnsRows({ e, labels }) {
         'Salvage value (final year)',
         money(e.salvageValue),
         'positive',
-        'Straight-line residual value of each asset at the end of the horizon (last installation cost x remaining life / life), plus land at cost. Included in NPV, IRR, ROI, and payback.'
+        'Straight-line residual value of each asset at the end of the horizon (last installation cost x remaining life / life), plus land at cost, assumed realizable at book value. Included in NPV, IRR and ROI (so short horizons look better), but not in payback.'
       )
     );
   }

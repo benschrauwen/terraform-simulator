@@ -54,6 +54,8 @@ const SCENARIOS = {
   financing90: { financingEnabled: true, debtSharePercent: 90 },
   debtPastHorizon: { financingEnabled: true, debtTermYears: 25, analysisHorizonYears: 20 },
   horizon40: { analysisHorizonYears: 40, methanolEnabled: true },
+  // Short horizon: most of the capex comes back only as final-year salvage.
+  horizon3: { analysisHorizonYears: 3 },
   us48e: { policyMode: 'us_48e_solar' },
   us45y: { policyMode: 'us_45y_solar' },
   ukCfd: { policyMode: 'uk_cfd_solar_ar7' },
@@ -501,4 +503,43 @@ test('I10 the lean IRR path equals the full calculation for every scenario', () 
     assert.ok(Object.is(metrics.mirr, full.mirr) || Math.abs(metrics.mirr - full.mirr) <= 1e-9, `${name}: lean MIRR`);
     assert.ok(Math.abs(metrics.npv - full.npv) <= 1e-9 * moneyScale(full), `${name}: lean NPV`);
   });
+});
+
+/* Independent simple payback: first year in which cumulative (operating
+   cash - replacement CAPEX) recovers the outlay, interpolated within the
+   year; Infinity if never. Salvage is deliberately absent. */
+function independentPayback(outlay, flows) {
+  if (!(outlay > 0)) return 0;
+  let cumulative = -outlay;
+  for (let i = 0; i < flows.length; i++) {
+    if (flows[i] > 0 && cumulative < 0 && cumulative + flows[i] >= 0) return i + (-cumulative / flows[i]);
+    cumulative += flows[i];
+  }
+  return Infinity;
+}
+
+test('I11 payback is earned from operating cash minus replacements, never from salvage', () => {
+  forEachScenario((result, name) => {
+    const economics = result.economics;
+    const operating = economics.yearlyCashFlows.map(entry => entry.operatingCashFlow - entry.replacementOutflow);
+    const expected = independentPayback(economics.netCapexAtClose, operating);
+    assert.ok(
+      Object.is(economics.paybackYears, expected) || Math.abs(economics.paybackYears - expected) <= 1e-9,
+      `${name}: payback ${economics.paybackYears} vs ${expected}`
+    );
+    if (economics.financing.enabled) {
+      const equity = economics.yearlyCashFlows.map((entry, index) => operating[index] - entry.debtService);
+      const expectedEquity = independentPayback(economics.financing.equityUpfront, equity);
+      assert.ok(
+        Object.is(economics.equityPaybackYears, expectedEquity) || Math.abs(economics.equityPaybackYears - expectedEquity) <= 1e-9,
+        `${name}: equity payback ${economics.equityPaybackYears} vs ${expectedEquity}`
+      );
+    }
+  });
+  // 3-year horizon: ~$238k of operating cash against ~$469k net CAPEX, so
+  // there is no payback; the ~$385k book-value salvage used to fake one at
+  // 2.67 years.
+  const short = results.horizon3.economics;
+  assert.ok(short.cumulativeOperatingCashFlow < short.netCapexAtClose);
+  assert.equal(short.paybackYears, Infinity);
 });

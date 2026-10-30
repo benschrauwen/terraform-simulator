@@ -459,22 +459,17 @@ export const economicsMethods = {
     const finalCumulativeEquityCash = yearlyCashFlows.length > 0
       ? yearlyCashFlows[yearlyCashFlows.length - 1].cumulativeEquityCash
       : -financing.equityUpfront;
-    const paybackYears = calculateSimplePaybackYears(
-      netCapexAtClose,
-      yearlyCashFlows.map(entry => entry.netCashFlow)
-    );
-    const sustainedPaybackYears = calculateSustainedPaybackYears(
-      netCapexAtClose,
-      yearlyCashFlows.map(entry => entry.netCashFlow)
-    );
-    const equityPaybackYears = calculateSimplePaybackYears(
-      financing.equityUpfront,
-      yearlyCashFlows.map(entry => entry.equityCashFlow)
-    );
-    const sustainedEquityPaybackYears = calculateSustainedPaybackYears(
-      financing.equityUpfront,
-      yearlyCashFlows.map(entry => entry.equityCashFlow)
-    );
+    // Payback counts cash actually earned: operating cash minus replacement
+    // CAPEX, without the final-year salvage. Salvage is a book value at the
+    // horizon, not cash recovered from operations; counting it let a short
+    // horizon "pay back" in its last year on the residual value alone.
+    // Infinity = not recovered within the horizon.
+    const paybackCashFlows = yearlyCashFlows.map(entry => entry.netCashFlow - entry.salvageValue);
+    const equityPaybackCashFlows = yearlyCashFlows.map(entry => entry.equityCashFlow - entry.salvageValue);
+    const paybackYears = calculateSimplePaybackYears(netCapexAtClose, paybackCashFlows);
+    const sustainedPaybackYears = calculateSustainedPaybackYears(netCapexAtClose, paybackCashFlows);
+    const equityPaybackYears = calculateSimplePaybackYears(financing.equityUpfront, equityPaybackCashFlows);
+    const sustainedEquityPaybackYears = calculateSustainedPaybackYears(financing.equityUpfront, equityPaybackCashFlows);
     // With no net investment at close (e.g. a 100% grant) ROI and IRR are
     // undefined; payback stays 0 (nothing to recover) and NPV carries the case.
     const noNetInvestment = !(netCapexAtClose > 0);

@@ -130,14 +130,14 @@ export const uiStateMethods = {
     const debtTermInput = document.getElementById('debtTermYears');
     if (debtTermInput) {
       const horizonYears = Math.max(1, Math.round(this.state.analysisHorizonYears || 1));
-      this.state.debtTermYears = Math.max(1, Math.min(Math.round(this.state.debtTermYears || 1), horizonYears));
-      debtTermInput.max = String(horizonYears);
       debtTermInput.value = String(this.state.debtTermYears);
       this.syncRangeDisplay('debtTermYears', this.state.debtTermYears);
 
       const financingTermNote = document.getElementById('financingTermNote');
       if (financingTermNote) {
-        financingTermNote.textContent = `Debt term is capped by the selected ${FormatNumbers.fixed(horizonYears, 0)}-year analysis horizon.`;
+        financingTermNote.textContent = this.state.debtTermYears > horizonYears
+          ? `The debt term runs past the ${FormatNumbers.fixed(horizonYears, 0)}-year analysis horizon; the balance still outstanding is repaid as a balloon in the final year.`
+          : `Debt amortizes within the ${FormatNumbers.fixed(horizonYears, 0)}-year analysis horizon.`;
       }
     }
 

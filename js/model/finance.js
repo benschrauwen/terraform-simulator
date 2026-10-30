@@ -189,10 +189,17 @@ export function buildDebtSchedule(principal, annualRate, termYears, analysisHori
     let principalPaid = 0;
     let debtService = 0;
 
+    let balloonPayment = 0;
     if (year <= safeTermYears && startingBalance > 1e-9) {
       interest = startingBalance * safeRate;
       principalPaid = Math.max(0, annualDebtService - interest);
       if (year === safeTermYears || principalPaid > startingBalance) {
+        principalPaid = startingBalance;
+      }
+      // A term longer than the horizon keeps its level payment; the balance
+      // still outstanding at the end of the horizon is repaid as a balloon.
+      if (year === safeHorizonYears && safeTermYears > safeHorizonYears) {
+        balloonPayment = Math.max(0, startingBalance - principalPaid);
         principalPaid = startingBalance;
       }
       debtService = interest + principalPaid;
@@ -208,6 +215,8 @@ export function buildDebtSchedule(principal, annualRate, termYears, analysisHori
       interest,
       principalPaid,
       debtService,
+      scheduledDebtService: debtService - balloonPayment,
+      balloonPayment,
       endingBalance: balance,
     };
     schedule.push(entry);
@@ -221,6 +230,7 @@ export function buildDebtSchedule(principal, annualRate, termYears, analysisHori
     totalInterest,
     totalPrincipal,
     totalDebtService,
+    balloonPayment: schedule.reduce((sum, entry) => sum + entry.balloonPayment, 0),
     endingBalance: balance,
   };
 }
@@ -419,9 +429,10 @@ export function buildFinancingModel(state, totalCapex) {
   const enabled = Boolean(state.financingEnabled);
   const debtSharePercent = enabled ? Math.max(0, Math.min(90, state.debtSharePercent || 0)) : 0;
   const debtInterestRate = enabled ? Math.max(0, state.debtInterestRate || 0) : 0;
-  const debtTermYears = enabled
-    ? Math.max(1, Math.min(Math.round(state.analysisHorizonYears || 1), Math.round(state.debtTermYears || 1)))
-    : 0;
+  // The term is not clamped to the horizon: a longer loan amortizes on its
+  // own schedule and the outstanding balance is repaid at the horizon.
+  const debtTermYears = enabled ? Math.max(1, Math.round(state.debtTermYears || 1)) : 0;
+  const horizonYears = Math.max(1, Math.round(state.analysisHorizonYears || 1));
   const upfrontFeePercent = enabled ? Math.max(0, state.debtFeePercent || 0) : 0;
   const debtAmount = totalCapex * (debtSharePercent / 100);
   const equityCapex = Math.max(0, totalCapex - debtAmount);
@@ -444,6 +455,9 @@ export function buildFinancingModel(state, totalCapex) {
     upfrontFee,
     equityUpfront: equityCapex + upfrontFee,
     annualDebtService: debtSchedule.annualDebtService,
+    termExceedsHorizon: enabled && debtTermYears > horizonYears,
+    balloonPayment: debtSchedule.balloonPayment,
+    balloonYear: debtSchedule.balloonPayment > 1e-9 ? horizonYears : null,
     totalInterest: debtSchedule.totalInterest,
     totalPrincipal: debtSchedule.totalPrincipal,
     totalDebtService: debtSchedule.totalDebtService,

@@ -362,6 +362,40 @@ function buildFinancingRows({ e }) {
       econRow('Total debt interest', money(financing.totalInterest), 'negative')
     );
   }
+  if (financing.balloonPayment > 0) {
+    rows.push(econRow(
+      `Balloon repayment (year ${FormatNumbers.fixed(financing.balloonYear, 0)})`,
+      money(financing.balloonPayment),
+      'negative',
+      'The debt term runs past the analysis horizon: the balance still outstanding at the horizon is repaid from final-year cash (including salvage).'
+    ));
+  }
+  if (Number.isFinite(financing.minDscr)) {
+    const weak = financing.minDscr < 1;
+    rows.push(
+      econRow(
+        'Minimum DSCR',
+        `${FormatNumbers.fixed(financing.minDscr, 2)}x (year ${FormatNumbers.fixed(financing.minDscrYear, 0)})`,
+        weak ? 'warning' : '',
+        'Debt service coverage ratio: operating cash flow after replacement CAPEX divided by scheduled debt service. Below 1.0x the project cannot pay its debt from its own cash that year; lenders typically require 1.2-1.4x.'
+      ),
+      econRow(
+        'Average DSCR',
+        `${FormatNumbers.fixed(financing.averageDscr, 2)}x`,
+        financing.averageDscr < 1 ? 'warning' : '',
+        'Mean debt service coverage ratio over the years with scheduled debt service.'
+      )
+    );
+    if (weak) {
+      const count = financing.dscrBelowOneYears.length;
+      rows.push(econRow(
+        'DSCR below 1.0x',
+        `${FormatNumbers.fixed(count, 0)} ${count === 1 ? 'year' : 'years'}`,
+        'warning',
+        `Years: ${financing.dscrBelowOneYears.join(', ')}.`
+      ));
+    }
+  }
   if (hasSponsorSupport(financing)) {
     const uncoveredYearsLabel = financing.uncoveredDebtServiceYearCount === 1
       ? '1 year'
@@ -372,21 +406,21 @@ function buildFinancingRows({ e }) {
     rows.push(
       econRow(
         'Financing warning',
-        `Debt service exceeds operating cash flow in ${uncoveredYearsLabel}`,
+        `Equity cash flow is negative in ${uncoveredYearsLabel}`,
         'warning',
-        'The model does not default or restructure the debt. It assumes the sponsor contributes extra cash whenever scheduled debt service is higher than project operating cash flow.'
+        'Debt service plus replacement CAPEX exceeds operating cash flow. The model does not default or restructure the debt: it assumes the sponsor contributes the shortfall.'
       ),
       econRow(
         'Additional sponsor cash support',
         money(financing.sponsorSupportTotal),
         'warning',
-        'Total additional sponsor cash assumed to cover debt-service shortfalls after O&M over the selected analysis horizon.'
+        'Total additional sponsor cash after close: every year in which O&M, replacement CAPEX and debt service exceed revenue.'
       ),
       econRow(
         'Peak annual sponsor support',
         peakSupportLabel,
         'warning',
-        'Largest single-year sponsor cash support needed because debt service is higher than project operating cash flow.'
+        'Largest single-year sponsor cash injection after close (debt service and/or replacement CAPEX above operating cash flow).'
       )
     );
   }

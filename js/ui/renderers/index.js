@@ -150,9 +150,11 @@ export const rendererMethods = {
     const financingTermCapValue = document.getElementById('financingTermCapValue');
     if (financingTermCapValue) {
       const analysisHorizonYears = Math.max(1, Math.round(this.state.analysisHorizonYears || 1));
-      financingTermCapValue.textContent = e.financing.enabled
-        ? `${FormatNumbers.fixed(e.financing.debtTermYears, 0)}-year debt term within ${FormatNumbers.fixed(analysisHorizonYears, 0)}-year analysis`
-        : `Max ${FormatNumbers.fixed(analysisHorizonYears, 0)} years from the analysis horizon`;
+      financingTermCapValue.textContent = !e.financing.enabled
+        ? `Up to 30 years; a term past the ${FormatNumbers.fixed(analysisHorizonYears, 0)}-year horizon ends in a balloon repayment`
+        : e.financing.termExceedsHorizon
+          ? `${FormatNumbers.fixed(e.financing.debtTermYears, 0)}-year term past the ${FormatNumbers.fixed(analysisHorizonYears, 0)}-year analysis: ${FormatNumbers.formatMoney(e.financing.balloonPayment)} balloon in year ${FormatNumbers.fixed(analysisHorizonYears, 0)}`
+          : `${FormatNumbers.fixed(e.financing.debtTermYears, 0)}-year debt term within ${FormatNumbers.fixed(analysisHorizonYears, 0)}-year analysis`;
     }
 
     const viability = document.getElementById('metricViability');

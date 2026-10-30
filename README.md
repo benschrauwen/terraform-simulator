@@ -478,9 +478,18 @@ debt_amount = total_capex * debt_share
 equity_upfront = total_capex - debt_amount + upfront_fee
 
 annual_debt_service = debt_amount * crf(interest_rate, debt_term)
+balloon_N = outstanding balance at the horizon if debt_term > N   # repaid in year N
 
 equity_cash_flow_y = net_cash_flow_y - debt_service_y
+
+dscr_y = (operating_cash_flow_y - replacement_capex_y) / scheduled_debt_service_y
+sponsor_support_y = max(0, -equity_cash_flow_y)        # debt service and/or replacements
 ```
+
+The economics panel reports minimum and average DSCR (flagged below 1.0x),
+total and peak sponsor support, and equity MIRR next to equity IRR: with
+70-90% debt, equity IRR is inflated by the small upfront equity and later
+sponsor injections, while MIRR finances and reinvests at the discount rate.
 
 Important implementation detail:
 

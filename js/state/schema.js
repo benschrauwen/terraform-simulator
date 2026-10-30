@@ -115,14 +115,9 @@ export const CORE_STATE_FIELDS = [
   { key: 'financingEnabled', type: 'boolean', defaultValue: false },
   { key: 'debtSharePercent', type: 'number', min: 0, max: 90, defaultValue: 70 },
   { key: 'debtInterestRate', type: 'number', min: 0, max: 1000, defaultValue: 6.5 },
-  {
-    key: 'debtTermYears',
-    type: 'integer',
-    min: 1,
-    max: 30,
-    getMax: state => Math.max(1, state.analysisHorizonYears || 1),
-    defaultValue: 15,
-  },
+  // May exceed the analysis horizon: the balance outstanding at the horizon
+  // is then repaid as a final-year balloon (see buildDebtSchedule).
+  { key: 'debtTermYears', type: 'integer', min: 1, max: 30, defaultValue: 15 },
   { key: 'debtFeePercent', type: 'number', min: 0, max: 100, defaultValue: 1.5 },
 
   { key: 'solarOmPercent', type: 'number', min: 0, max: 100, defaultValue: 1.5 },

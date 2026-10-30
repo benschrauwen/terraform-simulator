@@ -265,6 +265,7 @@ export const economicsMethods = {
     let peakSponsorSupport = 0;
     let peakSponsorSupportYear = null;
     const uncoveredDebtServiceYears = [];
+    const dscrValues = [];
     const yearFactors = this.getYearlyEnergyFactors(state, lifetimeEnergy, policy);
     for (let year = 1; year <= state.analysisHorizonYears; year++) {
       const { degradationFactor, aiFactor, chemicalFactor, policyFactor } = yearFactors(year);
@@ -292,8 +293,22 @@ export const economicsMethods = {
         interest: 0,
         principalPaid: 0,
         debtService: 0,
+        scheduledDebtService: 0,
+        balloonPayment: 0,
       };
-      const sponsorSupportNeeded = Math.max(0, debtEntry.debtService - operatingCashFlow);
+      const equityCashFlow = netCashFlow - debtEntry.debtService;
+      // Cash available for debt service is operating cash after replacement
+      // CAPEX (replacements are funded from operations). DSCR uses the
+      // scheduled payment; a horizon balloon is repaid from final-year cash
+      // including salvage. Any negative equity year after close, whether from
+      // debt service or a replacement, needs extra sponsor cash.
+      const cashAvailableForDebtService = operatingCashFlow - replacementOutflow;
+      const scheduledDebtService = debtEntry.scheduledDebtService ?? debtEntry.debtService;
+      const dscr = financing.enabled && scheduledDebtService > 1e-9
+        ? cashAvailableForDebtService / scheduledDebtService
+        : null;
+      if (dscr !== null) dscrValues.push({ year, dscr });
+      const sponsorSupportNeeded = financing.enabled ? Math.max(0, -equityCashFlow) : 0;
       if (sponsorSupportNeeded > 1e-9) {
         sponsorSupportTotal += sponsorSupportNeeded;
         uncoveredDebtServiceYears.push(year);
@@ -302,7 +317,6 @@ export const economicsMethods = {
           peakSponsorSupportYear = year;
         }
       }
-      const equityCashFlow = netCashFlow - debtEntry.debtService;
       const yearProfit = totalYearRevenue - annualCost;
       const cumulativeOperatingBefore = year === 1
         ? -netCapexAtClose
@@ -337,6 +351,9 @@ export const economicsMethods = {
         debtInterest: debtEntry.interest,
         debtPrincipal: debtEntry.principalPaid,
         debtService: debtEntry.debtService,
+        balloonPayment: debtEntry.balloonPayment || 0,
+        cashAvailableForDebtService,
+        dscr,
         sponsorSupportNeeded,
         equityCashFlow,
         cumulativeEquityCash: cumulativeEquityAfter,
@@ -413,6 +430,14 @@ export const economicsMethods = {
       sponsorSupportTotal,
       peakSponsorSupport,
       peakSponsorSupportYear,
+      minDscr: dscrValues.length ? Math.min(...dscrValues.map(entry => entry.dscr)) : null,
+      minDscrYear: dscrValues.length
+        ? dscrValues.reduce((min, entry) => (entry.dscr < min.dscr ? entry : min)).year
+        : null,
+      averageDscr: dscrValues.length
+        ? dscrValues.reduce((sum, entry) => sum + entry.dscr, 0) / dscrValues.length
+        : null,
+      dscrBelowOneYears: dscrValues.filter(entry => entry.dscr < 1).map(entry => entry.year),
     };
     const cashFlowTimeline = buildCashFlowTimeline(totalCapex, financingSummary, yearlyCashFlows, policy);
 

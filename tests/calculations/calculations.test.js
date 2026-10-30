@@ -559,88 +559,71 @@ test('financing coverage metrics flag sponsor support when debt service exceeds 
   const yearOne = economics.yearlyCashFlows[0];
   const expectedSupport = Math.max(0, yearOne.debtService - yearOne.operatingCashFlow);
 
-  assert.equal(
-    financedModel.canFullyCoverDebtService,
-    false,
-    'Expected a one-year debt term to outrun year-one operating cash flow and require sponsor support.'
-  );
+  assert.equal(financedModel.canFullyCoverDebtService, false);
+  assert.ok(expectedSupport > 0, 'A one-year term should outrun year-one operating cash flow.');
+  assert.equal(financedModel.firstUncoveredDebtServiceYear, 1);
+  assert.ok(Math.abs(yearOne.sponsorSupportNeeded - expectedSupport) <= 1e-6);
+  assert.ok(Math.abs(financedModel.peakSponsorSupport - expectedSupport) <= 1e-6);
+  assert.equal(financedModel.peakSponsorSupportYear, 1);
+  // Sponsor support is every negative equity year after close (debt service
+  // or replacements), and the summary adds them up.
+  economics.yearlyCashFlows.forEach(entry => {
+    assert.ok(Math.abs(entry.sponsorSupportNeeded - Math.max(0, -entry.equityCashFlow)) <= 1e-9, `year ${entry.year}`);
+  });
+  const total = economics.yearlyCashFlows.reduce((sum, entry) => sum + entry.sponsorSupportNeeded, 0);
+  assert.ok(Math.abs(financedModel.sponsorSupportTotal - total) <= 1e-6);
   assert.deepEqual(
     financedModel.uncoveredDebtServiceYears,
-    [1],
-    `Expected only year 1 to need sponsor debt-service support, got ${JSON.stringify(financedModel.uncoveredDebtServiceYears)}.`
+    economics.yearlyCashFlows.filter(entry => entry.equityCashFlow < -1e-9).map(entry => entry.year)
   );
-  assert.equal(
-    financedModel.firstUncoveredDebtServiceYear,
-    1,
-    `Expected year 1 to be the first uncovered debt-service year, got ${financedModel.firstUncoveredDebtServiceYear}.`
-  );
-  assert.equal(
-    financedModel.uncoveredDebtServiceYearCount,
-    1,
-    `Expected exactly one uncovered debt-service year, got ${financedModel.uncoveredDebtServiceYearCount}.`
-  );
-  assert.ok(
-    Math.abs(financedModel.sponsorSupportTotal - expectedSupport) <= 1e-6,
-    [
-      'Expected total modeled sponsor support to match the year-one debt-service shortfall.',
-      `Observed ${formatMoney(financedModel.sponsorSupportTotal)} vs expected ${formatMoney(expectedSupport)}.`,
-    ].join(' ')
-  );
-  assert.ok(
-    Math.abs(financedModel.peakSponsorSupport - expectedSupport) <= 1e-6,
-    [
-      'Expected peak sponsor support to match the one uncovered year in the one-year debt case.',
-      `Observed ${formatMoney(financedModel.peakSponsorSupport)} vs expected ${formatMoney(expectedSupport)}.`,
-    ].join(' ')
-  );
-  assert.equal(
-    financedModel.peakSponsorSupportYear,
-    1,
-    `Expected peak sponsor support in year 1, got ${financedModel.peakSponsorSupportYear}.`
-  );
-  assert.ok(
-    Math.abs(yearOne.sponsorSupportNeeded - expectedSupport) <= 1e-6,
-    [
-      'Expected the yearly cash-flow view to expose the same sponsor support amount as the financing summary.',
-      `Observed ${formatMoney(yearOne.sponsorSupportNeeded)} vs expected ${formatMoney(expectedSupport)}.`,
-    ].join(' ')
-  );
+  // DSCR = (operating cash - replacements) / scheduled debt service.
+  assert.ok(Math.abs(yearOne.dscr - (yearOne.operatingCashFlow - yearOne.replacementOutflow) / yearOne.debtService) <= 1e-12);
+  assert.ok(financedModel.minDscr < 1);
+  assert.deepEqual(financedModel.dscrBelowOneYears, [1]);
 });
 
-test('financing coverage metrics stay clear when operating cash flow covers debt service', () => {
+// Was: "coverage stays clear" with $0 support although year 7's replacement
+// made equity cash negative. Replacement-year shortfalls now count.
+test('sponsor support includes replacement-year shortfalls when debt service alone is covered', () => {
   const economics = Calc.calculateAll(createState({
     financingEnabled: true,
     debtTermYears: 10,
   })).economics;
   const financedModel = economics.financing;
+  const debtYears = economics.yearlyCashFlows.filter(entry => entry.debtService > 0);
+  assert.ok(debtYears.every(entry => entry.operatingCashFlow >= entry.debtService), 'operations cover scheduled debt service');
 
-  assert.equal(
-    financedModel.canFullyCoverDebtService,
-    true,
-    'Expected the 10-year debt case to keep scheduled debt service within operating cash flow in every debt year.'
-  );
-  assert.deepEqual(
-    financedModel.uncoveredDebtServiceYears,
-    [],
-    `Expected no uncovered debt-service years, got ${JSON.stringify(financedModel.uncoveredDebtServiceYears)}.`
-  );
-  assert.equal(
-    financedModel.firstUncoveredDebtServiceYear,
-    null,
-    `Expected no first uncovered debt-service year, got ${financedModel.firstUncoveredDebtServiceYear}.`
-  );
-  assert.equal(
-    financedModel.uncoveredDebtServiceYearCount,
-    0,
-    `Expected zero uncovered debt-service years, got ${financedModel.uncoveredDebtServiceYearCount}.`
-  );
-  assert.equal(financedModel.sponsorSupportTotal, 0, 'Expected no additional sponsor support when debt service stays covered.');
-  assert.equal(financedModel.peakSponsorSupport, 0, 'Expected no peak sponsor support when debt service stays covered.');
-  assert.equal(financedModel.peakSponsorSupportYear, null, 'Expected no peak sponsor support year when debt service stays covered.');
-  assert.ok(
-    economics.yearlyCashFlows.every(entry => entry.sponsorSupportNeeded === 0),
-    'Expected every yearly cash-flow entry to report zero sponsor support when debt service stays covered.'
-  );
+  const yearSeven = economics.yearlyCashFlows[6];
+  assert.ok(yearSeven.replacementOutflow > 0);
+  assert.ok(yearSeven.equityCashFlow < 0);
+  assert.ok(Math.abs(yearSeven.sponsorSupportNeeded + yearSeven.equityCashFlow) <= 1e-9);
+  assert.ok(financedModel.uncoveredDebtServiceYears.includes(7));
+  assert.equal(financedModel.canFullyCoverDebtService, false);
+  assert.ok(yearSeven.dscr < 1);
+  assert.ok(financedModel.minDscr <= yearSeven.dscr);
+  const meanDscr = debtYears.reduce((sum, entry) => sum + entry.dscr, 0) / debtYears.length;
+  assert.ok(Math.abs(financedModel.averageDscr - meanDscr) <= 1e-12);
+});
+
+test('a debt term past the horizon amortizes on its own schedule and ends in a balloon', () => {
+  // P at 6.5% over 25 years, horizon 20: the year-20 balloon is the balance
+  // after 20 level payments = PV of the remaining 5 payments.
+  const economics = Calc.calculateAll(createState({
+    financingEnabled: true,
+    debtTermYears: 25,
+    analysisHorizonYears: 20,
+  })).economics;
+  const financing = economics.financing;
+  assert.equal(financing.debtTermYears, 25);
+  assert.equal(financing.termExceedsHorizon, true);
+  const payment = financing.debtAmount * Calc.crf(0.065, 25);
+  assert.ok(Math.abs(financing.annualDebtService - payment) <= 1e-6);
+  const remaining = payment * (1 - Math.pow(1.065, -5)) / 0.065;
+  assert.ok(Math.abs(financing.balloonPayment - remaining) <= 1e-6);
+  assert.equal(financing.balloonYear, 20);
+  const last = economics.yearlyCashFlows.at(-1);
+  assert.ok(Math.abs(last.debtService - (payment + remaining)) <= 1e-6);
+  assert.ok(Math.abs(last.debtEndingBalance) <= 1e-6);
 });
 
 test('cash-flow timeline starts at close and follows unlevered project cash', () => {

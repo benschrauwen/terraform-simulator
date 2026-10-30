@@ -12,6 +12,10 @@ const branchOffset = (from, to, amount) => {
   return 0;
 };
 
+// Upstream feeds of an exploratory route ({ h2, co2, methanol }, derived
+// from its feedstocks by the module catalog); every route also draws power.
+const exploratoryFeeds = module => module.routeConfig?.diagramInputs || {};
+
 /**
  * Row-by-row card placement for the diagram. Each `place*` call reserves the next row
  * (or block of rows) below the previous one and appends positioned nodes to `nodes`.
@@ -209,14 +213,9 @@ export const Diagram = {
 
   buildNodes(r, width) {
     const layout = createDiagramLayout(width, (...args) => this.node(...args));
-    const exploratoryCards = r.exploratoryModules
-      .filter(module => module.enabled)
-      .map(module => ({
-        ...module,
-        diagramInputs: this.getExploratoryDiagramInputs(module),
-      }));
+    const exploratoryCards = r.exploratoryModules.filter(module => module.enabled);
     const exploratoryCardsWhere = predicate => exploratoryCards
-      .filter(module => predicate(module.diagramInputs))
+      .filter(module => predicate(exploratoryFeeds(module)))
       .map(module => this.makeExploratoryCard(module, r));
     const { smallHeight, largeHeight, singleWidth } = layout;
     const singleSolarRow = { cardHeight: largeHeight, singleCardWidth: singleWidth, wideMinWidth: 150, wideMaxWidth: 200, maxColumns: 1 };
@@ -596,8 +595,8 @@ export const Diagram = {
       const node = get(`exp-${module.id}`);
       if (!node) return;
 
-      const diagramInputs = this.getExploratoryDiagramInputs(module);
-      if (diagramInputs.electricity && array) {
+      const diagramInputs = exploratoryFeeds(module);
+      if (array) {
         const dailyPowerLabel = module.dailyKWh > 0
           ? this.formatAveragePowerFromCycleKWh(module.dailyKWh, cycleHours)
           : '';
@@ -649,17 +648,6 @@ export const Diagram = {
       }
     });
     return connections;
-  },
-
-  // Feedstock inputs affect placement; electricity adds a power connection only.
-  getExploratoryDiagramInputs(module) {
-    return {
-      electricity: true,
-      h2: false,
-      co2: false,
-      methanol: false,
-      ...(module?.diagramInputs || {}),
-    };
   },
 
   formatSolarSystemSize(peakPowerKW) {

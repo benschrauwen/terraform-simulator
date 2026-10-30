@@ -111,7 +111,7 @@ test('mtg exploratory module preserves its route and reports rough modeled outpu
   assert.ok(mtg, 'Expected the MTG experimental module to be present in exploratory results.');
   assert.equal(mtg.enabled, true, 'Expected MTG to reflect the enabled toggle.');
   assert.equal(mtg.route, 'fluid-bed', 'Expected MTG to preserve the selected exploratory route.');
-  assert.equal(mtg.diagramInputs?.methanol, true, 'Expected MTG to advertise methanol as a required diagram input.');
+  assert.equal(mtg.routeConfig.diagramInputs.methanol, true, 'Expected MTG (methanol feedstock) to draw methanol on the diagram.');
   assert.equal(withMtg.state.methanolEnabled, true, 'Expected MTG to auto-enable methanol in the normalized state.');
   assert.ok(mtg.outputDailyUnits > 0, 'Expected MTG to report a non-zero rough output when methanol is available.');
   assert.ok(mtg.capex > 0, 'Expected MTG to report a rough CAPEX estimate.');

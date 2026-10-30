@@ -169,9 +169,6 @@ export const MODULE_DEFINITIONS = [
     family: 'air-water-chemistry',
     exploratory: true,
     dependencies: ['methanol'],
-    diagramInputs: {
-      methanol: true,
-    },
     market: {
       min: 200,
       max: 2000,
@@ -192,7 +189,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs MeOH',
         outputLabel: 'Hydrocarbons',
         outputUnit: 't',
-        diagramInputs: { methanol: true },
       },
       'fluid-bed': {
         label: 'Fluid-bed MTG',
@@ -205,7 +201,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs MeOH',
         outputLabel: 'Hydrocarbons',
         outputUnit: 't',
-        diagramInputs: { methanol: true },
       },
     },
     missingInputs: [
@@ -243,7 +238,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs DAC CO2',
         outputLabel: 'CO',
         outputUnit: 't',
-        diagramInputs: { co2: true },
       },
       rwgs: {
         label: 'Reverse water-gas shift',
@@ -256,7 +250,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs DAC CO2 + H2',
         outputLabel: 'CO',
         outputUnit: 't',
-        diagramInputs: { co2: true, h2: true },
       },
       'low-temp-electrolysis': {
         label: 'Low-temp CO2 electrolysis',
@@ -269,7 +262,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs DAC CO2',
         outputLabel: 'CO',
         outputUnit: 't',
-        diagramInputs: { co2: true },
       },
       'soec-coelectrolysis': {
         label: 'SOEC / co-electrolysis (developmental)',
@@ -282,7 +274,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs DAC CO2 + heat',
         outputLabel: 'CO',
         outputUnit: 't',
-        diagramInputs: { co2: true },
       },
     },
     missingInputs: [
@@ -322,7 +313,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs H2 + N2',
         outputLabel: 'NH3',
         outputUnit: 't',
-        diagramInputs: { h2: true },
       },
       electrochemical: {
         label: 'Electrochemical route (speculative)',
@@ -334,7 +324,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs N2',
         outputLabel: 'NH3',
         outputUnit: 't',
-        diagramInputs: {},
       },
     },
     missingInputs: [
@@ -369,7 +358,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs CO2',
         outputLabel: 'Carbon',
         outputUnit: 't',
-        diagramInputs: { co2: true },
       },
       'graphene-grade': {
         label: 'Graphene-grade polishing (speculative)',
@@ -382,7 +370,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs CO2',
         outputLabel: 'Carbon',
         outputUnit: 't',
-        diagramInputs: { co2: true },
       },
     },
     missingInputs: [
@@ -417,7 +404,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs limestone',
         outputLabel: 'CaO',
         outputUnit: 't',
-        diagramInputs: {},
       },
       'indirect-heated': {
         label: 'Indirect-heated calciner',
@@ -430,7 +416,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs limestone',
         outputLabel: 'CaO',
         outputUnit: 't',
-        diagramInputs: {},
       },
     },
     missingInputs: [
@@ -463,7 +448,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs raw meal',
         outputLabel: 'Clinker eq.',
         outputUnit: 't',
-        diagramInputs: {},
       },
       'integrated-electric-kiln': {
         label: 'Integrated electric kiln',
@@ -475,7 +459,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs raw meal',
         outputLabel: 'Clinker eq.',
         outputUnit: 't',
-        diagramInputs: {},
       },
     },
     missingInputs: [
@@ -514,7 +497,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs H2 + pellets',
         outputLabel: 'Steel',
         outputUnit: 't',
-        diagramInputs: { h2: true },
       },
       'flash-ironmaking': {
         label: 'Flash ironmaking (developmental)',
@@ -526,7 +508,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs ore + reductant',
         outputLabel: 'Steel',
         outputUnit: 't',
-        diagramInputs: {},
       },
       'molten-oxide-electrolysis': {
         label: 'Molten oxide electrolysis (speculative)',
@@ -538,7 +519,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs ore + flux',
         outputLabel: 'Steel',
         outputUnit: 't',
-        diagramInputs: {},
       },
     },
     missingInputs: [
@@ -571,7 +551,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs quartz + C',
         outputLabel: 'Si',
         outputUnit: 't',
-        diagramInputs: {},
       },
       'electrochemical-reduction': {
         label: 'Electrochemical reduction (developmental)',
@@ -585,7 +564,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs silica',
         outputLabel: 'Si',
         outputUnit: 't',
-        diagramInputs: {},
       },
     },
     missingInputs: [
@@ -620,7 +598,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs alumina + anodes',
         outputLabel: 'Al',
         outputUnit: 't',
-        diagramInputs: {},
       },
       'novel-electrolysis': {
         label: 'Novel electrolysis (developmental)',
@@ -632,7 +609,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs alumina',
         outputLabel: 'Al',
         outputUnit: 't',
-        diagramInputs: {},
       },
     },
     missingInputs: [
@@ -665,7 +641,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs TiCl4 + Mg',
         outputLabel: 'Ti',
         outputUnit: 't',
-        diagramInputs: {},
       },
       'ffc-cambridge': {
         label: 'FFC-style electroreduction (developmental)',
@@ -677,7 +652,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs TiO2',
         outputLabel: 'Ti',
         outputUnit: 't',
-        diagramInputs: {},
       },
     },
     missingInputs: [
@@ -712,7 +686,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs saline water',
         outputLabel: 'Water',
         outputUnit: 'm3',
-        diagramInputs: {},
       },
       electrodialysis: {
         label: 'Brackish-water electrodialysis',
@@ -724,7 +697,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs brackish water',
         outputLabel: 'Water',
         outputUnit: 'm3',
-        diagramInputs: {},
       },
       // Route key kept for saved links. All-electric thermal desalination is
       // mechanical vapour compression (~8-15 kWh/m3); MED/MSF at ~14 kWh/m3
@@ -739,7 +711,6 @@ export const MODULE_DEFINITIONS = [
         feedstockSummary: 'Needs saline water',
         outputLabel: 'Water',
         outputUnit: 'm3',
-        diagramInputs: {},
       },
     },
     missingInputs: [

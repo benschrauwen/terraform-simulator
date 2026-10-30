@@ -792,10 +792,6 @@ export const processMethods = {
           methanolConsumed,
           bufferH2Kg: peakDayAllocations.h2Kg * bufferFraction,
           bufferCO2Kg: peakDayAllocations.co2Kg * bufferFraction,
-          diagramInputs: {
-            electricity: true,
-            ...(routeConfig?.diagramInputs || module.diagramInputs || {}),
-          },
         };
       });
   },

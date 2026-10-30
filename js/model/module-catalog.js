@@ -10,11 +10,18 @@ import { MODULE_DEFINITIONS, MODULE_FAMILY_LABELS } from '../data/modules.js';
 const DEFAULT_FEED_BUFFER_LABEL = 'Feed buffer (cycle-average sizing)';
 
 function normalizeRouteDefinition(routeId, definition = {}) {
+  const feedstocks = Object.freeze({ ...(definition.feedstocks || {}) });
   return Object.freeze({
     ...definition,
     id: routeId,
-    feedstocks: Object.freeze({ ...(definition.feedstocks || {}) }),
-    diagramInputs: Object.freeze({ ...(definition.diagramInputs || {}) }),
+    feedstocks,
+    // Upstream blocks that feed this route on the process diagram, one true
+    // flag per feedstock it consumes (every route also draws power).
+    diagramInputs: Object.freeze(Object.fromEntries(
+      [['h2', 'h2Kg'], ['co2', 'co2Kg'], ['methanol', 'methanolKg']]
+        .filter(([, feedKey]) => (feedstocks[feedKey] || 0) > 0)
+        .map(([input]) => [input, true])
+    )),
     market: definition.market ? Object.freeze({ ...definition.market }) : null,
   });
 }
@@ -70,7 +77,6 @@ function normalizeModuleDefinition(definition = {}) {
     routeOptions,
     routes,
     missingInputs: Object.freeze([...(definition.missingInputs || [])]),
-    diagramInputs: Object.freeze({ ...(definition.diagramInputs || {}) }),
     market: definition.market ? Object.freeze({ ...definition.market }) : null,
     defaultRoute: definition.defaultRoute || routeOptions[0]?.value || null,
   });

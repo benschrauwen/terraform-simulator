@@ -5,12 +5,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { ARCHITECTURE_STARTING_DESIGNS, GAS_GENSET_TYPES, GAS_REDUNDANCY_GUIDANCE } from '../../js/data/datacenter/power.js';
+import { ARCHITECTURE_STARTING_DESIGNS, ARCHITECTURES, GAS_GENSET_TYPES, GAS_REDUNDANCY_GUIDANCE, NUCLEAR_TYPES } from '../../js/data/datacenter/power.js';
 import { buildStartingDesign, calculateDatacenterScenario } from '../../js/model/datacenter/index.js';
 import {
   applyArchitectureDefaults,
   ARCHITECTURE_DESIGN_KEYS,
   DATACENTER_DEFAULT_STATE,
+  fitsArchitecture,
+  getArchitectureViolations,
   normalizeDatacenterState,
 } from '../../js/state/datacenter-schema.js';
 
@@ -42,16 +44,21 @@ test('the hybrid starting design follows its sizing rule (hand-derived at Abilen
   // count before the sizing followed the uptime target).
   assert.equal(s.firmFamily, 'gas');
   assert.equal(s.firmSizingMode, 'auto');
-  assert.equal(s.firmSpareUnits, GAS_REDUNDANCY_GUIDANCE.backup.spareUnits);
+  assert.equal(s.firmSpareUnits, GAS_REDUNDANCY_GUIDANCE.gridParallel.spareUnits);
   const r = designs.hybrid.result;
   const base = r.firm.sizingBasis.minUnits;
   assert.equal(r.firm.units, base > 0 ? base + 1 : 0);
-  // Standby diesel (EPA emergency engines) as backup, as on the grid design.
-  assert.equal(s.gasType, 'standby-diesel');
-  assert.equal(r.firm.standbyOnly, true);
+  // Reciprocating gas engines as prime power (not standby diesel, which never runs on cost and
+  // would leave a grid design with solar): at $4/MMBtu they cost 7.8 x 4 + 7.4 = $38.6/MWh, below
+  // Abilene's $67.7/MWh grid price, so the hybrid merit order runs them first.
+  assert.equal(s.gasType, 'recip');
+  assert.equal(r.firm.standbyOnly, false);
+  assert.equal(r.dispatch.order, 'firm-first');
+  assert.ok(r.dispatch.annual.gasMWh > r.dispatch.annual.gridMWh);
   assert.ok(base > 0 && base * s.gasUnitSizeMW >= r.firm.requiredMW);
-  // Some curtailment the battery cannot carry alone is left to the diesel, but it stays far
-  // below the design peak (the battery's 100 MW does most of the work).
+  assert.ok(r.reliability.meetsTarget);
+  // The units cover only what solar, battery and grid cannot during outages and curtailments,
+  // far below the design peak (the battery's 100 MW does most of the work).
   assert.ok(r.firm.requiredMW < designPeakMW - 0.5 * s.batteryCapacityMWh / s.batteryDurationHours);
 });
 
@@ -73,7 +80,7 @@ test('the islanded starting design is gas-only with N+2 redundancy', () => {
 
 test('a switch keeps everything outside the supply design', () => {
   const custom = normalizeDatacenterState({
-    siteId: 'phoenix-az', itCapacityMW: 250, coolingTechnology: 'immersion', gasType: 'aero', mountingType: 'fixed',
+    architecture: 'hybrid', siteId: 'phoenix-az', itCapacityMW: 250, coolingTechnology: 'immersion', gasType: 'aero', mountingType: 'fixed',
     gridEnergyPricePerMWh: 55, discountRate: 9, solarSizeMWdc: 777, firmFamily: 'nuclear',
   });
   ['grid', 'hybrid', 'islanded'].forEach(architecture => {
@@ -84,21 +91,26 @@ test('a switch keeps everything outside the supply design', () => {
     assert.equal(next.firmFamily, 'gas', `${architecture}: gas is the starting firm generation`);
   });
   // Hybrid sizes scale with the IT capacity: 250 MW IT -> 500 MWdc, 1,000 MWh, auto-sized. The
-  // design sets its generator type (standby diesel; islanded: recip engines) with that type's
-  // unit size and costs, replacing the custom aero turbines.
+  // design sets its generator type (hybrid and islanded: recip engines; grid: standby diesel)
+  // with that type's unit size and costs, replacing the custom aero turbines.
   const hybrid = applyArchitectureDefaults(custom, 'hybrid', { designPeakMW: 300 });
   assert.equal(hybrid.solarSizeMWdc, 500);
   assert.equal(hybrid.batteryCapacityMWh, 1000);
   assert.equal(hybrid.firmSizingMode, 'auto');
-  assert.equal(hybrid.gasType, 'standby-diesel');
-  assert.equal(hybrid.gasUnitSizeMW, GAS_GENSET_TYPES['standby-diesel'].unitSizeMW.default);
-  assert.equal(hybrid.gasFuelPricePerMMBtu, 33);
+  assert.equal(hybrid.gasType, 'recip');
+  assert.equal(hybrid.gasUnitSizeMW, GAS_GENSET_TYPES.recip.unitSizeMW.default);
+  assert.equal(hybrid.gasFuelPricePerMMBtu, 4);
+  const grid = applyArchitectureDefaults(custom, 'grid');
+  assert.equal(grid.gasType, 'standby-diesel');
+  assert.equal(grid.gasUnitSizeMW, GAS_GENSET_TYPES['standby-diesel'].unitSizeMW.default);
+  assert.equal(grid.gasFuelPricePerMMBtu, 33);
   const islanded = applyArchitectureDefaults(custom, 'islanded');
   assert.equal(islanded.gasType, 'recip');
   assert.equal(islanded.gasCapexPerKW, GAS_GENSET_TYPES.recip.capexPerKW.default);
   // The same type keeps the user's own values.
   const tuned = { ...DATACENTER_DEFAULT_STATE, gasCapexPerKW: 1234 };
-  assert.equal(applyArchitectureDefaults(tuned, 'hybrid').gasCapexPerKW, 1234);
+  assert.equal(applyArchitectureDefaults(tuned, 'grid').gasCapexPerKW, 1234);
+  assert.equal(applyArchitectureDefaults({ ...custom, gasType: 'recip', gasCapexPerKW: 1234 }, 'hybrid').gasCapexPerKW, 1234);
 });
 
 test('every starting design meets the uptime target at the default site without top-up', () => {
@@ -133,12 +145,12 @@ test('switching architecture changes the result and the footprint as the design 
   assert.ok(areas('hybrid').solarField > 0 && areas('hybrid').battery > 0);
   assert.equal(areas('islanded').battery, 0);
   // Generator plant area is proportional to the installed capacity (footprint m2 per MW x MW);
-  // grid and hybrid carry standby diesel, islanded gas engines.
+  // grid carries standby diesel, hybrid and islanded gas engines.
   ['grid', 'hybrid', 'islanded'].forEach(key => {
     const perMW = areas(key).gasPlant / r[key].firm.capacityMW;
     assert.ok(Math.abs(perMW - GAS_GENSET_TYPES[r[key].state.gasType].footprintM2PerMW) < 1e-9, `${key} gas m2/MW`);
   });
-  assert.deepEqual(['grid', 'hybrid', 'islanded'].map(key => r[key].state.gasType), ['standby-diesel', 'standby-diesel', 'recip']);
+  assert.deepEqual(['grid', 'hybrid', 'islanded'].map(key => r[key].state.gasType), ['standby-diesel', 'recip', 'recip']);
   // Switchyard: 40 m2 per MW of import cap (power.js GRID_DEFAULTS), 130.8 MW -> 5,232 m2.
   assert.ok(Math.abs(areas('grid').utilitySwitchyard - 40 * r.grid.grid.importCapMW) < 1e-6);
 });
@@ -154,4 +166,75 @@ test('auto-sized starting designs meet the target without a top-up, also where t
   assert.ok(base > 0);
   const oneFewer = calculateDatacenterScenario({ ...design.state, firmSizingMode: 'manual', firmUnits: base - 1 });
   assert.equal(oneFewer.reliability.meetsTarget, false);
+});
+
+/* ---------- Architecture rules (ARCHITECTURES, enforced by normalizeDatacenterState) ---------- */
+
+test('the rules are data: grid allows firm service, standby generators and an existing-plant contract only', () => {
+  const grid = ARCHITECTURES.grid;
+  assert.equal(grid.resources.solar, 'none');
+  assert.deepEqual(grid.gridConnections, ['firm']);
+  assert.deepEqual([...grid.gasTypes], Object.keys(GAS_GENSET_TYPES).filter(key => GAS_GENSET_TYPES[key].standbyOnly));
+  assert.deepEqual(grid.gasTypes, ['standby-diesel']);
+  // The existing-plant contract is modeled off site (grid-delivered: no capex, reactor or water).
+  assert.deepEqual(grid.nuclearTypes, ['contracted-existing']);
+  assert.equal(NUCLEAR_TYPES['contracted-existing'].capexPerKW.default, 0);
+  assert.equal(calculateDatacenterScenario({ firmFamily: 'nuclear' }, { fastMode: true }).firm.onSite, false);
+  // Hybrid and islanded allow every on-site supply and type; islanded has no grid.
+  ['hybrid', 'islanded'].forEach(architecture => {
+    const { resources, gasTypes, nuclearTypes } = ARCHITECTURES[architecture];
+    ['solar', 'battery', 'gas', 'nuclear'].forEach(supply => assert.equal(resources[supply], 'optional', `${architecture} ${supply}`));
+    assert.equal(gasTypes, undefined);
+    assert.equal(nuclearTypes, undefined);
+  });
+  assert.equal(ARCHITECTURES.islanded.resources.grid, 'none');
+  assert.deepEqual(ARCHITECTURES.hybrid.gridConnections, ['firm', 'flexible']);
+});
+
+test('normalization clamps a grid design to firm service, no solar and standby generators', () => {
+  const s = normalizeDatacenterState({
+    architecture: 'grid', gridConnection: 'flexible', solarSizeMWdc: 300, batteryCapacityMWh: 200,
+    gasType: 'recip', gasUnitSizeMW: 10, gasCapexPerKW: 2000, gasFuelPricePerMMBtu: 4, firmSizingMode: 'manual', firmUnits: 12,
+    nuclearType: 'bwrx-300', nuclearCapexPerKW: 12000,
+  });
+  assert.equal(s.gridConnection, 'firm');
+  assert.equal(s.solarSizeMWdc, 0);
+  assert.equal(s.batteryCapacityMWh, 200); // a battery is allowed (backup / peak shaving)
+  // Gas engines become standby diesel with diesel's own unit size, costs and fuel; the count is kept.
+  assert.equal(s.gasType, 'standby-diesel');
+  assert.equal(s.gasUnitSizeMW, GAS_GENSET_TYPES['standby-diesel'].unitSizeMW.default);
+  assert.equal(s.gasCapexPerKW, GAS_GENSET_TYPES['standby-diesel'].capexPerKW.default);
+  assert.equal(s.gasFuelPricePerMMBtu, 33);
+  assert.equal(s.firmUnits, 12);
+  // An own reactor becomes the grid-delivered existing-plant contract (no capex).
+  assert.equal(s.nuclearType, 'contracted-existing');
+  assert.equal(s.nuclearCapexPerKW, 0);
+  assert.deepEqual(getArchitectureViolations(s), {});
+  // A legal design passes through unchanged, and the default state is legal.
+  assert.deepEqual(normalizeDatacenterState(s), s);
+  assert.deepEqual(getArchitectureViolations(DATACENTER_DEFAULT_STATE), {});
+  // The same inputs are kept in hybrid; islanded ignores the connection type.
+  const hybrid = normalizeDatacenterState({ architecture: 'hybrid', gridConnection: 'flexible', solarSizeMWdc: 300, gasType: 'recip', nuclearType: 'bwrx-300' });
+  assert.deepEqual([hybrid.gridConnection, hybrid.solarSizeMWdc, hybrid.gasType, hybrid.nuclearType], ['flexible', 300, 'recip', 'bwrx-300']);
+  assert.deepEqual(getArchitectureViolations({ ...hybrid, architecture: 'islanded' }), {});
+  // The model sees the clamped design: no solar output, and diesel only through the utility outages.
+  const r = calculateDatacenterScenario({ gridConnection: 'flexible', solarSizeMWdc: 300, gasType: 'recip' }, { fastMode: true });
+  assert.equal(r.dispatch.annual.solarMWh, 0);
+  assert.equal(r.grid.connection, 'firm');
+  assert.equal(r.firm.standbyOnly, true);
+  assert.equal(r.dispatch.order, 'grid-first');
+});
+
+test('fitsArchitecture: a hybrid design with no on-site generation is a grid design', () => {
+  const plain = normalizeDatacenterState({ architecture: 'hybrid', gridConnection: 'firm', solarSizeMWdc: 0, batteryCapacityMWh: 100 });
+  assert.equal(plain.gasType, 'standby-diesel');
+  assert.ok(fitsArchitecture(plain, 'grid'));
+  // The type of an unused family does not count.
+  assert.ok(fitsArchitecture({ ...plain, firmFamily: 'none', gasType: 'recip' }, 'grid'));
+  assert.ok(fitsArchitecture({ ...plain, firmFamily: 'nuclear', nuclearType: 'contracted-existing' }, 'grid'));
+  assert.ok(!fitsArchitecture({ ...plain, gasType: 'recip' }, 'grid'));
+  assert.ok(!fitsArchitecture({ ...plain, solarSizeMWdc: 5 }, 'grid'));
+  assert.ok(!fitsArchitecture({ ...plain, gridConnection: 'flexible' }, 'grid'));
+  assert.ok(!fitsArchitecture({ ...plain, firmFamily: 'nuclear', nuclearType: 'bwrx-300' }, 'grid'));
+  assert.ok(!fitsArchitecture(designs.hybrid.state, 'grid'));
 });

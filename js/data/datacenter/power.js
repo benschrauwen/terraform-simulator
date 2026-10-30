@@ -584,7 +584,14 @@ export const GAS_REDUNDANCY_GUIDANCE = {
   // https://www.power-eng.com/onsite-power/onsite-gas-turbines-reciprocating-engines-to-power-meta-data-center/ (retrieved 2026-10)
   islanded: { spareUnits: 2, defaultGensetType: 'recip' },
   backup: { spareUnits: 1, defaultGensetType: 'standby-diesel' },
+  // judgment: prime power running in parallel with the grid (hybrid). The
+  // grid is a second source, so N+1 as for backup; engines as islanded.
+  gridParallel: { spareUnits: 1, defaultGensetType: 'recip' },
 };
+
+// Gas-family types that may only stand by (standbyOnly): the only
+// generators a grid-connected design may have (ARCHITECTURES.grid).
+export const STANDBY_GAS_GENSET_TYPES = Object.freeze(Object.keys(GAS_GENSET_TYPES).filter(key => GAS_GENSET_TYPES[key].standbyOnly));
 
 /* ---------- Battery storage cost (energy + power components) ----------
    capex = MWh x energy $/kWh + MW x power $/kW (MW = MWh / duration), so a
@@ -874,12 +881,26 @@ export const DEFAULT_NUCLEAR_TYPE = 'contracted-existing';
 
 /* ---------- Power architectures ---------- */
 
-/* resources: 'required' | 'optional' | 'none' per supply. */
+/* What each architecture allows, enforced on every state by
+   state/datacenter-schema.js (normalizeDatacenterState), so the UI, share
+   links, the optimizer and the model only ever see a legal design:
+     resources       'required' | 'optional' | 'none' per supply
+     gridConnections allowed grid connection types (grid-connected only)
+     gasTypes        allowed GAS_GENSET_TYPES keys (absent = all)
+     nuclearTypes    allowed NUCLEAR_TYPES keys (absent = all)
+   Grid-connected is firm utility service with backup only: standby
+   generators, a battery, or a grid-delivered contract with an existing
+   nuclear plant (modeled off site: no reactor, water or land at the
+   datacenter, supply.js onSite false). An off-site renewable PPA would be a
+   grid price and carbon setting, not on-site solar (not modeled). */
 export const ARCHITECTURES = {
   grid: {
     label: 'Grid-connected',
-    description: 'The utility supplies the datacenter through a firm or flexible grid connection. On-site gas, batteries or solar are optional extras for backup, peak shaving or a lower bill, but the grid carries the load. Simplest to run, but the large-load connection can take years and the grid sets the price and the carbon intensity.',
-    resources: { grid: 'required', solar: 'optional', battery: 'optional', gas: 'optional', nuclear: 'optional' },
+    description: 'Firm utility service carries the load. On-site equipment is backup only: standby diesel generators and an optional battery ride through utility outages; nuclear only as a grid-delivered contract with an existing plant. No on-site solar or prime-power generation (choose Hybrid for those). Simplest to run, but the large-load connection can take years and the grid sets the price and the carbon intensity.',
+    resources: { grid: 'required', solar: 'none', battery: 'optional', gas: 'optional', nuclear: 'optional' },
+    gridConnections: ['firm'],
+    gasTypes: STANDBY_GAS_GENSET_TYPES,
+    nuclearTypes: ['contracted-existing'],
     examples: [
       {
         name: 'Meta Hyperion (Richland Parish, LA)',
@@ -909,8 +930,9 @@ export const ARCHITECTURES = {
   },
   hybrid: {
     label: 'Hybrid (grid + on-site)',
-    description: 'A grid connection plus on-site generation and storage that cover the hours the grid cannot. Solar, batteries and gas are dispatched by cost, with the grid as the balance. A flexible connection, curtailable for a few dozen hours a year, can connect years sooner than firm service.',
+    description: 'A firm or flexible grid connection plus on-site generation and storage: solar, batteries, gas engines or turbines (or standby diesel) and nuclear. On-site gas runs whenever it is cheaper than grid power, with the grid as the balance, and covers the hours the grid cannot. A flexible connection, curtailable for a few dozen hours a year, can connect years sooner than firm service.',
     resources: { grid: 'required', solar: 'optional', battery: 'optional', gas: 'optional', nuclear: 'optional' },
+    gridConnections: ['firm', 'flexible'],
     examples: [
       {
         name: 'Google / Intersect Meitner Energy Center (Gray & Roberts Counties, TX)',
@@ -988,16 +1010,16 @@ export const DEFAULT_ARCHITECTURE = 'grid';
    - hybrid: the flexible-connection design of the Camus / encoord /
      Princeton study (GRID_DEFAULTS): a curtailable grid connection, on-site
      solar, a 4-hour battery (the study's batteries were 4-hour, and the
-     model's curtailment events last 4 h) and standby diesel for what the
-     battery and solar cannot cover during outages and curtailments, plus
-     one spare. Diesel running through a curtailment is non-emergency use
-     under EPA rules (a warning flags it beyond the 50 h/yr allowance).
+     model's curtailment events last 4 h) and reciprocating gas engines as
+     prime power (GAS_REDUNDANCY_GUIDANCE gridParallel: N+1), sized for what
+     the battery and solar cannot cover during outages and curtailments. The
+     hybrid merit order runs the engines whenever they are cheaper than grid
+     power (dispatch.js), so the grid becomes the balance; standby diesel
+     would never run on cost and leave the design a grid one with solar.
      Solar = 2 MWdc per MW IT, east-west (judgment: it supplies roughly a
      third of the facility energy at Abilene with little curtailment,
      leaving the grid and gas as the balance). Battery power = the IT
-     nameplate, so energy = 4 h x IT MW. A gas type chosen instead (e.g.
-     engines) runs in the hybrid merit order whenever it is cheaper than the
-     grid; standby diesel never does.
+     nameplate, so energy = 4 h x IT MW.
    - islanded: reciprocating gas engines alone as prime power with N+2
      redundancy (GAS_REDUNDANCY_GUIDANCE islanded); solar is optional and off, because gas-only is the common
      real off-grid build (Socrates, GW Ranch's core). */
@@ -1014,8 +1036,8 @@ export const ARCHITECTURE_STARTING_DESIGNS = {
     solarMWdcPerMWIT: 2,
     batteryDurationHours: 4,
     batteryHoursOfIT: 4,
-    gasType: GAS_REDUNDANCY_GUIDANCE.backup.defaultGensetType,
-    gasSpareUnits: GAS_REDUNDANCY_GUIDANCE.backup.spareUnits,
+    gasType: GAS_REDUNDANCY_GUIDANCE.gridParallel.defaultGensetType,
+    gasSpareUnits: GAS_REDUNDANCY_GUIDANCE.gridParallel.spareUnits,
   },
   islanded: {
     solarMWdcPerMWIT: 0,

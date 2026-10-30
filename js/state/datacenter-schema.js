@@ -22,6 +22,13 @@
    DATACENTER_DERIVED_KEYS (a value equal to the default-site value would
    otherwise be dropped from the diff and re-derived for the new site).
 
+   Architecture rules. The power architecture bounds the design
+   (ARCHITECTURES in data/datacenter/power.js: grid-connected has no on-site
+   solar, firm service only and standby generators only). This module is the
+   one place they are enforced: normalizeDatacenterState clamps every state
+   to them, so share links, UI edits, the optimizer and the model all see a
+   legal design.
+
    Default scenario (judgment, see each field): a new 100 MW-IT AI datacenter
    at Abilene, TX, liquid-cooled with dry coolers, on a firm grid connection
    at the site's all-in year-to-date industrial price (demand charge 0, so
@@ -155,7 +162,7 @@ export const DATACENTER_STATE_FIELDS = [
   { key: 'gridInterconnectionCapexPerKW', type: 'number', min: 0, max: 5000, defaultValue: GRID_DEFAULTS.interconnectionCapexPerKW },
   { key: 'substationCapexPerKW', type: 'number', min: 0, max: 2000, defaultValue: ONSITE_SUBSTATION.capexPerKW },
 
-  /* ---------- Solar (optional everywhere) ---------- */
+  /* ---------- Solar (optional in hybrid and islanded; none on grid) ---------- */
   { key: 'solarSizeMWdc', type: 'number', min: 0, max: 100000, defaultValue: 0 },
   // Owner decision: East-West fixed (MOUNTING_TYPES.ew), the dense low-tilt
   // layout of the Terraform plant builder: ~0.92x the fixed-tilt yield but
@@ -281,9 +288,48 @@ function buildDefaultState() {
 export const DATACENTER_DEFAULT_STATE = Object.freeze(buildDefaultState());
 
 /**
+ * The changes that make a design legal for `architecture` (default: its
+ * own), as a state patch; {} when it already is. ARCHITECTURES (power.js)
+ * holds the rules: a supply marked 'none' is removed (solar to 0, that firm
+ * family to 'none'), and a grid connection, generator type or nuclear type
+ * outside the allowed list becomes the first allowed one (grid: firm
+ * service, standby diesel, an existing-plant contract). Types are clamped
+ * even when their family is not selected, so every field stays legal.
+ */
+export function getArchitectureViolations(state, architecture = state?.architecture) {
+  const rules = ARCHITECTURES[architecture];
+  if (!rules || !state) return {};
+  const resources = rules.resources || {};
+  const patch = {};
+  if (resources.solar === 'none' && state.solarSizeMWdc !== 0) patch.solarSizeMWdc = 0;
+  if (resources.battery === 'none' && state.batteryCapacityMWh !== 0) patch.batteryCapacityMWh = 0;
+  if (resources[state.firmFamily] === 'none') patch.firmFamily = 'none';
+  if (rules.gridConnections && !rules.gridConnections.includes(state.gridConnection)) patch.gridConnection = rules.gridConnections[0];
+  if (rules.gasTypes && !rules.gasTypes.includes(state.gasType)) patch.gasType = rules.gasTypes[0];
+  if (rules.nuclearTypes && !rules.nuclearTypes.includes(state.nuclearType)) patch.nuclearType = rules.nuclearTypes[0];
+  return patch;
+}
+
+/**
+ * True when the design `state` describes is legal for `architecture` as it
+ * stands: like getArchitectureViolations being empty, except that the type
+ * of a firm family the design does not use does not count. A hybrid design
+ * that fits 'grid' has no on-site generation and dispatches as grid does.
+ */
+export function fitsArchitecture(state, architecture) {
+  const patch = getArchitectureViolations(state, architecture);
+  if (state.firmFamily !== 'gas') delete patch.gasType;
+  if (state.firmFamily !== 'nuclear') delete patch.nuclearType;
+  return Object.keys(patch).length === 0;
+}
+
+/**
  * Complete, clamped datacenter state from arbitrary input (UI state, share
  * link, test overrides). Unknown keys are dropped; preset-derived fields
- * missing from the input follow their (normalized) selection.
+ * missing from the input follow their (normalized) selection. The design is
+ * then made legal for its architecture (getArchitectureViolations); a
+ * generator or nuclear type changed there takes that type's own derived
+ * values (unit size, costs, ...), as a type selection would.
  */
 export function normalizeDatacenterState(rawState = {}) {
   const input = rawState && typeof rawState === 'object' ? rawState : {};
@@ -292,7 +338,10 @@ export function normalizeDatacenterState(rawState = {}) {
     if (Object.hasOwn(input, key)) normalized[key] = input[key];
   });
   normalizeCoreStateFields(input, normalized, BASE_FIELDS);
-  applyDerivedFields(input, normalized);
+  const violations = getArchitectureViolations(normalized);
+  Object.assign(normalized, violations);
+  const reset = new Set(Object.keys(violations).flatMap(key => DERIVED_BY_SELECTION[key] || []));
+  applyDerivedFields(reset.size ? Object.fromEntries(Object.entries(input).filter(([key]) => !reset.has(key))) : input, normalized);
   return normalized;
 }
 
@@ -326,7 +375,8 @@ export const ARCHITECTURE_DESIGN_KEYS = Object.freeze([
  *   for the uptime target + 1 spare: exactly DATACENTER_DEFAULT_STATE's
  *   supply side.
  * - hybrid: flexible connection, solar = 2 MWdc per MW IT, a 4-hour battery
- *   of 4 h x IT MW, standby diesel auto-sized for the uptime target + 1 spare.
+ *   of 4 h x IT MW, reciprocating gas engines (prime power, run on cost)
+ *   auto-sized for the uptime target + 1 spare.
  * - islanded: no solar or battery, reciprocating gas engines (prime power)
  *   auto-sized + 2 spares.
  *

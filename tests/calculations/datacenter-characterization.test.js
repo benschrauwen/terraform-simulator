@@ -32,8 +32,9 @@ const UPDATE = process.env.UPDATE_CHARACTERIZATION === '1';
 
 const SCENARIOS = {
   default: {},
-  gridFlexibleGas: { gridConnection: 'flexible' },
-  gridFlexibleBattery: { gridConnection: 'flexible', firmFamily: 'none', batteryCapacityMWh: 400 },
+  // Hybrid with standby diesel dispatches as grid does; grid-connected designs are firm service only.
+  hybridFlexibleDiesel: { architecture: 'hybrid', gridConnection: 'flexible' },
+  hybridFlexibleBattery: { architecture: 'hybrid', gridConnection: 'flexible', firmFamily: 'none', batteryCapacityMWh: 400 },
   hybridSolarBatteryGas: { architecture: 'hybrid', solarSizeMWdc: 200, batteryCapacityMWh: 400 },
   hybridExport: { architecture: 'hybrid', solarSizeMWdc: 300, firmFamily: 'none', gridExportEnabled: true },
   islandedGasRecip: { architecture: 'islanded' },

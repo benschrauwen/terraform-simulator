@@ -68,10 +68,11 @@ test('EPA emergency-engine limit: the warning fires when non-emergency run hours
   // Flexible connection without a battery: diesel carries every curtailment hour. 40 h of
   // curtailment + 20 h assumed testing = 60 h <= 100 and 40 <= 50: allowed. 60 h: over the 50 h
   // non-emergency allowance.
-  const within = run({ gridConnection: 'flexible', gridUnavailableHoursPerYear: 40 });
+  // (Hybrid: grid-connected designs are firm service only; standby diesel dispatches as on grid.)
+  const within = run({ architecture: 'hybrid', gridConnection: 'flexible', gridUnavailableHoursPerYear: 40 });
   assert.equal(within.firm.emergencyEngine.nonEmergencyRunHours, 40);
   assert.ok(!warningKeys(within).includes('standby-run-hours'));
-  const over = run({ gridConnection: 'flexible', gridUnavailableHoursPerYear: 60 });
+  const over = run({ architecture: 'hybrid', gridConnection: 'flexible', gridUnavailableHoursPerYear: 60 });
   assert.equal(over.firm.emergencyEngine.nonEmergencyRunHours, 60);
   assert.ok(warningKeys(over).includes('standby-run-hours'));
   // Islanded diesel is prime power: every hour is non-emergency.

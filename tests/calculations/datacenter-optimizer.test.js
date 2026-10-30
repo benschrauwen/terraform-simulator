@@ -16,10 +16,13 @@ import {
   THOROUGH_SEARCH,
 } from '../../js/model/datacenter/optimizer.js';
 
-// Reciprocating gas engines (the islanded and hybrid cases below need gas cheaper than the grid);
-// standby diesel became the default type later.
-const BASE = applyDatacenterPresetDefaults({ ...DATACENTER_DEFAULT_STATE, gasType: 'recip' }, 'gasType');
-const ISLANDED = { ...BASE, architecture: 'islanded' };
+// The default grid design (standby diesel, the only generators a grid design may have), and
+// reciprocating gas engines for the hybrid and islanded cases (they need gas cheaper than the grid).
+const BASE = { ...DATACENTER_DEFAULT_STATE };
+const RECIP = applyDatacenterPresetDefaults({ ...DATACENTER_DEFAULT_STATE, architecture: 'hybrid', gasType: 'recip' }, 'gasType');
+const ISLANDED = { ...RECIP, architecture: 'islanded' };
+// The hybrid starting design with standby diesel instead of its engines (the two-basin landscape).
+const HYBRID_DIESEL = applyDatacenterPresetDefaults({ ...getArchitectureStartState(DATACENTER_DEFAULT_STATE, 'hybrid'), gasType: 'standby-diesel' }, 'gasType');
 
 /** The state the optimizer evaluates for a design (units 0 = no firm plant). */
 function designState(state, { solar, battery, units }) {
@@ -104,7 +107,7 @@ test('islanded gas: the optimizer matches an exhaustive grid search', () => {
 test('hybrid (gas cheaper than grid power): extra units beyond the minimum are found when they pay', () => {
   // Cheap gas makes on-site generation earn its keep: the best count is above the
   // minimum the uptime target needs (0 on a firm grid).
-  const hybrid = { ...BASE, architecture: 'hybrid', gasFuelPricePerMMBtu: 1, gridEnergyPricePerMWh: 150 };
+  const hybrid = { ...RECIP, gasFuelPricePerMMBtu: 1, gridEnergyPricePerMWh: 150 };
   const bounds = { solarMaxMWdc: 0, batteryMaxMWh: 0, unitsMax: 17 };
   const brute = bruteForce(hybrid, [0], [0], 17);
   const result = optimizeDatacenterDesign(hybrid, { bounds, sizeSolar: false, sizeBattery: false });
@@ -114,7 +117,7 @@ test('hybrid (gas cheaper than grid power): extra units beyond the minimum are f
 });
 
 test('the optimum is feasible and at least as good as the current (feasible) design', () => {
-  [BASE, ISLANDED, { ...BASE, architecture: 'hybrid', gridConnection: 'flexible' }].forEach(state => {
+  [BASE, ISLANDED, { ...RECIP, gridConnection: 'flexible' }].forEach(state => {
     const result = optimizeDatacenterDesign(state, { sizeGridConnection: true });
     assert.equal(result.baseline.feasible, true);
     assert.equal(result.feasible, true);
@@ -169,14 +172,14 @@ test('architecture comparison: one row per architecture, patches against the cur
 });
 
 test('two basins: the optimizer finds the small-battery design a coarse halving grid misses', () => {
-  // Hybrid starting design (standby diesel, flexible connection) with a cheap battery ($150/kWh,
+  // Hybrid starting design with standby diesel (flexible connection) and a cheap battery ($150/kWh,
   // no power cost: the landscape before the energy/power split), where ~50-60 MWh of battery
   // replaces several diesel units. Reduced brute force: solar 0-300 MWdc step 25, battery 0-200
   // MWh step 20, the fewest feasible units by bisection (checked against a linear scan above)
   // then up to two more. The optimizer, with the same bounds, must come within 0.5% of its NPV.
   // (The single-start search on halvings of the bounds stopped in the no-battery basin, $150.6M
   // with 19 units, against ~$154.7M with ~51 MWh and 12 units.)
-  const start = { ...getArchitectureStartState(DATACENTER_DEFAULT_STATE, 'hybrid'), batteryCostPerKWh: 150, batteryPowerCostPerKW: 0 };
+  const start = { ...HYBRID_DIESEL, batteryCostPerKWh: 150, batteryPowerCostPerKW: 0 };
   const unitsMax = 40;
   let best = null;
   for (let solar = 0; solar <= 300; solar += 25) {
@@ -201,7 +204,7 @@ test('thorough (wider) search: its configuration, and never worse than the defau
   // Configuration: dense levels, five starts, battery durations and the type's unit sizes.
   assert.deepEqual([...THOROUGH_SEARCH.durationsHours], [1, 2, 4, 8]);
   assert.equal(THOROUGH_SEARCH.refineStarts, 5);
-  const start = { ...getArchitectureStartState(DATACENTER_DEFAULT_STATE, 'hybrid'), batteryCostPerKWh: 150, batteryPowerCostPerKW: 0 };
+  const start = { ...HYBRID_DIESEL, batteryCostPerKWh: 150, batteryPowerCostPerKW: 0 };
   const bounds = { solarMaxMWdc: 300, batteryMaxMWh: 200, unitsMax: 40 };
   const quick = optimizeDatacenterDesign(start, { bounds });
   const wide = optimizeDatacenterDesign(start, { bounds, thorough: true });
@@ -217,4 +220,49 @@ test('thorough (wider) search: its configuration, and never worse than the defau
   assert.ok(Object.hasOwn(wide.best.patch, 'batteryDurationHours') && Object.hasOwn(wide.best.patch, 'gasUnitSizeMW'));
   const applied = calculateDatacenterScenario({ ...start, ...wide.best.patch }, { fastMode: true });
   assert.ok(Math.abs(applied.economics.npv - wide.best.npv) < 1e-6 * Math.abs(wide.best.npv));
+});
+
+/* ---------- Architecture constraints ---------- */
+
+test('grid: the optimizer never sizes solar, a flexible connection or prime-power gas', () => {
+  // Asked to size everything, a grid design keeps firm service, no solar and standby diesel.
+  const result = optimizeDatacenterDesign(BASE, { sizeSolar: true, sizeGridConnection: true, budget: 200 });
+  assert.equal(result.sized.solar, false);
+  assert.equal(result.sized.gridConnection, false);
+  assert.equal(result.bounds.solarMaxMWdc, 0);
+  assert.equal(result.best.solarMWdc, 0);
+  assert.equal(result.best.gridConnection, 'firm');
+  assert.ok(result.best.firmFamily === 'none' || result.best.firmType === 'standby-diesel', result.best.firmType);
+  assert.ok(result.feasible);
+  assert.equal(result.reducesTo, null);
+  // Every candidate it evaluated was a legal grid design (the frontier has one solar level: 0).
+  assert.deepEqual(result.frontier.solarLevels, [0]);
+});
+
+test('compare: grid stays a backup-only design; the hybrid optimum differs from it at the default site', () => {
+  const result = compareArchitectures(DATACENTER_DEFAULT_STATE, { sizeGridConnection: true });
+  const row = architecture => result.rows.find(entry => entry.architecture === architecture).result;
+  const grid = row('grid').best;
+  assert.equal(grid.solarMWdc, 0);
+  assert.equal(grid.gridConnection, 'firm');
+  assert.equal(grid.firmType, 'standby-diesel');
+  assert.equal(normalizeDatacenterState({ ...DATACENTER_DEFAULT_STATE, ...grid.patch }).architecture, 'grid');
+  // Hybrid searches as before with its gas engines (dispatched on cost): it builds on-site
+  // generation and beats the grid-only design, so it is not presented as the same design.
+  const hybrid = row('hybrid');
+  assert.equal(hybrid.best.firmType, 'recip');
+  assert.ok(hybrid.best.solarMWdc > 0 || hybrid.best.units > 0);
+  assert.ok(hybrid.best.npv > grid.npv, `hybrid ${hybrid.best.npv} vs grid ${grid.npv}`);
+  assert.equal(hybrid.reducesTo, null);
+});
+
+test('a hybrid optimum without on-site generation says it reduces to the grid design', () => {
+  // Firm service, no solar to size and standby diesel: nothing on site but backup.
+  const start = { ...HYBRID_DIESEL, gridConnection: 'firm', solarSizeMWdc: 0 };
+  const result = optimizeDatacenterDesign(start, { sizeSolar: false, budget: 200 });
+  assert.equal(result.architecture, 'hybrid');
+  assert.equal(result.reducesTo, 'grid');
+  assert.match(result.notes.join(' '), /reduces to a grid-connected design/);
+  // With its gas engines the hybrid design is on-site generation, not a grid design.
+  assert.equal(optimizeDatacenterDesign({ ...RECIP, gridConnection: 'firm', gasFuelPricePerMMBtu: 1 }, { sizeSolar: false, sizeBattery: false, budget: 100 }).reducesTo, null);
 });

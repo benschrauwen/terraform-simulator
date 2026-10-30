@@ -164,7 +164,7 @@ test('colocation excludes IT capex and passes energy costs through to the tenant
 });
 
 test('opex lines follow the dispatch: grid energy, demand charges, fuel', () => {
-  const r = calculateDatacenterScenario({ gridDemandChargePerKWMonth: 12, gridEnergyPricePerMWh: 75, gridConnection: 'flexible' }, { fastMode: true });
+  const r = calculateDatacenterScenario({ architecture: 'hybrid', gridDemandChargePerKWMonth: 12, gridEnergyPricePerMWh: 75, gridConnection: 'flexible' }, { fastMode: true });
   const line = key => r.economics.opexLines.find(entry => entry.key === key).annual;
   assert.ok(close(line('gridEnergy'), r.dispatch.annual.gridMWh * 75));
   assert.ok(close(line('gridDemand'), r.dispatch.annual.monthlyPeakGridMW.reduce((s, mw) => s + mw * 1000, 0) * 12));
@@ -192,9 +192,10 @@ test('preset-derived defaults follow their selection unless given', () => {
   assert.equal(diesel.gasCapexPerKW, 1000); // standby-diesel default restored
   // The fuel price follows the type's fuel (was a plain field before diesel was added).
   assert.equal(diesel.gasFuelPricePerMMBtu, 33);
-  assert.equal(normalizeDatacenterState({ gasType: 'recip' }).gasFuelPricePerMMBtu, 4);
-  assert.equal(normalizeDatacenterState({ gasType: 'recip', gasFuelPricePerMMBtu: 6 }).gasFuelPricePerMMBtu, 6);
-  const switched = applyDatacenterPresetDefaults({ ...DATACENTER_DEFAULT_STATE, gasType: 'aero' }, 'gasType');
+  // (Gas engines and turbines are hybrid or islanded generation.)
+  assert.equal(normalizeDatacenterState({ architecture: 'hybrid', gasType: 'recip' }).gasFuelPricePerMMBtu, 4);
+  assert.equal(normalizeDatacenterState({ architecture: 'hybrid', gasType: 'recip', gasFuelPricePerMMBtu: 6 }).gasFuelPricePerMMBtu, 6);
+  const switched = applyDatacenterPresetDefaults({ ...DATACENTER_DEFAULT_STATE, architecture: 'hybrid', gasType: 'aero' }, 'gasType');
   assert.equal(switched.gasCapexPerKW, 2275);
   assert.equal(switched.gasUnitSizeMW, 50);
   DATACENTER_DERIVED_KEYS.forEach(key => assert.ok(Number.isFinite(DATACENTER_DEFAULT_STATE[key]), key));

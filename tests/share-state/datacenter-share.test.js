@@ -50,16 +50,22 @@ test('a link keeps a user price that equals the default site\'s after the site c
   assert.equal(d.gasType, 'standby-diesel');
 });
 
-test('a link from before standby diesel became the default keeps its gas engines', () => {
+test('a link from before standby diesel became the default keeps its gas engines where the architecture allows them', () => {
   // An older link: the derived gas fields of the then-default reciprocating engines, no gas type
   // (it equalled the default) and no fuel price (a plain field at its default then).
   const old = { itCapacityMW: 250, gasUnitSizeMW: 10, gasCapexPerKW: 2000, gasFixedOmPerKWYear: 45, gasVariableOmPerMWh: 7.4, gasHeatRateMMBtuPerMWh: 7.8, gasAvailabilityPercent: 97 };
-  const payload = ShareStateCodec.encodePayload({ v: ShareStateCodec.VERSION, d: old }, { lzString: LZString });
-  const parsed = parseDatacenterHash(`#s=${encodeURIComponent(payload)}`, LZString);
+  const parse = d => parseDatacenterHash(`#s=${encodeURIComponent(ShareStateCodec.encodePayload({ v: ShareStateCodec.VERSION, d }, { lzString: LZString }))}`, LZString);
+  const parsed = parse({ ...old, architecture: 'hybrid' });
   assert.equal(parsed.error, null);
   assert.equal(parsed.state.gasType, 'recip');
   assert.equal(parsed.state.gasFuelPricePerMMBtu, 4);
   assert.equal(parsed.state.gasUnitSizeMW, 10);
+  // On the (default) grid architecture gas engines are not allowed: they become standby diesel
+  // with diesel's own unit size and costs (ARCHITECTURES.grid).
+  const grid = parse(old).state;
+  assert.equal(grid.gasType, 'standby-diesel');
+  assert.equal(grid.gasUnitSizeMW, 3);
+  assert.equal(grid.gasFuelPricePerMMBtu, 33);
   // A current link with diesel round-trips as diesel.
   const current = normalizeDatacenterState({ itCapacityMW: 250 });
   assert.equal(parseDatacenterHash(serializeDatacenterHash(current, LZString), LZString).state.gasType, 'standby-diesel');

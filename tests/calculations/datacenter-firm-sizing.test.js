@@ -20,7 +20,7 @@ import { findMinimumUnits, optimizeDatacenterDesign } from '../../js/model/datac
 
 const BASE = { ...DATACENTER_DEFAULT_STATE };
 // Reciprocating gas engines ($4/MMBtu: cheaper than the default grid price).
-const RECIP = applyDatacenterPresetDefaults({ ...BASE, gasType: 'recip' }, 'gasType');
+const RECIP = applyDatacenterPresetDefaults({ ...BASE, architecture: 'hybrid', gasType: 'recip' }, 'gasType');
 const run = state => calculateDatacenterScenario(state, { fastMode: true });
 const manual = (state, units) => run({ ...state, firmFamily: units > 0 ? 'gas' : 'none', firmSizingMode: 'manual', firmUnits: units });
 
@@ -73,7 +73,7 @@ test('auto sizing is exact on the non-separable designs too (reserve battery aft
   const grid = assertMinimal({ ...BASE, batteryCapacityMWh: 150 }, 'grid reserve battery');
   assert.equal(grid.firm.sizingBasis.method, 'residual');
   // Flexible connection, more curtailment, different target.
-  assertMinimal({ ...BASE, gridConnection: 'flexible', gridUnavailableHoursPerYear: 200, uptimeTargetPercent: 99.9 }, 'flexible 200 h');
+  assertMinimal({ ...BASE, architecture: 'hybrid', gridConnection: 'flexible', gridUnavailableHoursPerYear: 200, uptimeTargetPercent: 99.9 }, 'flexible 200 h');
 });
 
 test('auto units fall with more battery and a lower target, and rise with more outage hours', () => {
@@ -92,14 +92,14 @@ test('auto units fall with more battery and a lower target, and rise with more o
   }
   previous = -Infinity;
   for (let hours = 0; hours <= 24; hours += 1) {
-    const n = units({ firmGridOutageHoursPerYear: hours, gridConnection: 'flexible', gridUnavailableHoursPerYear: 0 });
+    const n = units({ firmGridOutageHoursPerYear: hours, architecture: 'hybrid', gridConnection: 'flexible', gridUnavailableHoursPerYear: 0 });
     assert.ok(n >= previous, `outage ${hours} h: ${n} < ${previous}`);
     previous = n;
   }
   // The same holds on a flexible connection's curtailment hours.
   previous = -Infinity;
   for (const hours of [0, 20, 50, 100, 200, 400]) {
-    const n = units({ gridConnection: 'flexible', gridUnavailableHoursPerYear: hours });
+    const n = units({ architecture: 'hybrid', gridConnection: 'flexible', gridUnavailableHoursPerYear: hours });
     assert.ok(n >= previous, `curtailment ${hours} h: ${n} < ${previous}`);
     previous = n;
   }

@@ -15,7 +15,7 @@ const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
 const ARCHITECTURES = {
   grid: {},
-  gridFlexibleBattery: { gridConnection: 'flexible', firmFamily: 'none', batteryCapacityMWh: 400 },
+  hybridFlexibleBattery: { architecture: 'hybrid', gridConnection: 'flexible', firmFamily: 'none', batteryCapacityMWh: 400 },
   hybrid: { architecture: 'hybrid', solarSizeMWdc: 200, batteryCapacityMWh: 400, firmFamily: 'gas', gridExportEnabled: true },
   islandedGasOnly: { architecture: 'islanded', firmFamily: 'gas', gasType: 'recip' },
   islandedSolarBattery: { architecture: 'islanded', firmFamily: 'none', solarSizeMWdc: 1000, batteryCapacityMWh: 4000 },
@@ -77,7 +77,8 @@ test('default site: PUE is the energy ratio and sits between the calibration cli
 });
 
 test('CO2 = gas fuel x 52.91 kg/MMBtu + grid imports x grid intensity', () => {
-  for (const overrides of [{ gasType: 'recip' }, { ...ARCHITECTURES.hybrid, gasType: 'recip' }, ARCHITECTURES.islandedGasOnly, { gridConnection: 'flexible', gasType: 'recip' }]) {
+  // Gas engines are on-site generation: hybrid (grid-first at $9/MMBtu, firm-first at $4) or islanded.
+  for (const overrides of [{ architecture: 'hybrid', gasType: 'recip', gasFuelPricePerMMBtu: 9 }, { ...ARCHITECTURES.hybrid, gasType: 'recip' }, ARCHITECTURES.islandedGasOnly, { architecture: 'hybrid', gridConnection: 'flexible', gasType: 'recip' }]) {
     const r = calculateDatacenterScenario(overrides, { fastMode: true });
     const a = r.dispatch.annual;
     const expected = (a.fuelMMBtu * 52.91 + a.gridMWh * r.state.gridCo2KgPerMWh) / 1000;
@@ -137,7 +138,7 @@ test('islanded gas: N+1 units serve every hour; too few units leave exactly the 
 test('a flexible connection is unavailable exactly the set number of hours', () => {
   for (const hours of [0, 40, 50, 70, 500]) {
     // Utility outages off: this checks the curtailment hours alone.
-    const r = calculateDatacenterScenario({ gridConnection: 'flexible', gridUnavailableHoursPerYear: hours, firmGridOutageHoursPerYear: 0, firmFamily: 'none' }, { fastMode: true });
+    const r = calculateDatacenterScenario({ architecture: 'hybrid', gridConnection: 'flexible', gridUnavailableHoursPerYear: hours, firmGridOutageHoursPerYear: 0, firmFamily: 'none' }, { fastMode: true });
     assert.equal(r.grid.unavailableHours, hours);
     assert.equal(r.grid.events.reduce((sum, event) => sum + event.hours, 0), hours);
     // Nothing on site: every unavailable hour goes unserved, and only those.
@@ -145,7 +146,7 @@ test('a flexible connection is unavailable exactly the set number of hours', () 
   }
   // A reserve battery charged from the grid rides through 4-hour curtailments
   // and the 3-hour utility outages.
-  const withBattery = calculateDatacenterScenario(ARCHITECTURES.gridFlexibleBattery, { fastMode: true });
+  const withBattery = calculateDatacenterScenario(ARCHITECTURES.hybridFlexibleBattery, { fastMode: true });
   assert.equal(withBattery.dispatch.batteryRole, 'reserve');
   assert.equal(withBattery.reliability.uptimePercent, 100);
   assert.ok(withBattery.dispatch.annual.gridToBatteryMWh > 0);
@@ -180,7 +181,7 @@ test('utility outages: a firm connection fails N hours a year; flexible curtailm
   assert.deepEqual(ten.grid.events.map(event => event.hours).sort(), [1, 3, 3, 3]);
   assert.equal(ten.reliability.unservedHours, 10);
   // Flexible: 50 curtailed hours on other days + 3 outage hours = 53.
-  const flexible = calculateDatacenterScenario({ gridConnection: 'flexible', firmFamily: 'none' }, { fastMode: true });
+  const flexible = calculateDatacenterScenario({ architecture: 'hybrid', gridConnection: 'flexible', firmFamily: 'none' }, { fastMode: true });
   assert.equal(flexible.grid.curtailmentHours, 50);
   assert.equal(flexible.grid.outageHours, 3);
   assert.equal(flexible.grid.unavailableHours, 53);

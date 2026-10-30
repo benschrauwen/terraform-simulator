@@ -70,7 +70,7 @@ test('the transmission line is drawn only when grid-connected and taps into the 
 test('the architecture note names the starting design', () => {
   assert.equal(
     describeStartingDesign(designs.hybrid.result, designs.hybrid.addedUnits),
-    'Applied a starting design for Hybrid (grid + on-site): flexible grid connection (131 MW, curtailable 50 h/yr), 200 MWdc east-west fixed solar, 400 MWh / 100 MW battery, 14 × 3.00 MW standby diesel generators (N+1); adjust the sizes or use Optimize design.',
+    'Applied a starting design for Hybrid (grid + on-site): flexible grid connection (131 MW, curtailable 50 h/yr), 200 MWdc east-west fixed solar, 400 MWh / 100 MW battery, 5 × 10.0 MW reciprocating gas engines (N+1); adjust the sizes or use Optimize design.',
   );
   assert.match(describeStartingDesign(designs.grid.result), /^Applied a starting design for Grid-connected: firm grid connection \(131 MW\), 32 × 3.00 MW standby diesel generators \(N\+1 standby\), no solar or battery; /);
   assert.match(describeStartingDesign(designs.islanded.result), /^Applied a starting design for Islanded \(off-grid\): no grid connection, 13 × 10.0 MW reciprocating gas engines \(N\+2\), no solar or battery; /);

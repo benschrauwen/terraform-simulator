@@ -10,9 +10,13 @@
                       selected gas type, or nuclear type; 0 = no firm plant;
                       an existing-plant contract is 0 or 1 block at the
                       average load)
-     grid connection  firm and/or flexible (grid / hybrid only, optional)
+     grid connection  firm and/or flexible (hybrid only, optional; grid-
+                      connected designs are firm service)
 
-   Everything else (site, cooling, revenue, prices, the gas or nuclear
+   within what the architecture allows (ARCHITECTURES in data/datacenter/
+   power.js, enforced by the schema): a grid-connected design never gets
+   solar, a flexible connection or prime-power gas, since its start state
+   has only standby types and solar is not searched. Everything else (site, cooling, revenue, prices, the gas or nuclear
    type, battery duration, ...) stays as given. Each candidate is a full
    fast-mode scenario run (one hourly dispatch year, ~1-2 ms).
 
@@ -39,11 +43,14 @@
    islanded, each from that architecture's starting design
    (getArchitectureStartState: the schema's applyArchitectureDefaults when
    it exists, otherwise the current state with the architecture switched).
+   A hybrid optimum without on-site generation (no solar, prime-power gas
+   or own reactor; firm service) is a grid-connected design: the result says
+   so (reducesTo 'grid', and a note) rather than presenting it as another.
 
    Pure; no DOM. */
 
-import { GAS_GENSET_TYPES } from '../../data/datacenter/power.js';
-import { DATACENTER_DEFAULT_STATE, normalizeDatacenterState } from '../../state/datacenter-schema.js';
+import { ARCHITECTURES, GAS_GENSET_TYPES } from '../../data/datacenter/power.js';
+import { DATACENTER_DEFAULT_STATE, fitsArchitecture, normalizeDatacenterState } from '../../state/datacenter-schema.js';
 import { calculateDatacenterScenario } from './scenario.js';
 import { buildStartingDesign } from './starting-design.js';
 
@@ -217,7 +224,7 @@ function coarseLevels(max, resolution, count = COARSE_LEVELS, extra = []) {
 function optimizeFrom(startState, referenceState, options = {}) {
   const t0 = Date.now();
   const {
-    sizeSolar = true,
+    sizeSolar: sizeSolarOption = true,
     sizeBattery = true,
     sizeFirm = true,
     sizeGridConnection = false,
@@ -232,6 +239,10 @@ function optimizeFrom(startState, referenceState, options = {}) {
   const base = calculateDatacenterScenario(start, { fastMode: true });
   const peakMW = base.load.designPeakMW;
   const islanded = start.architecture === 'islanded';
+  // The architecture's limits: no solar search where it allows none; only its connection types.
+  const rules = ARCHITECTURES[start.architecture] || {};
+  const sizeSolar = sizeSolarOption && rules.resources?.solar !== 'none';
+  const allowedConnections = ['firm', 'flexible'].filter(connection => !rules.gridConnections || rules.gridConnections.includes(connection));
   const firmFamily = start.firmFamily === 'none' ? 'gas' : start.firmFamily;
   // An existing-plant contract is one block sized to the average load: units 0 or 1 (auto sizing).
   const contract = firmFamily === 'nuclear' && start.nuclearType === 'contracted-existing';
@@ -256,7 +267,7 @@ function optimizeFrom(startState, referenceState, options = {}) {
   const unitsMax = unitsMaxFor(unitSizeMW);
   const solarRes = resolutionFor(solarMax);
   const batteryRes = resolutionFor(batteryMax);
-  const connections = !islanded && sizeGridConnection ? ['firm', 'flexible'] : [start.gridConnection];
+  const connections = !islanded && sizeGridConnection && allowedConnections.length > 1 ? allowedConnections : [start.gridConnection];
   const budget = budgetOption ?? (thorough ? THOROUGH_SEARCH.budget : DEFAULT_OPTIMIZER_BUDGET);
   const refineStarts = thorough ? THOROUGH_SEARCH.refineStarts : REFINE_STARTS;
   const startWindow = thorough ? THOROUGH_SEARCH.startNpvWindow : START_NPV_WINDOW;
@@ -497,6 +508,11 @@ function optimizeFrom(startState, referenceState, options = {}) {
   if (best.feasible && !islanded && best.gridConnection === 'firm' && sizeFirm && best.units === 0 && base.firm.units > 0) {
     notes.push('On this firm connection the utility outages fit within the hours the uptime target allows (or the battery rides through them), so no standby generation is needed for the target; real Tier III sites still carry N+1 standby.');
   }
+  // A hybrid design with nothing on site but a battery or standby units is a grid-connected one.
+  const reducesTo = start.architecture === 'hybrid' && fitsArchitecture(bestState, 'grid') ? 'grid' : null;
+  if (reducesTo) {
+    notes.push('The best hybrid design has no on-site generation (no solar, gas engines or turbines, or own reactor) and firm service: it reduces to a grid-connected design.');
+  }
   if (monotonicityExceptions > 0) notes.push(`Uptime fell when a unit was added in ${monotonicityExceptions} case(s); those were skipped.`);
   if (perConnection.length > 1) {
     perConnection.forEach(entry => {
@@ -528,6 +544,7 @@ function optimizeFrom(startState, referenceState, options = {}) {
       cells: winning.cells,
     },
     connections: perConnection.map(entry => ({ connection: entry.connection, best: entry.best })),
+    reducesTo,
     notes,
     elapsedMs: Date.now() - t0,
   };
@@ -542,7 +559,8 @@ function optimizeFrom(startState, referenceState, options = {}) {
  * evaluations, budget, percent }) }. Returns { architecture, best { patch, npv,
  * irr, mirr, uptimePercent, firstPower, totalCapex, solarMWdc, batteryMWh, units,
  * unitSizeMW, ... }, baseline, feasible, candidatesEvaluated, bounds, corners,
- * frontier { solarLevels, batteryLevels, cells[i][j] }, notes, elapsedMs }.
+ * frontier { solarLevels, batteryLevels, cells[i][j] }, reducesTo ('grid' when a hybrid
+ * optimum has no on-site generation, else null), notes, elapsedMs }.
  */
 export function optimizeDatacenterDesign(state, options = {}) {
   return optimizeFrom(state, state, options);

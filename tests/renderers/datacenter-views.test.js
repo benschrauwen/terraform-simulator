@@ -101,7 +101,7 @@ test('plant layout areas are proportional to the footprint areas (one scale for 
 });
 
 test('a 1 GWdc solar field visibly dwarfs the building in the layout', () => {
-  const r = calculateDatacenterScenario({ solarSizeMWdc: 1000 });
+  const r = calculateDatacenterScenario({ architecture: 'hybrid', solarSizeMWdc: 1000 });
   const layout = buildPlantLayout(r);
   const solar = layout.blocks.find(block => block.key === 'solarField');
   const building = layout.blocks.find(block => block.key === 'building');

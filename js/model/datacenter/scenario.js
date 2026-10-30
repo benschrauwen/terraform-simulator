@@ -22,7 +22,8 @@
                 monthlyPue[12], pueTable[12][24], wueTable[12][24] },
      load: { itCapacityMW, itLoadMW (average), meanFacilityMW,
              peakFacilityMW (dispatch year), designPeakMW (IT nameplate x peak PUE) },
-     solar: { enabled, sizeMWdc, annualMWh, capacityFactor, siteYield, yieldMultiplier, areaM2, acres, lcoe },
+     solar: { enabled, sizeMWdc, annualMWh, capacityFactor, siteYield, yieldMultiplier, areaM2, acres, lcoe,
+              dailyVariability (TMY day-to-day factor applied), reachable },
      grid: { connected, connection, importCapMW, unavailableHours, events[{ startHour, hours }] },
      firm: { family, type, label, units, unitSizeMW, capacityMW, mustTake, onSite,
              availabilityFraction, outageHoursPerUnit, marginalCostPerMWh, sizing },
@@ -289,6 +290,7 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
       areaM2: solar.model?.landAreaM2 || 0,
       acres: solar.model?.acres || 0,
       lcoe: solar.model?.lcoe || 0,
+      dailyVariability: Boolean(solar.dailyVariability),
       reachable: solar.reachable,
     },
     grid: {

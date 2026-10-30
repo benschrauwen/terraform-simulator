@@ -3,9 +3,10 @@
    ============================================
    Builds the hourly supply side the dispatch draws on:
    - solar: the plant builder's solar model (Calc.calculateSolar for cost,
-     land and layout; its hourly clear-sky-shaped series scaled to the
-     site's PVGIS yield x mounting multiplier), using the datacenter site's
-     own diffuse fraction, shifted from solar time to local standard time;
+     land and layout; its clear-sky hourly plane-of-array shape, with the
+     datacenter site's own diffuse fraction, shifted from solar time to local
+     standard time), varied day by day with the site's PVGIS TMY daily factor
+     and scaled to the site's PVGIS yield x mounting multiplier;
    - grid: connected or not, import cap, and, for a flexible connection, the
      hours it is unavailable;
    - firm generation (gas or nuclear): unit sizing and the hourly available
@@ -15,7 +16,7 @@
 import { DATACENTER_MODEL_ASSUMPTIONS as A } from '../../data/datacenter/model-assumptions.js';
 import { GAS_GENSET_TYPES, NUCLEAR_TYPES } from '../../data/datacenter/power.js';
 import { DEFAULT_STATE } from '../../state/schema.js';
-import { Calc } from '../index.js';
+import { Calc, SolarGeometry } from '../index.js';
 import { HOURS_PER_YEAR } from './climate.js';
 
 /* ---------- Solar ---------- */
@@ -48,7 +49,7 @@ function toSolarState(state, site) {
  * Solar supply: { enabled, sizeMWdc, model (Calc.calculateSolar result:
  * capex parts, acres, landAreaM2, groundCoverageRatio), yieldMultiplier,
  * siteYield (MWh/MWdc-yr), annualMWh, capacityFactor, hourlyKW (8760,
- * local standard time), localTimeShiftHours, reachable }.
+ * local standard time), localTimeShiftHours, dailyVariability, reachable }.
  */
 export function buildSolarSupply(state, site) {
   const sizeMWdc = state.solarSizeMWdc;
@@ -68,19 +69,22 @@ export function buildSolarSupply(state, site) {
   const yieldMultiplier = Calc.getMountingYieldMultiplier(solarState, sitePreset, site.ghi, sky);
   const peakKW = sizeMWdc * 1000;
   const targetKWh = peakKW * state.siteYieldMwhPerMwdcYear * yieldMultiplier;
-  const series = Calc.buildEarthHourlySolarKW(solarState, { skyModel: Calc.getMountingSkyOptions(state.mountingType, sky) }, targetKWh, peakKW);
-
-  // Solar time -> local standard time: solar noon falls at
-  // 12 - (lon - 15 x utcOffset) / 15 local hours (equation of time
-  // ignored), rounded to whole hours.
+  // Clear-sky plane-of-array shape from the plant builder's geometry, moved
+  // from solar time to local standard time (solar noon falls at
+  // 12 - (lon - 15 x utcOffset) / 15 local hours; equation of time ignored,
+  // rounded to whole hours), times the site's daily TMY factor (cloudy and
+  // clear days, sites.js dailySolarFactor), then scaled to the annual yield
+  // with every hour capped at nameplate (Calc.scaleRawSeriesToEnergy).
+  const geometry = SolarGeometry.annualHourlyPlaneOfArray(site.lat, state.mountingType, Calc.getMountingSkyOptions(state.mountingType, sky));
   const shift = Math.round(-(site.lon - 15 * site.utcOffsetHours) / 15);
-  const hourlyKW = new Float64Array(HOURS_PER_YEAR);
-  let totalKWh = 0;
+  const dailyFactor = site.dailySolarFactor ? site.dailySolarFactor.flat() : null;
+  const raw = new Float64Array(HOURS_PER_YEAR);
   for (let h = 0; h < HOURS_PER_YEAR; h++) {
-    const value = series.hourlyKW[(h - shift + HOURS_PER_YEAR) % HOURS_PER_YEAR] || 0;
-    hourlyKW[h] = value;
-    totalKWh += value;
+    raw[h] = (geometry.hourly[(h - shift + HOURS_PER_YEAR) % HOURS_PER_YEAR] || 0) * (dailyFactor ? dailyFactor[Math.floor(h / 24)] : 1);
   }
+  const series = Calc.scaleRawSeriesToEnergy(raw, targetKWh, peakKW);
+  const hourlyKW = Float64Array.from(series.hourlyKW);
+  const totalKWh = series.totalKWh;
   const annualMWh = totalKWh / 1000;
   const result = {
     enabled: true,
@@ -92,6 +96,7 @@ export function buildSolarSupply(state, site) {
     capacityFactor: annualMWh / (sizeMWdc * HOURS_PER_YEAR),
     hourlyKW,
     localTimeShiftHours: shift,
+    dailyVariability: Boolean(dailyFactor),
     reachable: series.reachable,
   };
   if (solarCache.size >= 16) solarCache.delete(solarCache.keys().next().value);

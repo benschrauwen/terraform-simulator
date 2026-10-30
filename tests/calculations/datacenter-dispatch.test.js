@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 
 import { COOLING_TECHNOLOGIES, interpolateCurve } from '../../js/data/datacenter/cooling.js';
 import { GAS_DEFAULTS, POWER_LEAD_TIMES } from '../../js/data/datacenter/power.js';
+import { DATACENTER_SITES } from '../../js/data/datacenter/sites.js';
 import { calculateDatacenterScenario, getDatacenterSite } from '../../js/model/datacenter/index.js';
 
 const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
@@ -189,4 +190,59 @@ test('energization = the slowest required path, from the lead-time data', () => 
   // A reactor cannot run before its earliest commercial-operation year.
   const smr = calculateDatacenterScenario({ architecture: 'islanded', firmFamily: 'nuclear', nuclearType: 'bwrx-300' });
   assert.ok(smr.schedule.energizationDate.year >= 2033);
+});
+
+test('sites.js daily solar factors: 365 days, monthly mean ~1 (rounding), no negative days', () => {
+  DATACENTER_SITES.forEach(site => {
+    assert.deepEqual(site.dailySolarFactor.map(month => month.length), MONTH_DAYS, site.id);
+    site.dailySolarFactor.forEach(month => {
+      const mean = month.reduce((a, b) => a + b, 0) / month.length;
+      assert.ok(Math.abs(mean - 1) < 0.006, `${site.id} month mean ${mean}`);
+      month.forEach(value => assert.ok(value >= 0));
+    });
+  });
+});
+
+test('TMY day-to-day variability: annual solar is conserved, the hourly cap holds, cloudy spells appear', () => {
+  const size = 300;
+  const r = calculateDatacenterScenario({ siteId: 'dublin-ie', architecture: 'hybrid', firmFamily: 'none', solarSizeMWdc: size });
+  assert.equal(r.solar.dailyVariability, true);
+  // Annual energy = MWdc x PVGIS base yield x mounting multiplier, unchanged by the daily factor.
+  const target = size * r.state.siteYieldMwhPerMwdcYear * r.solar.yieldMultiplier;
+  assert.ok(Math.abs(r.solar.annualMWh - target) < 1e-6 * target);
+  const H = r.dispatch.hourly;
+  assert.ok(Math.max(...H.solarMW) <= size + 1e-9);
+  // Daily solar energy in local days; a spell of >= 3 consecutive days below
+  // half the month's mean daily energy exists at a cloudy site (Dublin's TMY
+  // has a 5-day spell of days below half its month's mean GHI).
+  const daily = Array.from({ length: 365 }, (_, d) => H.solarMW.slice(d * 24, d * 24 + 24).reduce((a, b) => a + b, 0));
+  let day = 0;
+  let longest = 0;
+  MONTH_DAYS.forEach(days => {
+    const mean = daily.slice(day, day + days).reduce((a, b) => a + b, 0) / days;
+    let run = 0;
+    for (let d = day; d < day + days; d++) {
+      run = daily[d] < 0.5 * mean ? run + 1 : 0;
+      longest = Math.max(longest, run);
+    }
+    day += days;
+  });
+  assert.ok(longest >= 3, `longest low-solar spell ${longest} days`);
+  // The daily factor moves energy between days of a month: day energies at
+  // the same site differ by far more than the clear-sky geometry allows
+  // (clear-sky days of one month differ by a few percent).
+  const june = daily.slice(151, 181);
+  assert.ok(Math.min(...june) < 0.5 * Math.max(...june));
+});
+
+test('islanded solar + battery: cloudy days now cost uptime (Abilene, 1 GWdc / 4 GWh)', () => {
+  const r = calculateDatacenterScenario({ architecture: 'islanded', firmFamily: 'none', solarSizeMWdc: 1000, batteryCapacityMWh: 4000 }, { fastMode: true });
+  // With clear-sky-equivalent days this design served every hour; a run of
+  // overcast TMY days now drains the 4 GWh battery (~2.5 days of load).
+  assert.ok(r.reliability.uptimePercent < 100, `uptime ${r.reliability.uptimePercent}`);
+  assert.ok(r.reliability.uptimePercent > 99);
+  assert.ok(r.reliability.longestOutageHours >= 24);
+  // A larger battery restores it, monotonically.
+  const bigger = calculateDatacenterScenario({ architecture: 'islanded', firmFamily: 'none', solarSizeMWdc: 1000, batteryCapacityMWh: 8000 }, { fastMode: true });
+  assert.ok(bigger.reliability.uptimePercent >= r.reliability.uptimePercent);
 });

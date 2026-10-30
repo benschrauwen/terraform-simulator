@@ -459,7 +459,11 @@ Annual PUE is facility energy / IT energy. At the cooling.js calibration climate
 
 ### Supply and dispatch (`supply.js`, `dispatch.js`)
 
-- **Solar** (optional everywhere) reuses the plant builder's solar model: annual energy = MWdc x site PVGIS yield x mounting multiplier, on the clear-sky hourly shape with the site's own diffuse fraction, shifted from solar to local standard time. Costs and land come from `calculateSolar` on the measured 2026 build cost basis.
+- **Solar** (optional everywhere) reuses the plant builder's solar model: annual energy = MWdc x site PVGIS yield x mounting multiplier, on the clear-sky hourly plane-of-array shape with the site's own diffuse fraction, shifted from solar to local standard time. Each day is then scaled by the site's `dailySolarFactor` (that PVGIS TMY day's horizontal irradiation / its month's mean, `sites.js`) and the year is rescaled to the same annual energy with every hour capped at nameplate, so cloudy spells and clear days follow the TMY sequence while monthly and annual energy stay put. Costs and land come from `calculateSolar` on the measured 2026 build cost basis.
+
+  ```text
+  solar(h) = s x clearSkyPOA(h) x dailySolarFactor(day(h)),  capped at MWdc;  s: sum_h solar(h) = MWdc x yield x multiplier
+  ```
 - **Grid**: connected in `grid` and `hybrid`, import cap 0 = design peak. A flexible connection is unavailable for N hours a year, placed as contiguous 4-hour events (the low end of the 4-16 h curtailments in the Camus study) on the days of highest facility load, i.e. hot afternoons.
 - **Firm generation**, one family at a time. Gas: `auto` = ceil(design peak / unit size) + spare units (default N+1); each unit is out (1 - availability) x 8760 h in a block, units maintained one after another from 1 March. Fuel uses the plant's committed units at equal loading, with the heat rate rising linearly to the 50%-load penalty (floored at the minimum stable load). Nuclear: must-take baseload at full rating except a (1 - capacity factor) x 8760 h refuelling/maintenance block per unit from 1 April; `auto` = enough units for the average facility load (an existing-plant contract exactly that). A contract is take-or-pay; an own reactor backs down instead of curtailing.
 - **Order**, each hour: solar + nuclear serve the load; surplus charges the battery, then is exported (if enabled, grid available, up to the connection) or curtailed. A deficit is met by a shifting battery, then grid → reserve battery → gas (`grid`: gas is backup) or, in `hybrid` when gas is cheaper (fuel x heat rate + VOM < grid energy price), gas → grid → reserve battery; `islanded` has no grid. The rest is unserved.
@@ -507,7 +511,7 @@ NPV is linear in the revenue price, so the break-even token price or colocation 
 
 ### Datacenter limitations
 
-- Weather is a typical day per month (no heat waves beyond the monthly mean profile) and solar is clear-sky-equivalent, so solar + battery islanded designs look far more reliable than they are.
+- Temperatures are a typical day per month (no heat waves beyond the monthly mean profile). Solar has the TMY's day-to-day variability but a clear-sky shape within each day (no passing clouds), the GHI day factor stands in for plane-of-array (it understates the clear/overcast contrast for trackers), and TMY months are stitched from different years, so multi-day spells never cross a month boundary. One TMY year is not a design-year: at Abilene a 1 GWdc / 4 GWh islanded solar + battery site serves 99.45% of hours (a ~2-day overcast spell empties the battery); ~6.4 GWh reaches 99.9% in this year, and a multi-year record would need more.
 - IT load is constant at its utilization; no AI training load swings, ramp limits or start times for gas.
 - Outages are deterministic blocks (planned maintenance), not random forced outages; grid outages exist only for flexible connections.
 - Solar degradation is not modeled in the dispatch (year-1 output every year); prices are constant real values with no taxes.

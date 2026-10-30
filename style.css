@@ -1086,6 +1086,16 @@ input[type="range"]::-moz-range-track {
   margin-top: 0;
 }
 
+.field-note.warning-note {
+  color: var(--warning);
+}
+
+/* Read-only slider (e.g. battery capacity auto-sized for a set AI load). */
+input[type="range"]:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .field-note a {
   color: var(--electric);
   text-decoration: none;

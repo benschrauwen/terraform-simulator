@@ -172,6 +172,7 @@ export class App {
       this.applyNormalizedState(r.state);
       this.lastResults = r;
       this.updateInfoDisplays(r);
+      this.syncAiSizingControls(r);
       this.updateDiagram(r);
       this.updateSiteMap(r);
       this.updateProduction(r);

@@ -10,7 +10,7 @@ What it models:
 - An hour-by-hour annual dispatch of solar, an optional battery and the chemical plant, with intentional undersizing (clipping) via `chemicalSizingPercent`.
 - Supported products: methane (Sabatier) and methanol, with H2 and CO2 shared between them by stoichiometry.
 - Exploratory industrial routes with rough economics: MTG gasoline, CO2 to CO, ammonia, specialty carbon, lime, cement, steel, silicon, aluminum, titanium and desalination.
-- An optional colocated AI datacenter: a constant IT load sized to a reliability target, served before the chemicals.
+- An optional colocated AI datacenter: a constant IT load served before the chemicals, either the largest load the battery supports at a reliability target or a user-set load with the battery auto-sized to that target.
 - Sourced and dated incentive schemes for the US, EU, Germany, the Netherlands, the UK and Spain, plus a custom mix.
 - Project finance: replacements, salvage, NPV, IRR/MIRR, payback, levelized metrics, optional debt with DSCR, inline IRR optimizers and price sensitivities.
 - CO2 accounting (captured, bound, vented, net avoided), water and land use.
@@ -142,7 +142,7 @@ The dropdown lists the new preset automatically. A selected preset is stored as 
    - A per-module slider belongs in that module's `configs` (`data/modules.js`).
    - A policy input belongs in the scheme's `inputs`.
    - A fixed constant that users cannot change belongs in `MODEL_ASSUMPTIONS` (`data/assumptions.js`).
-2. Add the element to `index.html`. Give it the default as its static `value`, plus a `<span id="<id>Value">` read-out that shows the formatted default.
+2. Add the element to `index.html`. Give it the default as its static `value`, plus a `<span id="<id>Value">` read-out that shows the formatted default. A log-scale slider takes `data-scale="log"` with `min`/`max`/`value` as log10 of the state values (see `aiLoadKW`).
 3. Add `{ type: 'range' | 'checkbox' | 'select' | 'number', id, stateKey?, format?, onChange? }` to `CONTROL_SPECS` in `js/ui/control-spec.js`. Binding and sync come from that entry. `tests/ui/control-spec.test.js` checks that the element exists and that its pre-JS value and read-out match `DEFAULT_STATE`.
 4. Read the value from the normalized state in the model (it is always present and clamped, so no fallback is needed).
 
@@ -207,7 +207,20 @@ full_capture_kW = annual solar peak                          (no battery)
 process_kW      = full_capture_kW * chemicalSizingPercent / 100
 ```
 
-AI mode serves solar in this order: the constant AI load, then battery charging (the battery discharges only to AI), then the chemicals. The AI load is the largest constant load whose clear-sky-equivalent full-power reliability meets the target (bisection). Chemical 100% is the peak residual power at that load. With no battery, AI mode seeds 1 MWh per GWh/yr of solar and says so. GPU CAPEX is `$/kW * load`, O&M is 4%/yr of it, and `revenue = served MWh * M tokens/MWh * $/M tokens`.
+AI mode serves solar in this order: the constant AI load, then battery charging (the battery discharges only to AI), then the chemicals. Reliability is the share of hours of the settled year-1 dispatch in which the load runs at full rate (clear-sky-equivalent). `aiSizingMode` picks what is solved:
+
+```
+'max' (default, "Max for battery"):
+  load_kW    = max { L : reliability(L, battery) >= target }          (doubling + bisection)
+'fixed' ("Set load"):
+  load_kW    = aiLoadKW  (clamped to the array DC peak, systemSizeMW * 1000)
+  battery    = min { B : reliability(load, B) >= target }               (bisection, to 1e-4 of B)
+               over 0 <= B <= load * cycle hours * 7   (a week of autonomy on Earth)
+  infeasible : reliability(load, cap) < target -> battery = cap, ai.loadFeasible = false,
+               maxFeasibleLoadKW = max { L : reliability(L, cap(L)) >= target }
+```
+
+The fixed-mode battery uses the Battery Storage duration (C-rate, both ways), efficiency and leakage, and replaces `batteryCapacityMWh` for dispatch, CAPEX and replacements; the user's own value stays in state (and in share links) for "Max for battery". It is returned as `ai.batterySizing`. Chemical 100% is the peak residual power at the design load. With no battery, "Max for battery" seeds 1 MWh per GWh/yr of solar and says so. GPU CAPEX is `$/kW * load`, O&M is 4%/yr of it, and `revenue = served MWh * M tokens/MWh * $/M tokens`.
 
 Battery CAPEX is `$/kWh * capacity`. Its life is `min(12 yr, rated cycles / EFC per year)`, where equivalent full cycles per year = year-1 energy discharged (annualized to an Earth year) / capacity, in both chemical and AI dispatch.
 

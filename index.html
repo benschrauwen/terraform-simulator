@@ -259,6 +259,7 @@
                   title="Set battery capacity to the best IRR found (ranked by MIRR at the discount rate if IRR is undefined anywhere in the range)"
                 >optimize</button>
               </span>
+              <div class="field-note compact-note" id="batteryAutoSizeNote" hidden></div>
             </div>
             <label>Cost ($/kWh)
               <input type="range" id="batteryCost" min="50" max="400" step="1" value="150">
@@ -410,11 +411,22 @@
                 <label>Full-rate reliability target
                   <select id="aiReliabilityTarget"></select>
                 </label>
+                <label><span class="tooltip-label" data-tooltip="Max for battery: the largest constant GPU load the solar plus your battery can run at the uptime target. Set load: you choose the GPU load and the battery is sized to the smallest capacity that keeps it at the target.">GPU cluster sizing</span>
+                  <select id="aiSizingMode">
+                    <option value="max" selected>Max for battery</option>
+                    <option value="fixed">Set load</option>
+                  </select>
+                </label>
+                <label id="aiLoadControl" hidden>GPU IT load (kW)
+                  <input type="range" id="aiLoadKW" data-scale="log" min="0" max="3" step="0.001" value="2">
+                  <span class="range-value" id="aiLoadKWValue">100 kW</span>
+                </label>
+                <div class="field-note compact-note warning-note" id="aiLoadFeasibilityWarning" role="status" hidden></div>
                 <div class="field-note">
-                  The AI load is auto-sized from the current solar plus battery system to satisfy the selected full-rate uptime target. The chemical plant then ramps up and down only on the residual energy left after AI load and battery charging.
+                  The AI load runs at a constant rate off solar plus battery to satisfy the selected full-rate uptime target: either the largest load your battery supports, or your set load with the battery auto-sized to it. The chemical plant then ramps up and down only on the residual energy left after AI load and battery charging.
                 </div>
                 <div class="field-note compact-note">
-                  Reliability is clear-sky-equivalent: every modeled day has the clear-sky shape scaled to the site's annual yield, so multi-day cloudy spells are not modeled and real-world uptime at the same battery size will be lower. AI sizing needs storage; with the battery at 0, one of 1 MWh per GWh/yr of solar is added automatically.
+                  Reliability is clear-sky-equivalent: every modeled day has the clear-sky shape scaled to the site's annual yield, so multi-day cloudy spells are not modeled and real-world uptime at the same battery size will be lower. Max-for-battery sizing needs storage; with the battery at 0, one of 1 MWh per GWh/yr of solar is added automatically.
                 </div>
                 <div class="field-note compact-note" id="aiBatterySeedNote" hidden></div>
                 <div class="field-note compact-note">
@@ -437,8 +449,12 @@
                   <span class="range-value" id="aiAssetLifeYearsValue">5 years</span>
                 </label>
                 <div class="info-row">
-                  <span class="tooltip-label" data-tooltip="AI load size the current solar-plus-battery system can support at the selected reliability target.">Auto-sized AI load:</span>
+                  <span id="aiDesignLoadLabel" class="tooltip-label" data-tooltip="AI load size the current solar-plus-battery system can support at the selected reliability target.">Auto-sized AI load:</span>
                   <span id="aiDesignLoadValue" class="highlight">—</span>
+                </div>
+                <div class="info-row" id="aiSizedBatteryRow" hidden>
+                  <span class="tooltip-label" data-tooltip="Smallest battery (at the Battery Storage duration, efficiency and leakage) that keeps the set GPU load at full rate for the target share of hours, and how many hours of the IT load it holds.">Auto-sized battery:</span>
+                  <span id="aiSizedBatteryValue" class="highlight">—</span>
                 </div>
                 <div class="info-row">
                   <span class="tooltip-label" data-tooltip="Fraction of that AI design load actually served with electricity over the year.">Served-energy utilization:</span>
@@ -451,6 +467,10 @@
                 <div class="info-row">
                   <span class="tooltip-label" data-tooltip="Lowest yearly full-rate reliability over the analysis horizon: the year-1 design load re-dispatched on the degraded array (degradation restarts after a solar replacement).">Late-life reliability:</span>
                   <span id="aiLateLifeReliabilityValue" class="highlight">—</span>
+                </div>
+                <div class="info-row">
+                  <span class="tooltip-label" data-tooltip="Year-1 share of the solar generation served to the AI load and delivered to the chemical plant. The remainder is battery losses and clipping.">Solar to AI / chemicals:</span>
+                  <span id="aiEnergySplitValue" class="highlight">—</span>
                 </div>
                 <div class="info-row">
                   <span class="tooltip-label" data-tooltip="Total yearly AI tokens produced and sold in the model.">Annual tokens:</span>

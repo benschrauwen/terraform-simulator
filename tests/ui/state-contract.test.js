@@ -34,8 +34,10 @@ test('every index.html range/number input stays within its state schema bounds',
     const field = CORE_STATE_FIELDS.find(candidate => candidate.key === stateKey);
     assert.ok(field, `#${id} maps to ${stateKey}, which has no state schema field.`);
 
-    const min = Number(attr(tag, 'min'));
-    const max = Number(attr(tag, 'max'));
+    // Log-scale sliders carry log10 of the state value.
+    const toState = attr(tag, 'data-scale') === 'log' ? raw => Math.pow(10, Number(raw)) : Number;
+    const min = toState(attr(tag, 'min'));
+    const max = toState(attr(tag, 'max'));
     assert.ok(Number.isFinite(min) && Number.isFinite(max), `#${id} needs numeric min and max.`);
     assert.ok(min <= max, `#${id} min ${min} > max ${max}.`);
     assert.ok(min >= field.min, `#${id} min ${min} is below the ${stateKey} schema min ${field.min}.`);
@@ -43,7 +45,7 @@ test('every index.html range/number input stays within its state schema bounds',
 
     const value = attr(tag, 'value');
     if (value !== undefined) {
-      assert.ok(Number(value) >= min && Number(value) <= max, `#${id} value ${value} is outside ${min}..${max}.`);
+      assert.ok(toState(value) >= min && toState(value) <= max, `#${id} value ${value} is outside ${min}..${max}.`);
     }
   });
 });

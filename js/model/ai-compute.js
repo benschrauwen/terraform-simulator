@@ -2,8 +2,10 @@
    AI datacenter dispatch
    ============================================
    Annual hour-by-hour dispatch of solar + battery to a constant AI load, with
-   the residual feeding the chemical plant. Sizes the largest AI load that
-   meets the reliability target and summarizes storage and chemical supply. */
+   the residual feeding the chemical plant. Sizes either the largest AI load
+   that meets the reliability target with the given battery, or the smallest
+   battery that lets a user-set load meet it, and summarizes storage and
+   chemical supply. */
 
 import { MODEL_ASSUMPTIONS } from '../data/assumptions.js';
 import { AI_COMPUTE_DEFAULTS } from '../data/reference-data.js';
@@ -21,6 +23,10 @@ import {
 } from './battery.js';
 import { crf } from './finance.js';
 import { clampNumber } from '../util.js';
+
+function withBatteryMWh(state, batteryMWh) {
+  return { ...state, batteryCapacityMWh: batteryMWh, batteryEnabled: batteryMWh > 1e-9 };
+}
 
 export const aiComputeMethods = {
   getAiBatteryHeuristicMWh(state) {
@@ -319,24 +325,10 @@ export const aiComputeMethods = {
     };
   },
 
-  /* Largest constant AI load whose full-power hour share meets the target on
-     the year-1 (clear-sky-equivalent) annual series, then the residual
-     chemical plant, then the same fixed design re-dispatched on degraded
-     solar for the per-year energy vectors. Only called with AI enabled. */
-  calculateAICompute(state, solar, annualSolar, options = {}) {
-    const captureDispatchSeries = options.captureDispatchSeries !== false;
-    const includeDisplayDispatchSeries = options.includeDisplayDispatchSeries !== false;
-    const captureDailySummaries = Boolean(options.captureDailySummaries);
-    const chemicalSizingFraction = this.getChemicalSizingFraction(state);
-    const cyclesPerYear = this.getBodyConfig(state.body || 'earth').cyclesPerEarthYear;
-    const dispatchBasis = options.dispatchBasis || this.getAnnualDispatchBasis(state, solar, annualSolar, {
-      includeWindowSummaries: captureDispatchSeries || includeDisplayDispatchSeries,
-    });
-    const dispatchSolar = dispatchBasis.solar;
-    const annualizationFactor = dispatchBasis.annualizationFactor;
-    const dispatchHorizonLabel = dispatchBasis.horizonLabel;
+  /* Largest constant AI load (kW) whose full-power hour share meets the
+     target with the state's battery: doubling to bracket, then bisection. */
+  solveMaxAiLoadKW(state, dispatchSolar, targetReliability) {
     const hours = Array.isArray(dispatchSolar?.hourlyKW) ? dispatchSolar.hourlyKW.length : 0;
-    const targetReliability = Math.max(0.0001, Math.min(0.99999, (state.aiReliabilityTarget || DEFAULT_STATE.aiReliabilityTarget) / 100));
     const sizingDispatch = loadKW => this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, loadKW, {
       captureSeries: false,
       skipOpHours: true,
@@ -372,7 +364,86 @@ export const aiComputeMethods = {
       }
     }
 
-    const designLoadKW = best.loadKW;
+    return best.loadKW;
+  },
+
+  /* Largest battery the fixed-load sizing considers: this many full
+     day-night cycles of the IT load (aiFixedLoadMaxAutonomyCycles). */
+  getAiFixedLoadMaxBatteryMWh(state, loadKW) {
+    const cycleHours = this.getBodyConfig(state.body || 'earth').cycleHours;
+    return (Math.max(0, loadKW) * cycleHours * MODEL_ASSUMPTIONS.aiFixedLoadMaxAutonomyCycles) / 1000;
+  },
+
+  /* "Set load" sizing: the smallest battery (MWh, at the state's duration,
+     efficiency and leakage) whose settled annual dispatch keeps the constant
+     `loadKW` at full rate for at least the target share of hours.
+     Reliability rises with capacity (more energy carried and, at a fixed
+     duration, more power), so bisection applies. Past the autonomy cap the
+     load is infeasible (energy- or power-limited); the result then carries
+     the capped battery and the largest load that the capped sizing can
+     serve (feasibility scales with load / solar, so that is a bisection too). */
+  sizeAiBatteryForLoad(state, dispatchSolar, loadKW, targetReliability) {
+    const reliabilityAt = (load, batteryMWh) => this.simulateAnnualDispatchWithConstantAiLoad(
+      withBatteryMWh(state, batteryMWh), dispatchSolar, load, { captureSeries: false, skipOpHours: true }
+    ).fullPowerReliability;
+    const maxBatteryMWh = this.getAiFixedLoadMaxBatteryMWh(state, loadKW);
+    const sizing = { loadKW, maxBatteryMWh, batteryMWh: 0, feasible: true, maxFeasibleLoadKW: loadKW };
+
+    if (!(loadKW > 0) || reliabilityAt(loadKW, 0) >= targetReliability) return sizing;
+
+    if (reliabilityAt(loadKW, maxBatteryMWh) < targetReliability) {
+      let lo = 0;
+      let hi = loadKW;
+      while (hi - lo > Math.max(1e-6, loadKW * 1e-4)) {
+        const mid = (lo + hi) / 2;
+        if (reliabilityAt(mid, this.getAiFixedLoadMaxBatteryMWh(state, mid)) >= targetReliability) lo = mid;
+        else hi = mid;
+      }
+      return { ...sizing, batteryMWh: maxBatteryMWh, feasible: false, maxFeasibleLoadKW: lo };
+    }
+
+    // Resolve the capacity to 1e-4 of itself (the reliability is a step
+    // function of capacity, so the smallest passing size is a threshold).
+    let lo = 0;
+    let hi = maxBatteryMWh;
+    while (hi - lo > Math.max(1e-6, hi * 1e-4)) {
+      const mid = (lo + hi) / 2;
+      if (reliabilityAt(loadKW, mid) >= targetReliability) hi = mid;
+      else lo = mid;
+    }
+    return { ...sizing, batteryMWh: hi };
+  },
+
+  /* The AI design: in "max" mode (default) the largest constant AI load
+     whose full-power hour share meets the target with the state's battery;
+     in "fixed" mode the user's load with the smallest battery that meets
+     the target (the state's own battery is left untouched). Both run on the
+     year-1 (clear-sky-equivalent) annual series, then size the residual
+     chemical plant, then re-dispatch the same fixed design on degraded
+     solar for the per-year energy vectors. Only called with AI enabled. */
+  calculateAICompute(rawState, solar, annualSolar, options = {}) {
+    const captureDispatchSeries = options.captureDispatchSeries !== false;
+    const includeDisplayDispatchSeries = options.includeDisplayDispatchSeries !== false;
+    const captureDailySummaries = Boolean(options.captureDailySummaries);
+    const chemicalSizingFraction = this.getChemicalSizingFraction(rawState);
+    const cyclesPerYear = this.getBodyConfig(rawState.body || 'earth').cyclesPerEarthYear;
+    const dispatchBasis = options.dispatchBasis || this.getAnnualDispatchBasis(rawState, solar, annualSolar, {
+      includeWindowSummaries: captureDispatchSeries || includeDisplayDispatchSeries,
+    });
+    const dispatchSolar = dispatchBasis.solar;
+    const annualizationFactor = dispatchBasis.annualizationFactor;
+    const dispatchHorizonLabel = dispatchBasis.horizonLabel;
+    const targetReliability = Math.max(0.0001, Math.min(0.99999, (rawState.aiReliabilityTarget || DEFAULT_STATE.aiReliabilityTarget) / 100));
+    const fixedLoad = rawState.aiSizingMode === 'fixed';
+    const batterySizing = fixedLoad
+      ? this.sizeAiBatteryForLoad(rawState, dispatchSolar, rawState.aiLoadKW, targetReliability)
+      : null;
+    // The design state: the sized battery replaces the state's own for every
+    // dispatch, capex and replacement below.
+    const state = batterySizing ? withBatteryMWh(rawState, batterySizing.batteryMWh) : rawState;
+    const designLoadKW = fixedLoad
+      ? rawState.aiLoadKW
+      : this.solveMaxAiLoadKW(state, dispatchSolar, targetReliability);
     const fullCaptureDispatch = this.simulateAnnualDispatchWithConstantAiLoad(state, dispatchSolar, designLoadKW, {
       captureSeries: false,
       skipOpHours: true,
@@ -433,6 +504,11 @@ export const aiComputeMethods = {
       // has the clear-sky shape scaled to the site's annual yield: multi-day
       // weather (cloudy spells) is not modeled.
       reliabilityBasis: 'clear-sky-equivalent',
+      sizingMode: fixedLoad ? 'fixed' : 'max',
+      // "Set load" only: whether the sized battery meets the target, and the
+      // sizing itself (battery, cap, largest feasible load).
+      loadFeasible: batterySizing ? batterySizing.feasible : true,
+      batterySizing,
       designLoadKW,
       annualAiServedKWh,
       annualTokensM,
@@ -470,6 +546,9 @@ export const aiComputeMethods = {
     return {
       enabled: false,
       reliabilityTarget: Math.max(0.0001, Math.min(0.99999, (state.aiReliabilityTarget || DEFAULT_STATE.aiReliabilityTarget) / 100)) * 100,
+      sizingMode: state.aiSizingMode === 'fixed' ? 'fixed' : 'max',
+      loadFeasible: true,
+      batterySizing: null,
       designLoadKW: 0,
       annualTokensM: 0,
       annualRevenue: 0,

@@ -32,6 +32,7 @@ import {
   formatMethaneFeedstockSplit,
   formatModuleMarketValue,
   formatMtgMethanolSplit,
+  formatPowerKW,
   formatSystemSizeMW,
   formatYears,
 } from './formatters.js';
@@ -116,6 +117,9 @@ export const CONTROL_SPECS = Object.freeze([
     onChange: app => window.requestAnimationFrame(() => app.positionSliderMarkers()),
   },
   { type: 'select', id: 'aiReliabilityTarget', parse: parseFloat },
+  { type: 'select', id: 'aiSizingMode' },
+  // Log scale; its max follows the array DC peak (ui-state.js syncAiSizingControls).
+  { type: 'range', id: 'aiLoadKW', format: formatPowerKW },
   { type: 'range', id: 'aiGpuCapexPerKW', format: value => `${wholeDollars(value)}/kW` },
   { type: 'range', id: 'aiTokenPrice', stateKey: 'aiTokenPricePerM', format: value => `$${fixed(2)(value)} / 1M tokens` },
   {

@@ -397,12 +397,15 @@ export const economicsMethods = {
         balloonPayment: 0,
       };
       const equityCashFlow = netCashFlow - debtEntry.debtService;
-      // Cash available for debt service is operating cash after replacement
-      // CAPEX (replacements are funded from operations). DSCR uses the
-      // scheduled payment; a horizon balloon is repaid from final-year cash
-      // including salvage. Any negative equity year after close, whether from
-      // debt service or a replacement, needs extra sponsor cash.
-      const cashAvailableForDebtService = operatingCashFlow - replacementOutflow;
+      // Cash available for debt service (CFADS) is operating cash before
+      // major replacement CAPEX: lenders fund repowerings and battery swaps
+      // from reserve / maintenance accounts, not from the year's debt
+      // cover, so a replacement year no longer reads as DSCR -2x. DSCR uses
+      // the scheduled payment; a horizon balloon is repaid from final-year
+      // cash including salvage. The replacement still hits equity cash: any
+      // negative equity year after close, whether from debt service or a
+      // replacement, needs extra sponsor cash.
+      const cashAvailableForDebtService = operatingCashFlow;
       const scheduledDebtService = debtEntry.scheduledDebtService ?? debtEntry.debtService;
       const dscr = financing.enabled && scheduledDebtService > 1e-9
         ? cashAvailableForDebtService / scheduledDebtService

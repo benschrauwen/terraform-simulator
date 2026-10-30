@@ -117,6 +117,14 @@ test('I1 NPV equals an independent discounted sum of the yearly cash flows (incl
         entry.replacementOutflow + entry.salvageValue;
       relClose(entry.netCashFlow, rebuilt, 1e-9, `${name} year ${entry.year} net cash`, 1e-6);
       relClose(entry.equityCashFlow, entry.netCashFlow - entry.debtService, 1e-9, `${name} year ${entry.year} equity cash`, 1e-6);
+      // DSCR on CFADS = revenue - O&M (before reserve-funded replacements);
+      // every negative equity year, replacement-driven or not, is sponsor cash.
+      // The scheduled payment excludes a horizon balloon.
+      if (entry.dscr !== null) {
+        const scheduled = entry.debtService - entry.balloonPayment;
+        relClose(entry.dscr, (entry.totalRevenue - timeline.annualOperatingCost[index + 1]) / scheduled, 1e-9, `${name} year ${entry.year} DSCR`, 1e-9);
+      }
+      relClose(entry.sponsorSupportNeeded, economics.financing.enabled ? Math.max(0, -entry.equityCashFlow) : 0, 1e-9, `${name} year ${entry.year} sponsor`, 1e-6);
     });
     relClose(economics.yearlyCashFlows.at(-1).salvageValue, economics.salvageValue, 1e-12, `${name} salvage in final year`);
     relClose(economics.npv, npv(projectCashFlows(economics), rate), 1e-9, `${name} project NPV`, 1e-6);

@@ -361,6 +361,12 @@ function buildFinancingRows({ e }) {
   }
   rows.push(
     econRow('Total sponsor cash at close', money(financing.equityUpfront), 'negative'),
+    econRow(
+      'Equity NPV',
+      money(e.equityNpv),
+      signClass(e.equityNpv),
+      `Sponsor equity cash flows (equity + fees at close, then project cash after debt service, incl. final-year salvage) discounted at the ${FormatNumbers.fixed(e.discountRatePercent, 1)}% project discount rate, not a separate cost of equity.`
+    ),
     econRow('Debt coupon', `${FormatNumbers.fixed(financing.debtInterestRate, 2)}%`),
     econRow('Debt term', `${FormatNumbers.fixed(financing.debtTermYears, 0)} years`)
   );
@@ -390,7 +396,7 @@ function buildFinancingRows({ e }) {
         'Minimum DSCR',
         `${FormatNumbers.fixed(financing.minDscr, 2)}x (year ${FormatNumbers.fixed(financing.minDscrYear, 0)})`,
         weak ? 'warning' : '',
-        'Debt service coverage ratio: operating cash flow after replacement CAPEX divided by scheduled debt service. Below 1.0x the project cannot pay its debt from its own cash that year; lenders typically require 1.2-1.4x.'
+        'Debt service coverage ratio: cash flow available for debt service (revenue minus O&M, before major replacement CAPEX, which lenders fund from reserve / maintenance accounts) divided by scheduled debt service. Below 1.0x operations cannot pay the debt that year; lenders typically require 1.2-1.4x. Replacement shortfalls still show as sponsor support below.'
       ),
       econRow(
         'Average DSCR',

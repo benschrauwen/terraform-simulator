@@ -315,13 +315,13 @@ mirr = (FV_r(inflows) / -PV_r(outflows))^(1/n) - 1
 
 The inline optimizers sweep one slider at a time: battery size, chemical sizing or the methane/methanol split. They maximize IRR, or MIRR across the whole sweep if IRR is undefined anywhere in it (NPV as a last resort). Payback is reported as simple and as sustained (never dips negative again). It counts operating cash minus replacement CAPEX only, never the final-year salvage, and reads "not within horizon" when the outlay is not recovered. The "Viable" status needs both NPV > 0 and that payback.
 
-With debt enabled, the headline IRR becomes equity IRR and equity MIRR is shown next to it. Project NPV stays unlevered (equity NPV is computed on the result but not displayed).
+With debt enabled, the headline IRR becomes equity IRR and equity MIRR is shown next to it. Project NPV stays unlevered; equity NPV is shown in the financing rows, discounted at the project discount rate (no separate cost of equity).
 
 ```text
 debt        = debt_share (<= 90%) * net_capex_0;   fee = fee% * debt, paid by equity at close
 payment     = debt * crf(i, term); a term longer than N leaves a balloon repaid in year N
 equity_cf_y = cf_y - debt_service_y
-DSCR_y      = (operating_cf_y - replacements_y) / scheduled_debt_service_y      # min/avg, flagged < 1.0x
+DSCR_y      = operating_cf_y / scheduled_debt_service_y      # CFADS before major replacements (reserve-funded); min/avg, flagged < 1.0x
 sponsor_y   = max(0, -equity_cf_y)                     # debt service and/or replacement shortfalls
 ```
 

@@ -193,6 +193,9 @@ test('datacenter.html exposes the section and output anchors the datacenter UI f
     'economicsTimelineChart', 'economicsTimelineMode', 'economicsTimelineNote',
     'cashFlowDetails', 'cashFlowSummary', 'cashFlowNote', 'cashFlowCsvButton', 'cashFlowTableScroll',
     'keyMetrics', 'econBreakdown', 'sensitivityResults', 'appVersion',
+    // Optimize Design card (optimizer-panel.js).
+    'optimizerSizeSolar', 'optimizerSizeBattery', 'optimizerSizeFirm', 'optimizerSizeGrid', 'optimizerCompare',
+    'optimizerWide', 'optimizerRunButton', 'optimizerProgress', 'optimizerStatus', 'optimizerStale', 'optimizerResults',
   ].filter(id => !hasDatacenterId(id));
   assert.deepEqual(missing, []);
 

@@ -6,6 +6,8 @@
      (shape documented at the top of ./scenario.js);
    - runDatacenterTornado(state, variables?, { swingPercent }) and
      calculateDatacenterBreakEven(state, { baseResult });
+   - optimizeDatacenterDesign(state, options) and compareArchitectures(state,
+     options): the highest-NPV design that meets the uptime target (./optimizer.js);
    - buildCashFlowTable / buildCashFlowCsv (shared with the plant builder;
      they read economics.yearlyCashFlows, which has the same fields);
    - the schema: DATACENTER_DEFAULT_STATE, DATACENTER_STATE_FIELDS,
@@ -14,6 +16,7 @@
 
 export { calculateDatacenterScenario } from './scenario.js';
 export { calculateDatacenterBreakEven, getDatacenterFieldRange, runDatacenterTornado } from './tornado.js';
+export { compareArchitectures, getArchitectureStartState, optimizeDatacenterDesign } from './optimizer.js';
 export { FLOW_NODE_LABELS } from './impacts.js';
 export { buildCashFlowCsv, buildCashFlowTable } from '../cash-flow-table.js';
 export {

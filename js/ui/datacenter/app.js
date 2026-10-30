@@ -20,6 +20,8 @@ import { tooltipMethods } from '../tooltips.js';
 import { buildDatacenterCsvHeader, DATACENTER_CASH_FLOW_LABELS, DATACENTER_CASH_FLOW_TOOLTIPS, DATACENTER_TIMELINE_TEXT } from './cash-flow.js';
 import { datacenterControlMethods } from './controls.js';
 import { dispatchChartMethods } from './dispatch-chart.js';
+import { datacenterOptimizerClientMethods } from './optimizer-client.js';
+import { datacenterOptimizerMethods } from './optimizer-panel.js';
 import { resultMethods } from './results.js';
 import { datacenterSensitivityMethods } from './sensitivity.js';
 import { datacenterShareMethods } from './share.js';
@@ -57,6 +59,7 @@ export class DatacenterApp {
     this.bindFlowTabs();
     this.bindDispatchControls();
     this.bindCashFlowControls();
+    this.bindOptimizerPanel();
     this.createHoverTooltip();
     this.bindHoverTooltips();
     this.initSliderMarkers();
@@ -133,6 +136,7 @@ export class DatacenterApp {
     // a moment otherwise so the first paint is not held up.
     this.scheduleSensitivityUpdate(r, options.includeSensitivity === false ? this.sensitivityDebounceMs : 30);
     this.scheduleShareStateUrlSync();
+    this.updateOptimizerStaleness();
   }
 }
 
@@ -148,6 +152,8 @@ Object.assign(
   economicsTimelineChartMethods,
   datacenterSensitivityMethods,
   dispatchChartMethods,
+  datacenterOptimizerClientMethods,
+  datacenterOptimizerMethods,
   viewMethods,
   resultMethods,
 );

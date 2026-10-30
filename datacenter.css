@@ -546,3 +546,127 @@ body.datacenter-app [hidden] {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- Right: design optimizer ---- */
+
+.dc-opt-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0 10px;
+  margin: 6px 0 4px;
+}
+
+.dc-opt-options .toggle-label {
+  margin-bottom: 6px;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+}
+
+.dc-opt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 8px;
+}
+
+.dc-opt-actions button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.dc-opt-actions progress {
+  flex: 1 1 80px;
+  height: 6px;
+  accent-color: var(--electric);
+}
+
+.dc-opt-status {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-opt-headline {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dc-opt-table {
+  font-size: 9.5px;
+}
+
+.dc-opt-table th,
+.dc-opt-table td {
+  padding: 3px 2px;
+}
+
+.dc-opt-table td.positive {
+  color: var(--success);
+}
+
+.dc-opt-table td.negative {
+  color: var(--danger);
+}
+
+.dc-opt-table .dc-opt-best {
+  background: rgba(95, 127, 184, 0.14);
+  color: var(--text-primary);
+}
+
+.dc-opt-table thead th {
+  text-align: right;
+  vertical-align: bottom;
+  white-space: normal;
+}
+
+.dc-opt-tag {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(126, 169, 109, 0.2);
+  color: var(--success);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.dc-opt-tag-warn {
+  background: rgba(199, 115, 121, 0.2);
+  color: var(--danger);
+}
+
+.dc-opt-apply {
+  padding: 2px 8px;
+  border: 1px solid rgba(95, 127, 184, 0.4);
+  border-radius: var(--radius);
+  background: rgba(95, 127, 184, 0.16);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dc-opt-apply:hover,
+.dc-opt-apply:focus-visible {
+  background: rgba(95, 127, 184, 0.3);
+  outline: none;
+}
+
+.dc-opt-apply:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.dc-opt-notes {
+  margin: 6px 0 4px;
+  padding-left: 16px;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+
+.dc-opt-notes li {
+  margin-bottom: 2px;
+}

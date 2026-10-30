@@ -525,6 +525,41 @@ NPV, IRR/MIRR verdicts, payback, debt and the cash-flow timeline come from `fina
 
 NPV is linear in the revenue price, so the break-even rental price, token price or colocation rate is `p0 - NPV / V` (two fast runs, cross-checked with the analytic `V`). The datacenter tornado swings each input in `js/data/datacenter/sensitivity-variables.js`, including the schedule (`scheduleScalePercent`), by the chosen ±% with the plant builder's bounds logic; a fast path reuses the cached dispatch when only prices or costs move (~1 ms per run).
 
+### Design optimizer (`optimizer.js`)
+
+`optimizeDatacenterDesign(state, options)` looks for the design with the highest NPV whose achieved uptime meets the state's uptime target. It sizes what the options allow and keeps every other input (site, cooling, revenue, prices, the gas or nuclear type, battery duration) fixed:
+
+| Decision | Range (P = design facility peak, IT nameplate x peak PUE) |
+| --- | --- |
+| Solar MWdc | 0 to 4 x P (x 2 with the wider range) |
+| Battery MWh | 0 to 24 h x P (x 2 with the wider range) |
+| Firm units | 0 to ceil(P / unit size) + 3 of the selected gas or nuclear type, manual sizing; 0 = no firm plant (so it is off the schedule too); an existing-plant nuclear contract is 0 or 1 block at the average load |
+| Grid connection | optional: firm and flexible are both searched (grid and hybrid) |
+
+```text
+for each (solar, battery):
+  n_min  = fewest units with uptime >= target          # bisection, bracketed from a neighbour's n_min
+  units  = walk n_min, n_min+1, ... while NPV improves # more units pay when gas is cheaper than grid power
+coarse grid: solar, battery in {0, B/32, B/16, ..., B}  (7 x 7, B = upper bound)
+refine:      compass search around the best cell, step halved until below 1 MW / 1 MWh
+rank:        feasible before infeasible; then NPV; infeasible candidates by uptime
+```
+
+Uptime cannot fall when a unit is added (every hour has at least as much available capacity), which is what the bisection relies on; the walk upwards counts and skips any count that breaks this, and `tests/calculations/datacenter-optimizer.test.js` checks the bisection against a linear scan. Each candidate is a fast-mode scenario (one hourly dispatch year, about 1-2 ms; fast mode gives the same NPV, uptime and first power as the full run, tested). A budget (default 800) caps the runs per architecture; the default site converges well inside it. The result carries the best design as a state patch (always including architecture, connection, solar, battery and firm-unit fields), the current design, runs used, the bounds, which decisions sit at an upper bound (`corners`), the coarse grid (`frontier`) and notes; when nothing within the bounds meets the target it says so and returns the highest-uptime design.
+
+`compareArchitectures(state, options)` runs it for grid, hybrid and islanded. Each starts from that architecture's starting design through one function, `getArchitectureStartState` (the schema's `applyArchitectureDefaults` when it exists, otherwise the current state with the architecture switched); patches are against the current state. At the default site (Abilene, 100 MW IT, GPU rental) the full comparison takes about 0.5 s (1 s when firm vs flexible is also searched, ~950 runs) in Node or in the page's worker:
+
+| Architecture | Best design | Uptime | NPV | IRR | First power |
+| --- | --- | --- | --- | --- | --- |
+| Current (grid, N+1 standby gas) | 15 x 10 MW engines | 100% | $264M | 8.8% | Jul 2031 |
+| Grid | no on-site supply, firm connection | 100% | $581M | 10.0% | Jul 2031 |
+| Hybrid | same as grid (on-site gas is cheaper per MWh than Abilene's grid, but not by enough to pay for the plant) | 100% | $581M | 10.0% | Jul 2031 |
+| Islanded | 10 x 10 MW engines + 2 MWdc solar | 100% | $158M | 8.5% | Jan 2030 |
+
+A firm grid never fails in this model, so the optimizer drops standby generation on a firm connection (the card says so; real Tier III sites keep N+1 standby). The islanded optimum needs only 10 engines because the dispatch-year peak (GPU occupancy) is below the 131 MW design peak and a little solar covers the hours when maintenance outages overlap.
+
+Limitations: it is a local search (coarse grid, then compass steps on two axes with the unit count chosen per point), so a narrow optimum between grid points can be missed; one TMY year decides feasibility (see below); the objective is NPV only (no CO2, water or first-power weight); one firm family at a time; battery duration, gas type and import cap are not searched. NPV is not smooth in the first-power date: the GPU rental price of each year is taken at the fleet's age at mid-year, so moving first power by a few months shifts every fleet's price step (at the default site, `scheduleScalePercent` 50 -> 60% moves NPV from +$821M to -$143M). Choices that change the schedule, such as a flexible connection or an islanded battery on the critical path, can therefore win or lose by more than their own cost.
+
 ### Datacenter UI
 
 `DatacenterApp` (`js/ui/datacenter/app.js`) owns the state (`DATACENTER_DEFAULT_STATE` or the `#s=` share link), recalculates once per animation frame while a slider moves and refreshes the sensitivity panel (tornado, break-even) debounced. Its pieces:
@@ -535,6 +570,7 @@ NPV is linear in the revenue price, so the break-even rental price, token price 
 - `timeline.js`: one Gantt row per schedule path (permitting / procurement / construction / wait for COD), the critical path outlined, first power marked.
 - `dispatch-chart.js`: a typical day of any month (MW by hour) or daily energy over the year, stacked by source, surplus below zero.
 - `results.js` and `sensitivity.js`: warnings, key metrics, economics groups, header metrics, break-even price and the tornado. `share.js`: share links that always carry `DATACENTER_DERIVED_KEYS`.
+- `optimizer-panel.js` and `optimizer-client.js`: the Optimize Design card. The optimizer runs in `js/workers/datacenter-optimizer-worker.js` (messages `optimizeDatacenterDesign` / `compareDatacenterArchitectures`, progress then result; main thread when workers are unavailable). The results table has one column per design (current, then each architecture) and an Apply button per design that puts its patch, architecture included, into the state and recalculates (the share link follows).
 
 Every view renders with attributes and classes only (strict CSP) and escapes interpolated text; `datacenter.css` holds the page's styles. Tests: `tests/renderers/datacenter-*.test.js`, `tests/ui/datacenter-controls.test.js`, `tests/share-state/datacenter-share.test.js` and the boot smoke test.
 

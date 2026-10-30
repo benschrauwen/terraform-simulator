@@ -13,21 +13,38 @@ export const MIME_TYPES = {
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.map': 'application/json; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
   '.png': 'image/png',
   '.svg': 'image/svg+xml; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
   '.webp': 'image/webp',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+};
+
+export const DEFAULT_HOST = '127.0.0.1';
+
+const BASE_HEADERS = {
+  'Cache-Control': 'no-store',
+  'X-Content-Type-Options': 'nosniff',
 };
 
 export function createStaticServer(root) {
   return http.createServer((request, response) => {
-    serveStaticRequest(request, response, root);
+    serveStaticRequest(request, response, root).catch(() => {
+      if (!response.headersSent) {
+        writeTextResponse(response, 400, 'Bad request');
+      } else {
+        response.end();
+      }
+    });
   });
 }
 
 export async function startStaticServer({
   rootArgument = '.',
   port = Number(process.env.PORT || process.env.npm_config_port || 4173),
+  host = process.env.HOST || DEFAULT_HOST,
 } = {}) {
   const root = path.resolve(__dirname, '..', rootArgument);
   await fs.access(root);
@@ -44,15 +61,30 @@ export async function startStaticServer({
     };
     server.once('error', handleError);
     server.once('listening', handleListening);
-    server.listen(port);
+    server.listen(port, host);
   });
 
   const actualPort = server.address()?.port || port;
-  return { server, root, port: actualPort };
+  return { server, root, host, port: actualPort };
 }
 
 export async function serveStaticRequest(request, response, root) {
-  const requestUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
+  const host = request.headers?.host;
+  if (host !== undefined && !isValidHostHeader(host)) {
+    writeTextResponse(response, 400, 'Bad request');
+    return;
+  }
+
+  // Parse against a fixed base: the client-controlled Host header must never influence
+  // path resolution or be able to make URL parsing throw.
+  let requestUrl;
+  try {
+    requestUrl = new URL(request.url || '/', 'http://localhost');
+  } catch {
+    writeTextResponse(response, 400, 'Bad request');
+    return;
+  }
+
   const resolvedPath = resolveStaticPath(root, requestUrl.pathname);
 
   if (resolvedPath.status === 400) {
@@ -65,8 +97,13 @@ export async function serveStaticRequest(request, response, root) {
     return;
   }
 
+  if (resolvedPath.status === 404) {
+    writeTextResponse(response, 404, 'Not found');
+    return;
+  }
+
   const filePath = await resolveFilePath(resolvedPath.candidatePath);
-  if (!filePath) {
+  if (!filePath || !(await isRealPathInsideRoot(root, filePath))) {
     writeTextResponse(response, 404, 'Not found');
     return;
   }
@@ -80,7 +117,7 @@ export async function serveStaticRequest(request, response, root) {
   }
 
   response.writeHead(200, {
-    'Cache-Control': 'no-store',
+    ...BASE_HEADERS,
     'Content-Type': getContentType(filePath),
   });
   response.end(contents);
@@ -105,7 +142,38 @@ export function resolveStaticPath(root, rawPathname) {
     return { status: 403, candidatePath: null };
   }
 
+  // Never serve dotfiles or anything inside dot-directories (.git, .env, .DS_Store, ...).
+  if (hasHiddenSegment(path.relative(root, candidatePath))) {
+    return { status: 404, candidatePath: null };
+  }
+
   return { status: 200, candidatePath };
+}
+
+export function hasHiddenSegment(relativePath) {
+  return relativePath.split(/[\\/]+/).some(segment => segment.startsWith('.'));
+}
+
+// The lexical root check above does not account for symlinks; compare canonical paths
+// so a link inside the root cannot expose files outside it (or hidden files inside it).
+export async function isRealPathInsideRoot(root, filePath) {
+  try {
+    const [realRoot, realFile] = await Promise.all([fs.realpath(root), fs.realpath(filePath)]);
+    return isPathInsideRoot(realRoot, realFile) && !hasHiddenSegment(path.relative(realRoot, realFile));
+  } catch {
+    return false;
+  }
+}
+
+function isValidHostHeader(host) {
+  if (typeof host !== 'string' || host === '' || /[\s/?#@\\]/.test(host)) {
+    return false;
+  }
+  try {
+    return new URL(`http://${host}`).host !== '';
+  } catch {
+    return false;
+  }
 }
 
 export function isPathInsideRoot(root, candidatePath) {
@@ -131,15 +199,16 @@ export async function resolveFilePath(candidatePath) {
 }
 
 function writeTextResponse(response, statusCode, body) {
-  response.writeHead(statusCode, { 'Content-Type': 'text/plain; charset=utf-8' });
+  response.writeHead(statusCode, { ...BASE_HEADERS, 'Content-Type': 'text/plain; charset=utf-8' });
   response.end(body);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   try {
     const rootArgument = process.argv[2] || '.';
-    const { root, port } = await startStaticServer({ rootArgument });
-    console.log(`Serving ${root} at http://localhost:${port}`);
+    const { root, host, port } = await startStaticServer({ rootArgument });
+    const displayHost = host.includes(':') ? `[${host}]` : host;
+    console.log(`Serving ${root} at http://${displayHost}:${port}`);
   } catch (error) {
     const rootArgument = process.argv[2] || '.';
     const root = path.resolve(__dirname, '..', rootArgument);

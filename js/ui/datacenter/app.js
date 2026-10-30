@@ -20,6 +20,7 @@ import { tooltipMethods } from '../tooltips.js';
 import { buildDatacenterCsvHeader, DATACENTER_CASH_FLOW_LABELS, DATACENTER_CASH_FLOW_TOOLTIPS, DATACENTER_TIMELINE_TEXT } from './cash-flow.js';
 import { datacenterControlMethods } from './controls.js';
 import { dispatchChartMethods } from './dispatch-chart.js';
+import { plantMapMethods } from './plant-map.js';
 import { resultMethods } from './results.js';
 import { datacenterSensitivityMethods } from './sensitivity.js';
 import { datacenterShareMethods } from './share.js';
@@ -55,6 +56,7 @@ export class DatacenterApp {
     this.bindDatacenterControls();
     this.bindShareControls();
     this.bindFlowTabs();
+    this.bindLayoutTabs();
     this.bindDispatchControls();
     this.bindCashFlowControls();
     this.createHoverTooltip();
@@ -149,5 +151,6 @@ Object.assign(
   datacenterSensitivityMethods,
   dispatchChartMethods,
   viewMethods,
+  plantMapMethods,
   resultMethods,
 );

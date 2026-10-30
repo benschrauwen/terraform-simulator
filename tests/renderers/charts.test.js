@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { Calc } from '../../js/model/index.js';
 import { RESULT_CHARTS, chartMethods } from '../../js/ui/charts/index.js';
+import { findSweepBreakEven } from '../../js/ui/charts/sensitivity-chart.js';
 
 function createElement(id) {
   return {
@@ -183,4 +184,12 @@ test('chart fallback state clears when Chart.js is available', () => {
   assert.equal(wrapper.dataset.chartUnavailable, undefined);
   assert.equal(wrapper.attributes.role, undefined);
   assert.equal(wrapper.attributes['aria-label'], undefined);
+});
+
+test('the sensitivity sweep break-even is the zero of the NPV line', () => {
+  // NPV = 10 x price - 80 -> zero at $8.
+  const series = [2, 4, 10, 20].map(x => ({ x, npv: (10 * x) - 80 }));
+  assert.deepEqual(findSweepBreakEven(series), { price: 8, inSweep: true });
+  assert.deepEqual(findSweepBreakEven(series.map(point => ({ ...point, npv: point.npv + 300 }))), { price: -22, inSweep: false });
+  assert.equal(findSweepBreakEven([{ x: 1, npv: 5 }, { x: 2, npv: 5 }]), null);
 });

@@ -60,6 +60,7 @@ export class App {
     this.renderExploratoryOmControls();
     this.bindControls();
     this.bindShareControls();
+    this.bindCashFlowControls();
     this.createHoverTooltip();
     this.bindHoverTooltips();
     this.initSliderMarkers();

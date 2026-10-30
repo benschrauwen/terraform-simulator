@@ -10,6 +10,7 @@ import { normalizeMethods } from '../state/normalize.js';
 import { aiComputeMethods } from './ai-compute.js';
 import { annualSeriesMethods } from './annual-series.js';
 import { batteryMethods } from './battery.js';
+import { breakEvenMethods } from './break-even.js';
 import { economicsMethods } from './economics.js';
 import { financeMethods } from './finance.js';
 import { lifetimeEnergyMethods } from './lifetime-energy.js';
@@ -33,6 +34,7 @@ export const Calc = Object.assign(
   processMethods,
   economicsMethods,
   scenarioMethods,
+  breakEvenMethods,
 );
 
 export { ModuleCatalog } from '../data/module-catalog.js';

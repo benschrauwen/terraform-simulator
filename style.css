@@ -2113,6 +2113,11 @@ input[type="range"]::-moz-range-track {
   text-decoration: underline;
 }
 
+.app-version {
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
 /* ============ RESPONSIVE ============ */
 
 @media (max-width: 1200px) {

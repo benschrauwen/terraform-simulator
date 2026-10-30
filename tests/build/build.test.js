@@ -89,3 +89,13 @@ test('the asset version is a content hash, identical for identical sources', t =
   assert.match(first[0], /^[0-9a-f]{12}$/);
   assert.deepEqual(second, first);
 });
+
+test('the footer shows the release version, commit date and short sha', t => {
+  const { version } = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const dist = build(t, { RELEASE_DATE: '2026-10-30', RELEASE_SHA: 'abcdef1234567890' });
+  const html = fs.readFileSync(path.join(dist, 'index.html'), 'utf8');
+
+  assert.match(html, new RegExp(`id="appVersion">v${version.replaceAll('.', '\\.')} · 2026-10-30 · abcdef1</span>`));
+  // The source page keeps a neutral label so `npm run dev` never claims to be a release.
+  assert.match(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'), /id="appVersion">Development build</);
+});

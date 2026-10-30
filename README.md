@@ -29,7 +29,9 @@ npm run preview   # serves dist/ the same way
 
 `PORT` and `HOST` override the dev server address. There is no bundler or framework: `index.html` loads the vendor scripts from `node_modules/` and one native ES module entry, `js/main.js`.
 
-`npm run build` copies an allowlist (`index.html`, `style.css`, `js/`, the vendor files, `README.md`, `LICENSE`) into `dist/`. Assets go under `dist/assets/<buildId>/`, where the build ID comes from `BUILD_ID`, the Vercel or GitHub commit SHA, or `git rev-parse`, and `index.html` is rewritten to point at them. Vercel deploys `dist/` using `vercel.json`, which runs the build, marks `/assets/*` immutable and sets a strict Content-Security-Policy. The only external host the CSP allows is the Esri satellite tile server used by the site map.
+`npm run build` copies an allowlist (`index.html`, `style.css`, `js/`, the vendor files, `README.md`, `LICENSE`) into `dist/`. Assets go under `dist/assets/<buildId>/`, where the build ID is a short SHA-256 of the shipped asset files (so identical content keeps its URL and any change gets a new one; `BUILD_ID` overrides it), and `index.html` is rewritten to point at them. `DIST_DIR` changes the output directory.
+
+The footer shows which release a visitor is looking at: `v<package.json version> · <commit date> · <short sha>`, stamped into `dist/index.html` by the build (the unbuilt page says "Development build"). Bump `version` in `package.json` when you cut a release. Vercel deploys `dist/` using `vercel.json`, which runs the build, marks `/assets/*` immutable and sets a strict Content-Security-Policy. The only external host the CSP allows is the Esri satellite tile server used by the site map.
 
 ## Architecture
 
@@ -371,7 +373,7 @@ node --input-type=module -e "import {DEFAULT_STATE} from './js/model/index.js'; 
 The headline default scenario is:
 
 - **Site:** Mojave Desert preset with base yield 1,974 MWh/MWdc-yr (PVGIS) on east-west fixed racking (x0.86). Earth annual-average view.
-- **Plant:** 1 MWdc ($0.20/W modules, $0.12/W BOS), no battery, 100% chemical sizing. 30-year solar life with 0.65%/yr degradation.
+- **Plant:** 1 MWdc at ~$0.72/W all-in, matching Terraform's first 1.8 MW build ($1.3M including land and site improvements, Oct 2026 post): $0.29/W modules (US delivered TOPCon price) and $0.40/W BOS as the remainder, since the post gives no breakdown. No battery, 100% chemical sizing, 30-year solar life with 0.65%/yr degradation. At these real build costs the default methane plant does not pay back; the earlier aspirational $0.20/$0.12 stack is a slider move away.
 - **Products:** methane only. Electrolyzer at 79 kWh/kg and $100/kW, DAC at 3,440 kWh/t and $450 per t-yr, Sabatier at 95% and $50/kW-CH4, 7-year process lives. Methane sells at $20/MCF. Methanol, MTG, exploratory routes, feed buffers, AI and debt are all off.
 - **Policy and finance:** US 45V at $3.28/kg H2 for 10 years, an 8% discount rate and a 30-year horizon.
 

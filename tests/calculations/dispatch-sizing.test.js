@@ -367,3 +367,19 @@ test('annual chemical day slices show winter no-clipping against a fixed undersi
     ].join(' ')
   );
 });
+
+test('daily battery-served chemical energy reconciles with battery discharge and never exceeds the day', () => {
+  const sum = values => values.reduce((total, value) => total + value, 0);
+  [0, 3].forEach(batteryCapacityMWh => {
+    const dispatch = runScenario({ batteryEnabled: batteryCapacityMWh > 0, batteryCapacityMWh }).annualDispatch;
+    const fromBattery = dispatch.dailyChemicalFromBatteryKWh;
+    assert.equal(fromBattery.length, dispatch.dailyChemicalKWh.length);
+    // Every kWh the battery discharges goes to the chemical plant when AI is off.
+    assert.ok(Math.abs(sum(fromBattery) - dispatch.dischargeThroughputKWh) <= 1e-6 * Math.max(1, dispatch.dischargeThroughputKWh));
+    fromBattery.forEach((value, day) => {
+      assert.ok(value >= -1e-9 && value <= dispatch.dailyChemicalKWh[day] + 1e-9, `day ${day}`);
+    });
+    if (batteryCapacityMWh === 0) assert.equal(sum(fromBattery), 0);
+    else assert.ok(sum(fromBattery) > 0);
+  });
+});

@@ -174,6 +174,8 @@ export const batteryMethods = {
     const chemicalHourlyKW = captureSeries ? new Array(hours).fill(0) : [];
     const batteryChargeHourlyKW = captureSeries ? new Array(hours).fill(0) : [];
     const clippedHourlyKW = captureSeries ? new Array(hours).fill(0) : [];
+    // Share of the chemical load served from storage rather than straight from solar.
+    const chemicalFromBatteryHourlyKW = captureSeries ? new Array(hours).fill(0) : [];
     const dailyChemicalSummaryKWh = captureDailySummaries && !captureSeries ? new Array(summaryWindowCount).fill(0) : [];
     let minSocKWh = battery.socKWh;
     let maxSocKWh = battery.socKWh;
@@ -216,6 +218,7 @@ export const batteryMethods = {
 
       if (captureSeries) {
         chemicalHourlyKW[hour] = deliveredKWh;
+        chemicalFromBatteryHourlyKW[hour] = deliveredKWh - directToChemicalKWh;
         batteryChargeHourlyKW[hour] = chargeInputKWh;
         clippedHourlyKW[hour] = clippedKWh;
       } else if (captureDailySummaries) {
@@ -240,6 +243,7 @@ export const batteryMethods = {
       dailyChemicalKWh,
       dailyClippedKWh: captureSeries ? this.aggregateSeriesBySpanHours(clippedHourlyKW, summaryWindowHours) : [],
       dailyBatteryChargeKWh: captureSeries ? this.aggregateSeriesBySpanHours(batteryChargeHourlyKW, summaryWindowHours) : [],
+      dailyChemicalFromBatteryKWh: captureSeries ? this.aggregateSeriesBySpanHours(chemicalFromBatteryHourlyKW, summaryWindowHours) : [],
       dailyAiKWh: dailyChemicalKWh.map(() => 0),
       averageDayChemicalKW: captureSeries ? this.averageSeriesByCyclePhase(chemicalHourlyKW, summaryWindowHours, summaryBinCount) : [],
       averageDayClippedKW: captureSeries ? this.averageSeriesByCyclePhase(clippedHourlyKW, summaryWindowHours, summaryBinCount) : [],

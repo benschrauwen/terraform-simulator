@@ -93,7 +93,7 @@
           <div class="day-specific-controls" id="daySpecificControls" hidden aria-hidden="true">
             <label>Day of Year
               <input type="range" id="dayOfYear" min="1" max="365" step="1" value="172">
-              <span class="range-value" id="dayOfYearValue">Jun 21 (Summer Solstice)</span>
+              <span class="range-value" id="dayOfYearValue">Jun 20 (Summer Solstice)</span>
             </label>
             <div class="day-presets">
               <button type="button" class="day-preset" data-day="80">Mar 21</button>
@@ -130,10 +130,10 @@
           <p class="field-note compact-note" id="customSiteLabelNote" hidden></p>
           <div class="input-row">
             <label>Latitude
-              <input type="number" id="latitude" value="34.05" min="-90" max="90" step="0.1">
+              <input type="number" id="latitude" value="35.05" min="-90" max="90" step="0.1">
             </label>
             <label>Longitude
-              <input type="number" id="longitude" value="-118.24" min="-180" max="180" step="0.1">
+              <input type="number" id="longitude" value="-117.60" min="-180" max="180" step="0.1">
             </label>
           </div>
           <label>Annual Yield (MWh / MWdc / year)
@@ -184,16 +184,11 @@
             Multi-year economics fade solar-linked output by the selected annual PV degradation rate.
           </div>
           <label>Mounting Type
-            <select id="mountingType">
-              <option value="fixed">Fixed Tilt (baseline)</option>
-              <option value="ew" selected>East-West Fixed (2.5x density)</option>
-              <option value="single">Single-Axis Tracker (+25%)</option>
-              <option value="dual">Dual-Axis Tracker (+35%)</option>
-            </select>
+            <select id="mountingType"></select>
           </label>
           <label><span class="tooltip-label" data-tooltip="Balance of system: the non-panel parts of the solar installation, such as mounting structure, inverters, wiring, and installation labor.">Structure + Installation BOS ($/W)</span>
-            <input type="range" id="bosCost" min="0.05" max="1.00" step="0.01" value="0.20">
-            <span class="range-value" id="bosCostValue">$0.20/W</span>
+            <input type="range" id="bosCost" min="0.05" max="1.00" step="0.01" value="0.12">
+            <span class="range-value" id="bosCostValue">$0.12/W</span>
           </label>
           <label>Land Cost ($/acre)
             <input type="range" id="landCost" min="0" max="50000" step="500" value="5000">
@@ -440,15 +435,7 @@
             </div>
             <div id="methaneMarketWrap">
               <label>Methane Market Preset
-                <select id="methaneMarketPreset">
-                  <option value="terraform_commodity">Commodity gas / whitepaper-style case</option>
-                  <option value="premium_green_methane">Premium synthetic / green methane</option>
-                  <optgroup label="Country-Specific Europe">
-                    <option value="germany_biomethane_eeg">Germany biomethane auction / EEG</option>
-                    <option value="netherlands_sdepp">Netherlands renewable gas / SDE++</option>
-                    <option value="denmark_green_gas_tender">Denmark green gas tender</option>
-                  </optgroup>
-                </select>
+                <select id="methaneMarketPreset"></select>
               </label>
               <div class="market-summary">
                 <div class="market-summary-row">
@@ -531,7 +518,7 @@
             </label>
             <label>Discount Rate (%)
               <input type="range" id="discountRate" min="0" max="20" step="0.5" value="8">
-              <span class="range-value" id="discountRateValue">8%</span>
+              <span class="range-value" id="discountRateValue">8.0%</span>
             </label>
           </div>
         </div>

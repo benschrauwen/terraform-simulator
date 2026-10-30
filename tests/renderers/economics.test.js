@@ -43,6 +43,14 @@ test('economics breakdown switches labels and adds a financing group when debt i
   assert.match(html, />Project NPV</);
   assert.match(html, />Equity IRR</);
   assert.match(html, />Debt coupon</);
+  // Equity NPV is shown, with its discount basis stated.
+  assert.match(html, />Equity NPV</);
+  assert.match(html, /discounted at the [\d.]+% project discount rate/);
+});
+
+test('payback that is not recovered inside the horizon says so', () => {
+  // 3-year horizon: operating cash recovers about half the outlay.
+  assert.match(render({ analysisHorizonYears: 3 }), /Not within horizon/);
 });
 
 test('economics breakdown always shows MIRR and explains a withheld IRR', () => {

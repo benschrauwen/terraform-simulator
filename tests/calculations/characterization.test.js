@@ -30,6 +30,18 @@ const EXPLORATORY_MODULES = ModuleCatalog.getAll().filter(module => module.explo
 const POLICY_IDS = PolicyModel.getSelectGroups()
   .flatMap(group => group.options.map(option => option.id));
 
+function estimatedSiteState(latitude, longitude) {
+  assert.equal(Calc.getNearbyPreset(latitude, longitude, 'earth'), undefined, 'estimated site must not snap to a preset');
+  const ghi = Calc.estimateGHI(latitude, longitude, 'earth');
+  return {
+    latitude,
+    longitude,
+    siteYieldMwhPerMwdcYear: Calc.estimateBaseYield(latitude, longitude, ghi, 'earth'),
+    siteYieldSource: 'estimated',
+    locationPresetIsCustom: true,
+  };
+}
+
 const SCENARIOS = {
   default: {},
   battery2: { batteryEnabled: true, batteryCapacityMWh: 2 },
@@ -48,7 +60,12 @@ const SCENARIOS = {
     [`${module.id}BufferEnabled`, false],
     [`${module.id}Route`, Object.keys(module.routes).at(-1)],
   ])),
-  estimatedBerlin: { siteYieldSource: 'estimated', latitude: 52.52, longitude: 13.405, locationPresetIsCustom: true },
+  // A custom Earth site away from every preset (Chisinau, Moldova), with the
+  // yield the UI writes on a location edit (site-controls.js
+  // handleLocationEdited): estimateGHI -> estimateBaseYield. Berlin sat on
+  // a preset, and the model takes the state's yield as given, so the old
+  // estimatedBerlin row never ran the estimator.
+  estimatedCustomSite: estimatedSiteState(47.0, 28.8),
   largePlant: { systemSizeMW: 100, batteryEnabled: true, batteryCapacityMWh: 24, chemicalSizingPercent: 80 },
   horizon40: { analysisHorizonYears: 40 },
   aiCompute: { aiComputeEnabled: true },

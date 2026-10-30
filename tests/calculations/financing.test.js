@@ -281,7 +281,11 @@ test('sponsor support includes replacement-year shortfalls when debt service alo
   assert.ok(Math.abs(yearSeven.sponsorSupportNeeded + yearSeven.equityCashFlow) <= 1e-9);
   assert.ok(financedModel.uncoveredDebtServiceYears.includes(7));
   assert.equal(financedModel.canFullyCoverDebtService, false);
-  assert.ok(yearSeven.dscr < 1);
+  // DSCR is on CFADS before major replacement CAPEX (reserve-funded), so
+  // the replacement year shows sponsor support but not a DSCR collapse:
+  // it was pinned below 1.0x when replacements were netted from CFADS.
+  assert.ok(Math.abs(yearSeven.dscr - yearSeven.operatingCashFlow / yearSeven.debtService) <= 1e-12);
+  assert.ok(yearSeven.dscr >= 1);
   assert.ok(financedModel.minDscr <= yearSeven.dscr);
   const meanDscr = debtYears.reduce((sum, entry) => sum + entry.dscr, 0) / debtYears.length;
   assert.ok(Math.abs(financedModel.averageDscr - meanDscr) <= 1e-12);

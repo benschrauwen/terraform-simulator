@@ -36,6 +36,8 @@ const SCENARIOS = {
   policyNone: { policyMode: 'none' },
   battery2: { batteryCapacityMWh: 2 },
   battery20: { batteryCapacityMWh: 20 },
+  // Cycle life binds before the 12-year calendar cap.
+  battery2LowCycles: { batteryCapacityMWh: 2, batteryCycles: 1000 },
   large100MW: { systemSizeMW: 100, batteryCapacityMWh: 24, chemicalSizingPercent: 70 },
   methanolOnly: { sabatierEnabled: false, methanolEnabled: true },
   methaneMethanolMtg: { methanolEnabled: true, mtgEnabled: true },
@@ -54,6 +56,8 @@ const SCENARIOS = {
   financing90: { financingEnabled: true, debtSharePercent: 90 },
   debtPastHorizon: { financingEnabled: true, debtTermYears: 25, analysisHorizonYears: 20 },
   horizon40: { analysisHorizonYears: 40, methanolEnabled: true },
+  // Short horizon: most of the capex comes back only as final-year salvage.
+  horizon3: { analysisHorizonYears: 3 },
   us48e: { policyMode: 'us_48e_solar' },
   us45y: { policyMode: 'us_45y_solar' },
   ukCfd: { policyMode: 'uk_cfd_solar_ar7' },
@@ -63,6 +67,10 @@ const SCENARIOS = {
   moonPel: { ...sitePreset('Moon'), mountingType: 'dual' },
   berlin: sitePreset('Berlin'),
   zeroSize: { systemSizeMW: 0 },
+  // No product reactor: the electrolyzer / DAC split falls back to the
+  // methane ratio among the enabled blocks.
+  noReactor: { sabatierEnabled: false },
+  dacOnly: { sabatierEnabled: false, electrolyzerEnabled: false },
 };
 
 const results = Object.fromEntries(
@@ -109,6 +117,14 @@ test('I1 NPV equals an independent discounted sum of the yearly cash flows (incl
         entry.replacementOutflow + entry.salvageValue;
       relClose(entry.netCashFlow, rebuilt, 1e-9, `${name} year ${entry.year} net cash`, 1e-6);
       relClose(entry.equityCashFlow, entry.netCashFlow - entry.debtService, 1e-9, `${name} year ${entry.year} equity cash`, 1e-6);
+      // DSCR on CFADS = revenue - O&M (before reserve-funded replacements);
+      // every negative equity year, replacement-driven or not, is sponsor cash.
+      // The scheduled payment excludes a horizon balloon.
+      if (entry.dscr !== null) {
+        const scheduled = entry.debtService - entry.balloonPayment;
+        relClose(entry.dscr, (entry.totalRevenue - timeline.annualOperatingCost[index + 1]) / scheduled, 1e-9, `${name} year ${entry.year} DSCR`, 1e-9);
+      }
+      relClose(entry.sponsorSupportNeeded, economics.financing.enabled ? Math.max(0, -entry.equityCashFlow) : 0, 1e-9, `${name} year ${entry.year} sponsor`, 1e-6);
     });
     relClose(economics.yearlyCashFlows.at(-1).salvageValue, economics.salvageValue, 1e-12, `${name} salvage in final year`);
     relClose(economics.npv, npv(projectCashFlows(economics), rate), 1e-9, `${name} project NPV`, 1e-6);
@@ -207,7 +223,10 @@ test('I4 H2 and CO2 produced equal the sum consumed plus a non-negative surplus'
       assert.equal(mtgMethanol, 0, `${name} no methanol for MTG without the reactor`);
     }
     // Exploratory routes convert their feeds fully, so the only stranded
-    // H2 / CO2 is the unconverted fraction of the supported reactors.
+    // H2 / CO2 is the unconverted fraction of the supported reactors
+    // (all of it when nothing consumes that feed).
+    const plan = Calc.buildProcessAllocationPlan(result.state);
+    if (!Object.keys(plan.feedShares.h2).length || !Object.keys(plan.feedShares.co2).length) return;
     const conversions = [1];
     if (result.sabatier.enabled) conversions.push(result.state.sabatierConversion / 100);
     if (result.methanol.enabled) conversions.push(result.state.methanolEfficiency / 100);
@@ -501,4 +520,136 @@ test('I10 the lean IRR path equals the full calculation for every scenario', () 
     assert.ok(Object.is(metrics.mirr, full.mirr) || Math.abs(metrics.mirr - full.mirr) <= 1e-9, `${name}: lean MIRR`);
     assert.ok(Math.abs(metrics.npv - full.npv) <= 1e-9 * moneyScale(full), `${name}: lean NPV`);
   });
+});
+
+/* Independent simple payback: first year in which cumulative (operating
+   cash - replacement CAPEX) recovers the outlay, interpolated within the
+   year; Infinity if never. Salvage is deliberately absent. */
+function independentPayback(outlay, flows) {
+  if (!(outlay > 0)) return 0;
+  let cumulative = -outlay;
+  for (let i = 0; i < flows.length; i++) {
+    if (flows[i] > 0 && cumulative < 0 && cumulative + flows[i] >= 0) return i + (-cumulative / flows[i]);
+    cumulative += flows[i];
+  }
+  return Infinity;
+}
+
+test('I11 payback is earned from operating cash minus replacements, never from salvage', () => {
+  forEachScenario((result, name) => {
+    const economics = result.economics;
+    const operating = economics.yearlyCashFlows.map(entry => entry.operatingCashFlow - entry.replacementOutflow);
+    const expected = independentPayback(economics.netCapexAtClose, operating);
+    assert.ok(
+      Object.is(economics.paybackYears, expected) || Math.abs(economics.paybackYears - expected) <= 1e-9,
+      `${name}: payback ${economics.paybackYears} vs ${expected}`
+    );
+    if (economics.financing.enabled) {
+      const equity = economics.yearlyCashFlows.map((entry, index) => operating[index] - entry.debtService);
+      const expectedEquity = independentPayback(economics.financing.equityUpfront, equity);
+      assert.ok(
+        Object.is(economics.equityPaybackYears, expectedEquity) || Math.abs(economics.equityPaybackYears - expectedEquity) <= 1e-9,
+        `${name}: equity payback ${economics.equityPaybackYears} vs ${expectedEquity}`
+      );
+    }
+  });
+  // 3-year horizon: ~$238k of operating cash against ~$469k net CAPEX, so
+  // there is no payback; the ~$385k book-value salvage used to fake one at
+  // 2.67 years.
+  const short = results.horizon3.economics;
+  assert.ok(short.cumulativeOperatingCashFlow < short.netCapexAtClose);
+  assert.equal(short.paybackYears, Infinity);
+});
+
+test('I13 an exploratory route costs the same per unit of nameplate rate on every body', () => {
+  // $/m3/day prices 24 h of nameplate; $/t-yr an Earth year (cycle hours x
+  // cycles per Earth year: 8760 h Earth, 8754 h Mars, 8767 h Moon). Neither
+  // depends on the local day length.
+  const bodies = ['earth', 'mars', 'moon'].map(key => Calc.getBodyConfig(key));
+  EXPLORATORY.forEach(module => Object.entries(module.routes).forEach(([routeId, route]) => {
+    const basis = route.capexPerAnnualUnit;
+    const penalty = route.cyclingPenalty || 1;
+    const hoursPerUnitBasis = route.capexUnit === 'm3pd' ? 24 : 8760;
+    bodies.forEach(body => {
+      const perUnitRate = Calc.calculateExploratoryCapex(route, basis, 1, body.cycleHours, body.cyclesPerEarthYear);
+      relClose(perUnitRate, hoursPerUnitBasis * basis * penalty, route.capexUnit === 'm3pd' ? 1e-12 : 1e-3, `${module.id}/${routeId} on ${body.label || body.cycleHours}`);
+    });
+  }));
+  // End to end: lunar desalination is priced on its nameplate rate x 24 h.
+  ['moonPel', 'mars', 'default'].forEach(name => {
+    const desal = Calc.calculateAll(createState({ ...SCENARIOS[name], desalinationEnabled: true }))
+      .exploratoryModules.find(module => module.id === 'desalination');
+    const route = desal.routeConfig;
+    relClose(desal.capex, desal.peakOutputUnitsPerHour * 24 * desal.capexBasis * (route.cyclingPenalty || 1), 1e-9, `${name} desalination capex`);
+  });
+});
+
+test('I12 cost allocation: AI + chemical plant = total asset-life annual cost; AI pays the battery in AI mode', () => {
+  forEachScenario((result, name) => {
+    const economics = result.economics;
+    const u = economics.unitCosts;
+    // Total annual cost on the asset-life basis, rebuilt from its parts.
+    const total = sum(Object.values(economics.annualizedCapex)) + economics.annualOM;
+    relClose(economics.assetLifeAnnualCost, total, 1e-12, `${name} asset-life cost`, 1e-6);
+    relClose(u.aiAnnualCost + u.chemicalPlantAnnualCost, total, 1e-9, `${name} AI + chemical = total`, 1e-6);
+    const batteryCost = economics.annualizedCapex.battery + economics.capex.battery * result.state.batteryOmPercent / 100;
+    const solarLandCost = economics.annualizedCapex.solar + economics.annualizedCapex.land + result.solar.annualSolarOm;
+    if (result.ai.enabled) {
+      // The battery discharges only to the AI load (ai-compute.js), so the
+      // chemical plant's power is its energy share of solar + land alone.
+      const chemShare = result.ai.chemicalAnnualKWh / (result.ai.chemicalAnnualKWh + result.ai.annualAiServedKWh);
+      relClose(u.chemicalPowerCost, solarLandCost * chemShare, 1e-9, `${name} chemical power cost`, 1e-6);
+      relClose(u.aiPowerCost, batteryCost + solarLandCost * (1 - chemShare), 1e-9, `${name} AI power cost`, 1e-6);
+      relClose(u.aiAnnualCost, u.aiPowerCost + economics.annualizedCapex.ai + result.ai.annualOM, 1e-9, `${name} AI cost`, 1e-6);
+    } else {
+      assert.equal(u.aiAnnualCost, 0, `${name} no AI cost without AI`);
+      relClose(u.chemicalPowerCost, solarLandCost + batteryCost, 1e-9, `${name} chemical power cost`, 1e-6);
+    }
+  });
+});
+
+test('I14 power shares cover only enabled blocks and sum to 1; with no reactor they follow the methane ratio', () => {
+  forEachScenario((result, name) => {
+    const { allocation, state } = result;
+    const shares = [allocation.electrolyzer, allocation.dac, ...Object.values(allocation.exploratory)];
+    if (state.electrolyzerEnabled || state.dacEnabled || result.exploratoryModules.some(module => module.enabled)) {
+      relClose(sum(shares), 1, 1e-12, `${name} power shares`);
+    }
+    if (!state.electrolyzerEnabled) assert.equal(allocation.electrolyzer, 0, `${name} disabled electrolyzer`);
+    if (!state.dacEnabled) assert.equal(allocation.dac, 0, `${name} disabled DAC`);
+    assert.ok(['productMix', 'methane', 'methanol', 'exploratoryOnly', 'methaneFallback'].includes(allocation.kind), `${name} kind`);
+  });
+  // CH4 + 2 H2O <- CO2 + 4 H2: per kg CH4, 4 x 2.016 / 16.04 = 0.503 kg H2
+  // and 44.01 / 16.04 = 2.744 kg CO2. The electrolyzer power share is
+  // 0.503 e / (0.503 e + 2.744 d / 1000): 39.7 / (39.7 + 9.44) = 0.808 at
+  // the default 79 kWh/kg H2 and 3,440 kWh/t CO2 (the old fallback was 0.5).
+  const { state, allocation } = results.noReactor;
+  assert.equal(allocation.kind, 'methaneFallback');
+  const h2 = (4 * M.h2 / M.ch4) * state.electrolyzerEfficiency;
+  const co2 = (M.co2 / M.ch4) * state.dacEnergy / 1000;
+  relClose(allocation.electrolyzer, h2 / (h2 + co2), 2e-3, 'methane-ratio electrolyzer share');
+  assert.equal(results.dacOnly.allocation.dac, 1, 'a lone DAC takes all the power');
+});
+
+test('I15 battery life = rated cycles / equivalent full cycles of the dispatch, capped at calendar life', () => {
+  let cycleLimited = 0;
+  forEachScenario((result, name) => {
+    const storage = result.storage;
+    if (!storage.enabled) return;
+    // Earth scenarios: the dispatch basis is one Earth year (no annualization).
+    if (result.state.body !== 'earth') return;
+    const efcPerYear = storage.dischargeThroughputKWh / storage.battCapKWh;
+    relClose(storage.equivalentFullCyclesPerYear, efcPerYear, 1e-12, `${name} EFC/yr`);
+    const expected = Math.max(1, Math.min(12, result.state.batteryCycles / efcPerYear));
+    relClose(storage.lifetimeYears, expected, 1e-12, `${name} battery life`);
+    // A battery cannot do more than ~one full cycle per hour of charge at
+    // its power rating, and here it never exceeds one per day.
+    assert.ok(efcPerYear <= 366, `${name}: ${efcPerYear} cycles/yr`);
+    if (expected < 12) cycleLimited += 1;
+  });
+  // 1,000 cycles at ~176 EFC/yr (2 MWh, partly used): ~5.7 years, not the
+  // 2.7 years of one full cycle per day.
+  const low = results.battery2LowCycles.storage;
+  assert.ok(low.lifetimeYears > 1000 / 365 * 1.5 && low.lifetimeYears < 12, `cycle-limited life ${low.lifetimeYears}`);
+  assert.ok(cycleLimited >= 1);
 });

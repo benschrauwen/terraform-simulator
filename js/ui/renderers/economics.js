@@ -1,5 +1,6 @@
 /* Economics breakdown panel: one builder per collapsible row group */
 
+import { MODEL_ASSUMPTIONS } from '../../data/assumptions.js';
 import { FormatNumbers } from '../format-numbers.js';
 import { formatIrrWithStatus, formatMirr, formatSystemSizeMW } from '../formatters.js';
 import { econGroup, econMetric, econRow, EDUCATIONAL_TOOLTIPS } from './markup.js';
@@ -8,11 +9,14 @@ const money = FormatNumbers.formatMoney;
 const signClass = value => (value >= 0 ? 'positive' : 'negative');
 const irrClass = irr => (Number.isFinite(irr) ? signClass(irr) : '');
 const NO_INVESTMENT_LABEL = 'n/a (no net investment)';
+// Payback is Infinity when operating cash never recovers the outlay inside
+// the analysis horizon.
+const NOT_RECOVERED_LABEL = 'Not within horizon';
 const formatPaybackShort = (years, noNetInvestment = false) => (
-  noNetInvestment ? NO_INVESTMENT_LABEL : Number.isFinite(years) ? `${FormatNumbers.fixed(years, 1)} yrs` : 'N/A'
+  noNetInvestment ? NO_INVESTMENT_LABEL : Number.isFinite(years) ? `${FormatNumbers.fixed(years, 1)} yrs` : NOT_RECOVERED_LABEL
 );
 const formatPaybackLong = (years, noNetInvestment = false) => (
-  noNetInvestment ? NO_INVESTMENT_LABEL : Number.isFinite(years) ? `${FormatNumbers.fixed(years, 1)} years` : 'N/A'
+  noNetInvestment ? NO_INVESTMENT_LABEL : Number.isFinite(years) ? `${FormatNumbers.fixed(years, 1)} years` : NOT_RECOVERED_LABEL
 );
 // The IRR tooltip explains why no IRR is shown when the model withholds it.
 const irrTooltip = (value, analysis, fallback) => (
@@ -166,7 +170,7 @@ function buildReturnsRows({ e, labels }) {
       labels.payback,
       formatPaybackLong(e.paybackYears, e.noNetInvestment),
       '',
-      'Simple payback on cumulative net cash versus upfront CAPEX. This is the first point where cumulative net cash turns positive.'
+      'Simple payback: the first point where cumulative operating cash flow minus replacement CAPEX recovers net CAPEX at close. Final-year salvage is not counted (it is a book value, not cash earned).'
     )
   );
   if (differsFromSimplePayback(e.sustainedPaybackYears, e.paybackYears)) {
@@ -175,7 +179,7 @@ function buildReturnsRows({ e, labels }) {
         labels.sustainedPayback,
         formatPaybackLong(e.sustainedPaybackYears),
         '',
-        'Payback only if the project stays cumulative-cash positive through the full selected horizon after scheduled replacements.'
+        'Payback only if the project stays cumulative-cash positive through the full selected horizon after scheduled replacements (salvage not counted).'
       )
     );
   }
@@ -185,7 +189,7 @@ function buildReturnsRows({ e, labels }) {
         'Equity payback',
         formatPaybackLong(e.equityPaybackYears),
         '',
-        'Simple payback on cumulative sponsor equity cash after scheduled debt service.'
+        'Simple payback on cumulative sponsor equity cash after scheduled debt service and replacements, without final-year salvage.'
       )
     );
     if (differsFromSimplePayback(e.sustainedEquityPaybackYears, e.equityPaybackYears)) {
@@ -194,7 +198,7 @@ function buildReturnsRows({ e, labels }) {
           'Sustained equity payback',
           formatPaybackLong(e.sustainedEquityPaybackYears),
           '',
-          'Equity payback only if sponsor cash stays cumulative-positive through the full selected horizon after debt service and replacements.'
+          'Equity payback only if sponsor cash stays cumulative-positive through the full selected horizon after debt service and replacements (salvage not counted).'
         )
       );
     }
@@ -215,7 +219,7 @@ function buildReturnsRows({ e, labels }) {
         'Salvage value (final year)',
         money(e.salvageValue),
         'positive',
-        'Straight-line residual value of each asset at the end of the horizon (last installation cost x remaining life / life), plus land at cost. Included in NPV, IRR, ROI, and payback.'
+        'Straight-line residual value of each asset at the end of the horizon (last installation cost x remaining life / life), plus land at cost, assumed realizable at book value. Included in NPV, IRR and ROI (so short horizons look better), but not in payback.'
       )
     );
   }
@@ -357,6 +361,12 @@ function buildFinancingRows({ e }) {
   }
   rows.push(
     econRow('Total sponsor cash at close', money(financing.equityUpfront), 'negative'),
+    econRow(
+      'Equity NPV',
+      money(e.equityNpv),
+      signClass(e.equityNpv),
+      `Sponsor equity cash flows (equity + fees at close, then project cash after debt service, incl. final-year salvage) discounted at the ${FormatNumbers.fixed(e.discountRatePercent, 1)}% project discount rate, not a separate cost of equity.`
+    ),
     econRow('Debt coupon', `${FormatNumbers.fixed(financing.debtInterestRate, 2)}%`),
     econRow('Debt term', `${FormatNumbers.fixed(financing.debtTermYears, 0)} years`)
   );
@@ -386,7 +396,7 @@ function buildFinancingRows({ e }) {
         'Minimum DSCR',
         `${FormatNumbers.fixed(financing.minDscr, 2)}x (year ${FormatNumbers.fixed(financing.minDscrYear, 0)})`,
         weak ? 'warning' : '',
-        'Debt service coverage ratio: operating cash flow after replacement CAPEX divided by scheduled debt service. Below 1.0x the project cannot pay its debt from its own cash that year; lenders typically require 1.2-1.4x.'
+        'Debt service coverage ratio: cash flow available for debt service (revenue minus O&M, before major replacement CAPEX, which lenders fund from reserve / maintenance accounts) divided by scheduled debt service. Below 1.0x operations cannot pay the debt that year; lenders typically require 1.2-1.4x. Replacement shortfalls still show as sponsor support below.'
       ),
       econRow(
         'Average DSCR',
@@ -440,7 +450,12 @@ function buildUnitRows({ r, e }) {
   const rows = [];
   if (r.ai.enabled) {
     rows.push(
-      econRow('Integrated AI cost', `$${FormatNumbers.fixed(e.costPerMToken, 2)} / 1M tokens`),
+      econRow(
+        'Integrated AI cost',
+        `$${FormatNumbers.fixed(e.costPerMToken, 2)} / 1M tokens`,
+        '',
+        'AI datacenter capital charge and O&M, the whole battery (it discharges only to the AI load) and the AI-served energy share of solar + land, divided by levelized token output. The chemical plant pays the rest of solar + land, so no cost is counted twice.'
+      ),
       econRow(
         'Token margin',
         `${e.tokenMarginPerM >= 0 ? '+' : ''}$${FormatNumbers.fixed(e.tokenMarginPerM, 2)} / 1M`,
@@ -448,7 +463,7 @@ function buildUnitRows({ r, e }) {
       )
     );
   }
-  const allocationNote = 'Levelized cost allocated by cost cascade: power (solar, land, battery) by the electrolyzer/DAC power shares, H2 and CO2 to each reactor by its feed share (vented feed included), plus each block\'s own capital charge and O&M. Excludes policy credits.';
+  const allocationNote = `Levelized cost allocated by cost cascade: power (solar, land${r.ai.enabled ? ' by the chemical energy share; the battery goes to AI' : ', battery'}) by the electrolyzer/DAC power shares, H2 and CO2 to each reactor by its feed share (vented feed included), plus each block's own capital charge and O&M. Capital charges are net of upfront support at close (ITC / grants); output-based credits are excluded.`;
   if (e.costPerKgH2 > 0) rows.push(econRow('Levelized H₂ cost', `$${FormatNumbers.fixed(e.costPerKgH2, 2)}/kg`, '', allocationNote));
   if (e.costPerTonCO2 > 0) rows.push(econRow('Levelized CO₂ capture cost', `$${FormatNumbers.fixed(e.costPerTonCO2, 0)}/ton`, '', allocationNote));
   if (e.costPerMCF > 0) rows.push(econRow('Levelized CH₄ cost', `$${FormatNumbers.fixed(e.costPerMCF, 2)}/MCF`, '', allocationNote));
@@ -532,15 +547,24 @@ function buildContextRows(context) {
       econRow('Full-rate reliability', `${FormatNumbers.fixed(r.ai.fullPowerReliability * 100, 2)}%`)
     );
   }
+  if (r.storage?.enabled) {
+    rows.push(econRow(
+      'Battery replacement life',
+      `${FormatNumbers.fixed(r.storage.lifetimeYears, 1)} yrs (${FormatNumbers.fixed(r.storage.equivalentFullCyclesPerYear, 0)} full cycles/yr)`,
+      '',
+      `Rated cycle life / equivalent full cycles per year of the year-1 dispatch (energy discharged / capacity), capped at the ${FormatNumbers.fixed(MODEL_ASSUMPTIONS.batteryNominalLifeYears, 0)}-year calendar life. No capacity fade is modeled.`
+    ));
+  }
   if (e.revenue.methane > 0) {
     rows.push(econRow('Methane market', methaneMarket.applicability));
   }
   rows.push(...buildPolicyContextRows(context));
+  const ventNote = 'Unconverted reactor feed (and any H2 / CO2 with no consumer) is vented, not recycled to the reactor inlet; its production cost is charged to the products.';
   if (r.h2Surplus > 0.1) {
-    rows.push(econRow('Unused H₂', `${FormatNumbers.fixed(r.h2Surplus, 1)} kg/${cycleUnit}`));
+    rows.push(econRow('Unused H₂ (vented)', `${FormatNumbers.fixed(r.h2Surplus, 1)} kg/${cycleUnit}`, '', ventNote));
   }
   if (r.co2Surplus > 0.1) {
-    rows.push(econRow('Unused CO₂', `${FormatNumbers.fixed(r.co2Surplus, 1)} kg/${cycleUnit}`));
+    rows.push(econRow('Unused CO₂ (vented)', `${FormatNumbers.fixed(r.co2Surplus, 1)} kg/${cycleUnit}`, '', ventNote));
   }
   rows.push(...buildExploratoryContextRows(context));
   return rows;

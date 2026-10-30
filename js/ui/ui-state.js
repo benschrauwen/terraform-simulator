@@ -4,10 +4,17 @@ import { Calc } from '../model/index.js';
 import { ModuleCatalog } from '../model/module-catalog.js';
 import { FormatNumbers } from './format-numbers.js';
 
-function formatAllocationBasisLabel(label) {
-  if (label === 'configured product mix') return 'Product mix';
-  if (label === 'default methane case') return 'Default case';
-  return label ? `${label[0].toUpperCase()}${label.slice(1)}` : 'Auto';
+const ALLOCATION_KIND_LABELS = {
+  productMix: 'Product mix',
+  methane: 'Methane',
+  methanol: 'Methanol',
+  exploratoryOnly: 'Route demand',
+  methaneFallback: 'No reactor: CH4 ratio',
+};
+
+function formatAllocationBasisLabel(allocation) {
+  const base = ALLOCATION_KIND_LABELS[allocation?.kind] || 'Auto';
+  return allocation?.includesExploratory && allocation.kind !== 'exploratoryOnly' ? `${base} + routes` : base;
 }
 
 export const uiStateMethods = {
@@ -212,7 +219,7 @@ export const uiStateMethods = {
       const el = document.getElementById(`${id}AllocMode`);
       if (el) {
         const pct = id === 'electrolyzer' ? allocation.electrolyzer * 100 : allocation.dac * 100;
-        el.textContent = `${formatAllocationBasisLabel(allocation.label)} · ${FormatNumbers.fixed(pct, 1)}% of power`;
+        el.textContent = `${formatAllocationBasisLabel(allocation)} · ${FormatNumbers.fixed(pct, 1)}% of power`;
       }
     });
   },

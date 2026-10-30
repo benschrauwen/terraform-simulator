@@ -185,7 +185,7 @@ process_kW      = full_capture_kW * chemicalSizingPercent / 100
 
 AI mode serves solar in this order: the constant AI load, then battery charging (the battery discharges only to AI), then the chemicals. The AI load is the largest constant load whose clear-sky-equivalent full-power reliability meets the target (bisection). Chemical 100% is the peak residual power at that load. With no battery, AI mode seeds 1 MWh per GWh/yr of solar and says so. GPU CAPEX is `$/kW * load`, O&M is 4%/yr of it, and `revenue = served MWh * M tokens/MWh * $/M tokens`.
 
-Battery CAPEX is `$/kWh * capacity`. Its life is `min(12 yr, rated cycles / cycles per year)`, counting one cycle per day, sol or lunar cycle.
+Battery CAPEX is `$/kWh * capacity`. Its life is `min(12 yr, rated cycles / EFC per year)`, where equivalent full cycles per year = year-1 energy discharged (annualized to an Earth year) / capacity, in both chemical and AI dispatch.
 
 ### Lifetime energy (`lifetime-energy.js`)
 
@@ -212,7 +212,7 @@ exploratory_share_j = (expl_pool / total) * w_j / sum_k w_k      # pool split by
 h2_feed_share_i  = w_i * h2_kg_per_unit_i  / sum_k w_k * h2_kg_per_unit_k   (same for CO2)
 ```
 
-Because the feed split uses the same `weight * kg/unit` as the power split, each consumer gets H2 and CO2 in stoichiometric ratio. The only unused feed is each reactor's unconverted fraction. For example, methane + methanol 50/50 at 95%/80% conversion leaves 9.1% of the H2 and 10.0% of the CO2 unused. With no product enabled, the split falls back to 50/50 and everything is vented.
+Because the feed split uses the same `weight * kg/unit` as the power split, each consumer gets H2 and CO2 in stoichiometric ratio. The only unused feed is each reactor's unconverted fraction. For example, methane + methanol 50/50 at 95%/80% conversion leaves 9.1% of the H2 and 10.0% of the CO2 unused. A disabled electrolyzer or DAC gets no power. With no product reactor or route enabled, the enabled blocks split power in the methane stoichiometric ratio (0.503 kg H2 and 2.744 kg CO2 per kg CH4: ~81/19 at defaults; a lone block gets it all) and everything is vented. Unconverted reactor feed is vented, not recycled to the reactor inlet. The allocation result carries a `kind` (`productMix`, `methane`, `methanol`, `exploratoryOnly`, `methaneFallback`) that the UI labels from.
 
 ```text
 H2 kg      = electrolyzer_kWh / kWh_per_kg      (LHV efficiency = 33.33 / kWh_per_kg; HHV floor 39.4)
@@ -234,7 +234,7 @@ CAPEX sizing works as follows:
   ```
 
 - The Sabatier reactor costs `$/kW-CH4` on its design output (LHV 13.9 kWh/kg). The methanol reactor costs `$/(kg/h)` on its design H2 + CO2 feed. Both are sized on the hourly peak feed.
-- An exploratory route is sized on its peak hourly output. CAPEX is that rate times `cycle hours * cycles per year * $/t-yr * cycling penalty` (or `* cycle hours * $/m3/day * penalty` for water), with a 10-year life and the shared exploratory O&M %.
+- An exploratory route is sized on its peak hourly output. CAPEX is that rate times `cycle hours * cycles per year * $/t-yr * cycling penalty` (or `* 24 h * $/m3/day * penalty` for water: per Earth day of nameplate, so the same hardware costs the same on any body), with a 10-year life and the shared exploratory O&M %.
 
 Feed buffers are off by default. They can be opted into per module (methane, methanol, routes with `supportsFeedBuffer`). A buffered reactor runs at a constant rate, so it is sized on the peak day's feed / cycle hours, but it must hold that feed:
 
@@ -289,16 +289,19 @@ levelized profit  = levelized revenue - levelized cost = NPV * crf(r, N)
 cost breakdown    = sum_i net_capex_i * crf(r, life_i) + land * r + O&M   (+ reconciling timing/salvage row)
 solar LCOE        = (solar_capex * crf(r, solar_life) + land * r + solar O&M)
                     / (annual_MWh * sum_y f_y (1+r)^-y * crf(r, solar_life))     # gross of incentives
+buffered LCOE     = (solar LCOE numerator + battery_capex * crf(r, battery_life) + battery O&M)
+                    / (delivered_MWh_1 * sum_y d_y (1+r)^-y * crf(r, N))           # gross of incentives
+                    d_y = (chemical + AI-served kWh)_y / year-1, from the lifetime-energy vectors
 ```
 
 Unit costs ($/kg H2, $/t CO2, $/MCF, $/t methanol) use a cost cascade:
 
-1. Power cost is solar, land and battery, annualized net of upfront support, plus their O&M. In AI mode only the chemical share of served energy counts.
+1. Power cost is solar, land and battery, annualized net of upfront support, plus their O&M. In AI mode the battery (it discharges only to the AI load) goes wholly to AI, and solar + land are split by AI-served vs chemical energy; AI cost + chemical-plant cost = the total asset-life annual cost. The AI token cost is divided by levelized token output (AI-served energy factor).
 2. Power cost is split by the electrolyzer/DAC power shares.
 3. H2 and CO2 costs pass to each reactor by its feed share, so vented feed is charged to the product that vents it. Buffers are allocated by module.
 4. Each cost is divided by year-1 output times the levelized chemical-energy factor.
 
-Output-based credits are excluded.
+Capital charges are net of upfront support at close (ITC, grants); output-based credits are excluded. Both LCOE figures are gross of incentives.
 
 IRR is reported only when one economically meaningful root exists. MIRR (finance and reinvest at `r`) is always shown next to it. MIRR is unique and exceeds `r` exactly when NPV is positive.
 
@@ -310,15 +313,15 @@ several sign changes, sum(cf) <  0       -> n/a: any root is an artefact of late
 mirr = (FV_r(inflows) / -PV_r(outflows))^(1/n) - 1
 ```
 
-The inline optimizers sweep one slider at a time: battery size, chemical sizing or the methane/methanol split. They maximize IRR, or MIRR across the whole sweep if IRR is undefined anywhere in it (NPV as a last resort). Payback is reported as simple and as sustained (never dips negative again).
+The inline optimizers sweep one slider at a time: battery size, chemical sizing or the methane/methanol split. They maximize IRR, or MIRR across the whole sweep if IRR is undefined anywhere in it (NPV as a last resort). Payback is reported as simple and as sustained (never dips negative again). It counts operating cash minus replacement CAPEX only, never the final-year salvage, and reads "not within horizon" when the outlay is not recovered. The "Viable" status needs both NPV > 0 and that payback.
 
-With debt enabled, the headline IRR becomes equity IRR and equity MIRR is shown next to it. Project NPV stays unlevered (equity NPV is computed on the result but not displayed).
+With debt enabled, the headline IRR becomes equity IRR and equity MIRR is shown next to it. Project NPV stays unlevered; equity NPV is shown in the financing rows, discounted at the project discount rate (no separate cost of equity).
 
 ```text
 debt        = debt_share (<= 90%) * net_capex_0;   fee = fee% * debt, paid by equity at close
 payment     = debt * crf(i, term); a term longer than N leaves a balloon repaid in year N
 equity_cf_y = cf_y - debt_service_y
-DSCR_y      = (operating_cf_y - replacements_y) / scheduled_debt_service_y      # min/avg, flagged < 1.0x
+DSCR_y      = operating_cf_y / scheduled_debt_service_y      # CFADS before major replacements (reserve-funded); min/avg, flagged < 1.0x
 sponsor_y   = max(0, -equity_cf_y)                     # debt service and/or replacement shortfalls
 ```
 
@@ -350,7 +353,7 @@ The headline default scenario is:
 
 ## Limitations
 
-- **Weather is clear-sky-equivalent.** Every day has the clear-sky shape, scaled to the annual yield and diffuse fraction, with no multi-day cloudy spells. AI reliability and battery firming are therefore optimistic. Off-preset Earth yields use a latitude/GHI heuristic, so a manual PVGIS value is better.
+- **Weather is clear-sky-equivalent.** Every day has the clear-sky shape, scaled to the annual yield and diffuse fraction, with no multi-day cloudy spells. AI reliability and battery firming are therefore optimistic. "100% chemical sizing clips no solar" holds within this modeled year only: at a cloudy site the scaled peak is low (Berlin, fixed tilt: 0.50 MW per MWdc) and real clear days would clip. Off-preset Earth yields use a latitude/GHI heuristic, so a manual PVGIS value is better.
 - **Policy is simplified.**
   - Credits for self-consumed solar under 45Y, EEG, SDE++ and the CfD are a proxy, since real schemes pay metered or sold output and a CfD reference price has no meaning for on-site use.
   - Eligibility (lifecycle, wage, ownership, location, certification) is not legally validated, and award values are user inputs.
@@ -360,14 +363,15 @@ The headline default scenario is:
 - **Process blocks follow solar freely,** with no minimum turndown, ramp limits or startup losses beyond the cycling penalty.
 - **Feed-buffer inventory is a flat-supply upper bound,** and its $/kg and $/t costs are assumptions. Methanol tankage is ignored.
 - **Some modes are stylized fallbacks.**
-  - There is no hydrogen sales line, and with no product enabled H2 and CO2 are simply vented.
-  - The battery has no capacity fade, and its life assumes one cycle per day.
+  - There is no hydrogen sales line, and with no product enabled H2 and CO2 are simply vented. Unconverted Sabatier / methanol feed is vented too, not recycled to the reactor inlet.
+  - The battery has no capacity fade; its cycle life is consumed at the year-1 dispatch throughput (equivalent full cycles), with depth-of-discharge effects ignored.
   - AI compute is a constant-load token model, not a datacenter design.
   - Mars and Moon modes use literature-style benchmarks.
 - **Finance is minimal.**
   - Prices and costs are constant real values: no inflation, escalation, taxes, depreciation, tax equity or working capital.
   - O&M is a flat % of CAPEX.
-  - Salvage is straight-line book value (land at cost), not a resale estimate.
+  - Salvage is straight-line book value (land at cost), assumed realizable at the horizon, not a resale estimate. It is in NPV, IRR and ROI (short horizons look better) but not in payback.
+  - Equity NPV and equity MIRR are discounted at the project discount rate, not a separate cost of equity.
   - Debt is a single amortizing tranche sized on net CAPEX.
 
 ## Testing and validation

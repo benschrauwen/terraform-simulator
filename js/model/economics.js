@@ -16,12 +16,23 @@ import {
   calculateSimplePaybackYears,
   calculateSustainedPaybackYears,
   crf,
-  getLevelizedSolarDegradationFactor,
   getPolicyDurationFactor,
   getSolarFactorForYear,
 } from './finance.js';
 import { ModuleCatalog } from './module-catalog.js';
 import { PolicyModel, allocateUpfrontSupport } from './policy.js';
+
+/* Constant output with the same present value as year-1 output x the
+   per-year factors over the horizon: sum f_y / (1 + r)^y x CRF(r, N).
+   Missing factors count as 1. */
+function getLevelizedOutputFactor(factorsByYear, rate, horizonYears) {
+  let presentFactor = 0;
+  for (let year = 1; year <= horizonYears; year++) {
+    const factor = Array.isArray(factorsByYear) && Number.isFinite(factorsByYear[year - 1]) ? factorsByYear[year - 1] : 1;
+    presentFactor += factor / Math.pow(1 + rate, year);
+  }
+  return presentFactor * crf(rate, horizonYears);
+}
 
 export const economicsMethods = {
   getPolicyCredits(state, context) {
@@ -99,29 +110,33 @@ export const economicsMethods = {
 
   /* Levelized unit costs by cost cascade instead of dividing the whole
      plant's cost by each product. Power (solar, land, battery and their
-     O&M; the chemical share of it in AI mode) is split by the
-     electrolyzer / DAC power shares; H2 and CO2 costs flow to each reactor
-     by its feed share (so vented feed is borne by the product that vents
-     it); feed-buffer storage by each module's share of buffer value. Costs
-     use per-asset CRF charges + O&M; outputs are levelized with the
-     chemical-energy factor over the horizon. Policy credits are excluded. */
+     O&M) goes to the chemical plant; in AI mode the battery (it discharges
+     only to the AI load) goes wholly to AI and solar + land are split by
+     the AI-served vs chemical energy shares, so AI and chemicals never both
+     pay for the same asset. Chemical power is split by the electrolyzer /
+     DAC power shares; H2 and CO2 costs flow to each reactor by its feed
+     share (so vented feed is borne by the product that vents it);
+     feed-buffer storage by each module's share of buffer value. Costs use
+     per-asset CRF charges (net of upfront support such as an ITC) + O&M;
+     outputs are levelized with the chemical-energy (AI: AI-served) factor
+     over the horizon. Operating credits are excluded. */
   allocateUnitCosts(state, {
-    annualizedCapex, powerAnnualCost, ai, electrolyzer, dac, sabatier, methanol,
-    feedBuffers, allocation, lifetimeEnergy, rate,
+    annualizedCapex, solarLandAnnualCost, batteryAnnualCost, exploratoryAnnualCost = 0,
+    ai, electrolyzer, dac, sabatier, methanol, feedBuffers, allocation, lifetimeEnergy, rate,
   }) {
     const processOmFrac = (state.processOmPercent ?? DEFAULT_STATE.processOmPercent) / 100;
     const horizonYears = state.analysisHorizonYears;
-    const chemicalFactors = lifetimeEnergy?.chemicalFactorByYear;
-    let presentFactor = 0;
-    for (let year = 1; year <= horizonYears; year++) {
-      const factor = Array.isArray(chemicalFactors) && Number.isFinite(chemicalFactors[year - 1]) ? chemicalFactors[year - 1] : 1;
-      presentFactor += factor / Math.pow(1 + rate, year);
-    }
-    const levelizedOutputFactor = presentFactor * crf(rate, horizonYears);
+    const levelizedOutputFactor = getLevelizedOutputFactor(lifetimeEnergy?.chemicalFactorByYear, rate, horizonYears);
     const aiKWh = ai?.enabled ? (ai.annualAiServedKWh || 0) : 0;
     const chemicalKWh = ai?.enabled ? (ai.chemicalAnnualKWh || 0) : 1;
     const chemicalPowerShare = chemicalKWh + aiKWh > 0 ? chemicalKWh / (chemicalKWh + aiKWh) : 0;
-    const chemicalPowerCost = powerAnnualCost * chemicalPowerShare;
+    const chemicalPowerCost = ai?.enabled
+      ? solarLandAnnualCost * chemicalPowerShare
+      : solarLandAnnualCost + batteryAnnualCost;
+    const aiPowerCost = ai?.enabled
+      ? batteryAnnualCost + (solarLandAnnualCost * (1 - chemicalPowerShare))
+      : 0;
+    const aiAnnualCost = ai?.enabled ? aiPowerCost + (annualizedCapex.ai || 0) + (ai.annualOM || 0) : 0;
     const assetCost = (key, capexValue) => (annualizedCapex[key] || 0) + ((capexValue || 0) * processOmFrac);
 
     const h2AnnualCost = electrolyzer.enabled
@@ -146,9 +161,23 @@ export const economicsMethods = {
       ? cost / (annualOutput * levelizedOutputFactor)
       : 0);
 
+    // Block-level split of the asset-life annual cost: AI + chemical plant
+    // (its power share plus every process block) = the whole plant.
+    const chemicalPlantAnnualCost = chemicalPowerCost +
+      assetCost('electrolyzer', electrolyzer.capex) +
+      assetCost('dac', dac.capex) +
+      assetCost('sabatier', sabatier.capex) +
+      assetCost('methanol', methanol.capex) +
+      bufferAnnualCost +
+      exploratoryAnnualCost;
+
     return {
       levelizedOutputFactor,
+      chemicalPowerShare: ai?.enabled ? chemicalPowerShare : 1,
       chemicalPowerCost,
+      aiPowerCost,
+      aiAnnualCost,
+      chemicalPlantAnnualCost,
       h2AnnualCost,
       co2AnnualCost,
       sabatierAnnualCost,
@@ -368,12 +397,15 @@ export const economicsMethods = {
         balloonPayment: 0,
       };
       const equityCashFlow = netCashFlow - debtEntry.debtService;
-      // Cash available for debt service is operating cash after replacement
-      // CAPEX (replacements are funded from operations). DSCR uses the
-      // scheduled payment; a horizon balloon is repaid from final-year cash
-      // including salvage. Any negative equity year after close, whether from
-      // debt service or a replacement, needs extra sponsor cash.
-      const cashAvailableForDebtService = operatingCashFlow - replacementOutflow;
+      // Cash available for debt service (CFADS) is operating cash before
+      // major replacement CAPEX: lenders fund repowerings and battery swaps
+      // from reserve / maintenance accounts, not from the year's debt
+      // cover, so a replacement year no longer reads as DSCR -2x. DSCR uses
+      // the scheduled payment; a horizon balloon is repaid from final-year
+      // cash including salvage. The replacement still hits equity cash: any
+      // negative equity year after close, whether from debt service or a
+      // replacement, needs extra sponsor cash.
+      const cashAvailableForDebtService = operatingCashFlow;
       const scheduledDebtService = debtEntry.scheduledDebtService ?? debtEntry.debtService;
       const dscr = financing.enabled && scheduledDebtService > 1e-9
         ? cashAvailableForDebtService / scheduledDebtService
@@ -459,22 +491,17 @@ export const economicsMethods = {
     const finalCumulativeEquityCash = yearlyCashFlows.length > 0
       ? yearlyCashFlows[yearlyCashFlows.length - 1].cumulativeEquityCash
       : -financing.equityUpfront;
-    const paybackYears = calculateSimplePaybackYears(
-      netCapexAtClose,
-      yearlyCashFlows.map(entry => entry.netCashFlow)
-    );
-    const sustainedPaybackYears = calculateSustainedPaybackYears(
-      netCapexAtClose,
-      yearlyCashFlows.map(entry => entry.netCashFlow)
-    );
-    const equityPaybackYears = calculateSimplePaybackYears(
-      financing.equityUpfront,
-      yearlyCashFlows.map(entry => entry.equityCashFlow)
-    );
-    const sustainedEquityPaybackYears = calculateSustainedPaybackYears(
-      financing.equityUpfront,
-      yearlyCashFlows.map(entry => entry.equityCashFlow)
-    );
+    // Payback counts cash actually earned: operating cash minus replacement
+    // CAPEX, without the final-year salvage. Salvage is a book value at the
+    // horizon, not cash recovered from operations; counting it let a short
+    // horizon "pay back" in its last year on the residual value alone.
+    // Infinity = not recovered within the horizon.
+    const paybackCashFlows = yearlyCashFlows.map(entry => entry.netCashFlow - entry.salvageValue);
+    const equityPaybackCashFlows = yearlyCashFlows.map(entry => entry.equityCashFlow - entry.salvageValue);
+    const paybackYears = calculateSimplePaybackYears(netCapexAtClose, paybackCashFlows);
+    const sustainedPaybackYears = calculateSustainedPaybackYears(netCapexAtClose, paybackCashFlows);
+    const equityPaybackYears = calculateSimplePaybackYears(financing.equityUpfront, equityPaybackCashFlows);
+    const sustainedEquityPaybackYears = calculateSustainedPaybackYears(financing.equityUpfront, equityPaybackCashFlows);
     // With no net investment at close (e.g. a 100% grant) ROI and IRR are
     // undefined; payback stays 0 (nothing to recover) and NPV carries the case.
     const noNetInvestment = !(netCapexAtClose > 0);
@@ -512,30 +539,39 @@ export const economicsMethods = {
     };
     const cashFlowTimeline = buildCashFlowTimeline(totalCapex, financingSummary, yearlyCashFlows, policy);
 
-    const aiCoreAnnualCost = ai.enabled
-      ? annualizedCapex.solar + annualizedCapex.land + annualizedCapex.battery + annualizedCapex.ai + solar.annualSolarOm + (storage.capex * batteryOmFrac) + (ai.annualOM || 0)
-      : 0;
-    // Same capital basis as the rest of the economics: annualized net of
-    // any upfront support (e.g. a 48E ITC), land at capital x r.
-    const bufferedElectricityAnnualCost = (annualizedCapex.solar || 0) +
-      (annualizedCapex.land || 0) +
-      (annualizedCapex.battery || 0) +
-      solar.annualSolarOm +
-      (storage.capex * batteryOmFrac);
+    // Power cost for the unit-cost cascade: same capital basis as the rest
+    // of the economics, annualized net of any upfront support (e.g. a 48E
+    // ITC), land at capital x r.
+    const solarLandAnnualCost = (annualizedCapex.solar || 0) + (annualizedCapex.land || 0) + solar.annualSolarOm;
+    const batteryAnnualCost = (annualizedCapex.battery || 0) + (storage.capex * batteryOmFrac);
+    // Buffered LCOE is a technology cost like the solar LCOE: gross of
+    // incentives (solar.annualizedSolar includes land x r; the storage
+    // charge is its gross capex x CRF over the battery life). Its energy is
+    // the delivered (chemical + AI-served) energy levelized with the
+    // lifetime-energy factors over the horizon, like the unit costs, so
+    // clipping that shrinks as the array degrades is counted.
+    const bufferedElectricityAnnualCost = (solar.annualizedSolar || 0) + solar.annualSolarOm +
+      (storage.annualizedCapex || 0) + (storage.capex * batteryOmFrac);
     const bufferedElectricityAnnualDeliveredMWh = (
       ai.enabled
         ? ((ai.annualAiServedKWh || 0) + (ai.chemicalAnnualKWh || 0))
         : ((chemicalSupply.dailyAvailableKWh || 0) * (solar.cyclesPerYear || 0))
     ) / 1000;
+    const deliveredKWhByYear = (lifetimeEnergy?.chemicalKWhByYear || []).map(
+      (chemicalKWh, index) => chemicalKWh + (ai.enabled ? (lifetimeEnergy.aiServedKWhByYear?.[index] || 0) : 0)
+    );
+    const deliveredFactorByYear = deliveredKWhByYear.map(value => (deliveredKWhByYear[0] > 0 ? value / deliveredKWhByYear[0] : 1));
     const bufferedElectricityLevelizedAnnualMWh = bufferedElectricityAnnualDeliveredMWh *
-      getLevelizedSolarDegradationFactor(state.panelDegradationAnnual, state.solarAssetLife, rate);
+      getLevelizedOutputFactor(deliveredFactorByYear, rate, state.analysisHorizonYears);
     const bufferedElectricityCostPerMWh = bufferedElectricityLevelizedAnnualMWh > 0
       ? bufferedElectricityAnnualCost / bufferedElectricityLevelizedAnnualMWh
       : 0;
 
     const unitCosts = this.allocateUnitCosts(state, {
       annualizedCapex,
-      powerAnnualCost: bufferedElectricityAnnualCost,
+      solarLandAnnualCost,
+      batteryAnnualCost,
+      exploratoryAnnualCost: (annualizedCapex.exploratory || 0) + exploratoryAnnualOM,
       ai,
       electrolyzer,
       dac,
@@ -546,6 +582,13 @@ export const economicsMethods = {
       lifetimeEnergy,
       rate,
     });
+    const aiCoreAnnualCost = unitCosts.aiAnnualCost;
+    // Tokens follow the AI-served energy over the years, levelized like the
+    // chemical outputs.
+    const levelizedAnnualTokensM = ai.enabled
+      ? (ai.annualTokensM || 0) * getLevelizedOutputFactor(lifetimeEnergy?.aiServedFactorByYear, rate, state.analysisHorizonYears)
+      : 0;
+    const costPerMToken = levelizedAnnualTokensM > 0 ? aiCoreAnnualCost / levelizedAnnualTokensM : 0;
 
     return {
       capex,
@@ -609,8 +652,8 @@ export const economicsMethods = {
       bufferedElectricityAnnualDeliveredMWh,
       bufferedElectricityLevelizedAnnualMWh,
       bufferedElectricityCostPerMWh,
-      costPerMToken: ai.enabled && ai.annualTokensM > 0 ? aiCoreAnnualCost / ai.annualTokensM : 0,
-      tokenMarginPerM: ai.enabled && ai.annualTokensM > 0 ? (state.aiTokenPricePerM || 0) - (aiCoreAnnualCost / ai.annualTokensM) : 0,
+      costPerMToken,
+      tokenMarginPerM: costPerMToken > 0 ? (state.aiTokenPricePerM || 0) - costPerMToken : 0,
       unitCosts,
       costPerKgH2: unitCosts.costPerKgH2,
       costPerTonCO2: unitCosts.costPerTonCO2,

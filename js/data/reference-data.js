@@ -229,6 +229,8 @@ export const CHEMISTRY = {
   },
 };
 
+/* Methane market framings for the market select. `group` (optional) puts
+   the preset in that <optgroup>; presets without one stay ungrouped. */
 export const METHANE_MARKET_PRESETS = {
   terraform_commodity: {
     label: 'Commodity gas / whitepaper-style case',
@@ -244,18 +246,21 @@ export const METHANE_MARKET_PRESETS = {
   },
   germany_biomethane_eeg: {
     label: 'Germany biomethane auction / EEG',
+    group: 'Country-Specific Europe',
     applicability: 'Germany',
     basis: 'Bundesnetzagentur EEG biomethane auction framework; country-specific and tender-based rather than one universal methane subsidy',
     note: 'Germany has a specific biomethane tender framework, but it does not translate cleanly into one fixed $/MCF credit here. Keep the methane sale price manual and use the note as a country context label.',
   },
   netherlands_sdepp: {
     label: 'Netherlands renewable gas / SDE++',
+    group: 'Country-Specific Europe',
     applicability: 'Netherlands',
     basis: 'SDE++ operating support for renewable gas injected into the network; effectively a difference-style support structure tied to market value',
     note: 'This is a Netherlands-specific operating support scheme rather than a single flat methane premium. Use the slider for your assumed net realized methane value or supported equivalent.',
   },
   denmark_green_gas_tender: {
     label: 'Denmark green gas tender',
+    group: 'Country-Specific Europe',
     applicability: 'Denmark',
     basis: 'Danish Energy Agency tender framework for upgraded biogas and e-methane delivered to the gas grid',
     note: 'This is a Denmark-specific bid-based support structure with long support periods, so the app leaves the methane price manual instead of inventing a single default premium.',

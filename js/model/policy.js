@@ -19,6 +19,15 @@ function formatSupportFamily(value) {
     .replace(/\b\w/g, match => match.toUpperCase());
 }
 
+/* The input roles each cash-flow type reads (see evaluatePolicy). */
+export const CASHFLOW_INPUT_ROLES = Object.freeze({
+  capex_share: ['share'],
+  unit_support: ['perUnit'],
+  strike_minus_reference: ['strike', 'reference'],
+  base_minus_correction: ['base', 'correction'],
+  custom_composite: ['capexShare', 'solarPerMwh', 'h2PerKg', 'co2PerTon'],
+});
+
 function getPolicyScheme(mode) {
   return typeof mode === 'string' && Object.hasOwn(POLICY_SCHEMES, mode)
     ? POLICY_SCHEMES[mode]
@@ -55,7 +64,7 @@ function formatPolicyInputValue(input, value) {
     case 'currency_per_kg':
       return `$${formatFixed(numeric, Math.max(2, precision))}/kg`;
     case 'currency_per_ton':
-      return `$${formatFixed(numeric, Math.max(0, precision))}/tCO2`;
+      return `$${formatFixed(numeric, Math.max(0, precision))}/${input.unit || 't'}`;
     default:
       return formatFixed(numeric, precision);
   }
@@ -194,6 +203,9 @@ function getEligibleCapexLabel(basis) {
 function evaluatePolicy(state = {}, context = {}) {
   const scheme = getPolicyScheme(state.policyMode);
   const inputs = getPolicyInputDetails(state, scheme);
+  // Each input names its part in the cash-flow formula (`role` in
+  // data/policies.js; CASHFLOW_INPUT_ROLES lists the ones each type needs).
+  const inputValue = role => inputs.find(input => input.role === role)?.value || 0;
   const capexBreakdown = getEligibleCapexBreakdown(scheme.eligibleCapexBasis, context.capexItems);
   const eligibleCapex = sumValues(capexBreakdown);
   const outputMetric = getOutputMetric(scheme.outputBasis, context);
@@ -205,40 +217,40 @@ function evaluatePolicy(state = {}, context = {}) {
 
   switch (scheme.cashflowType) {
     case 'capex_share': {
-      const rate = inputs[0]?.value || 0;
+      const rate = inputValue('share');
       effectiveUnitSupport = rate;
       upfrontSupport = eligibleCapex * rate;
       break;
     }
 
     case 'unit_support': {
-      const supportPerUnit = inputs[0]?.value || 0;
+      const supportPerUnit = inputValue('perUnit');
       effectiveUnitSupport = supportPerUnit;
       annualSupport = outputMetric.value * supportPerUnit;
       break;
     }
 
     case 'strike_minus_reference': {
-      const strike = inputs[0]?.value || 0;
-      const reference = inputs[1]?.value || 0;
+      const strike = inputValue('strike');
+      const reference = inputValue('reference');
       effectiveUnitSupport = strike - reference;
       annualSupport = outputMetric.value * effectiveUnitSupport;
       break;
     }
 
     case 'base_minus_correction': {
-      const baseAmount = inputs[0]?.value || 0;
-      const correctionAmount = inputs[1]?.value || 0;
+      const baseAmount = inputValue('base');
+      const correctionAmount = inputValue('correction');
       effectiveUnitSupport = Math.max(baseAmount - correctionAmount, 0);
       annualSupport = outputMetric.value * effectiveUnitSupport;
       break;
     }
 
     case 'custom_composite': {
-      const capexShare = inputs.find(input => input.key === 'customCapexGrantShare')?.value || 0;
-      const solarSupportPerMwh = inputs.find(input => input.key === 'customSolarSupportPerMwh')?.value || 0;
-      const h2SupportPerKg = inputs.find(input => input.key === 'customH2Credit')?.value || 0;
-      const co2SupportPerTon = inputs.find(input => input.key === 'customCo2Credit')?.value || 0;
+      const capexShare = inputValue('capexShare');
+      const solarSupportPerMwh = inputValue('solarPerMwh');
+      const h2SupportPerKg = inputValue('h2PerKg');
+      const co2SupportPerTon = inputValue('co2PerTon');
       const quantities = getQualifyingQuantities(context);
 
       upfrontSupport = eligibleCapex * capexShare;

@@ -1,3 +1,5 @@
+import { SITE_YIELD_SOURCES } from './schema.js';
+
 export const SavedSitePresets = (function () {
   const STORAGE_KEY = 'terraformIndustries.savedSitePresets';
   const APP_STATE_KEY_PREFIX = 'terraformIndustries.siteAppState.v1:';
@@ -53,8 +55,7 @@ export const SavedSitePresets = (function () {
     let solarProfileModel = entry.solarProfileModel;
     if (typeof solarProfileModel !== 'string') solarProfileModel = undefined;
 
-    const allowedSources = ['preset', 'manual', 'estimated', 'planetary-custom'];
-    const siteYieldSource = allowedSources.includes(entry.siteYieldSource)
+    const siteYieldSource = SITE_YIELD_SOURCES.includes(entry.siteYieldSource)
       ? entry.siteYieldSource
       : 'preset';
 

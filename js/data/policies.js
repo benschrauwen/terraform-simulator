@@ -3,7 +3,10 @@
    ============================================
    POLICY_SCHEMES describes each support regime: display metadata plus the
    cash-flow treatment (`cashflowType`, `eligibleCapexBasis`, `outputBasis`)
-   and the user-tunable `inputs` that model/policy.js evaluates.
+   and the user-tunable `inputs` that model/policy.js evaluates. Each input's
+   `role` names its place in its cashflowType's formula (CASHFLOW_INPUT_ROLES
+   in model/policy.js); `unit` is the denominator a currency_per_ton input
+   displays.
    POLICY_SELECT_GROUPS orders the schemes in the policy picker.
    To add a scheme: add an entry here and list its id in a select group.
 
@@ -118,6 +121,7 @@ export const POLICY_SCHEMES = {
     inputs: [
       {
         key: 'us48eSolarRate',
+        role: 'share',
         label: '48E rate (share of solar CAPEX)',
         // IRC §48E(a)(2): 6% base, 30% with prevailing wage & apprenticeship;
         // §48E(a)(3): energy community and domestic content bonuses, +10 pts each
@@ -158,6 +162,7 @@ export const POLICY_SCHEMES = {
     inputs: [
       {
         key: 'us45ySolarCreditPerKwh',
+        role: 'perUnit',
         label: '45Y credit ($/kWh, 2026)',
         // IRS Notice 2026-47 (IRB 2026-41, inflation factor 2.0570): base $0.006/kWh,
         // $0.031/kWh with prevailing wage & apprenticeship. https://www.irs.gov/irb/2026-41_IRB
@@ -198,6 +203,7 @@ export const POLICY_SCHEMES = {
     inputs: [
       {
         key: 'us45vHydrogenCreditPerKg',
+        role: 'perUnit',
         label: '45V credit ($/kg H2, 2026)',
         // IRS Notice 2026-41 (IRB 2026-29, factor 1.0929): base $0.656/kg for the
         // <0.45 tier; x5 with prevailing wage (§45V(e)(1)) = $3.28/kg. Lowest tier
@@ -239,6 +245,7 @@ export const POLICY_SCHEMES = {
     inputs: [
       {
         key: 'us45qDacCreditPerTon',
+        role: 'perUnit',
         label: '45Q credit ($/tCO2)',
         // IRC §45Q(b)(1): DAC $36/t base, x5 = $180/t with prevailing wage (§45Q(h)).
         min: 36,
@@ -246,6 +253,7 @@ export const POLICY_SCHEMES = {
         step: 1,
         defaultValue: 180,
         format: 'currency_per_ton',
+        unit: 'tCO2',
       },
     ],
   },
@@ -277,6 +285,7 @@ export const POLICY_SCHEMES = {
     inputs: [
       {
         key: 'usH2HubsGrantShare',
+        role: 'share',
         label: 'Hydrogen Hubs grant share',
         min: 0,
         max: 1,
@@ -313,6 +322,7 @@ export const POLICY_SCHEMES = {
     inputs: [
       {
         key: 'usDacHubsGrantShare',
+        role: 'share',
         label: 'DAC Hubs grant share',
         min: 0,
         max: 1,
@@ -355,6 +365,7 @@ export const POLICY_SCHEMES = {
     inputs: [
       {
         key: 'euHydrogenBankPremiumPerKg',
+        role: 'perUnit',
         label: 'Hydrogen Bank premium ($/kg equivalent)',
         min: 0,
         max: 5, // highest cleared bid to date EUR 3.49/kg = $3.88/kg
@@ -389,6 +400,7 @@ export const POLICY_SCHEMES = {
     inputs: [
       {
         key: 'euInnovationFundGrantShare',
+        role: 'share',
         label: 'Innovation Fund grant share',
         min: 0,
         max: 1,
@@ -428,6 +440,7 @@ export const POLICY_SCHEMES = {
     inputs: [
       {
         key: 'deEegSolarPremiumPerKwh',
+        role: 'perUnit',
         label: 'EEG net premium ($/kWh, from EUR)',
         min: 0,
         max: 0.07, // 2026 bid cap 5.90 EUR ct/kWh = $0.066/kWh
@@ -467,6 +480,7 @@ export const POLICY_SCHEMES = {
     inputs: [
       {
         key: 'deHydrogenAaasPremiumPerKg',
+        role: 'perUnit',
         label: 'German H2 premium ($/kg equivalent)',
         min: 0,
         max: 5,
@@ -503,6 +517,7 @@ export const POLICY_SCHEMES = {
     inputs: [
       {
         key: 'nlSdeppBaseAmountPerMwh',
+        role: 'base',
         label: 'SDE++ base amount ($/MWh equivalent)',
         min: 0,
         max: 250,
@@ -512,6 +527,7 @@ export const POLICY_SCHEMES = {
       },
       {
         key: 'nlSdeppCorrectionAmountPerMwh',
+        role: 'correction',
         label: 'SDE++ correction amount ($/MWh equivalent)',
         min: 0,
         max: 250,
@@ -549,6 +565,7 @@ export const POLICY_SCHEMES = {
     inputs: [
       {
         key: 'nlOweH2CapexGrantShare',
+        role: 'share',
         label: 'OWE capex grant share',
         min: 0,
         max: 0.80,
@@ -585,6 +602,7 @@ export const POLICY_SCHEMES = {
     inputs: [
       {
         key: 'nlOweH2ProductionPricePerKg',
+        role: 'base',
         label: 'OWE production price ($/kg equivalent)',
         min: 0,
         max: 9,
@@ -594,6 +612,7 @@ export const POLICY_SCHEMES = {
       },
       {
         key: 'nlOweH2CorrectionAmountPerKg',
+        role: 'correction',
         label: 'OWE correction amount ($/kg equivalent)',
         min: 0,
         max: 9,
@@ -634,6 +653,7 @@ export const POLICY_SCHEMES = {
     inputs: [
       {
         key: 'ukCfdSolarStrikePricePerMwh',
+        role: 'strike',
         label: 'CfD strike price ($/MWh, from GBP)',
         min: 0,
         max: 250,
@@ -643,6 +663,7 @@ export const POLICY_SCHEMES = {
       },
       {
         key: 'ukCfdSolarReferencePricePerMwh',
+        role: 'reference',
         label: 'CfD reference price ($/MWh, from GBP)',
         min: 0,
         max: 250,
@@ -680,6 +701,7 @@ export const POLICY_SCHEMES = {
     inputs: [
       {
         key: 'ukHpbmHydrogenGapPerKg',
+        role: 'perUnit',
         label: 'HPBM gap payment ($/kg equivalent)',
         min: 0,
         max: 10,
@@ -714,21 +736,25 @@ export const POLICY_SCHEMES = {
     inputs: [
       {
         key: 'ukGgrDacStrikePricePerTon',
+        role: 'strike',
         label: 'GGR strike price ($/tCO2 equivalent)',
         min: 0,
         max: 500,
         step: 5,
         defaultValue: 0,
         format: 'currency_per_ton',
+        unit: 'tCO2',
       },
       {
         key: 'ukGgrDacReferencePricePerTon',
+        role: 'reference',
         label: 'GGR reference price ($/tCO2 equivalent)',
         min: 0,
         max: 500,
         step: 5,
         defaultValue: 0,
         format: 'currency_per_ton',
+        unit: 'tCO2',
       },
     ],
   },
@@ -757,6 +783,7 @@ export const POLICY_SCHEMES = {
     inputs: [
       {
         key: 'esHydrogenAaasPremiumPerKg',
+        role: 'perUnit',
         label: 'Spanish H2 premium ($/kg equivalent)',
         min: 0,
         max: 10,
@@ -923,6 +950,7 @@ export const POLICY_SCHEMES = {
     inputs: [
       {
         key: 'customCapexGrantShare',
+        role: 'capexShare',
         label: 'Custom capex support share (of total CAPEX incl. land)',
         min: 0,
         max: 1,
@@ -932,6 +960,7 @@ export const POLICY_SCHEMES = {
       },
       {
         key: 'customSolarSupportPerMwh',
+        role: 'solarPerMwh',
         label: 'Custom solar support ($/MWh)',
         min: -200,
         max: 300,
@@ -941,6 +970,7 @@ export const POLICY_SCHEMES = {
       },
       {
         key: 'customH2Credit',
+        role: 'h2PerKg',
         label: 'Custom H2 support ($/kg)',
         min: -5,
         max: 10,
@@ -950,12 +980,14 @@ export const POLICY_SCHEMES = {
       },
       {
         key: 'customCo2Credit',
+        role: 'co2PerTon',
         label: 'Custom CO2 support ($/tCO2)',
         min: -250,
         max: 500,
         step: 5,
         defaultValue: 0,
         format: 'currency_per_ton',
+        unit: 'tCO2',
       },
     ],
   },

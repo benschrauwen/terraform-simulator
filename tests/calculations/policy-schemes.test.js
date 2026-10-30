@@ -8,7 +8,26 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { POLICY_SCHEMES } from '../../js/data/policies.js';
+import { CASHFLOW_INPUT_ROLES } from '../../js/model/policy.js';
 import { Calc, PolicyModel, createState, formatMoney } from './harness.js';
+
+test('every scheme input names the formula role its cash-flow type reads, once', () => {
+  Object.entries(POLICY_SCHEMES).forEach(([id, scheme]) => {
+    const roles = (scheme.inputs || []).map(input => input.role);
+    const required = CASHFLOW_INPUT_ROLES[scheme.cashflowType] || [];
+    assert.deepEqual([...roles].sort(), [...required].sort(), `${id} (${scheme.cashflowType}) input roles`);
+    (scheme.inputs || []).filter(input => input.format === 'currency_per_ton').forEach(input => {
+      assert.ok(input.unit, `${id}.${input.key} needs a display unit`);
+      assert.match(PolicyModel.formatInputValue(input, input.defaultValue), new RegExp(`/${input.unit}$`));
+    });
+  });
+  // UK CfD at strike 120 and reference 70 $/MWh pays strike - reference = 50.
+  const policy = Calc.calculateAll(createState({
+    policyMode: 'uk_cfd_solar_ar7', ukCfdSolarStrikePricePerMwh: 120, ukCfdSolarReferencePricePerMwh: 70,
+  })).economics.policy;
+  assert.equal(policy.effectiveUnitSupport, 50);
+});
 
 // Was: also pinned the number of option groups (5) and policies (>= 25).
 test('policy select catalog exposes valid unique schemes and input metadata', () => {

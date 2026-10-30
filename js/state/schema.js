@@ -14,6 +14,9 @@ import {
 } from '../data/reference-data.js';
 import { ModuleCatalog } from '../data/module-catalog.js';
 
+// Where the site yield came from; saved site presets reuse the same enum.
+export const SITE_YIELD_SOURCES = Object.freeze(['preset', 'manual', 'estimated', 'planetary-custom']);
+
 export const SOLAR_PROFILE_DEFAULTS_BY_BODY = {
   earth: 'earth',
   mars: 'mars-average',
@@ -55,7 +58,7 @@ export const CORE_STATE_FIELDS = [
   { key: 'dayMode', type: 'enum', options: ['average', 'specific'], defaultValue: 'average' },
   { key: 'body', type: 'enum', getOptions: () => Object.keys(PLANETARY_BODIES), defaultValue: 'earth' },
   { key: 'mountingType', type: 'enum', getOptions: () => Object.keys(MOUNTING_TYPES), defaultValue: 'ew' },
-  { key: 'siteYieldSource', type: 'enum', options: ['preset', 'manual', 'estimated', 'planetary-custom'], defaultValue: 'preset' },
+  { key: 'siteYieldSource', type: 'enum', options: SITE_YIELD_SOURCES, defaultValue: 'preset' },
   { key: 'policyMode', type: 'enum', getOptions: () => Object.keys(POLICY_SCHEMES), defaultValue: 'us_45v_h2' },
   { key: 'methaneMarketPreset', type: 'enum', getOptions: () => Object.keys(METHANE_MARKET_PRESETS), defaultValue: 'terraform_commodity' },
 

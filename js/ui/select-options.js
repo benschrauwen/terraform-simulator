@@ -8,13 +8,6 @@ import {
 import { PolicyModel } from '../model/policy.js';
 import { escapeAttribute, escapeHtml } from './renderers/markup.js';
 
-// Presentation-only grouping of the methane market presets; presets not listed stay ungrouped.
-const METHANE_MARKET_OPTGROUPS = {
-  germany_biomethane_eeg: 'Country-Specific Europe',
-  netherlands_sdepp: 'Country-Specific Europe',
-  denmark_green_gas_tender: 'Country-Specific Europe',
-};
-
 function optionHtml({ value, label }) {
   return `<option value="${escapeAttribute(value)}">${escapeHtml(label)}</option>`;
 }
@@ -66,7 +59,7 @@ export const selectOptionMethods = {
       Object.entries(METHANE_MARKET_PRESETS).map(([value, preset]) => ({
         value,
         label: preset.label,
-        group: METHANE_MARKET_OPTGROUPS[value] || null,
+        group: preset.group || null,
       }))
     ));
   },

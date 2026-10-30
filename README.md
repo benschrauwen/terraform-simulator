@@ -71,8 +71,10 @@ js/util.js    dependency-free numeric helpers (clamps, step precision), usable b
 Imports run one way, top to bottom: a layer imports its own files, lower layers and `util.js`, never a higher layer. `tests/architecture/import-direction.test.js` enforces it.
 
 - `js/data/`: `reference-data.js` (bodies, `LOCATION_PRESETS`, `MOUNTING_TYPES`, `CHEMISTRY`, `METHANE_MARKET_PRESETS`, AI defaults), `assumptions.js` (`MODEL_ASSUMPTIONS`, the GHI/cloudiness heuristics and `SOLAR_LAYOUT_REFERENCE`), `modules.js` (supported and exploratory process modules), `module-catalog.js` (`ModuleCatalog`: normalizes `modules.js` into frozen modules and answers route, preset, market, buffer and capex-slider questions), `policies.js` (incentive schemes and picker groups), `market-ladders.js` (Terraform's methane and methanol market tiers), `sensitivity-variables.js` (the inputs the NPV tornado moves and their low/high bounds).
-- `js/state/`: `schema.js` is the single source of state fields and defaults.
+- `js/data/datacenter/`: the datacenter simulator's sourced data: `sites.js` (site presets with PVGIS yield and 12 x 24 typical-day dry/wet-bulb temperatures, grid price and CO2), `cooling.js` (PUE and water curves per cooling technology), `facility.js` (building, IT, colocation, water, lead times), `power.js` (grid, gas gensets, nuclear types, architectures, power lead times), `model-assumptions.js` (constants the data files do not give, each derived or marked judgment) and `sensitivity-variables.js` (its tornado inputs).
+- `js/state/`: `schema.js` is the single source of state fields and defaults; `datacenter-schema.js` is the datacenter simulator's (fields, `DATACENTER_DEFAULT_STATE`, `normalizeDatacenterState`, preset-derived defaults).
 - `js/model/`: one file per concern: `solar.js` + `solar-geometry.js` (resource, sky model, mountings), `annual-series.js` (hourly year), `battery.js` (storage + chemical dispatch), `ai-compute.js`, `lifetime-energy.js`, `process.js` (allocation, electrolyzer, DAC, reactors, exploratory routes, buffers), `economics.js`, `finance.js`, `policy.js`, `optimizer-search.js`, `break-even.js` (NPV = 0 sale prices), `cash-flow-table.js` (yearly cash-flow rows + CSV), `scenario.js` (the pipeline), and two pure helpers the UI imports directly: `market-ladder.js` and `tornado.js` (one-at-a-time NPV sensitivity).
+- `js/model/datacenter/`: the datacenter engine, one file per concern (`climate.js`, `supply.js`, `dispatch.js`, `impacts.js`, `schedule.js`, `economics.js`, `warnings.js`, `tornado.js`), assembled by `scenario.js` (`calculateDatacenterScenario`, result shape documented at its top) and exported from `index.js`. It reuses the plant builder's solar model, battery primitives, `finance.js`, `summarizeReturns`, the tornado bounds and the cash-flow table. See [Datacenter model](#datacenter-model).
 - `js/ui/`: `app.js` plus mixins, `control-spec.js` + `controls.js`, `module-controls.js`, `renderers/`, `charts/` (one module per chart, registered in `charts/index.js`), `diagram.js`, `site-map.js`, `share.js`, `optimizer-client.js`, `formatters.js`.
 - `scripts/`: `dev.mjs` (hardened static server that also applies the `vercel.json` routes: headers, CSP included, and host-based page routing) and `build.mjs`.
 
@@ -436,6 +438,82 @@ tiers cleared      = tiers with price >= site unit cost
 
 The unit cost is the allocated plant cost per unit, excluding output credits. The dashed line is the assumed sale price. The ladder's x-axis is market volume, not this site's cost curve: Terraform's learning-curve path is not drawn.
 
+## Datacenter model
+
+The Abundance Stack page (`datacenter.html`) runs `js/model/datacenter/`: one year of hourly dispatch for a datacenter and its power supply, the water, heat and CO2 that follow, a project schedule and the economics. Every number comes from `js/data/datacenter/` (sourced there) or is marked judgment in `model-assumptions.js`.
+
+### Load and cooling (`climate.js`)
+
+```text
+IT(h)        = IT capacity x utilization                      # constant; no AI load swings
+PUE(h)       = 1 + overhead + cooling(T(h))                   # cooling.js curves
+cooling(T)   = free-cooling fraction                if T < changeover
+             = interpolate(mechanical curve, T)     otherwise
+load(h)      = IT(h) x PUE(h)
+WUE(h)       = interpolate(litres per kWh IT, T(h))           # withdrawn water
+T(h)         = the site's typical-day dry- or wet-bulb for that month and hour (local standard time)
+design peak  = IT nameplate x max PUE                         # sizes grid connection, substation, auto gas
+```
+
+Annual PUE is facility energy / IT energy. At the cooling.js calibration climates the model reproduces the calibrated PUE within 0.01 (Phoenix; New Albany OH for the 11.3 °C Chicago case).
+
+### Supply and dispatch (`supply.js`, `dispatch.js`)
+
+- **Solar** (optional everywhere) reuses the plant builder's solar model: annual energy = MWdc x site PVGIS yield x mounting multiplier, on the clear-sky hourly shape with the site's own diffuse fraction, shifted from solar to local standard time. Costs and land come from `calculateSolar` on the measured 2026 build cost basis.
+- **Grid**: connected in `grid` and `hybrid`, import cap 0 = design peak. A flexible connection is unavailable for N hours a year, placed as contiguous 4-hour events (the low end of the 4-16 h curtailments in the Camus study) on the days of highest facility load, i.e. hot afternoons.
+- **Firm generation**, one family at a time. Gas: `auto` = ceil(design peak / unit size) + spare units (default N+1); each unit is out (1 - availability) x 8760 h in a block, units maintained one after another from 1 March. Fuel uses the plant's committed units at equal loading, with the heat rate rising linearly to the 50%-load penalty (floored at the minimum stable load). Nuclear: must-take baseload at full rating except a (1 - capacity factor) x 8760 h refuelling/maintenance block per unit from 1 April; `auto` = enough units for the average facility load (an existing-plant contract exactly that). A contract is take-or-pay; an own reactor backs down instead of curtailing.
+- **Order**, each hour: solar + nuclear serve the load; surplus charges the battery, then is exported (if enabled, grid available, up to the connection) or curtailed. A deficit is met by a shifting battery, then grid → reserve battery → gas (`grid`: gas is backup) or, in `hybrid` when gas is cheaper (fuel x heat rate + VOM < grid energy price), gas → grid → reserve battery; `islanded` has no grid. The rest is unserved.
+- **Battery**: with a surplus source (solar or nuclear) it shifts surplus only and discharges first. Without one it is a reserve: topped up from the grid (islanded: from spare gas) and used only when the grid cannot carry the load. It never buys grid energy to shift it. Power limit, efficiency, leakage and the periodic start state of charge are the plant builder's battery primitives; life = min(12 yr, rated cycles / equivalent full cycles).
+- **Reliability**: uptime = hours with the full load served / 8760, compared with the target (legacy Tier III 99.982% by default); unserved hours, energy and the longest outage are reported.
+
+The hourly balance `solar + nuclear + grid + gas + battery out + unserved = load + battery in + export + curtailed` holds to rounding in every architecture (tested).
+
+### Water, heat and CO2 (`impacts.js`)
+
+```text
+cooling water  = sum_h WUE(h) x served IT(h)          -> evaporated (share) + blowdown
+plant water    = gas or on-site reactor L/MWh x MWh generated (power.js)
+heat           = facility energy; latent = evaporated L x 0.678 kWh/L, the rest to air
+gas waste heat = fuel x 293.07 kWh/MMBtu - electricity;  reactor = electricity x (1/efficiency - 1)
+CO2            = grid MWh x grid intensity + fuel MMBtu x 52.91 kg/MMBtu
+```
+
+CO2 is combustion only (eGRID-style; EU grids are Ember lifecycle values): no upstream methane, embodied or credit for exports. Flows for the Sankey views are lists of `{ from, to, value, unit }` for electricity, heat, water and CO2; footprints are building, cooling yard, solar field, battery, gas or reactor plant and substation (a reactor's emergency planning zone is reported as a note, not an area).
+
+### Schedule (`schedule.js`)
+
+Each component is a parallel path from notice-to-proceed (January 2027, judgment): permitting + procurement + construction for the low, typical or high case, times `scheduleScalePercent`; a reactor also waits for its earliest commercial-operation year. Energization is the slowest **required** path: building, cooling and substation always; GPU delivery when selling tokens; the grid connection in `grid`/`hybrid`; on-site firm generation and battery with a flexible connection or islanded; solar only islanded. Optional components show their slack but do not delay first power (the dispatch assumes them from energization).
+
+### Economics (`economics.js`)
+
+```text
+t0           = energization month / 12;   f_y = clamp(y - t0, 0, 1)
+capex        = facility (x tier) + land + cooling + IT (tokens only) + substation
+               + grid interconnection + solar + battery + gas or nuclear
+               paid at close; GPUs at energization by default (year floor(t0))
+replacements = every life after energization, year ceil(t0 + k x life); salvage straight-line at N
+opex         = fixed O&M (facility, cooling, IT, solar, battery, firm $/kW-yr) + grid energy
+               + demand (monthly peak import x $/kW-month) + fuel + variable O&M
+               + nuclear fuel or PPA + water
+revenue      = tokens: served IT MWh x M tokens/MWh-IT x $/M
+               colocation: $/kW-month x IT kW x 12 x served share (+ energy costs passed through)
+               + export MWh x export price
+cf_y         = f_y x (revenue - opex) - replacements_y - deferred capex_y + [y = N] salvage
+```
+
+NPV, IRR/MIRR verdicts, payback, debt and the cash-flow timeline come from `finance.js` and `summarizeReturns`, so `economics` has the plant builder's shape and the shared cash-flow table works on it; the last cumulative discounted cash flow equals NPV and levelized profit equals NPV x CRF. Levelized cost of power ($/MWh delivered) is the present value of power-side capex and opex less exports over the present value of served facility energy. The site prices from EIA are all-in averages, so the demand charge defaults to 0 (a warning flags double counting). Tokens per IT MWh = the plant builder's per-facility-MWh throughput x PUE 1.14 (Epoch's build), so a better PUE lowers cost, not revenue. Colocation tenants supply the IT, so IT capex drops out.
+
+NPV is linear in the revenue price, so the break-even token price or colocation rate is `p0 - NPV / V` (two fast runs, cross-checked with the analytic `V`). The datacenter tornado swings each input in `js/data/datacenter/sensitivity-variables.js`, including the schedule (`scheduleScalePercent`), by the chosen ±% with the plant builder's bounds logic; a fast path reuses the cached dispatch when only prices or costs move (~1 ms per run).
+
+### Datacenter limitations
+
+- Weather is a typical day per month (no heat waves beyond the monthly mean profile) and solar is clear-sky-equivalent, so solar + battery islanded designs look far more reliable than they are.
+- IT load is constant at its utilization; no AI training load swings, ramp limits or start times for gas.
+- Outages are deterministic blocks (planned maintenance), not random forced outages; grid outages exist only for flexible connections.
+- Solar degradation is not modeled in the dispatch (year-1 output every year); prices are constant real values with no taxes.
+- One firm-generation family per design; the battery cannot arbitrage grid prices.
+- The schedule treats paths as independent and the dispatch runs every component from energization.
+
 ## Defaults
 
 All defaults live in `js/state/schema.js` (`CORE_STATE_FIELDS`), with the module, route and policy defaults in `js/data/modules.js` and `js/data/policies.js`. Print the full set with:
@@ -492,6 +570,7 @@ The headline default scenario is:
   - Every exploratory route above its reaction-enthalpy floor.
   - Qualifying-output credit bases.
 - **Hand-derived goldens:** CRF, IRR verdicts, MIRR, debt schedules and balloons, levelized identities, replacement timing and salvage, and buffer inventory; break-even prices checked against a full run at the root, a third price on the same line and the hand-built discounted volume; the cash-flow table's last cumulative discounted value against NPV.
+- **Datacenter model** (`tests/calculations/datacenter-*.test.js`): hourly energy balance in every architecture, PUE/WUE against the cooling calibration, CO2 and water identities, N+1 gas uptime and hand-derived unserved energy, flexible-connection hours, critical path from the lead-time data, NPV = last cumulative discounted cash flow, scale homogeneity, schedule timing and break-even round trips. Its own snapshot, `tests/fixtures/datacenter-characterization.json`, regenerates with `UPDATE_CHARACTERIZATION=1 node --test tests/calculations/datacenter-characterization.test.js`.
 - **Policy facts:** scheme defaults are re-derived from the IRS notices, auction results and ECB rates instead of being copied from `policies.js`.
 - **UI and tooling:** control-spec and `index.html` contracts, renderers, charts, diagram, HTML escaping, share links, saved sites, the optimizer worker, the build allowlist, dev-server hardening and the one-way import order (`tests/architecture/`). These run in Node with small DOM stubs.
 

@@ -36,6 +36,7 @@ export const DATACENTER_SENSITIVITY_VARIABLES = Object.freeze([
   { id: 'coolingCapex', stateKey: 'coolingCapexPerKWIT', label: 'Cooling plant capex', format: { prefix: '$', suffix: '/kW-IT', digits: 0 }, appliesTo: () => true },
   { id: 'gridPrice', stateKey: 'gridEnergyPricePerMWh', label: 'Grid energy price', format: { prefix: '$', suffix: '/MWh', digits: 1 }, appliesTo: usesGrid },
   { id: 'demandCharge', stateKey: 'gridDemandChargePerKWMonth', label: 'Grid demand charge', format: { prefix: '$', suffix: '/kW-month', digits: 1 }, appliesTo: (state, result) => usesGrid(state, result) && state.gridDemandChargePerKWMonth > 0 },
+  { id: 'gridOutages', stateKey: 'firmGridOutageHoursPerYear', label: 'Utility outage hours', format: { suffix: ' h/yr', digits: 0 }, appliesTo: (state, result) => Boolean(result?.grid?.connected) && state.firmGridOutageHoursPerYear > 0 },
   { id: 'interconnectionCapex', stateKey: 'gridInterconnectionCapexPerKW', label: 'Grid interconnection capex', format: { prefix: '$', suffix: '/kW', digits: 0 }, appliesTo: (state, result) => Boolean(result?.grid?.connected) },
   { id: 'gasPrice', stateKey: 'gasFuelPricePerMMBtu', label: 'Gas price', format: { prefix: '$', suffix: '/MMBtu', digits: 2 }, appliesTo: burnsGas },
   { id: 'gasCapex', stateKey: 'gasCapexPerKW', label: 'Gas generation capex', format: { prefix: '$', suffix: '/kW', digits: 0 }, appliesTo: (state, result) => state.firmFamily === 'gas' && hasFirm(state, result) },

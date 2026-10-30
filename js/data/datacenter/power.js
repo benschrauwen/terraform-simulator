@@ -117,6 +117,34 @@ export const GRID_DEFAULTS = {
   // connection backed by on-site resources ("bring your own capacity").
   connection: 'firm',
 
+  // Utility outages (forced interruptions) of any grid connection, firm or
+  // flexible, hours per year. Firm service is not uninterruptible:
+  // - Transmission-level delivery points (the service a large datacenter
+  //   substation takes): Electricity Canada's Bulk Electricity System
+  //   composite, forced outages, all events, not normalized, reported in
+  //   BC Hydro's F2024 reliability filing, Table 5: T-SAIDI 1.93-3.63 h per
+  //   delivery point per year over F2015-F2023 (mean 2.68 h; our
+  //   arithmetic) and T-SAIFI-SI 0.74-1.06 sustained (>= 1 min)
+  //   interruptions per year (mean 0.82), i.e. ~3.3 h per interruption.
+  //   BC Hydro's own system: 0.92-6.00 h (F2024 6.00 h).
+  //   https://www.bchydro.com/content/dam/BCHydro/customer-portal/documents/corporate/regulatory-planning-documents/regulatory-filings/rra/2024-05-14-bchydro-f05-f06-rra-directive-26-f2024.pdf (retrieved 2026-10)
+  // - US distribution customers (EIA-861, Electric Power Annual Table 11.1,
+  //   IEEE 1366): SAIDI 366.6 min (6.1 h) with major event days and 123.9
+  //   min without in 2023; 662.6 min (11.0 h) and 131.6 min in 2024; SAIFI
+  //   1.35 / 1.02 (2023) and 1.53 / 1.07 (2024). Most of these interruptions
+  //   start on the distribution system, which a transmission-served load
+  //   bypasses, so they bound the transmission figure from above.
+  //   https://www.eia.gov/electricity/annual/html/epa_11_01.html (retrieved 2026-10)
+  // Default 3 h/yr: the delivery-point T-SAIDI rounded to the dispatch's
+  // whole hours (judgment; a dual-fed, looped 230-500 kV substation may see
+  // less, a radial or storm-exposed one more). The Uptime Institute's Tier
+  // Standard accordingly treats the utility as an economic alternative and
+  // the engine-generator plant as the only reliable source (Accredited Tier
+  // Designer paper on engine-generator ratings; not opened, search index):
+  // https://atd.uptimeinstitute.com/resources/asset/accredited-tier-designer-technical-paper-series-engine-generator-ratings
+  outageHoursPerYear: 3,
+  outageHoursRange: { low: 2, high: 6 },
+
   // Camus / encoord / Princeton ZERO Lab, "Flexible Data Centers: A Faster,
   // More Affordable Path to Power" (Dec 2025, Google-funded), six PJM sites:
   // grid power available ">99% of all hours"; on-site resources dispatched

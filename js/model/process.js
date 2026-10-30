@@ -681,13 +681,16 @@ export const processMethods = {
     if (!routeConfig || peakOutputUnitsPerHour <= 0 || cycleHours <= 0 || cyclesPerYear <= 0) return 0;
     const cyclingPenalty = routeConfig.cyclingPenalty || 1;
     const baseCapex = Number.isFinite(capexBasis) ? capexBasis : (routeConfig.capexPerAnnualUnit || 0);
-    const nameplateUnitsPerDay = peakOutputUnitsPerHour * cycleHours;
-
+    // Capacity is priced on the hardware's nameplate rate, which does not
+    // depend on the local day: $/m3/day is per 24 h of operation, $/t-yr per
+    // Earth year (cycle hours x cycles per Earth year ~ 8,760 h on every
+    // body). Pricing m3/day on one local cycle made lunar desalination
+    // ~29.5x (708.7 h / 24 h) and Martian 2.75% too expensive.
     if (routeConfig.capexUnit === 'm3pd') {
-      return nameplateUnitsPerDay * baseCapex * cyclingPenalty;
+      return peakOutputUnitsPerHour * 24 * baseCapex * cyclingPenalty;
     }
 
-    const nameplateAnnualUnits = nameplateUnitsPerDay * cyclesPerYear;
+    const nameplateAnnualUnits = peakOutputUnitsPerHour * cycleHours * cyclesPerYear;
     return nameplateAnnualUnits * baseCapex * cyclingPenalty;
   },
 

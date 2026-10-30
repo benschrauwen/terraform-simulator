@@ -234,7 +234,7 @@ CAPEX sizing works as follows:
   ```
 
 - The Sabatier reactor costs `$/kW-CH4` on its design output (LHV 13.9 kWh/kg). The methanol reactor costs `$/(kg/h)` on its design H2 + CO2 feed. Both are sized on the hourly peak feed.
-- An exploratory route is sized on its peak hourly output. CAPEX is that rate times `cycle hours * cycles per year * $/t-yr * cycling penalty` (or `* cycle hours * $/m3/day * penalty` for water), with a 10-year life and the shared exploratory O&M %.
+- An exploratory route is sized on its peak hourly output. CAPEX is that rate times `cycle hours * cycles per year * $/t-yr * cycling penalty` (or `* 24 h * $/m3/day * penalty` for water: per Earth day of nameplate, so the same hardware costs the same on any body), with a 10-year life and the shared exploratory O&M %.
 
 Feed buffers are off by default. They can be opted into per module (methane, methanol, routes with `supportsFeedBuffer`). A buffered reactor runs at a constant rate, so it is sized on the peak day's feed / cycle hours, but it must hold that feed:
 

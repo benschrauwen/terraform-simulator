@@ -544,6 +544,29 @@ test('I11 payback is earned from operating cash minus replacements, never from s
   assert.equal(short.paybackYears, Infinity);
 });
 
+test('I13 an exploratory route costs the same per unit of nameplate rate on every body', () => {
+  // $/m3/day prices 24 h of nameplate; $/t-yr an Earth year (cycle hours x
+  // cycles per Earth year: 8760 h Earth, 8754 h Mars, 8767 h Moon). Neither
+  // depends on the local day length.
+  const bodies = ['earth', 'mars', 'moon'].map(key => Calc.getBodyConfig(key));
+  EXPLORATORY.forEach(module => Object.entries(module.routes).forEach(([routeId, route]) => {
+    const basis = route.capexPerAnnualUnit;
+    const penalty = route.cyclingPenalty || 1;
+    const hoursPerUnitBasis = route.capexUnit === 'm3pd' ? 24 : 8760;
+    bodies.forEach(body => {
+      const perUnitRate = Calc.calculateExploratoryCapex(route, basis, 1, body.cycleHours, body.cyclesPerEarthYear);
+      relClose(perUnitRate, hoursPerUnitBasis * basis * penalty, route.capexUnit === 'm3pd' ? 1e-12 : 1e-3, `${module.id}/${routeId} on ${body.label || body.cycleHours}`);
+    });
+  }));
+  // End to end: lunar desalination is priced on its nameplate rate x 24 h.
+  ['moonPel', 'mars', 'default'].forEach(name => {
+    const desal = Calc.calculateAll(createState({ ...SCENARIOS[name], desalinationEnabled: true }))
+      .exploratoryModules.find(module => module.id === 'desalination');
+    const route = desal.routeConfig;
+    relClose(desal.capex, desal.peakOutputUnitsPerHour * 24 * desal.capexBasis * (route.cyclingPenalty || 1), 1e-9, `${name} desalination capex`);
+  });
+});
+
 test('I12 cost allocation: AI + chemical plant = total asset-life annual cost; AI pays the battery in AI mode', () => {
   forEachScenario((result, name) => {
     const economics = result.economics;

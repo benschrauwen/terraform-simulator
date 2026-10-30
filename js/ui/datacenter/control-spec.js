@@ -363,6 +363,11 @@ export const DATACENTER_SECTIONS = {
   financeControls: [
     { type: 'range', id: 'analysisHorizonYears', label: 'Analysis horizon', min: 5, max: 40, step: 1, format: years, tooltip: 'Years from notice-to-proceed; the build years count.' },
     { type: 'range', id: 'discountRate', label: 'Discount rate', min: 0, max: 20, step: 0.25, format: pct(2) },
+    {
+      type: 'select', id: 'constructionCapexTiming', label: 'Construction capex paid',
+      options: () => [{ value: 'spread', label: 'Over the build, finishing at first power' }, { value: 'ntp', label: 'All at notice-to-proceed' }],
+      tooltip: 'Building, cooling, substation, grid connection, generation, solar and battery. Spread: evenly over each component\'s procurement and construction, as late as its schedule allows (the grid connection over its construction only). Land is paid at notice-to-proceed either way; project debt covers only what is paid at notice-to-proceed.',
+    },
     { type: 'checkbox', id: 'financingEnabled', label: 'Project debt' },
     { type: 'range', id: 'debtSharePercent', label: 'Debt share', min: 0, max: 90, step: 1, format: pct(0, '% of capex'), visible: state => state.financingEnabled },
     { type: 'range', id: 'debtInterestRate', label: 'Interest rate', min: 0, max: 15, step: 0.05, format: pct(2), visible: state => state.financingEnabled },

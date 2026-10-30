@@ -70,9 +70,10 @@
                  { year, month, label }, criticalPath { id, label, durationMonths },
                  paths[{ id, label, required, phases{ permittingMonths, procurementMonths,
                  constructionMonths }, waitForCodMonths, durationMonths, slackMonths, critical, finish }] },
-     economics: plant-builder shape (npv, irr, projectIrrAnalysis, mirr, paybackYears,
-                 sustainedPaybackYears, roi, yearlyCashFlows[], cashFlowTimeline, financing,
-                 capexItems[{ key, label, capex, group, paidAtYear, parts? }], totalCapex,
+     economics: plant-builder shape (npv, irr, projectIrrAnalysis, mirr, paybackYears (from
+                 notice-to-proceed), sustainedPaybackYears, paybackAfterFirstPowerYears,
+                 gpuPaybackYears, roi, yearlyCashFlows[], cashFlowTimeline, financing,
+                 capexItems[{ key, label, capex, group, paidAtYear, paidFromYear, paidToYear, parts? }], totalCapex,
                  netCapexAtClose, annualOM, revenue{ gpuRental, tokens, colocation, powerPassThrough,
                  export, policyCredits } (full year; GPU rental at the new-GPU price), yearlyCashFlows[]
                  also carry operatingFraction, rentalPriceFactor (average over the operating time),

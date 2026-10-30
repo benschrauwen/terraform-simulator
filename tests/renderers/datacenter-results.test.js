@@ -28,6 +28,25 @@ test('the capital-cost group lists every non-zero capex item and the total equal
   assert.ok(Math.abs(sum - r.economics.totalCapex) <= 1e-6 * sum, 'capex items sum to total CAPEX');
 });
 
+test('paybacks: project payback from start and after first power, GPU payback for GPU rental only', () => {
+  const e = r.economics;
+  const metrics = renderKeyMetrics(r);
+  assert.match(metrics, /Project payback/);
+  assert.ok(metrics.includes(`${e.paybackYears.toFixed(1)} yrs`));
+  assert.ok(metrics.includes(`from start · ${e.paybackAfterFirstPowerYears.toFixed(1)} yrs after first power`));
+  assert.match(metrics, /GPU payback/);
+  assert.ok(metrics.includes(`${e.gpuPaybackYears.toFixed(1)} yrs`));
+  assert.match(metrics, /GPU only, from its first rental hour/);
+  const groups = renderEconomicsGroups(r);
+  assert.match(groups, /GPU payback \(GPU only\)/);
+  assert.match(groups, /Project payback/);
+  // Construction capex shows its payment window; tokens have no GPU payback.
+  const building = e.capexItems.find(item => item.key === 'facility');
+  assert.ok(groups.includes(`(years ${building.paidFromYear.toFixed(1)}–${building.paidToYear.toFixed(1)})`));
+  const tokens = calculateDatacenterScenario({ revenueBasis: 'tokens' }, { fastMode: true });
+  assert.doesNotMatch(renderKeyMetrics(tokens), /GPU payback/);
+});
+
 test('warnings are listed, escaped, and absent when there are none', () => {
   assert.equal(renderWarnings([]), '');
   const html = renderWarnings([{ key: 'x', message: 'Unserved <b>88 h</b> & more' }]);

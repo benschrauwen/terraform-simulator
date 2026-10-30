@@ -94,9 +94,11 @@ test('rental revenue golden values for first power at 40.5 months (t0 = 3.375 yr
   // Year 9 = (8, 9]: first fleet at ages 4.625-5 until the replacement at
   // 8.375, then the new fleet at ages 0-0.625.
   assert.ok(close(y(9).revenue.gpuRental, fullYear * (priceIntegral(4.625, 5) + priceIntegral(0, 0.625))));
-  // GPUs bought at 3.375 yr: 62.5% booked at the end of year 3, 37.5% at year 4.
-  assert.ok(close(y(3).deferredCapexOutflow, 0.625 * e.capex.it));
-  assert.ok(close(y(4).deferredCapexOutflow, 0.375 * e.capex.it));
+  // GPUs bought at 3.375 yr: 62.5% booked at the end of year 3, 37.5% at year 4 (the rest of
+  // the year's deferred capex is construction spread over the build).
+  const initialIt = entry => entry.replacementItems.filter(item => item.key === 'it' && item.initial).reduce((sum, item) => sum + item.cost, 0);
+  assert.ok(close(initialIt(y(3)), 0.625 * e.capex.it));
+  assert.ok(close(initialIt(y(4)), 0.375 * e.capex.it));
   // Brute-force check of the whole horizon: midpoint rule on a 1/1000-yr grid.
   let numeric = 0;
   const step = 1e-3;

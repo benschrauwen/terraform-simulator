@@ -12,8 +12,19 @@
    Timing (years from notice-to-proceed, t0 = energization month / 12).
    Time is continuous within the annual end-of-year cash-flow grid, so NPV
    moves smoothly with the first-power date:
-     capex          at close (year 0); the IT hardware at energization t0
-                    when itCapexTiming = 'energization'
+     capex          land at close (year 0). Construction capex (building,
+                    cooling, substation, grid interconnection, generation,
+                    solar, battery) with constructionCapexTiming 'spread'
+                    (default): evenly over the component's procurement +
+                    construction months on its schedule path (the grid
+                    interconnection over the grid path's construction
+                    months only: the utility's own build of the line and
+                    substation, billed as it is done; permitting has no
+                    capex), scheduled as late as the path's slack allows, so
+                    it ends at first power (or at the path's own finish when
+                    an optional component finishes later); with 'ntp' at
+                    close. The IT hardware at energization t0 when
+                    itCapexTiming = 'energization', else at close.
      operations     revenue and every opex line x operating fraction
                     f_y = clamp(y - t0, 0, 1) of project year y (y - 1, y]
      GPU rental     x R_y = integral of the rental-price factor over the
@@ -25,7 +36,18 @@
      booked across the two year-ends that bracket it, (ceil(tau) - tau) in
      year floor(tau) and (tau - floor(tau)) in year ceil(tau): its mean
      booking time is tau, so its present value is continuous in tau (a whole
-     lump jumping a year-end would move NPV by C x r / (1 + r)^tau).
+     lump jumping a year-end would move NPV by C x r / (1 + r)^tau). A
+     payment spread evenly over [a, b] is that booking integrated over the
+     window (splitSpreadAcrossYears). Year-0 bookings are paid at close;
+     bookings past the horizon fall in its last year, so the undiscounted
+     capex is the same with either timing. Debt (financing) is sized on the
+     capex paid at close only; later capex is equity.
+
+   Paybacks: paybackYears = years from notice-to-proceed until the
+   cumulative project cash (salvage excluded) turns positive;
+   paybackAfterFirstPowerYears = that minus t0. gpuPaybackYears = years
+   after one GPU enters service until its cumulative rental margin repays
+   its own capex (gpuPayback below).
      cf_y = f_y x (revenue - opex) + (R_y - f_y) x GPU rental - replacements_y - deferred capex_y + [y = N] salvage
      NPV  = -capex_close + sum_y cf_y / (1 + r)^y
 
@@ -50,7 +72,9 @@ import { onSiteNuclearMWh } from './impacts.js';
 import { buildFinancingModel, buildReplacementSchedule, crf } from '../finance.js';
 
 /* Installed assets: { key, label, capex, lifeYears, group ('facility' |
-   'it' | 'power'), timing ('close' | 'energization'), annualFixedOm,
+   'it' | 'power'), timing ('close' | 'energization' | 'build'), pathId and
+   paySegment ('build': procurement + construction; 'construction') of the
+   schedule path a 'build' asset is paid over, annualFixedOm,
    replacementCost?, perpetual?, salvageAtCost?, parts? }. */
 export function buildDatacenterAssets(state, { solar, battery, firm, gridCapKW, substationKW, gridConnected }) {
   const itKW = state.itCapacityMW * 1000;
@@ -64,22 +88,28 @@ export function buildDatacenterAssets(state, { solar, battery, firm, gridCapKW, 
     : state.revenueBasis === 'tokens' ? state.itCapexPerKW * itKW : 0;
   const itLife = fleet.enabled ? fleet.lifeYears : state.itAssetLifeYears;
   const firmKW = firm.capacityMW * 1000;
+  // Construction capex paid over a schedule path (or all at close).
+  const spread = state.constructionCapexTiming !== 'ntp';
+  const build = (pathId, paySegment = 'build') => (spread && pathId ? { timing: 'build', pathId, paySegment } : { timing: 'close' });
   const assets = [
-    { key: 'facility', label: 'Datacenter building + electrical', group: 'facility', capex: facilityCapex, lifeYears: state.facilityAssetLifeYears, annualFixedOm: facilityCapex * state.facilityOmPercent / 100 },
+    { key: 'facility', label: 'Datacenter building + electrical', group: 'facility', capex: facilityCapex, lifeYears: state.facilityAssetLifeYears, annualFixedOm: facilityCapex * state.facilityOmPercent / 100, ...build('shell-fitout') },
     { key: 'land', label: 'Land', group: 'facility', capex: state.landCapexPerKWIT * itKW, lifeYears: Infinity, perpetual: true, salvageAtCost: true, annualFixedOm: 0 },
-    { key: 'cooling', label: 'Cooling plant', group: 'facility', capex: coolingCapex, lifeYears: tech.assetLifeYears, annualFixedOm: coolingCapex * state.coolingOmPercent / 100 },
+    { key: 'cooling', label: 'Cooling plant', group: 'facility', capex: coolingCapex, lifeYears: tech.assetLifeYears, annualFixedOm: coolingCapex * state.coolingOmPercent / 100, ...build('cooling') },
     {
       key: 'it', label: fleet.enabled ? `GPU servers (${fleet.label})` : 'IT hardware (GPUs, network)', group: 'it', capex: itCapex, lifeYears: itLife,
       timing: state.itCapexTiming === 'energization' ? 'energization' : 'close', annualFixedOm: itCapex * state.itOmPercent / 100,
     },
-    { key: 'substation', label: 'HV substation', group: 'power', capex: state.substationCapexPerKW * substationKW, lifeYears: A.assetLifeYears.substation, annualFixedOm: 0 },
-    { key: 'gridInterconnection', label: 'Grid interconnection', group: 'power', capex: gridConnected ? state.gridInterconnectionCapexPerKW * gridCapKW : 0, lifeYears: A.assetLifeYears.gridInterconnection, annualFixedOm: 0 },
+    { key: 'substation', label: 'HV substation', group: 'power', capex: state.substationCapexPerKW * substationKW, lifeYears: A.assetLifeYears.substation, annualFixedOm: 0, ...build('substation') },
+    {
+      key: 'gridInterconnection', label: 'Grid interconnection', group: 'power', capex: gridConnected ? state.gridInterconnectionCapexPerKW * gridCapKW : 0, lifeYears: A.assetLifeYears.gridInterconnection, annualFixedOm: 0,
+      ...build(state.gridConnection === 'flexible' ? 'grid-flexible' : 'grid-firm', 'construction'),
+    },
   ];
   if (solar.enabled) {
     const model = solar.model;
     assets.push({
       key: 'solar', label: 'Solar', group: 'power', capex: model.depreciableSolarCapex, replacementCost: model.solarReplacementCapex,
-      lifeYears: state.solarAssetLife, annualFixedOm: model.annualSolarOm,
+      lifeYears: state.solarAssetLife, annualFixedOm: model.annualSolarOm, ...build('solar'),
       parts: [
         { key: 'solarModules', label: 'Solar modules', capex: model.moduleCapex },
         { key: 'solarBos', label: 'Solar structure + install BOS', capex: model.bosCapex },
@@ -90,7 +120,7 @@ export function buildDatacenterAssets(state, { solar, battery, firm, gridCapKW, 
   }
   if (battery.capex > 0) {
     assets.push({
-      key: 'battery', label: 'Battery', group: 'power', capex: battery.capex, lifeYears: battery.lifetimeYears, annualFixedOm: battery.capex * state.batteryOmPercent / 100,
+      key: 'battery', label: 'Battery', group: 'power', capex: battery.capex, lifeYears: battery.lifetimeYears, annualFixedOm: battery.capex * state.batteryOmPercent / 100, ...build('battery'),
       ...(battery.powerCapex > 0 ? {
         parts: [
           { label: 'Energy (cells, racks, enclosures)', capex: battery.energyCapex },
@@ -100,10 +130,10 @@ export function buildDatacenterAssets(state, { solar, battery, firm, gridCapKW, 
     });
   }
   if (firm.family === 'gas') {
-    assets.push({ key: 'gas', label: firm.label, group: 'power', capex: state.gasCapexPerKW * firmKW, lifeYears: A.assetLifeYears.gas, annualFixedOm: state.gasFixedOmPerKWYear * firmKW });
+    assets.push({ key: 'gas', label: firm.label, group: 'power', capex: state.gasCapexPerKW * firmKW, lifeYears: A.assetLifeYears.gas, annualFixedOm: state.gasFixedOmPerKWYear * firmKW, ...build(firm.typeData?.leadTimeKey) });
   }
   if (firm.family === 'nuclear') {
-    assets.push({ key: 'nuclear', label: firm.label, group: 'power', capex: state.nuclearCapexPerKW * firmKW, lifeYears: A.assetLifeYears.nuclear, annualFixedOm: state.nuclearFixedOmPerKWYear * firmKW });
+    assets.push({ key: 'nuclear', label: firm.label, group: 'power', capex: state.nuclearCapexPerKW * firmKW, lifeYears: A.assetLifeYears.nuclear, annualFixedOm: state.nuclearFixedOmPerKWYear * firmKW, ...build(firm.typeData?.leadTimeKey) });
   }
   return assets.map(asset => ({ timing: 'close', ...asset }));
 }
@@ -164,6 +194,86 @@ export function splitLumpAcrossYears(tau) {
   return [{ year: lower, share: 1 - fraction }, { year: lower + 1, share: fraction }];
 }
 
+// Integral of a year-end's booking weight max(0, 1 - |t - year|) from -inf to t (t relative to the year).
+const bookingWeightIntegral = t => (t <= -1 ? 0 : t <= 0 ? (t + 1) ** 2 / 2 : t < 1 ? 1 - (1 - t) ** 2 / 2 : 1);
+
+/* A payment spread evenly over [start, end] (years after close) on the
+   annual grid: each instant booked as splitLumpAcrossYears books it, i.e.
+   [{ year, share }] with share_k = integral over the window of the booking
+   weight of year-end k / window length. Mean booking time = the window's
+   midpoint; a zero-length window is a lump at `end`. */
+export function splitSpreadAcrossYears(start, end) {
+  if (!(end - start > 1e-9)) return splitLumpAcrossYears(end);
+  const shares = [];
+  for (let year = Math.floor(start); year <= Math.ceil(end); year++) {
+    const share = (bookingWeightIntegral(end - year) - bookingWeightIntegral(start - year)) / (end - start);
+    if (share > 1e-12) shares.push({ year, share });
+  }
+  return shares;
+}
+
+/* The months after notice-to-proceed over which a 'build' asset is paid:
+   its path's procurement + construction (paySegment 'construction': the
+   construction months only), ending at first power, or at the path's own
+   finish when it finishes later (negative slack); null without a path. */
+export function getCapexWindowMonths(asset, schedule) {
+  const path = schedule?.paths?.find(entry => entry.id === asset.pathId);
+  if (!path) return null;
+  const { procurementMonths = 0, constructionMonths = 0 } = path.phases;
+  const months = asset.paySegment === 'construction' ? constructionMonths : procurementMonths + constructionMonths;
+  const end = Math.max(path.durationMonths, schedule.energizationMonth);
+  return { start: end - months, end };
+}
+
+/* GPU payback: years after one GPU enters service until its cumulative
+   rental margin repays its capex, or null if not within its life. Revenue
+   per year at age a = hours sold per GPU x price x (1 - decline)^a;
+   operating cost per year = IT O&M (its capex x itOmPercent) + its share of
+   the energy and water opex (all of it: cooling and losses serve the IT
+   load). Facility, power plant and their fixed O&M are excluded: the
+   project payback carries them. */
+export function gpuPayback({ capexPerGpu, revenuePerYear, costPerYear, decline, lifeYears }) {
+  if (!(capexPerGpu > 0) || !(revenuePerYear > 0)) return null;
+  const q = 1 - decline;
+  const margin = age => (q > 0 && q < 1 ? revenuePerYear * (1 - q ** age) / -Math.log(q) : revenuePerYear * age) - costPerYear * age;
+  // First crossing on a monthly scan (the margin can peak and fall as prices decline), then bisection.
+  const step = 1 / 12;
+  for (let age = step; age <= lifeYears + 1e-9; age += step) {
+    if (margin(age) < capexPerGpu) continue;
+    let lo = age - step;
+    let hi = age;
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      if (margin(mid) >= capexPerGpu) hi = mid;
+      else lo = mid;
+    }
+    return hi;
+  }
+  return null;
+}
+
+/* Years from close until the cumulative cash (initial outlay, then the
+   yearly flows) turns non-negative, interpolated within the year; with
+   `sustained`, the crossing after which it stays non-negative. 0 when it
+   never goes negative, Infinity when it does not recover. finance.js's
+   paybacks start from the outlay at close only, which spread capex makes
+   small (or zero). */
+function paybackFromClose(initialOutflow, flows, { sustained = false } = {}) {
+  let cumulative = -initialOutflow;
+  let invested = cumulative < 0;
+  for (let i = 0; i < flows.length; i++) {
+    const after = cumulative + flows[i];
+    if (flows[i] > 0 && cumulative < 0 && after >= 0) {
+      let forward = after;
+      const holds = !sustained || flows.slice(i + 1).every(flow => (forward += flow) >= -1e-6);
+      if (holds) return i + -cumulative / flows[i];
+    }
+    cumulative = after;
+    invested ||= cumulative < 0;
+  }
+  return invested ? Infinity : 0;
+}
+
 /* finance.js replacement schedule with asset lives starting at energization
    (t0 years after close): each replacement falls at exactly t0 + k x life
    and is booked across the bracketing year-ends (splitLumpAcrossYears);
@@ -202,23 +312,40 @@ export function calculateDatacenterEconomics(state, ctx) {
   const operatingFraction = year => Math.max(0, Math.min(1, year - t0));
 
   const assets = buildDatacenterAssets(state, ctx);
-  // Hardware bought at energization is paid at t0, booked across the
-  // bracketing year-ends (a share in year 0 is paid at close).
-  const deferredYear = Math.floor(t0);
-  const isDeferred = asset => asset.timing === 'energization' && t0 > 0;
+  // When each asset's initial capex is paid: [{ year, share }] (year 0 = at
+  // close) and the window { from, to } in years. Hardware bought at
+  // energization is a lump at t0; 'build' assets are spread over their
+  // window (getCapexWindowMonths); bookings past the horizon fall in its last year.
+  const paymentsOf = asset => {
+    if (asset.timing === 'energization' && t0 > 0) return { from: t0, to: t0, shares: splitLumpAcrossYears(t0) };
+    const window = asset.timing === 'build' ? getCapexWindowMonths(asset, ctx.schedule) : null;
+    if (!window) return { from: 0, to: 0, shares: [{ year: 0, share: 1 }] };
+    const from = window.start / 12;
+    const to = window.end / 12;
+    return { from, to, shares: splitSpreadAcrossYears(from, to).map(({ year, share }) => ({ year: Math.min(year, horizonYears), share })) };
+  };
   // Hardware due after the horizon (energization beyond it) is never bought.
-  const deferredAssets = assets.filter(asset => isDeferred(asset) && asset.capex > 0 && t0 <= horizonYears);
-  const deferredTotal = deferredAssets.reduce((sum, asset) => sum + asset.capex, 0);
-  const deferredSplit = splitLumpAcrossYears(t0);
-  const deferredByYear = {};
-  deferredSplit.forEach(({ year, share }) => { deferredByYear[year] = deferredTotal * share; });
-  const capexAtClose = assets.filter(asset => !isDeferred(asset)).reduce((sum, asset) => sum + asset.capex, 0) + (deferredByYear[0] || 0);
-  const deferredCapex = deferredTotal - (deferredByYear[0] || 0);
-  const totalCapex = capexAtClose + deferredCapex;
-  const paidAtYear = Math.round(t0 * 100) / 100;
-  const capexItems = assets.filter(asset => asset.capex > 0).map(({ key, label, capex, group, timing, parts }) => ({
-    key, label, capex, group, paidAtYear: isDeferred({ timing }) ? paidAtYear : 0, ...(parts ? { parts } : {}),
+  const bought = assets.filter(asset => asset.capex > 0 && !(asset.timing === 'energization' && t0 > horizonYears));
+  const payments = new Map(bought.map(asset => [asset.key, paymentsOf(asset)]));
+  const isDeferred = asset => payments.get(asset.key)?.shares.some(({ year }) => year > 0) ?? false;
+  const deferredAssets = bought.filter(isDeferred);
+  const capexByYear = {};
+  bought.forEach(asset => payments.get(asset.key).shares.forEach(({ year, share }) => {
+    capexByYear[year] = (capexByYear[year] || 0) + asset.capex * share;
   }));
+  const deferredByYear = Object.fromEntries(Object.entries(capexByYear).filter(([year]) => Number(year) > 0));
+  const capexAtClose = capexByYear[0] || 0;
+  const totalCapex = bought.reduce((sum, asset) => sum + asset.capex, 0);
+  const deferredCapex = totalCapex - capexAtClose;
+  const round2 = value => Math.round(value * 100) / 100;
+  // paidAtYear: the mean payment time (0 at close); paidFromYear / paidToYear: the window.
+  const capexItems = assets.filter(asset => asset.capex > 0).map(({ key, label, capex, group, parts }) => {
+    const paid = payments.get(key) || { from: 0, to: 0 };
+    return {
+      key, label, capex, group, paidAtYear: round2((paid.from + paid.to) / 2), paidFromYear: round2(paid.from), paidToYear: round2(paid.to),
+      ...(parts ? { parts } : {}),
+    };
+  });
 
   const opexLines = buildOpexLines(state, ctx);
   const fixedOmLines = assets.filter(asset => asset.annualFixedOm > 0).map(asset => ({ key: `${asset.key}Om`, label: `${asset.label} O&M`, assetKey: asset.key, annual: asset.annualFixedOm }));
@@ -252,7 +379,7 @@ export function calculateDatacenterEconomics(state, ctx) {
     pvOpex += operatingCost * discount(year);
     const operatingCashFlow = totalRevenue - operatingCost;
     const replacementEvent = replacementSchedule.byYear[year];
-    const deferredCapexOutflow = deferredAssets.length ? deferredByYear[year] || 0 : 0;
+    const deferredCapexOutflow = deferredByYear[year] || 0;
     const replacementOutflow = (replacementEvent ? replacementEvent.total : 0) + deferredCapexOutflow;
     const salvageValue = year === horizonYears ? replacementSchedule.salvage.total : 0;
     const netCashFlow = operatingCashFlow - replacementOutflow + salvageValue;
@@ -276,10 +403,14 @@ export function calculateDatacenterEconomics(state, ctx) {
       deferredCapexOutflow,
       replacementItems: [
         ...(replacementEvent ? replacementEvent.items : []),
-        ...(deferredCapexOutflow > 0 ? deferredAssets.map(asset => ({
-          key: asset.key, label: `${asset.label} (initial, at energization)`, cost: asset.capex * deferredCapexOutflow / deferredTotal,
-          fullCost: asset.capex, share: deferredCapexOutflow / deferredTotal, scheduledAtYear: t0, initial: true,
-        })) : []),
+        ...deferredAssets.flatMap(asset => {
+          const paid = payments.get(asset.key);
+          const share = paid.shares.filter(entry => entry.year === year).reduce((sum, entry) => sum + entry.share, 0);
+          return share > 0 ? [{
+            key: asset.key, label: `${asset.label} (initial, ${asset.timing === 'energization' ? 'at energization' : 'during construction'})`, cost: asset.capex * share,
+            fullCost: asset.capex, share, scheduledAtYear: round2((paid.from + paid.to) / 2), initial: true,
+          }] : [];
+        }),
       ],
       salvageValue,
       salvageItems: salvageValue > 0 ? replacementSchedule.salvage.items : [],
@@ -306,11 +437,9 @@ export function calculateDatacenterEconomics(state, ctx) {
   // levelized annual cost, so levelized profit = NPV x CRF(r, N) exactly.
   const pvReplacements = replacementSchedule.entries.reduce((sum, entry) => sum + entry.total * discount(entry.year), 0);
   const pvSalvage = replacementSchedule.salvage.total * discount(horizonYears);
-  const pvDeferred = deferredAssets.length
-    ? Object.entries(deferredByYear).filter(([year]) => Number(year) > 0).reduce((sum, [year, amount]) => sum + amount * discount(Number(year)), 0)
-    : 0;
-  // PV of $1 of an energization-timed asset (its share at close undiscounted).
-  const deferredDiscount = deferredSplit.reduce((sum, { year, share }) => sum + share * discount(year), 0);
+  const pvDeferred = Object.entries(deferredByYear).reduce((sum, [year, amount]) => sum + amount * discount(Number(year)), 0);
+  // PV of $1 of an asset's initial capex (its share at close undiscounted).
+  const initialDiscount = asset => (payments.get(asset.key)?.shares || []).reduce((sum, { year, share }) => sum + share * discount(year), 0);
   const horizonCrf = crf(rate, horizonYears);
   const pvCapital = capexAtClose + pvDeferred + pvReplacements - pvSalvage;
   const levelizedCapitalCharge = pvCapital * horizonCrf;
@@ -324,8 +453,24 @@ export function calculateDatacenterEconomics(state, ctx) {
     rate, horizonCrf, netCapexAtClose: capexAtClose, financing, yearlyCashFlows, totalAnnualRevenue, annualCost, totalCapex: capexAtClose, policy,
   });
 
+  // Paybacks from notice-to-proceed and from first power (salvage excluded, as summarizeReturns).
+  const paybackFlows = yearlyCashFlows.map(entry => entry.netCashFlow - entry.salvageValue);
+  const paybackYears = paybackFromClose(capexAtClose, paybackFlows);
+  const sustainedPaybackYears = paybackFromClose(capexAtClose, paybackFlows, { sustained: true });
+  const paybackAfterFirstPowerYears = Number.isFinite(paybackYears) && paybackYears >= t0 ? paybackYears - t0 : null;
+  // One GPU from when it enters service (gpuPayback); null outside GPU rental.
+  const gpuFleet = getGpuFleet(state);
+  const energyAndWaterOpex = opexLines.reduce((sum, line) => sum + line.annual, 0);
+  const gpuPaybackYears = gpuFleet.enabled && gpuFleet.count > 0 ? gpuPayback({
+    capexPerGpu: gpuFleet.capexPerGpu,
+    revenuePerYear: revenue.gpuRental / gpuFleet.count,
+    costPerYear: gpuFleet.capexPerGpu * state.itOmPercent / 100 + energyAndWaterOpex / gpuFleet.count,
+    decline: state.gpuPriceDeclinePercentPerYear / 100,
+    lifeYears: gpuFleet.lifeYears,
+  }) : null;
+
   const assetPresentValue = asset => {
-    const initial = asset.capex * (isDeferred(asset) ? deferredDiscount : 1);
+    const initial = asset.capex * initialDiscount(asset);
     const replacements = replacementSchedule.entries.reduce((sum, entry) => sum + entry.items
       .filter(item => item.key === asset.key)
       .reduce((s, item) => s + item.cost * discount(entry.year), 0), 0);
@@ -360,17 +505,24 @@ export function calculateDatacenterEconomics(state, ctx) {
 
   return {
     ...returns,
+    paybackYears,
+    sustainedPaybackYears,
+    paybackAfterFirstPowerYears,
+    gpuPaybackYears,
+    noNetInvestment: !(totalCapex > 0),
     capexItems,
     capex: Object.fromEntries(assets.map(asset => [asset.key, asset.capex])),
     totalCapex,
     capexAtClose,
     netCapexAtClose: capexAtClose,
-    // year: first year-end it is booked in; atYears: exact payment time;
-    // byYear: amounts per year-end (year 0 = paid at close, in capexAtClose).
+    // Capex paid after close. year: first year-end it is booked in; atYears:
+    // first power (when energization-timed hardware is paid); byYear:
+    // amounts per year-end after close (year 0 is in capexAtClose); items
+    // with their payment window in years.
     deferredCapex: {
-      year: deferredYear, atYears: t0, total: deferredCapex,
-      byYear: deferredAssets.length ? deferredSplit.map(({ year }) => ({ year, total: deferredByYear[year] })) : [],
-      items: deferredAssets.map(({ key, label, capex }) => ({ key, label, capex })),
+      year: Object.keys(deferredByYear).length ? Math.min(...Object.keys(deferredByYear).map(Number)) : null, atYears: t0, total: deferredCapex,
+      byYear: Object.entries(deferredByYear).map(([year, total]) => ({ year: Number(year), total })).sort((a, b) => a.year - b.year),
+      items: deferredAssets.map(({ key, label, capex }) => ({ key, label, capex, fromYear: payments.get(key).from, toYear: payments.get(key).to })),
     },
     assets: assets.map(({ key, label, group, capex, lifeYears, timing, annualFixedOm }) => ({ key, label, group, capex, lifeYears, timing, annualFixedOm })),
     opexLines,
@@ -402,7 +554,7 @@ export function calculateDatacenterEconomics(state, ctx) {
     annualGpuHoursSold,
     // GPU-hours sold over the horizon: GPUs x occupancy x served share x hours operating.
     totalGpuHoursSold: yearlyCashFlows.reduce((sum, entry) => sum + entry.gpuHoursSold, 0),
-    gpuFleet: getGpuFleet(state),
+    gpuFleet,
     levelized: {
       costOfPowerPerMWh: pvFacilityMWh > 0 ? pvPowerCost / pvFacilityMWh : 0,
       costPerMWhIT: pvItMWh > 0 ? pvAllCost / pvItMWh : 0,

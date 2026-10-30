@@ -50,6 +50,7 @@ const SCENARIOS = {
   financed: { financingEnabled: true },
   scheduleHigh: { scheduleCase: 'high' },
   itCapexAtNtp: { itCapexTiming: 'ntp' },
+  constructionCapexAtNtp: { constructionCapexTiming: 'ntp' },
   demandCharge: { gridEnergyPricePerMWh: 75, gridDemandChargePerKWMonth: 12 },
   phoenixTower: { siteId: 'phoenix-az', coolingTechnology: 'dlc-cooling-tower' },
   luleaAir: { siteId: 'lulea-se', coolingTechnology: 'air-chiller' },

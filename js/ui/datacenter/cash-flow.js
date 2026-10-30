@@ -7,9 +7,9 @@ export const DATACENTER_CASH_FLOW_TOOLTIPS = {
   marketRevenue: 'Revenue from GPU rental, tokens or the colocation lease (plus any export), pro-rated in the year of first power; nothing before energization.',
   policyCredits: 'No incentive schemes are modeled for the datacenter.',
   operatingCost: 'Fixed O&M plus grid energy and demand charges, fuel, nuclear fuel or PPA, and water, from first power.',
-  replacementCapex: 'IT hardware bought at first power, plus scheduled replacements (GPUs, batteries, cooling plant) inside the horizon.',
+  replacementCapex: 'Construction capex paid during the build (spread over each component\'s procurement and construction by default), IT hardware bought at first power, and scheduled replacements (GPUs, batteries, cooling plant) inside the horizon.',
   salvage: 'Straight-line residual value of every asset (land at cost), returned in the final year.',
-  netCashFlow: 'Project cash flow before financing. Year 0 is the capex at notice-to-proceed.',
+  netCashFlow: 'Project cash flow before financing. Year 0 is the capex paid at notice-to-proceed (land, plus all construction capex when it is not spread over the build).',
   discountFactor: '1 / (1 + discount rate)^year.',
   discountedCashFlow: 'Net cash flow x discount factor.',
   cumulativeDiscountedCashFlow: 'Running sum of discounted cash flow; the final-year value is the project NPV.',
@@ -27,7 +27,7 @@ export const DATACENTER_TIMELINE_TEXT = {
   operating: 'O&M and energy (grid, fuel, water)',
   operatingLegend: 'O&M + energy',
   replacementLegend: 'Deferred + replacement CAPEX',
-  replacementNote: 'hardware bought at first power and scheduled replacements',
+  replacementNote: 'construction capex during the build, hardware bought at first power and scheduled replacements',
 };
 
 /** Key/value rows heading the CSV: the scenario's main inputs and a link that reopens it. */
@@ -54,6 +54,7 @@ export function buildDatacenterCsvHeader(r, shareUrl) {
     ['Debt financing', e.financing.enabled ? `${e.financing.debtSharePercent}% debt` : 'off'],
     ['Total CAPEX ($)', e.totalCapex],
     ['Project NPV ($)', e.npv],
+    ['Construction capex paid', s.constructionCapexTiming === 'ntp' ? 'at notice-to-proceed' : 'over the build, finishing at first power'],
     ['Sign convention', 'outflows negative; year 0 = capex at notice-to-proceed'],
   ].filter(Boolean);
 }

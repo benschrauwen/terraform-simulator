@@ -29,6 +29,7 @@ const SCENARIOS = {
   financed: { financingEnabled: true },
   islandedGas: { architecture: 'islanded' },
   itAtNtp: { itCapexTiming: 'ntp' },
+  constructionAtNtp: { constructionCapexTiming: 'ntp' },
 };
 
 for (const [name, overrides] of Object.entries(SCENARIOS)) {
@@ -49,9 +50,9 @@ for (const [name, overrides] of Object.entries(SCENARIOS)) {
   });
 }
 
-test('operations and revenue start at energization; capex at notice-to-proceed', () => {
+test('operations and revenue start at energization; capex at notice-to-proceed (ntp timing)', () => {
   // Token revenue has no price decline, so year 5 is exactly half a year.
-  const r = calculateDatacenterScenario({ revenueBasis: 'tokens' });
+  const r = calculateDatacenterScenario({ revenueBasis: 'tokens', constructionCapexTiming: 'ntp' });
   const e = r.economics;
   // 54 months to first power: years 1-4 earn nothing, year 5 half, year 6 on full.
   assert.equal(r.schedule.energizationMonth, 54);

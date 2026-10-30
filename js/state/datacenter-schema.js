@@ -134,6 +134,13 @@ export const DATACENTER_STATE_FIELDS = [
   // FACILITY_LEAD_TIMES['it-delivery']) or 'ntp' (with the rest of the
   // capex at notice-to-proceed).
   { key: 'itCapexTiming', type: 'enum', options: ['energization', 'ntp'], defaultValue: 'energization' },
+  // When the construction capex (building, cooling, substation, grid
+  // interconnection, generation, solar, battery) is paid: 'spread' (default,
+  // judgment: real projects spend most of it in the last 18-24 months)
+  // evenly over each component's procurement + construction, scheduled to
+  // finish at first power (model/datacenter/economics.js), or 'ntp' (all at
+  // notice-to-proceed). Land is paid at notice-to-proceed either way.
+  { key: 'constructionCapexTiming', type: 'enum', options: ['spread', 'ntp'], defaultValue: 'spread' },
   { key: 'tokenPricePerM', type: 'number', min: 0, max: 100, defaultValue: DEFAULT_STATE.aiTokenPricePerM },
   { key: 'millionTokensPerMWhIT', type: 'number', min: 0, max: 1e6, defaultValue: DATACENTER_MODEL_ASSUMPTIONS.millionTokensPerMWhIT },
   { key: 'colocationLeasePerKWMonth', type: 'number', min: 0, max: 2000, defaultValue: FACILITY_DEFAULTS.colocationLeasePerKWMonth.default },

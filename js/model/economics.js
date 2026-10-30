@@ -242,8 +242,20 @@ export const economicsMethods = {
 
     const totalAnnualRevenue = Object.values(revenue).reduce((sum, value) => sum + value, 0);
     const annualizedCapexTotal = Object.values(annualizedCapex).reduce((sum, value) => sum + value, 0);
-    const annualCost = annualizedCapexTotal + annualOM;
-    const annualProfit = totalAnnualRevenue - annualCost;
+    // Levelized over the analysis horizon N: an annuity with the same present
+    // value. The capital charge covers net CAPEX at close plus discounted
+    // replacements minus discounted salvage, so levelized profit equals
+    // NPV x CRF(r, N) exactly. The per-asset CRF build above (asset lives)
+    // is kept as the cost breakdown; the difference is replacement timing,
+    // salvage and the horizon.
+    const horizonYears = state.analysisHorizonYears;
+    const horizonCrf = crf(rate, horizonYears);
+    const discountFactor = year => Math.pow(1 + rate, -year);
+    const pvReplacements = replacementSchedule.entries.reduce((sum, entry) => sum + (entry.total * discountFactor(entry.year)), 0);
+    const pvSalvage = replacementSchedule.salvage.total * discountFactor(horizonYears);
+    const levelizedCapitalCharge = (netCapexAtClose + pvReplacements - pvSalvage) * horizonCrf;
+    const assetLifeAnnualCost = annualizedCapexTotal + annualOM;
+    const annualCost = levelizedCapitalCharge + annualOM;
     const annualOperatingCashFlow = totalAnnualRevenue - annualOM;
     const yearlyCashFlows = [];
     let npv = -netCapexAtClose;
@@ -333,6 +345,11 @@ export const economicsMethods = {
       equityNpv += equityCashFlow / Math.pow(1 + rate, year);
     }
 
+    const pvRevenue = yearlyCashFlows.reduce((sum, entry) => sum + (entry.totalRevenue * discountFactor(entry.year)), 0);
+    const pvPolicyCredits = yearlyCashFlows.reduce((sum, entry) => sum + ((entry.revenue.policyCredits || 0) * discountFactor(entry.year)), 0);
+    const levelizedAnnualRevenue = pvRevenue * horizonCrf;
+    const levelizedPolicyCredits = pvPolicyCredits * horizonCrf;
+    const annualProfit = levelizedAnnualRevenue - annualCost;
     const cumulativeProfit = yearlyCashFlows.reduce((sum, entry) => sum + entry.annualProfit, 0);
     const cumulativeOperatingCashFlow = yearlyCashFlows.reduce((sum, entry) => sum + entry.operatingCashFlow, 0);
     const cumulativeNetCashFlow = yearlyCashFlows.reduce((sum, entry) => sum + entry.netCashFlow, 0);
@@ -424,6 +441,14 @@ export const economicsMethods = {
       netCapexAtClose,
       annualOM,
       annualCost,
+      levelizedAnnualCost: annualCost,
+      levelizedCapitalCharge,
+      assetLifeAnnualCost,
+      capitalChargeTimingAdjustment: levelizedCapitalCharge - annualizedCapexTotal,
+      levelizedAnnualRevenue,
+      levelizedPolicyCredits,
+      levelizedAnnualProfit: annualProfit,
+      horizonCrf,
       annualizedCapexTotal,
       annualOperatingCashFlow,
       revenue,

@@ -48,25 +48,25 @@ function buildSummaryMetrics({ e, labels }) {
       'All upfront installed project cost before any upfront incentive support.'
     ),
     econMetric(
-      'Annual revenue',
+      'Year-1 revenue',
       money(e.totalAnnualRevenue),
       signClass(e.totalAnnualRevenue),
-      'Product sales plus any annual operating support',
-      'Expected yearly revenue from products plus any modeled operating support.'
+      `Levelized: ${money(e.levelizedAnnualRevenue)}/yr`,
+      'First-year product sales plus any annual operating support. Later years follow degraded energy and time-limited support ends; the levelized figure is the constant annual amount with the same present value over the horizon.'
     ),
     econMetric(
       'Levelized cost',
       money(e.annualCost),
       'negative',
-      'CRF capital + O&M',
-      'Equivalent yearly cost combining annualized capital charges and fixed O&M.'
+      'Capital charge + O&M',
+      'Constant annual cost with the same present value as net CAPEX at close, replacements and O&M, less final-year salvage, over the analysis horizon.'
     ),
     econMetric(
-      'Annual profit',
+      'Levelized annual profit',
       money(e.annualProfit),
       signClass(e.annualProfit),
-      'Revenue minus levelized cost',
-      'Annual revenue minus total levelized annual cost.'
+      'NPV x CRF over the horizon',
+      'Levelized revenue (including policy credits only in the years they are paid) minus levelized cost. Equals NPV x capital recovery factor over the analysis horizon.'
     ),
     econMetric(
       labels.npv,
@@ -119,10 +119,10 @@ function differsFromSimplePayback(sustainedYears, simpleYears) {
 function buildReturnsRows({ e, labels }) {
   const rows = [
     econRow(
-      'Annual profit (levelized)',
+      'Levelized annual profit',
       money(e.annualProfit),
       signClass(e.annualProfit),
-      'Revenue minus total levelized annual cost (capital recovery + O&M).'
+      'Levelized revenue minus levelized cost over the analysis horizon; equals NPV x CRF(discount rate, horizon).'
     ),
     econRow(
       labels.npv,
@@ -226,14 +226,22 @@ function buildCostRows({ r, e, state }) {
   const solarBreakdown = e.capexBreakdown || {};
   const exploratoryDetails = e.exploratoryDetails || [];
   const rows = [
-    econRow('Annualized cost build', '', 'header'),
+    econRow('Levelized cost build', '', 'header'),
     econRow(
-      'Capital recovery',
+      'Capital recovery (asset lives)',
       money(e.annualizedCapexTotal),
       'negative',
-      `Upfront CAPEX x capital recovery factor at ${FormatNumbers.fixed(state.discountRate, 1)}% and each asset's book life. This is the economic annual capital charge, not straight-line depreciation.`
+      `Net upfront CAPEX x capital recovery factor at ${FormatNumbers.fixed(state.discountRate, 1)}% and each asset's life (land: x discount rate). This is the economic annual capital charge, not straight-line depreciation.`
     ),
   ];
+  if (Math.abs(e.capitalChargeTimingAdjustment || 0) >= 0.5) {
+    rows.push(econRow(
+      'Replacement timing, salvage + horizon',
+      money(e.capitalChargeTimingAdjustment),
+      e.capitalChargeTimingAdjustment > 0 ? 'negative' : 'positive',
+      'Difference between the asset-life charge above and the horizon-levelized capital charge: replacements paid at the end of the year they fall in, final-year salvage and a horizon that is not a multiple of every asset life.'
+    ));
+  }
   if (r.ai.enabled && r.ai.annualOM > 0) {
     rows.push(econRow('AI fixed O&M', money(r.ai.annualOM), 'negative'));
   }
@@ -243,7 +251,7 @@ function buildCostRows({ r, e, state }) {
   });
   rows.push(
     econRow('Total O&M', money(e.annualOM), 'negative'),
-    econRow('Total levelized annual cost', money(e.annualCost), 'total')
+    econRow('Total levelized annual cost', money(e.annualCost), 'total', 'Capital charge levelized over the analysis horizon plus O&M.')
   );
 
   rows.push(
@@ -313,7 +321,16 @@ function buildRevenueRows({ e }) {
   if (Math.abs(e.revenue.policyCredits || 0) > 1e-9) {
     rows.push(econRow(e.policy.label, money(e.revenue.policyCredits), signClass(e.revenue.policyCredits)));
   }
-  rows.push(econRow('Total revenue', money(e.totalAnnualRevenue), 'total'));
+  rows.push(econRow('Total year-1 revenue', money(e.totalAnnualRevenue), 'total'));
+  rows.push(econRow(
+    'Levelized revenue over horizon',
+    money(e.levelizedAnnualRevenue),
+    '',
+    'Constant annual revenue with the same present value as the year-by-year revenue (degraded energy; policy credits only while the scheme pays).'
+  ));
+  if (Math.abs(e.levelizedPolicyCredits || 0) > 1e-9) {
+    rows.push(econRow('of which policy credits (levelized)', money(e.levelizedPolicyCredits), signClass(e.levelizedPolicyCredits)));
+  }
   return rows;
 }
 
@@ -515,13 +532,13 @@ export function renderEconomicsBreakdown(r, { state, methaneMarket, cycleUnit })
     'Cost breakdown',
     `${money(e.annualCost)} /yr`,
     buildCostRows(context).join(''),
-    'Annualized cost stack and installed CAPEX'
+    'Levelized cost stack and installed CAPEX'
   );
   html += econGroup(
     'Revenue breakdown',
-    `${money(e.totalAnnualRevenue)} /yr`,
+    `${money(e.totalAnnualRevenue)} in year 1`,
     buildRevenueRows(context).join(''),
-    'Annual revenue sources by product and operating-support regime'
+    'Year-1 revenue by product and operating support, plus the horizon-levelized total'
   );
   if (financingRows.length) {
     const debtShare = `${FormatNumbers.fixed(e.financing.debtSharePercent, 0)}% debt`;

@@ -137,3 +137,22 @@ test('optimizer ranks by MIRR when IRR is undefined somewhere in the range', () 
   assert.equal(result.metric, 'mirr');
   assert.equal(result.bestValue, 1);
 });
+
+test('levelized annual profit equals NPV x CRF(r, N) and levelizes time-limited credits', () => {
+  [{}, { analysisHorizonYears: 40 }, { discountRate: 0 }, { financingEnabled: true }].forEach(overrides => {
+    const result = runScenario(overrides);
+    const economics = result.economics;
+    const state = result.state;
+    close(economics.levelizedAnnualProfit, economics.npv * crf(state.discountRate / 100, state.analysisHorizonYears), 1e-6, JSON.stringify(overrides));
+    close(economics.annualProfit, economics.levelizedAnnualRevenue - economics.annualCost, 1e-9);
+  });
+  // 45V pays 10 of 30 years: its levelized value is the year-1 credit x
+  // sum_{y<=10} f_y / 1.08^y x CRF(8%, 30), well under the year-1 credit.
+  const result = runScenario();
+  const economics = result.economics;
+  const factors = result.lifetimeEnergy.chemicalFactorByYear;
+  let pv = 0;
+  for (let year = 1; year <= 10; year++) pv += economics.revenue.policyCredits * factors[year - 1] / Math.pow(1.08, year);
+  close(economics.levelizedPolicyCredits, pv * crf(0.08, 30), 1e-6);
+  assert.ok(economics.levelizedPolicyCredits < 0.65 * economics.revenue.policyCredits);
+});

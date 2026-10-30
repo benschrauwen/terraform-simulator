@@ -447,7 +447,11 @@ crf(r, n) = r * (1 + r)^n / ((1 + r)^n - 1)
 annualized_capex_i = capex_i * crf(discount_rate, asset_life_i)
 annualized_land    = land_capex * discount_rate        # land does not wear out
 
-annual_cost = sum(annualized_capex_i) + annualized_land + annual_om
+asset_life_charge = sum(annualized_capex_i) + annualized_land     # cost breakdown
+
+levelized_cost    = (net_capex_at_close + PV(replacements) - PV(salvage_N)) * crf(r, N) + annual_om
+levelized_revenue = PV(yearly_revenue_y incl. credits while paid) * crf(r, N)
+levelized_profit  = levelized_revenue - levelized_cost = npv * crf(r, N)
 
 solar_capex          = modules + bos + site_prep       # 48E basis; land excluded
 solar_replacement    = modules + bos                   # repowering reuses the site

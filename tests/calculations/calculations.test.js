@@ -20,13 +20,9 @@ function npvAt(cashFlows, rate) {
 }
 
 const SABATIER_POSITIVE_ROOT_CAPEX = 100;
-// The IRR root-selection regression cases were calibrated on the nominal 2022 45V
-// top tier ($3.00/kg). The app default is now the 2026 inflation-adjusted $3.28/kg
-// (IRS Notice 2026-41), so pin $3.00 here to keep exercising the same cash-flow shapes.
+// Replacement- and debt-heavy cases that produce non-conventional cash flows
+// (several sign changes), used to exercise the IRR reporting policy.
 const IRR_REGRESSION_45V_PER_KG = 3.00;
-// Re-tuned (22 -> 24 $/MCF) and the IRR regression values below re-pinned when
-// chemical energy moved to the annual-dispatch basis with PVGIS site yields:
-// the cases still sit on the same multi-root branches, at lower energy.
 const SABATIER_UPPER_BRANCH_METHANE_PRICE = 24;
 
 test('default scenario stays numerically sane', () => {
@@ -316,219 +312,103 @@ test('lean IRR path matches the full exploratory-enabled scenario calculation', 
   );
 });
 
-test('headline IRR stays on the discount-rate root when replacement cycles create multiple roots', () => {
-  const higherConversionState = createState({ sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX, us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG, sabatierConversion: 85 });
-  const lowerConversionState = createState({ sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX, us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG, sabatierConversion: 84 });
-  const higherConversionResult = Calc.calculateAll(higherConversionState);
-  const lowerConversionResult = Calc.calculateAll(lowerConversionState);
-  const leanLowerConversionIrr = Calc.calculateIrr(lowerConversionState);
+// The tests below used to pin one branch of a multi-root IRR. IRR is now
+// reported only when a single meaningful root exists (finance.analyzeIRR), so
+// they assert that policy and the monotone MIRR / NPV instead.
+test('headline IRR, when reported, zeroes NPV and falls with Sabatier conversion; MIRR always falls', () => {
+  const higher = Calc.calculateAll(createState({ sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX, us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG, sabatierConversion: 85 })).economics;
+  const lowerState = createState({ sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX, us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG, sabatierConversion: 84 });
+  const lower = Calc.calculateAll(lowerState).economics;
 
-  assert.ok(
-    higherConversionResult.economics.irr > 0,
-    `Expected the 85% Sabatier case to keep a positive headline IRR, got ${higherConversionResult.economics.irr}.`
-  );
-  assert.ok(
-    lowerConversionResult.economics.irr > 0,
-    `Expected the 84% Sabatier case to stay on the positive IRR root instead of flipping negative, got ${lowerConversionResult.economics.irr}.`
-  );
-  assert.ok(
-    lowerConversionResult.economics.irr < higherConversionResult.economics.irr,
-    [
-      'Expected a lower Sabatier conversion to reduce the positive IRR root without jumping to a different branch.',
-      `Observed 85% -> ${higherConversionResult.economics.irr.toFixed(6)}% and 84% -> ${lowerConversionResult.economics.irr.toFixed(6)}%.`,
-    ].join(' ')
-  );
-  assert.ok(
-    Math.abs(higherConversionResult.economics.irr - 6.443170422615385) <= 1e-6,
-    `Expected the 85% Sabatier regression case to stay near a 6.443170% headline IRR, got ${higherConversionResult.economics.irr}.`
-  );
-  assert.ok(
-    Math.abs(lowerConversionResult.economics.irr - 6.245101475475911) <= 1e-6,
-    `Expected the 84% Sabatier regression case to stay near a 6.245101% headline IRR, got ${lowerConversionResult.economics.irr}.`
-  );
-  assert.ok(
-    Math.abs(lowerConversionResult.economics.irr - leanLowerConversionIrr) <= 1e-9,
-    `Expected lean IRR ${leanLowerConversionIrr} to match full IRR ${lowerConversionResult.economics.irr}.`
-  );
+  assert.ok(lower.npv < higher.npv, 'Lower conversion should lower NPV.');
+  assert.ok(lower.mirr < higher.mirr, 'Lower conversion should lower MIRR.');
+  [higher, lower].forEach(economics => {
+    const cashFlows = [-economics.netCapexAtClose, ...economics.yearlyCashFlows.map(entry => entry.netCashFlow)];
+    if (Number.isFinite(economics.irr)) {
+      assert.equal(economics.projectIrrAnalysis.status, 'ok');
+      assert.ok(Math.abs(npvAt(cashFlows, economics.irr / 100)) <= 1e-6);
+    } else {
+      assert.notEqual(economics.projectIrrAnalysis.status, 'ok');
+      assert.ok(economics.projectIrrAnalysis.reason.length > 0);
+    }
+  });
+  if (Number.isFinite(higher.irr) && Number.isFinite(lower.irr)) assert.ok(lower.irr < higher.irr);
+  const leanIrr = Calc.calculateIrr(lowerState);
+  assert.ok(Number.isFinite(lower.irr) ? Math.abs(lower.irr - leanIrr) <= 1e-9 : Number.isNaN(leanIrr));
 });
 
-test('equity IRR stays on the positive branch when longer debt terms add another debt-service year', () => {
-  const twentyYearDebtState = createState({
+test('longer debt tenor raises equity NPV and equity MIRR; a reported equity IRR is a root', () => {
+  const base = {
     sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX,
     us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG,
     financingEnabled: true,
-    debtTermYears: 20,
-  });
-  const twentyOneYearDebtState = createState({
-    sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX,
-    us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG,
-    financingEnabled: true,
-    debtTermYears: 21,
-  });
-  const twentyYearDebtResult = Calc.calculateAll(twentyYearDebtState);
-  const twentyOneYearDebtResult = Calc.calculateAll(twentyOneYearDebtState);
-  const leanTwentyOneYearEquityIrr = Calc.calculateIrr(twentyOneYearDebtState);
+  };
+  const twenty = Calc.calculateAll(createState({ ...base, debtTermYears: 20 })).economics;
+  const twentyOne = Calc.calculateAll(createState({ ...base, debtTermYears: 21 })).economics;
 
-  assert.ok(
-    twentyYearDebtResult.economics.equityIrr > 0,
-    `Expected the 20-year debt case to keep a positive equity IRR, got ${twentyYearDebtResult.economics.equityIrr}.`
-  );
-  assert.ok(
-    twentyOneYearDebtResult.economics.equityIrr > 0,
-    `Expected the 21-year debt case to stay on the positive equity IRR branch instead of flipping negative, got ${twentyOneYearDebtResult.economics.equityIrr}.`
-  );
-  assert.ok(
-    twentyOneYearDebtResult.economics.equityNpv > twentyYearDebtResult.economics.equityNpv,
-    [
-      'Expected stretching the debt tenor from 20 to 21 years to slightly improve equity NPV at the configured hurdle rate.',
-      `Observed 20-year ${twentyYearDebtResult.economics.equityNpv.toFixed(6)} vs 21-year ${twentyOneYearDebtResult.economics.equityNpv.toFixed(6)}.`,
-    ].join(' ')
-  );
-  assert.ok(
-    twentyOneYearDebtResult.economics.equityIrr > twentyYearDebtResult.economics.equityIrr,
-    [
-      'Expected the 21-year debt term to keep a slightly higher positive equity IRR rather than jumping to a negative branch.',
-      `Observed 20-year ${twentyYearDebtResult.economics.equityIrr.toFixed(6)}% vs 21-year ${twentyOneYearDebtResult.economics.equityIrr.toFixed(6)}%.`,
-    ].join(' ')
-  );
-  assert.ok(
-    Math.abs(twentyYearDebtResult.economics.equityIrr - 21.844573513232955) <= 1e-6,
-    `Expected the 20-year debt regression case to stay near a 21.844574% equity IRR, got ${twentyYearDebtResult.economics.equityIrr}.`
-  );
-  assert.ok(
-    Math.abs(twentyOneYearDebtResult.economics.equityIrr - 22.74936546747458) <= 1e-6,
-    `Expected the 21-year debt regression case to stay near a 22.749365% equity IRR, got ${twentyOneYearDebtResult.economics.equityIrr}.`
-  );
-  assert.ok(
-    Math.abs(twentyOneYearDebtResult.economics.equityIrr - leanTwentyOneYearEquityIrr) <= 1e-9,
-    `Expected lean IRR ${leanTwentyOneYearEquityIrr} to match full IRR ${twentyOneYearDebtResult.economics.equityIrr}.`
-  );
+  assert.ok(twentyOne.equityNpv > twenty.equityNpv);
+  assert.ok(twentyOne.equityMirr > twenty.equityMirr);
+  [twenty, twentyOne].forEach(economics => {
+    if (!Number.isFinite(economics.equityIrr)) return;
+    const cashFlows = [-economics.financing.equityUpfront, ...economics.yearlyCashFlows.map(entry => entry.equityCashFlow)];
+    assert.ok(Math.abs(npvAt(cashFlows, economics.equityIrr / 100)) <= 1e-6);
+  });
 });
 
 test('reported project and equity IRRs zero their respective cash-flow NPVs', () => {
-  const projectResult = Calc.calculateAll(createState({
-    sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX,
-    us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG,
-    sabatierConversion: 84,
-  }));
-  const projectCashFlows = [
-    -projectResult.economics.totalCapex,
-    ...projectResult.economics.yearlyCashFlows.map(entry => entry.netCashFlow),
-  ];
-  const projectIrrRate = projectResult.economics.projectIrr / 100;
-  const equityResult = Calc.calculateAll(createState({
-    sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX,
-    us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG,
-    financingEnabled: true,
-    debtTermYears: 21,
-  }));
-  const equityCashFlows = [
-    -equityResult.economics.financing.equityUpfront,
-    ...equityResult.economics.yearlyCashFlows.map(entry => entry.equityCashFlow),
-  ];
-  const equityIrrRate = equityResult.economics.equityIrr / 100;
-
-  assert.ok(
-    Math.abs(npvAt(projectCashFlows, projectIrrRate)) <= 1e-6,
-    [
-      'Expected the reported project IRR to zero the corresponding unlevered project cash flows.',
-      `Observed NPV ${npvAt(projectCashFlows, projectIrrRate)} at ${projectResult.economics.projectIrr.toFixed(12)}%.`,
-    ].join(' ')
-  );
-  assert.ok(
-    Math.abs(npvAt(equityCashFlows, equityIrrRate)) <= 1e-6,
-    [
-      'Expected the reported equity IRR to zero the corresponding levered sponsor equity cash flows.',
-      `Observed NPV ${npvAt(equityCashFlows, equityIrrRate)} at ${equityResult.economics.equityIrr.toFixed(12)}%.`,
-    ].join(' ')
-  );
+  [
+    {},
+    { financingEnabled: true },
+    { financingEnabled: true, debtTermYears: 21 },
+    { methanolEnabled: true },
+    { analysisHorizonYears: 40 },
+    { sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX, us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG, sabatierConversion: 84 },
+  ].forEach(overrides => {
+    const economics = Calc.calculateAll(createState(overrides)).economics;
+    const projectCashFlows = [-economics.netCapexAtClose, ...economics.yearlyCashFlows.map(entry => entry.netCashFlow)];
+    const equityCashFlows = [-economics.financing.equityUpfront, ...economics.yearlyCashFlows.map(entry => entry.equityCashFlow)];
+    if (Number.isFinite(economics.projectIrr)) {
+      assert.ok(Math.abs(npvAt(projectCashFlows, economics.projectIrr / 100)) <= 1e-6, JSON.stringify(overrides));
+    }
+    if (economics.financing.enabled && Number.isFinite(economics.equityIrr)) {
+      assert.ok(Math.abs(npvAt(equityCashFlows, economics.equityIrr / 100)) <= 1e-6, JSON.stringify(overrides));
+    }
+  });
 });
 
-test('approximateIRR keeps the largest positive root when multiple positive roots exist', () => {
-  const lowerRootRate = 0.09;
-  const upperRootRate = 0.24;
-  const lowerDiscountFactor = 1 / (1 + lowerRootRate);
-  const upperDiscountFactor = 1 / (1 + upperRootRate);
+test('approximateIRR withholds the IRR when several positive roots exist', () => {
+  // Was: report the largest root. (1 + r) roots at 9% and 24% by construction.
+  const lowerDiscountFactor = 1 / 1.09;
+  const upperDiscountFactor = 1 / 1.24;
   const cashFlows = [
     -(lowerDiscountFactor * upperDiscountFactor),
     lowerDiscountFactor + upperDiscountFactor,
     -1,
   ];
-  const reportedIrr = Calc.approximateIRR(cashFlows, 0.08);
-
-  assert.ok(
-    Math.abs(reportedIrr - (upperRootRate * 100)) <= 1e-9,
-    [
-      'Expected multi-root cash flows to report the largest positive IRR root for stability.',
-      `Observed ${reportedIrr.toFixed(12)}% instead of ${(upperRootRate * 100).toFixed(12)}%.`,
-    ].join(' ')
-  );
+  const analysis = Calc.analyzeIRR(cashFlows);
+  assert.ok(Number.isNaN(Calc.approximateIRR(cashFlows)));
+  assert.equal(analysis.status, 'ambiguous');
+  assert.equal(analysis.roots.length, 2);
+  assert.ok(Math.abs(analysis.roots[0] - 0.09) < 1e-9 && Math.abs(analysis.roots[1] - 0.24) < 1e-9);
 });
 
-test('30-year financed equity IRR stays on the upper branch until no real root remains', () => {
-  const ninePointFivePercent = Calc.calculateAll(createState({
+test('rising debt interest lowers equity MIRR monotonically even where equity IRR is undefined', () => {
+  const rates = [9.5, 9.75, 10.5, 12.5];
+  const results = rates.map(debtInterestRate => Calc.calculateAll(createState({
     sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX,
     us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG,
     methanePrice: SABATIER_UPPER_BRANCH_METHANE_PRICE,
     financingEnabled: true,
     debtTermYears: 30,
-    debtInterestRate: 9.5,
-  })).economics;
-  const ninePointSeventyFivePercent = Calc.calculateAll(createState({
-    sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX,
-    us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG,
-    methanePrice: SABATIER_UPPER_BRANCH_METHANE_PRICE,
-    financingEnabled: true,
-    debtTermYears: 30,
-    debtInterestRate: 9.75,
-  })).economics;
-  const tenPointFivePercent = Calc.calculateAll(createState({
-    sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX,
-    us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG,
-    methanePrice: SABATIER_UPPER_BRANCH_METHANE_PRICE,
-    financingEnabled: true,
-    debtTermYears: 30,
-    debtInterestRate: 10.5,
-  })).economics;
-  const twelvePointFivePercent = Calc.calculateAll(createState({
-    sabatierCapex: SABATIER_POSITIVE_ROOT_CAPEX,
-    us45vHydrogenCreditPerKg: IRR_REGRESSION_45V_PER_KG,
-    methanePrice: SABATIER_UPPER_BRANCH_METHANE_PRICE,
-    financingEnabled: true,
-    debtTermYears: 30,
-    debtInterestRate: 12.5,
-  })).economics;
-
-  assert.ok(
-    ninePointSeventyFivePercent.equityIrr < ninePointFivePercent.equityIrr,
-    [
-      'Expected the upper positive equity IRR branch to keep decreasing as debt interest rises.',
-      `Observed 9.5% -> ${ninePointFivePercent.equityIrr.toFixed(6)}% vs 9.75% -> ${ninePointSeventyFivePercent.equityIrr.toFixed(6)}%.`,
-    ].join(' ')
-  );
-  assert.ok(
-    tenPointFivePercent.equityIrr < ninePointSeventyFivePercent.equityIrr,
-    [
-      'Expected the financed 30-year case to keep following the same declining positive IRR branch at 10.5% debt interest.',
-      `Observed 9.75% -> ${ninePointSeventyFivePercent.equityIrr.toFixed(6)}% vs 10.5% -> ${tenPointFivePercent.equityIrr.toFixed(6)}%.`,
-    ].join(' ')
-  );
-  assert.ok(
-    Math.abs(ninePointFivePercent.equityIrr - 25.70564776839418) <= 1e-6,
-    `Expected the 9.5% debt-interest regression case to stay near a 25.705648% equity IRR, got ${ninePointFivePercent.equityIrr}.`
-  );
-  assert.ok(
-    Math.abs(ninePointSeventyFivePercent.equityIrr - 24.736353310782555) <= 1e-6,
-    `Expected the 9.75% debt-interest regression case to stay near a 24.736353% equity IRR, got ${ninePointSeventyFivePercent.equityIrr}.`
-  );
-  assert.ok(
-    Math.abs(tenPointFivePercent.equityIrr - 21.253163629886707) <= 1e-6,
-    `Expected the 10.5% debt-interest regression case to stay near a 21.253164% equity IRR, got ${tenPointFivePercent.equityIrr}.`
-  );
-  assert.ok(
-    !Number.isFinite(twelvePointFivePercent.equityIrr),
-    `Expected the 12.5% debt-interest case to lose all real equity IRR roots, got ${twelvePointFivePercent.equityIrr}.`
-  );
+    debtInterestRate,
+  })).economics);
+  for (let i = 1; i < results.length; i++) {
+    assert.ok(results[i].equityMirr < results[i - 1].equityMirr, `MIRR at ${rates[i]}%`);
+    assert.ok(results[i].equityNpv < results[i - 1].equityNpv, `NPV at ${rates[i]}%`);
+  }
+  results.forEach(economics => {
+    assert.equal(Number.isFinite(economics.equityIrr), economics.equityIrrAnalysis.status === 'ok');
+  });
 });
 
 test('amortizing debt schedule matches standard level-payment loan math', () => {

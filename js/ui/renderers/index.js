@@ -3,7 +3,7 @@
 import { SolarGeometry } from '../../model/solar-geometry.js';
 import { Diagram } from '../diagram.js';
 import { FormatNumbers } from '../format-numbers.js';
-import { formatIrr, formatSystemSizeMW } from '../formatters.js';
+import { formatIrrWithStatus, formatMirr, formatSystemSizeMW } from '../formatters.js';
 import { renderEconomicsBreakdown } from './economics.js';
 import { applyTooltip, EDUCATIONAL_TOOLTIPS, prodItem } from './markup.js';
 
@@ -112,16 +112,24 @@ export const rendererMethods = {
     const e = r.economics;
     document.getElementById('metricCapex').textContent = FormatNumbers.formatMoney(e.totalCapex);
     document.getElementById('metricRevenue').textContent = `${FormatNumbers.formatMoney(e.totalAnnualRevenue)}/yr`;
-    document.getElementById('metricPayback').textContent = Number.isFinite(e.paybackYears) ? `${FormatNumbers.fixed(e.paybackYears, 1)} yrs` : 'No payback';
+    document.getElementById('metricPayback').textContent = e.noNetInvestment
+      ? 'n/a (no net investment)'
+      : Number.isFinite(e.paybackYears) ? `${FormatNumbers.fixed(e.paybackYears, 1)} yrs` : 'No payback';
     const irrLabel = document.getElementById('metricIrrLabel');
+    const irrAnalysis = e.financing.enabled ? e.equityIrrAnalysis : e.projectIrrAnalysis;
+    const irrAvailable = Number.isFinite(e.irr);
     if (irrLabel) {
       irrLabel.textContent = e.financing.enabled ? 'Equity IRR' : 'IRR';
+      const baseTooltip = e.financing.enabled ? EDUCATIONAL_TOOLTIPS.equityIrr : EDUCATIONAL_TOOLTIPS.projectIrr;
       applyTooltip(
         irrLabel,
-        e.financing.enabled ? EDUCATIONAL_TOOLTIPS.equityIrr : EDUCATIONAL_TOOLTIPS.projectIrr
+        `${irrAvailable ? '' : `${irrAnalysis?.reason || ''} `}${baseTooltip} MIRR at the discount rate: ${formatMirr(e.mirr)}.`
       );
     }
-    document.getElementById('metricIRR').textContent = formatIrr(e.irr);
+    // Without a single meaningful IRR the header shows the verdict and MIRR.
+    document.getElementById('metricIRR').textContent = irrAvailable
+      ? formatIrrWithStatus(e.irr, irrAnalysis)
+      : `n/a · MIRR ${formatMirr(e.mirr)}`;
 
     const financingHeadlineValue = document.getElementById('financingHeadlineValue');
     if (financingHeadlineValue) {

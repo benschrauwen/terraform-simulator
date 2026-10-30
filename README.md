@@ -469,6 +469,22 @@ Important implementation detail:
 - Replacement CAPEX appears as discrete outflows when asset life rolls over within the analysis horizon.
 - With financing enabled, the headline IRR switches from project IRR to equity IRR, while project NPV remains unlevered.
 
+IRR is reported only when a single economically meaningful root exists:
+
+```text
+cf_0 >= 0                                   -> n/a (no net investment)
+one sign change (conventional)              -> the unique root
+several sign changes, sum(cf) >= 0          -> the single root >= 0, else "ambiguous (see MIRR)"
+several sign changes, sum(cf) <  0          -> n/a: any root is an artefact of late outflows
+
+mirr = (sum max(cf_y, 0) * (1 + r)^(n - y) / -sum min(cf_y, 0) / (1 + r)^y)^(1/n) - 1
+```
+
+MIRR (finance and reinvest at the discount rate `r`) is always shown next to
+IRR; it is unique and exceeds `r` exactly when NPV is positive. The inline
+optimizers maximize IRR, and rank the whole sweep by MIRR instead whenever
+IRR is undefined for any value in the range (by NPV if MIRR is undefined too).
+
 ### Environmental outputs
 
 ```text

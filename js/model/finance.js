@@ -185,17 +185,21 @@ export function buildDebtSchedule(principal, annualRate, termYears, analysisHori
   };
 }
 
-export function approximateIRR(cashFlows, preferredRate = 0.1) {
-  if (!Array.isArray(cashFlows) || cashFlows.length < 2 || cashFlows[0] >= 0) return NaN;
-  if (!cashFlows.slice(1).some(value => value > 0)) return NaN;
+export function npvAtRate(cashFlows, rate) {
+  let npv = 0;
+  for (let year = 0; year < cashFlows.length; year++) {
+    npv += cashFlows[year] / Math.pow(1 + rate, year);
+  }
+  return npv;
+}
 
-  const npvAt = rate => {
-    let npv = 0;
-    for (let year = 0; year < cashFlows.length; year++) {
-      npv += cashFlows[year] / Math.pow(1 + rate, year);
-    }
-    return npv;
-  };
+export const IRR_RATE_RANGE = Object.freeze({ min: -0.99, max: 100 });
+
+/* Every rate in [-99%, +10000%] where the NPV of `cashFlows` crosses zero,
+   as fractions, ascending: a scan on a 1%-5%-25%-100% grid with bisection
+   inside each bracketing pair. */
+export function findIrrRoots(cashFlows) {
+  const npvAt = rate => npvAtRate(cashFlows, rate);
 
   const solveBracket = (lo, hi, npvLo = npvAt(lo), npvHi = npvAt(hi)) => {
     if (!Number.isFinite(npvLo) || !Number.isFinite(npvHi)) return NaN;
@@ -222,12 +226,9 @@ export function approximateIRR(cashFlows, preferredRate = 0.1) {
     return (low + high) / 2;
   };
 
-  const minRate = -0.99;
-  const maxRate = 100;
-  const safePreferredRate = Number.isFinite(preferredRate)
-    ? Math.max(minRate, Math.min(maxRate, preferredRate))
-    : 0.1;
-  const scanRates = [minRate, safePreferredRate];
+  const minRate = IRR_RATE_RANGE.min;
+  const maxRate = IRR_RATE_RANGE.max;
+  const scanRates = [minRate];
   const pushRange = (start, end, step) => {
     for (let rate = start; rate <= (end + (step / 2)); rate += step) {
       scanRates.push(Number(rate.toFixed(12)));
@@ -272,22 +273,106 @@ export function approximateIRR(cashFlows, preferredRate = 0.1) {
     previousNpv = npv;
   }
 
-  if (!rootCandidates.length) return NaN;
-
-  const uniqueRoots = rootCandidates
+  return rootCandidates
     .filter(root => Number.isFinite(root))
     .sort((a, b) => a - b)
     .filter((root, index, roots) => index === 0 || Math.abs(root - roots[index - 1]) > 1e-9);
-  const positiveRoots = uniqueRoots.filter(root => root > 1e-9);
-  // Multiple IRRs are ambiguous. Prefer the largest positive root so nearby
-  // financing inputs stay on one stable economic branch instead of hopping
-  // between smaller and larger positive solutions around the hurdle rate.
-  if (positiveRoots.length) {
-    return positiveRoots[positiveRoots.length - 1] * 100;
+}
+
+function countSignChanges(values) {
+  let changes = 0;
+  let previousSign = 0;
+  values.forEach(value => {
+    const sign = value > 0 ? 1 : value < 0 ? -1 : 0;
+    if (sign === 0) return;
+    if (previousSign !== 0 && sign !== previousSign) changes += 1;
+    previousSign = sign;
+  });
+  return changes;
+}
+
+const formatRootPercent = root => `${(root * 100).toFixed(1)}%`;
+
+/* IRR with an explicit verdict. The IRR is reported only when one
+   economically meaningful root exists:
+   - conventional cash flows (one sign change: investment, then returns)
+     have exactly one root (Descartes), reported whatever its sign;
+   - otherwise (replacements or debt service create later outflows), if
+     undiscounted cash recovers the investment (NPV(0) >= 0) there is an odd
+     number of positive roots: a single one is reported, negative roots are
+     ignored as artefacts of the late outflows dominating at rates near -100%;
+   - if undiscounted cash does not recover the investment, any root is
+     negative and driven by the sign of the last flows, so none is reported.
+   Several candidate roots make the IRR ambiguous; MIRR is the fallback.
+   `irr` is in percent (NaN when not reported). */
+export function analyzeIRR(cashFlows) {
+  const result = (irr, status, label, reason, roots = []) => ({ irr, status, label, reason, roots });
+  if (!Array.isArray(cashFlows) || cashFlows.length < 2 || !cashFlows.every(Number.isFinite)) {
+    return result(NaN, 'invalid', 'n/a', 'No cash-flow series to evaluate.');
+  }
+  if (cashFlows[0] >= 0) {
+    return result(NaN, 'no-investment', 'n/a (no net investment)',
+      'There is no net upfront investment (incentives cover the initial CAPEX), so a rate of return on it is undefined. Judge the project by NPV.');
+  }
+  if (!cashFlows.slice(1).some(value => value > 0)) {
+    return result(NaN, 'no-return', 'n/a (no cash returned)',
+      'No year returns positive cash, so there is no rate of return.');
   }
 
-  // If every real root is non-positive, keep the least-negative one.
-  return uniqueRoots[uniqueRoots.length - 1] * 100;
+  const roots = findIrrRoots(cashFlows);
+  const signChanges = countSignChanges(cashFlows);
+  if (signChanges === 1) {
+    return roots.length
+      ? result(roots[0] * 100, 'ok', '', 'Conventional cash flows: one sign change, so the IRR is unique.', roots)
+      : result(NaN, 'no-root', 'n/a', 'NPV does not cross zero between -99% and +10,000%.', roots);
+  }
+
+  const undiscountedNet = cashFlows.reduce((sum, value) => sum + value, 0);
+  if (undiscountedNet >= 0) {
+    const positiveRoots = roots.filter(root => root >= -1e-12);
+    if (positiveRoots.length === 1) {
+      return result(positiveRoots[0] * 100, 'ok', '',
+        'Later outflows (replacements or debt service) make the cash flows non-conventional, but only one non-negative rate zeroes NPV.', roots);
+    }
+    if (positiveRoots.length > 1) {
+      return result(NaN, 'ambiguous', 'ambiguous (see MIRR)',
+        `NPV crosses zero at several rates (${positiveRoots.map(formatRootPercent).join(', ')}), so there is no single IRR. MIRR is the unambiguous rate.`, roots);
+    }
+    return result(NaN, 'no-root', 'n/a (see MIRR)', 'NPV does not cross zero at any non-negative rate.', roots);
+  }
+
+  if (roots.length > 1) {
+    return result(NaN, 'ambiguous', 'ambiguous (see MIRR)',
+      `NPV crosses zero at several rates (${roots.map(formatRootPercent).join(', ')}), so there is no single IRR. MIRR is the unambiguous rate.`, roots);
+  }
+  return result(NaN, 'no-meaningful-root', 'n/a (see MIRR)',
+    roots.length
+      ? `Undiscounted cash never recovers the investment and later outflows make the cash flows non-conventional; the only NPV root (${formatRootPercent(roots[0])}) is an artefact of the final years' sign, not a rate of return. MIRR is shown instead.`
+      : 'Undiscounted cash never recovers the investment, so there is no meaningful IRR. MIRR is shown instead.',
+    roots);
+}
+
+/* IRR in percent, NaN when analyzeIRR finds no single meaningful root. */
+export function approximateIRR(cashFlows) {
+  return analyzeIRR(cashFlows).irr;
+}
+
+/* Modified IRR (percent): outflows discounted to year 0 at `financeRate`,
+   inflows compounded to the final year at `reinvestRate`:
+   MIRR = (FV(inflows) / -PV(outflows))^(1/n) - 1. Unique by construction;
+   NaN when there is no outflow or no inflow. */
+export function calculateMIRR(cashFlows, financeRate, reinvestRate = financeRate) {
+  if (!Array.isArray(cashFlows) || cashFlows.length < 2) return NaN;
+  const n = cashFlows.length - 1;
+  let presentOutflows = 0;
+  let futureInflows = 0;
+  cashFlows.forEach((value, year) => {
+    if (!Number.isFinite(value)) return;
+    if (value < 0) presentOutflows += value / Math.pow(1 + financeRate, year);
+    else futureInflows += value * Math.pow(1 + reinvestRate, n - year);
+  });
+  if (!(presentOutflows < 0) || !(futureInflows > 0)) return NaN;
+  return (Math.pow(futureInflows / -presentOutflows, 1 / n) - 1) * 100;
 }
 
 export function buildFinancingModel(state, totalCapex) {
@@ -428,7 +513,11 @@ export const financeMethods = {
   calculateSimplePaybackYears,
   calculateSustainedPaybackYears,
   buildDebtSchedule,
+  npvAtRate,
+  findIrrRoots,
+  analyzeIRR,
   approximateIRR,
+  calculateMIRR,
   buildFinancingModel,
   buildCashFlowTimeline,
 };

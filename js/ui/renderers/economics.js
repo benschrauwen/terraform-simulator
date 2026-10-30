@@ -1,14 +1,23 @@
 /* Economics breakdown panel: one builder per collapsible row group */
 
 import { FormatNumbers } from '../format-numbers.js';
-import { formatIrr, formatSystemSizeMW } from '../formatters.js';
+import { formatIrrWithStatus, formatMirr, formatSystemSizeMW } from '../formatters.js';
 import { econGroup, econMetric, econRow, EDUCATIONAL_TOOLTIPS } from './markup.js';
 
 const money = FormatNumbers.formatMoney;
 const signClass = value => (value >= 0 ? 'positive' : 'negative');
 const irrClass = irr => (Number.isFinite(irr) ? signClass(irr) : '');
-const formatPaybackShort = years => (Number.isFinite(years) ? `${FormatNumbers.fixed(years, 1)} yrs` : 'N/A');
-const formatPaybackLong = years => (Number.isFinite(years) ? `${FormatNumbers.fixed(years, 1)} years` : 'N/A');
+const NO_INVESTMENT_LABEL = 'n/a (no net investment)';
+const formatPaybackShort = (years, noNetInvestment = false) => (
+  noNetInvestment ? NO_INVESTMENT_LABEL : Number.isFinite(years) ? `${FormatNumbers.fixed(years, 1)} yrs` : 'N/A'
+);
+const formatPaybackLong = (years, noNetInvestment = false) => (
+  noNetInvestment ? NO_INVESTMENT_LABEL : Number.isFinite(years) ? `${FormatNumbers.fixed(years, 1)} years` : 'N/A'
+);
+// The IRR tooltip explains why no IRR is shown when the model withholds it.
+const irrTooltip = (value, analysis, fallback) => (
+  Number.isFinite(value) ? fallback : `${analysis?.reason || ''} ${fallback}`.trim()
+);
 
 // m3 routes price per m3 with cents; everything else per ton.
 const exploratoryPriceLabel = module => {
@@ -24,6 +33,7 @@ function projectLabels(financing) {
     npv: financing.enabled ? 'Project NPV' : 'NPV',
     irr: financing.enabled ? 'Project IRR' : 'IRR',
     payback: financing.enabled ? 'Project payback' : 'Payback',
+    mirr: financing.enabled ? 'Equity MIRR' : 'MIRR',
     sustainedPayback: financing.enabled ? 'Sustained project payback' : 'Sustained payback',
   };
 }
@@ -69,10 +79,10 @@ function buildSummaryMetrics({ e, labels }) {
     ),
     econMetric(
       labels.irr,
-      formatIrr(e.projectIrr),
+      formatIrrWithStatus(e.projectIrr, e.projectIrrAnalysis),
       irrClass(e.projectIrr),
-      `${labels.payback}: ${formatPaybackShort(e.paybackYears)}`,
-      EDUCATIONAL_TOOLTIPS.projectIrr
+      `${labels.payback}: ${formatPaybackShort(e.paybackYears, e.noNetInvestment)}`,
+      irrTooltip(e.projectIrr, e.projectIrrAnalysis, EDUCATIONAL_TOOLTIPS.projectIrr)
     ),
   ];
 
@@ -80,13 +90,22 @@ function buildSummaryMetrics({ e, labels }) {
     metrics.push(
       econMetric(
         'Equity IRR',
-        formatIrr(e.equityIrr),
+        formatIrrWithStatus(e.equityIrr, e.equityIrrAnalysis),
         irrClass(e.equityIrr),
         `Equity payback: ${formatPaybackShort(e.equityPaybackYears)}`,
-        EDUCATIONAL_TOOLTIPS.equityIrr
+        irrTooltip(e.equityIrr, e.equityIrrAnalysis, EDUCATIONAL_TOOLTIPS.equityIrr)
       )
     );
   }
+  metrics.push(
+    econMetric(
+      labels.mirr,
+      formatMirr(e.mirr),
+      irrClass(Number.isFinite(e.mirr) ? e.mirr - e.discountRatePercent : NaN),
+      `Finance + reinvest at ${FormatNumbers.fixed(e.discountRatePercent, 1)}%`,
+      EDUCATIONAL_TOOLTIPS.mirr
+    )
+  );
   return metrics;
 }
 
@@ -113,9 +132,15 @@ function buildReturnsRows({ e, labels }) {
     ),
     econRow(
       labels.irr,
-      formatIrr(e.projectIrr),
+      formatIrrWithStatus(e.projectIrr, e.projectIrrAnalysis),
       irrClass(e.projectIrr),
-      'Internal rate of return on the same net-cash path as NPV after O&M, close-date policy support, and scheduled replacements.'
+      irrTooltip(e.projectIrr, e.projectIrrAnalysis, 'Internal rate of return on the same net-cash path as NPV after O&M, close-date policy support, and scheduled replacements.')
+    ),
+    econRow(
+      e.financing.enabled ? 'Project MIRR' : 'MIRR',
+      formatMirr(e.projectMirr),
+      irrClass(Number.isFinite(e.projectMirr) ? e.projectMirr - e.discountRatePercent : NaN),
+      `Modified IRR of the project cash flows with outflows financed and inflows reinvested at the ${FormatNumbers.fixed(e.discountRatePercent, 1)}% discount rate.`
     ),
   ];
 
@@ -123,9 +148,15 @@ function buildReturnsRows({ e, labels }) {
     rows.push(
       econRow(
         'Equity IRR',
-        formatIrr(e.equityIrr),
+        formatIrrWithStatus(e.equityIrr, e.equityIrrAnalysis),
         irrClass(e.equityIrr),
-        'IRR on sponsor equity cash flows: upfront equity plus financing fees in year 0, then project net cash after scheduled debt service.'
+        irrTooltip(e.equityIrr, e.equityIrrAnalysis, 'IRR on sponsor equity cash flows: upfront equity plus financing fees in year 0, then project net cash after scheduled debt service. With high debt shares this rate is inflated by later sponsor injections; compare the equity MIRR.')
+      ),
+      econRow(
+        'Equity MIRR',
+        formatMirr(e.equityMirr),
+        irrClass(Number.isFinite(e.equityMirr) ? e.equityMirr - e.discountRatePercent : NaN),
+        `Modified IRR of the sponsor equity cash flows at the ${FormatNumbers.fixed(e.discountRatePercent, 1)}% discount rate; unlike equity IRR it does not reward leverage for compounding at its own rate.`
       )
     );
   }
@@ -133,7 +164,7 @@ function buildReturnsRows({ e, labels }) {
   rows.push(
     econRow(
       labels.payback,
-      formatPaybackLong(e.paybackYears),
+      formatPaybackLong(e.paybackYears, e.noNetInvestment),
       '',
       'Simple payback on cumulative net cash versus upfront CAPEX. This is the first point where cumulative net cash turns positive.'
     )
@@ -455,7 +486,7 @@ export function renderEconomicsBreakdown(r, { state, methaneMarket, cycleUnit })
   let html = `<div class="econ-summary-grid">${buildSummaryMetrics(context).join('')}</div>`;
   html += econGroup(
     'Project returns',
-    `${context.labels.irr} ${formatIrr(e.projectIrr)}`,
+    `${context.labels.irr} ${formatIrrWithStatus(e.projectIrr, e.projectIrrAnalysis)}`,
     buildReturnsRows(context).join(''),
     'Discounted returns and payback metrics'
   );

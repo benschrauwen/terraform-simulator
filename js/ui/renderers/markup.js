@@ -3,6 +3,7 @@
 export const EDUCATIONAL_TOOLTIPS = Object.freeze({
   projectIrr: 'Internal rate of return on project cash flows before debt financing.',
   equityIrr: 'Internal rate of return on sponsor equity cash flows after debt funding and debt service.',
+  mirr: 'Modified IRR: outflows discounted and inflows reinvested at the discount rate. Unlike IRR it is always unique, and it does not assume interim cash earns the IRR itself; MIRR is above the discount rate exactly when NPV is positive.',
   effectiveCf: 'Average utilization of the chemical plant after storage smooths solar output.',
   residualChemCf: 'Average utilization left for the chemical plant after AI load is served first.',
   dailyOpHours: 'Average hours per day the chemical plant can run at its modeled load.',

@@ -22,6 +22,17 @@ export function formatIrr(value) {
   return `${FormatNumbers.fixed(value, 1)}%`;
 }
 
+/** IRR, or the model's verdict label when no single meaningful IRR exists. */
+export function formatIrrWithStatus(value, analysis) {
+  if (Number.isFinite(value) && value > -99.9) return formatIrr(value);
+  return analysis?.label || 'N/A';
+}
+
+/** MIRR (finance and reinvest at the discount rate). */
+export function formatMirr(value) {
+  return Number.isFinite(value) ? `${FormatNumbers.fixed(value, 1)}%` : 'N/A';
+}
+
 export function formatMethaneFeedstockSplit(value) {
   const methaneShare = Math.max(0, Math.min(100, parseFloat(value)));
   const methanolShare = Math.max(0, 100 - methaneShare);

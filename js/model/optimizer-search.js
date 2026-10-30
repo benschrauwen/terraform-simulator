@@ -3,7 +3,14 @@
    ============================================
    Finds the slider value with the best IRR: an exhaustive sweep for small
    ranges, otherwise a coarse sweep followed by refinement around the best
-   regions. Runs in the optimizer worker and in tests. */
+   regions. Runs in the optimizer worker and in tests.
+
+   IRR is withheld (NaN) when cash flows have no single meaningful root, so
+   a sweep can mix finite and undefined IRRs. The search then ranks every
+   candidate by MIRR at the discount rate instead (always unique, and above
+   the discount rate exactly when NPV is positive), and by NPV if MIRR is
+   undefined too (no outflows at all). One metric ranks the whole sweep so
+   values are never compared across metrics. */
 
 import { getStepPrecision } from './util.js';
 
@@ -85,13 +92,20 @@ export const optimizerSearchMethods = {
       const key = snappedValue.toFixed(precision);
       if (cache.has(key)) return cache.get(key);
 
+      const metrics = this.calculateReturnMetrics({ ...baseState, [stateKey]: snappedValue });
       const result = {
         value: snappedValue,
-        irr: this.calculateIrr({ ...baseState, [stateKey]: snappedValue }),
+        irr: metrics.irr,
+        mirr: metrics.mirr,
+        npv: metrics.npv,
       };
-      result.finite = Number.isFinite(result.irr);
       cache.set(key, result);
       return result;
+    };
+    const chooseMetric = entries => {
+      if (entries.every(entry => Number.isFinite(entry.irr))) return 'irr';
+      if (entries.every(entry => Number.isFinite(entry.mirr))) return 'mirr';
+      return 'npv';
     };
 
     const evaluateIndex = index => evaluate(min + (index * step));
@@ -115,10 +129,11 @@ export const optimizerSearchMethods = {
         emitProgress(6 + (((coarseIndex + 1) / Math.max(coarseIndices.length, 1)) * 34), 'coarse');
       });
 
-      const rankedIndices = coarseIndices
-        .map(index => ({ index, ...evaluateIndex(index) }))
-        .filter(entry => entry.finite)
-        .sort((a, b) => b.irr - a.irr);
+      const coarseEntries = coarseIndices.map(index => ({ index, ...evaluateIndex(index) }));
+      const coarseMetric = chooseMetric(coarseEntries);
+      const rankedIndices = coarseEntries
+        .filter(entry => Number.isFinite(entry[coarseMetric]))
+        .sort((a, b) => b[coarseMetric] - a[coarseMetric]);
 
       const coarseSpacing = coarseIndices.length > 1
         ? coarseIndices.slice(1).reduce((maxGap, index, i) => Math.max(maxGap, index - coarseIndices[i]), 1)
@@ -149,30 +164,32 @@ export const optimizerSearchMethods = {
       });
     }
 
-    const best = Array.from(cache.values())
-      .filter(entry => entry.finite)
+    const entries = Array.from(cache.values());
+    const metric = chooseMetric(entries);
+    // NPV differences are in dollars, rates in percent points.
+    const tolerance = metric === 'npv' ? 1e-6 * Math.max(1, ...entries.map(entry => Math.abs(entry.npv) || 0)) : 1e-6;
+    const best = entries
+      .filter(entry => Number.isFinite(entry[metric]))
       .sort((a, b) => {
-        const irrDiff = b.irr - a.irr;
-        if (Math.abs(irrDiff) > 1e-9) return irrDiff;
+        const diff = b[metric] - a[metric];
+        if (Math.abs(diff) > 1e-9) return diff;
         return Math.abs(a.value - snappedCurrentValue) - Math.abs(b.value - snappedCurrentValue);
       })[0];
 
-    if (!best) {
-      emitProgress(100, 'done');
-      return null;
-    }
-    if (Number.isFinite(currentResult.irr) && best.irr <= (currentResult.irr + 1e-6)) {
-      emitProgress(100, 'done');
-      return null;
-    }
-
     emitProgress(100, 'done');
+    if (!best) return null;
+    if (Number.isFinite(currentResult[metric]) && best[metric] <= (currentResult[metric] + tolerance)) {
+      return null;
+    }
 
     return {
+      metric,
       bestValue: best.value,
       bestIrr: best.irr,
+      bestScore: best[metric],
       currentValue: snappedCurrentValue,
       currentIrr: currentResult.irr,
+      currentScore: currentResult[metric],
     };
   },
 };

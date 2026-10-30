@@ -209,6 +209,13 @@ export const scenarioMethods = {
     return this.calculateScenario(state, { fastMode: true }).economics.irr;
   },
 
+  /* Headline return metrics for the optimizer (fast path): IRR (NaN when
+     there is no single meaningful root), MIRR and NPV. */
+  calculateReturnMetrics(state) {
+    const economics = this.calculateScenario(state, { fastMode: true }).economics;
+    return { irr: economics.irr, mirr: economics.mirr, npv: economics.npv };
+  },
+
   runSensitivity(baseState, paramKey, values) {
     return values.map(val => {
       const modified = { ...baseState, [paramKey]: val };

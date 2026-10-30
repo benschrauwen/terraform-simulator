@@ -44,3 +44,16 @@ test('economics breakdown switches labels and adds a financing group when debt i
   assert.match(html, />Equity IRR</);
   assert.match(html, />Debt coupon</);
 });
+
+test('economics breakdown always shows MIRR and explains a withheld IRR', () => {
+  const html = render();
+  assert.match(html, />MIRR</);
+
+  const grantHtml = render({ policyMode: 'custom', customCapexGrantShare: 1 });
+  assert.match(grantHtml, /n\/a \(no net investment\)/);
+  assert.match(grantHtml, /no net upfront investment/);
+
+  const levered = render({ financingEnabled: true });
+  assert.match(levered, />Equity MIRR</);
+  assert.match(levered, />Project MIRR</);
+});

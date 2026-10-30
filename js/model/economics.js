@@ -7,10 +7,11 @@
 import { MODEL_ASSUMPTIONS } from '../data/assumptions.js';
 import { DEFAULT_STATE } from '../state/schema.js';
 import {
-  approximateIRR,
+  analyzeIRR,
   buildCashFlowTimeline,
   buildFinancingModel,
   buildReplacementSchedule,
+  calculateMIRR,
   calculateSimplePaybackYears,
   calculateSustainedPaybackYears,
   crf,
@@ -311,19 +312,23 @@ export const economicsMethods = {
       financing.equityUpfront,
       yearlyCashFlows.map(entry => entry.equityCashFlow)
     );
-    const roi = netCapexAtClose > 0 ? (finalCumulativeNetCash / netCapexAtClose) * 100 : 0;
+    // With no net investment at close (e.g. a 100% grant) ROI and IRR are
+    // undefined; payback stays 0 (nothing to recover) and NPV carries the case.
+    const noNetInvestment = !(netCapexAtClose > 0);
+    const roi = noNetInvestment ? NaN : (finalCumulativeNetCash / netCapexAtClose) * 100;
 
-    const projectIrr = approximateIRR([
-      -netCapexAtClose,
-      ...yearlyCashFlows.map(entry => entry.netCashFlow),
-    ], rate);
-    const equityIrr = financing.enabled
-      ? approximateIRR([
-        -financing.equityUpfront,
-        ...yearlyCashFlows.map(entry => entry.equityCashFlow),
-      ], rate)
-      : projectIrr;
+    const projectCashFlowSeries = [-netCapexAtClose, ...yearlyCashFlows.map(entry => entry.netCashFlow)];
+    const equityCashFlowSeries = [-financing.equityUpfront, ...yearlyCashFlows.map(entry => entry.equityCashFlow)];
+    const projectIrrAnalysis = analyzeIRR(projectCashFlowSeries);
+    const equityIrrAnalysis = financing.enabled ? analyzeIRR(equityCashFlowSeries) : projectIrrAnalysis;
+    const projectIrr = projectIrrAnalysis.irr;
+    const equityIrr = equityIrrAnalysis.irr;
     const irr = financing.enabled ? equityIrr : projectIrr;
+    const irrAnalysis = financing.enabled ? equityIrrAnalysis : projectIrrAnalysis;
+    // MIRR finances outflows and reinvests inflows at the discount rate.
+    const projectMirr = calculateMIRR(projectCashFlowSeries, rate, rate);
+    const equityMirr = financing.enabled ? calculateMIRR(equityCashFlowSeries, rate, rate) : projectMirr;
+    const mirr = financing.enabled ? equityMirr : projectMirr;
     const financingSummary = {
       ...financing,
       canFullyCoverDebtService: uncoveredDebtServiceYears.length === 0,
@@ -387,10 +392,18 @@ export const economicsMethods = {
       sustainedEquityPaybackYears,
       npv,
       equityNpv,
+      discountRatePercent: state.discountRate,
       roi,
+      noNetInvestment,
       projectIrr,
       equityIrr,
       irr,
+      projectIrrAnalysis: { status: projectIrrAnalysis.status, label: projectIrrAnalysis.label, reason: projectIrrAnalysis.reason },
+      equityIrrAnalysis: { status: equityIrrAnalysis.status, label: equityIrrAnalysis.label, reason: equityIrrAnalysis.reason },
+      irrStatus: irrAnalysis.status,
+      projectMirr,
+      equityMirr,
+      mirr,
       yearlyCashFlows,
       cashFlowTimeline,
       aiCoreAnnualCost,

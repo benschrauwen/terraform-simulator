@@ -127,12 +127,11 @@ export const CONTROL_SPECS = Object.freeze([
     },
   },
 
-  // Project economics
+  // Finance & valuation (solar asset life sits in the Solar Array section)
   { type: 'range', id: 'solarAssetLife', format: formatYears },
   { type: 'range', id: 'analysisHorizonYears', format: formatYears },
   { type: 'range', id: 'discountRate', format: value => `${fixed(1)(value)}%` },
 
-  // Financing
   { type: 'checkbox', id: 'financingEnabled', toggles: 'financingConfig' },
   { type: 'range', id: 'debtShare', stateKey: 'debtSharePercent', format: value => `${intFixed(0)(value)}%` },
   { type: 'range', id: 'debtInterestRate', format: value => `${fixed(2)(value)}%` },

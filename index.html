@@ -180,8 +180,12 @@
             <input type="range" id="panelDegradationAnnual" min="0.4" max="0.8" step="0.05" value="0.65">
             <span class="range-value" id="panelDegradationAnnualValue">0.65%/yr</span>
           </label>
+          <label>Solar Asset Life (years)
+            <input type="range" id="solarAssetLife" min="10" max="40" step="1" value="30">
+            <span class="range-value" id="solarAssetLifeValue">30 years</span>
+          </label>
           <div class="field-note compact-note">
-            Multi-year economics re-dispatch the fixed plant design on the degraded array each year (degradation restarts after a solar replacement).
+            Multi-year economics re-dispatch the fixed plant design on the degraded array each year. Modules and BOS are replaced at the end of their life (land and site prep are kept), and degradation restarts after the replacement.
           </div>
           <label>Mounting Type
             <select id="mountingType"></select>
@@ -534,34 +538,28 @@
               </div>
             </details>
           </div>
-          <div class="market-card">
-            <div class="market-card-header">
-              <div class="market-card-title">Project economics</div>
-              <div class="market-card-subtitle">Keep asset life, evaluation window, and discount rate in one place.</div>
-            </div>
-            <label>Solar Asset Life (years)
-              <input type="range" id="solarAssetLife" min="10" max="40" step="1" value="30">
-              <span class="range-value" id="solarAssetLifeValue">30 years</span>
-            </label>
-            <label>Analysis Horizon (years)
-              <input type="range" id="analysisHorizonYears" min="3" max="30" step="1" value="30">
-              <span class="range-value" id="analysisHorizonYearsValue">30 years</span>
-            </label>
-            <label>Discount Rate (%)
-              <input type="range" id="discountRate" min="0" max="20" step="0.5" value="8">
-              <span class="range-value" id="discountRateValue">8.0%</span>
-            </label>
-          </div>
         </div>
       </section>
 
-      <!-- Financing -->
+      <!-- Finance & valuation -->
       <section class="config-section" data-section="financing">
         <h2 class="section-header" data-toggle="financing">
-          <span class="icon">🏦</span> Financing
+          <span class="icon">🏦</span> Finance &amp; Valuation
           <span class="chevron">▾</span>
         </h2>
         <div class="section-body financing-section-body">
+          <div class="module-group-title">Valuation</div>
+          <div class="module-group-subtitle">
+            How returns are measured: years of cash flow counted, and the rate future cash is discounted at (NPV, MIRR, LCOE and levelized metrics).
+          </div>
+          <label>Analysis Horizon (years)
+            <input type="range" id="analysisHorizonYears" min="3" max="30" step="1" value="30">
+            <span class="range-value" id="analysisHorizonYearsValue">30 years</span>
+          </label>
+          <label>Discount Rate (%)
+            <input type="range" id="discountRate" min="0" max="20" step="0.5" value="8">
+            <span class="range-value" id="discountRateValue">8.0%</span>
+          </label>
           <div class="module-group-title">Debt structure</div>
           <div class="module-group-subtitle">
             Switch between unlevered project returns and an equity-style view funded with upfront debt.

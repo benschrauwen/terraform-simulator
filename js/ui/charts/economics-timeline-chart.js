@@ -12,15 +12,19 @@ import {
 
 const money = FormatNumbers.formatMoney;
 
-function describeTimeline(timeline, financing) {
+/* `text` overrides the cost wording for pages whose O&M is more than fixed
+   O&M (the datacenter app: energy, fuel and water too). */
+const DEFAULT_TIMELINE_TEXT = { operating: 'fixed O&M', operatingLegend: 'O&M', replacementLegend: 'Replacement CAPEX', replacementNote: 'any scheduled replacement CAPEX' };
+
+function describeTimeline(timeline, financing, text = DEFAULT_TIMELINE_TEXT) {
   const noteParts = [
     timeline.financed
       ? (timeline.hasPolicyCredits
-          ? 'Bars show annual market revenue, incentive support, fixed O&M, scheduled replacements, and debt service when financing is enabled.'
-          : 'Bars show annual revenue, fixed O&M, scheduled replacements, and debt service when financing is enabled.')
+          ? `Bars show annual market revenue, incentive support, ${text.operating}, scheduled replacements, and debt service when financing is enabled.`
+          : `Bars show annual revenue, ${text.operating}, scheduled replacements, and debt service when financing is enabled.`)
       : (timeline.hasPolicyCredits
-          ? 'Bars show annual market revenue, incentive support, fixed O&M, and any scheduled replacement CAPEX.'
-          : 'Bars show annual revenue, fixed O&M, and any scheduled replacement CAPEX.'),
+          ? `Bars show annual market revenue, incentive support, ${text.operating}, and ${text.replacementNote}.`
+          : `Bars show annual revenue, ${text.operating}, and ${text.replacementNote}.`),
     timeline.financed
       ? 'The dashed green line starts at upfront CAPEX and tracks cumulative project cash before financing; the solid blue line starts at sponsor cash at close and tracks cumulative equity cash after debt service.'
       : 'The green line starts at upfront CAPEX at close and tracks cumulative project cash through the selected analysis horizon.',
@@ -76,7 +80,7 @@ function cumulativeLine(label, data, borderColor, backgroundColor, extra = {}) {
 
 const negate = values => values.map(value => -value);
 
-function buildTimelineDatasets(timeline) {
+function buildTimelineDatasets(timeline, text = DEFAULT_TIMELINE_TEXT) {
   return [
     cashBar(
       timeline.hasPolicyCredits ? 'Market revenue' : 'Revenue',
@@ -87,9 +91,9 @@ function buildTimelineDatasets(timeline) {
     ...(timeline.hasPolicyCredits
       ? [cashBar('Incentive support', timeline.annualPolicyCredits, 'rgba(250, 204, 21, 0.58)', '#facc15')]
       : []),
-    cashBar('O&M', negate(timeline.annualOperatingCost), 'rgba(148, 163, 184, 0.55)', '#94a3b8'),
+    cashBar(text.operatingLegend, negate(timeline.annualOperatingCost), 'rgba(148, 163, 184, 0.55)', '#94a3b8'),
     ...(timeline.hasReplacements
-      ? [cashBar('Replacement CAPEX', negate(timeline.replacementCapex), 'rgba(199, 115, 121, 0.62)', '#c77379')]
+      ? [cashBar(text.replacementLegend, negate(timeline.replacementCapex), 'rgba(199, 115, 121, 0.62)', '#c77379')]
       : []),
     ...(timeline.hasSalvage
       ? [cashBar('Salvage value', timeline.salvageValue, 'rgba(132, 204, 22, 0.55)', '#84cc16')]
@@ -158,9 +162,10 @@ export const economicsTimelineChartMethods = {
     }
 
     const note = document.getElementById('economicsTimelineNote');
-    if (note) note.textContent = describeTimeline(timeline, r.economics.financing);
+    const text = { ...DEFAULT_TIMELINE_TEXT, ...this.economicsTimelineText };
+    if (note) note.textContent = describeTimeline(timeline, r.economics.financing, text);
 
-    const datasets = buildTimelineDatasets(timeline);
+    const datasets = buildTimelineDatasets(timeline, text);
     const chartKey = JSON.stringify({
       labels: timeline.labels,
       annualRevenue: timeline.annualRevenue,

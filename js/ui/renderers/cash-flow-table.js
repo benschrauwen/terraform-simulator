@@ -33,10 +33,10 @@ function formatCell(column, row) {
 }
 
 /** Table markup for buildCashFlowTable output; every text value is escaped. */
-export function renderCashFlowTable(table) {
+export function renderCashFlowTable(table, columnTooltips = COLUMN_TOOLTIPS) {
   const lastIndex = table.rows.length - 1;
   const head = table.columns.map(column => (
-    `<th scope="col">${tooltipLabel(column.label, COLUMN_TOOLTIPS[column.key] || '')}</th>`
+    `<th scope="col">${tooltipLabel(column.label, columnTooltips[column.key] || '')}</th>`
   )).join('');
   const body = table.rows.map((row, index) => {
     const classes = [];
@@ -65,7 +65,7 @@ export function renderCashFlowTable(table) {
   return `<table class="cash-flow-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
-function describeTable(table) {
+export function describeCashFlowTable(table) {
   const parts = [
     `Project cash flows before financing, discounted at ${FormatNumbers.fixed(table.discountRatePercent, 1)}%; outflows in parentheses.`,
     'The final cumulative discounted value is the NPV.',
@@ -132,9 +132,10 @@ export const cashFlowTableMethods = {
     const container = document.getElementById('cashFlowTableScroll');
     if (!container) return;
     const table = buildCashFlowTable(r.economics);
-    container.innerHTML = renderCashFlowTable(table);
+    // A page with other cash items (the datacenter app) supplies its own column tooltips.
+    container.innerHTML = renderCashFlowTable(table, this.cashFlowColumnTooltips || COLUMN_TOOLTIPS);
     const note = document.getElementById('cashFlowNote');
-    if (note) note.textContent = describeTable(table);
+    if (note) note.textContent = describeCashFlowTable(table);
     const summary = document.getElementById('cashFlowSummary');
     if (summary) {
       summary.textContent = `NPV ${FormatNumbers.formatMoney(table.npv)}${table.paybackYear ? ` · payback year ${table.paybackYear}` : ''}`;
@@ -146,8 +147,10 @@ export const cashFlowTableMethods = {
     // Bring the address bar up to date so the link reopens this scenario.
     this.syncShareStateUrl?.();
     const shareUrl = `${window.location.origin}${window.location.pathname}${window.location.hash}`;
-    const csv = buildCashFlowCsv(buildCashFlowTable(r.economics), buildCsvHeader(r, shareUrl));
+    // The datacenter app supplies its own CSV header rows and file name.
+    const header = this.buildCashFlowCsvHeader ? this.buildCashFlowCsvHeader(r, shareUrl) : buildCsvHeader(r, shareUrl);
+    const csv = buildCashFlowCsv(buildCashFlowTable(r.economics), header);
     const date = new Date().toISOString().slice(0, 10);
-    downloadText(`plant-cash-flows-${date}.csv`, csv, 'text/csv;charset=utf-8');
+    downloadText(`${this.cashFlowCsvFilePrefix || 'plant-cash-flows'}-${date}.csv`, csv, 'text/csv;charset=utf-8');
   },
 };

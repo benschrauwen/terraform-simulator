@@ -234,7 +234,9 @@ export const tornadoChartMethods = {
     }
     if (!card || !canvas) return;
 
-    const tornado = r ? runTornado(r.state || this.state) : null;
+    // A page with its own model (the datacenter app) supplies runTornadoModel.
+    const runModel = this.runTornadoModel ? state => this.runTornadoModel(state) : runTornado;
+    const tornado = r ? runModel(r.state || this.state) : null;
     this.lastTornado = tornado;
     card.hidden = !tornado?.bars.length;
     if (card.hidden) {

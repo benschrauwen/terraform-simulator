@@ -134,7 +134,8 @@ export const sliderMarkerMethods = {
     this.sliderMarkerBindings = [];
     this.logTickBindings = [];
 
-    Object.entries(SLIDER_MARKERS).forEach(([id, markers]) => {
+    // A page with other sliders (the datacenter app) supplies its own definitions.
+    Object.entries(this.sliderMarkerDefinitions || SLIDER_MARKERS).forEach(([id, markers]) => {
       const input = document.getElementById(id);
       if (!input) return;
 

@@ -258,6 +258,30 @@ export function buildOutageCounts(units, outageHours, startHour) {
   return counts;
 }
 
+/*
+ * Hourly output and heat-rate factors of a gas unit at the site's dry-bulb
+ * temperatures (power.js ambientDerate): output x (1 - %/°C x max(0, T -
+ * reference)), heat rate x (1 + %/°C x the same). Null without a derate
+ * (factor 1 every hour) or without temperatures.
+ */
+export function gasAmbientFactors(typeData, ambientC) {
+  const derate = typeData?.ambientDerate;
+  if (!derate || !ambientC || !(derate.outputPercentPerC > 0 || derate.heatRatePercentPerC > 0)) return null;
+  const output = new Float64Array(HOURS_PER_YEAR);
+  const heatRate = new Float64Array(HOURS_PER_YEAR);
+  let derated = false;
+  for (let h = 0; h < HOURS_PER_YEAR; h++) {
+    const above = Math.max(0, ambientC[h] - derate.referenceC);
+    output[h] = Math.max(0, 1 - (derate.outputPercentPerC / 100) * above);
+    heatRate[h] = 1 + (derate.heatRatePercentPerC / 100) * above;
+    if (above > 0) derated = true;
+  }
+  if (!derated) return null;
+  let minOutput = 1;
+  for (let h = 0; h < HOURS_PER_YEAR; h++) if (output[h] < minOutput) minOutput = output[h];
+  return { output, heatRate, minOutput };
+}
+
 const EMPTY_FIRM = Object.freeze({
   family: 'none', type: null, typeData: null, label: 'None', units: 0, unitSizeMW: 0, capacityMW: 0, mustTake: false,
   availableKW: null, outageHoursPerUnit: 0, availabilityFraction: 0, heatRate: 0, partLoad: null, marginalCostPerMWh: Infinity,
@@ -273,9 +297,10 @@ const EMPTY_FIRM = Object.freeze({
  * (8760), outageHoursPerUnit, availabilityFraction, heatRate (gas, HHV
  * MMBtu/MWh), partLoad, marginalCostPerMWh (gas: (fuel price + carbon price
  * x the fuel's t CO2/MMBtu) x heat rate + VOM), sparesReplacedByBattery,
- * onSite (false for an existing plant under contract), sizing }.
+ * onSite (false for an existing plant under contract), sizing, ambient
+ * (gas: hourly output / heat-rate factors at ambientC, gasAmbientFactors, or null) }.
  */
-export function buildFirmSupply(state, { meanLoadKW, autoBaseUnits = 0, replacedSpares = 0 }) {
+export function buildFirmSupply(state, { meanLoadKW, autoBaseUnits = 0, replacedSpares = 0, ambientC = null }) {
   const family = state.firmFamily;
   if (family === 'gas') {
     const typeData = GAS_GENSET_TYPES[state.gasType];
@@ -292,10 +317,11 @@ export function buildFirmSupply(state, { meanLoadKW, autoBaseUnits = 0, replaced
     const availabilityFraction = state.gasAvailabilityPercent / 100;
     const outageHoursPerUnit = (1 - availabilityFraction) * HOURS_PER_YEAR;
     const counts = buildOutageCounts(units, outageHoursPerUnit, A.gasOutageStartDayOfYear * 24);
+    const ambient = gasAmbientFactors(typeData, ambientC);
     const availableKW = new Float64Array(HOURS_PER_YEAR);
-    for (let h = 0; h < HOURS_PER_YEAR; h++) availableKW[h] = Math.max(0, units - counts[h]) * unitSizeMW * 1000;
+    for (let h = 0; h < HOURS_PER_YEAR; h++) availableKW[h] = Math.max(0, units - counts[h]) * unitSizeMW * 1000 * (ambient ? ambient.output[h] : 1);
     return {
-      family, type: state.gasType, typeData, label: typeData.label, units, unitSizeMW, capacityMW: units * unitSizeMW,
+      family, type: state.gasType, ambient, typeData, label: typeData.label, units, unitSizeMW, capacityMW: units * unitSizeMW,
       mustTake: false, availableKW, outageHoursPerUnit, availabilityFraction,
       heatRate: state.gasHeatRateMMBtuPerMWh, partLoad: typeData.partLoad,
       marginalCostPerMWh: state.gasHeatRateMMBtuPerMWh * (state.gasFuelPricePerMMBtu + carbonPerMMBtu) + state.gasVariableOmPerMWh,
@@ -340,11 +366,13 @@ export function buildFirmSupply(state, { meanLoadKW, autoBaseUnits = 0, replaced
  * to (1 + heatRatePenaltyAt50Percent) at 50% load (extrapolated below,
  * floored at the minimum stable load), per power.js partLoad.
  */
-export function gasFuelMMBtu(genKW, firm) {
+export function gasFuelMMBtu(genKW, firm, hour = -1) {
   if (!(genKW > 0)) return 0;
-  const unitKW = firm.unitSizeMW * 1000;
+  // In hot hours each unit delivers less (and burns more per MWh): firm.ambient.
+  const ambient = hour >= 0 ? firm.ambient : null;
+  const unitKW = firm.unitSizeMW * 1000 * (ambient ? ambient.output[hour] : 1);
   const committed = Math.max(1, Math.ceil(genKW / unitKW - 1e-9));
   const loading = Math.max(genKW / (committed * unitKW), (firm.partLoad?.minStableLoadPercent || 0) / 100);
   const penalty = (firm.partLoad?.heatRatePenaltyAt50Percent || 0) * Math.max(0, (1 - loading) / 0.5);
-  return (genKW / 1000) * firm.heatRate * (1 + penalty);
+  return (genKW / 1000) * firm.heatRate * (ambient ? ambient.heatRate[hour] : 1) * (1 + penalty);
 }

@@ -212,7 +212,7 @@ function runPass(inputs, startSocKWh, capture) {
     t.curtailedKWh += curtailedKW;
     t.unservedKWh += deficit;
     if (gasKW > 0) {
-      t.fuelMMBtu += gasFuelMMBtu(gasKW, inputs.firm);
+      t.fuelMMBtu += gasFuelMMBtu(gasKW, inputs.firm, h);
       t.gasRunHours += 1;
       if (grid.outage?.[h]) t.gasOutageRunHours += 1;
     }

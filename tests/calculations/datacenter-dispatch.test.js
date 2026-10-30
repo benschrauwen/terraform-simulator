@@ -126,10 +126,17 @@ test('islanded gas: N+1 units serve every hour; too few units leave exactly the 
   assert.ok(base <= Math.ceil(nPlusOne.load.designPeakMW / 10));
 
   // 5 x 10 MW engines against a ~80 MW load: short in every hour. Each unit is
-  // out round(3% x 8760) = 263 h one after another (no overlap), so the
-  // plant delivers 50 MW x 8760 h - 10 MW x 5 x 263 h; the rest is unserved.
-  const short = calculateDatacenterScenario({ ...ARCHITECTURES.islandedGasOnly, firmSizingMode: 'manual', firmUnits: 5 }, { fastMode: true });
-  const delivered = 50 * 8760 - 10 * 5 * 263;
+  // out round(3% x 8760) = 263 h one after another (no overlap), and above
+  // 25 °C each engine gives 0.18%/°C less (power.js ambientDerate), so the
+  // plant delivers sum_h (5 - out_h) x 10 MW x (1 - 0.0018 x max(0, T_h - 25));
+  // without the derate 50 MW x 8760 h - 10 MW x 5 x 263 h. The rest is unserved.
+  const short = calculateDatacenterScenario({ ...ARCHITECTURES.islandedGasOnly, firmSizingMode: 'manual', firmUnits: 5 });
+  let delivered = 0;
+  for (let h = 0; h < 8760; h++) {
+    const out = h >= 60 * 24 && h < 60 * 24 + 5 * 263 ? 1 : 0; // blocks from 1 March (day 60)
+    delivered += (5 - out) * 10 * (1 - 0.0018 * Math.max(0, short.dispatch.hourly.dryBulbC[h] - 25));
+  }
+  assert.ok(delivered < 50 * 8760 - 10 * 5 * 263);
   assert.ok(Math.abs(short.dispatch.annual.gasMWh - delivered) < 1e-6);
   assert.ok(Math.abs(short.reliability.unservedMWh - (short.dispatch.annual.loadMWh - delivered)) < 1e-6);
   assert.equal(short.reliability.uptimePercent, 0);

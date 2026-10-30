@@ -192,7 +192,9 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
   const exportAllowed = state.gridExportEnabled && grid.connected;
   // Gas sized for the uptime target ('auto'), or (full mode) what the
   // target would need next to a manual count; firm-sizing.js.
-  let firm = buildFirmSupply(state, { meanLoadKW });
+  // Gas units derate in hot hours (power.js ambientDerate, the site's typical-day dry bulb).
+  const ambientC = cooling.dryBulbC;
+  let firm = buildFirmSupply(state, { meanLoadKW, ambientC });
   const order = getDispatchOrder(state, firm);
   const autoGas = firm.family === 'gas' && state.firmSizingMode === 'auto';
   // Spares a battery stands in for (none without a plant: no spares to replace).
@@ -201,7 +203,7 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
   if (firm.family === 'gas' && (autoGas || !fastMode)) {
     const key = JSON.stringify([...SUPPLY_KEYS.map(k => state[k]), order]);
     sizing = sizeGasForUptime(reserve.sizingState, { loadKW, solar, grid, firm, order, exportAllowed, key });
-    if (autoGas) firm = buildFirmSupply(state, { meanLoadKW, autoBaseUnits: sizing.minUnits, replacedSpares: reserve.units });
+    if (autoGas) firm = buildFirmSupply(state, { meanLoadKW, autoBaseUnits: sizing.minUnits, replacedSpares: reserve.units, ambientC });
   }
   const reserveFloorKWh = firm.sparesReplacedByBattery > 0 ? reserve.floorKWh * firm.sparesReplacedByBattery / reserve.units : 0;
   const dispatchInputs = {
@@ -394,6 +396,8 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
       sizing: firm.sizing,
       // Spare units a battery stands in for, and the energy it holds for them.
       sparesReplacedByBattery: firm.sparesReplacedByBattery || 0,
+      // Gas: the lowest hourly output share of a unit in hot weather (supply.js gasAmbientFactors).
+      ambientMinOutputFraction: firm.ambient ? firm.ambient.minOutput : 1,
       batteryReserveMWh: reserveFloorKWh / 1000,
       // Gas: what the uptime target needs (firm-sizing.js); null for nuclear
       // and for a manual gas count in fast mode.

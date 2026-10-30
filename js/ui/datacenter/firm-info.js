@@ -20,6 +20,7 @@ const leadText = (key, scheduleCase) => `${fixed(typicalLeadMonths(POWER_LEAD_TI
 export function gasTradeOffLine(type, scheduleCase = 'typical') {
   return [
     `${efficiency(type.heatRateMMBtuPerMWh.default)} efficient (HHV)`,
+    `${hotDayOutput(type)} output at 40 °C`,
     `$${fixed(type.capexPerKW.default, 0)}/kW`,
     `${leadText(type.leadTimeKey, scheduleCase)} to power`,
     `${startTime(type.startMinutes)} start`,
@@ -116,6 +117,10 @@ function firmSizing(state, r) {
       infoRow('Design facility peak', formatMW(designPeak), 'IT nameplate x the hottest hour\'s PUE: what the plant would need to carry the full IT load on the hottest hour. Auto sizing covers the modeled load instead.'),
       firmCapexShare(r),
     );
+    const derate = GAS_GENSET_TYPES[state.gasType]?.ambientDerate;
+    if (derate && firm.ambientMinOutputFraction < 1) {
+      rows.push(infoRow('Hot-weather output', `${fixed(firm.ambientMinOutputFraction * 100, 0)}% of rating in the hottest hour`, `Output falls ${fixed(derate.outputPercentPerC, 2)}%/°C above ${fixed(derate.referenceC, 0)} °C (no inlet cooling); auto sizing adds units for the hot hours.`));
+    }
     if (r.dispatch.annual.gasRunHours > 0) rows.push(infoRow('Run hours', `${fixed(r.dispatch.annual.gasRunHours, 0)} h/yr`));
     const engine = firm.emergencyEngine;
     if (engine) {
@@ -129,6 +134,13 @@ function firmSizing(state, r) {
   return rows.join('');
 }
 
+/** A unit's output at `tempC` as a share of its rating (power.js ambientDerate). */
+function ambientOutputShare(type, tempC) {
+  const derate = type.ambientDerate;
+  return derate ? Math.max(0, 1 - (derate.outputPercentPerC / 100) * Math.max(0, tempC - derate.referenceC)) : 1;
+}
+const hotDayOutput = type => `${fixed(ambientOutputShare(type, 40) * 100, 0)}%`;
+
 function compareTable(headers, rows, selectedKey) {
   const head = headers.map(text => `<th scope="col">${esc(text)}</th>`).join('');
   const body = rows.map(({ key, cells }) => `<tr${key === selectedKey ? ' class="dc-selected-row"' : ''}>${cells.map((cell, index) => (index === 0 ? `<th scope="row">${esc(cell)}</th>` : `<td>${esc(cell)}</td>`)).join('')}</tr>`).join('');
@@ -139,9 +151,9 @@ function firmCompare(state) {
   if (state.firmFamily === 'gas') {
     const rows = Object.entries(GAS_GENSET_TYPES).map(([key, type]) => ({
       key,
-      cells: [type.label, efficiency(type.heatRateMMBtuPerMWh.default), `$${fixed(type.capexPerKW.default, 0)}`, leadText(type.leadTimeKey, state.scheduleCase), startTime(type.startMinutes), type.water?.consumptionLPerMWh > 0 ? 'wet' : 'dry'],
+      cells: [type.label, efficiency(type.heatRateMMBtuPerMWh.default), `$${fixed(type.capexPerKW.default, 0)}`, leadText(type.leadTimeKey, state.scheduleCase), startTime(type.startMinutes), hotDayOutput(type), type.water?.consumptionLPerMWh > 0 ? 'wet' : 'dry'],
     }));
-    return `<details class="dc-details"><summary>Compare generator options</summary>${compareTable(['Type', 'Eff.', '$/kW', 'To power', 'Start', 'Water'], rows, state.gasType)}</details>`;
+    return `<details class="dc-details"><summary>Compare generator options</summary>${compareTable(['Type', 'Eff.', '$/kW', 'To power', 'Start', 'At 40 °C', 'Water'], rows, state.gasType)}${note('At 40 °C: output as a share of the rating in a 40 °C hour (power.js ambientDerate; no inlet cooling).')}</details>`;
   }
   if (state.firmFamily === 'nuclear') {
     const rows = Object.entries(NUCLEAR_TYPES).map(([key, type]) => ({

@@ -285,6 +285,11 @@ export function getGensetFuel(type) {
      availabilityPercent, forcedOutageRatePercent   per unit (N+1 sizing)
      water                 { consumptionLPerMWh, withdrawalLPerMWh }
      footprintM2PerMW, leadTimeKey (POWER_LEAD_TIMES), tradeOff
+     ambientDerate         hot weather: { referenceC, outputPercentPerC,
+                           heatRatePercentPerC }: above referenceC dry bulb,
+                           a unit's output falls (and its heat rate rises) by
+                           that % per °C (supply.js gasAmbientFactors; no
+                           uplift below it, conservative). No inlet cooling.
 
    2026 price context: EIA AEO2026 (2025$; Sargent & Lundy basis) is the
    cost floor; Lazard LCOE+ v19 (Jul 2026) captures 2026 quotes. Wood
@@ -330,6 +335,12 @@ export const GAS_GENSET_TYPES = {
     forcedOutageRatePercent: 3, // judgment
     water: { consumptionLPerMWh: 0, withdrawalLPerMWh: 0 }, // judgment: closed-loop radiator cooling
     footprintM2PerMW: 150, // judgment: engine hall + radiators + exhaust stacks
+    // EPA CHP Catalog (2015) sec. 2.4.2: engines are rated at 77 °F (25 °C);
+    // power and efficiency fall ~1% per 10 °F above it (~0.18%/°C). Wärtsilä:
+    // engine output down "less than 2 per cent" at 45 °C (vendor).
+    // https://www.epa.gov/sites/default/files/2015-07/documents/catalog_of_chp_technologies.pdf
+    // https://www.wartsila.com/energy/learn-more/technology-comparison-engines-vs-aeros/derating-due-to-ambient-temperature
+    ambientDerate: { referenceC: 25, outputPercentPerC: 0.18, heatRatePercentPerC: 0.18 },
     leadTimeKey: 'gas-recip',
     tradeOff: 'Highest simple-cycle efficiency at small unit size, 2-minute starts and flat part-load efficiency; modular N+1/N+2 is natural. More units to maintain and higher O&M per kW.',
   },
@@ -365,6 +376,11 @@ export const GAS_GENSET_TYPES = {
     forcedOutageRatePercent: 3, // judgment
     water: { consumptionLPerMWh: 0, withdrawalLPerMWh: 0 }, // judgment: dry; Sprint/water-injected NOx control uses some
     footprintM2PerMW: 80, // judgment: packaged units on skids
+    // GE LM6000 PC SPRINT without inlet cooling: 51.3 MW at 8.9 °C -> 38.5 MW
+    // at 37.8 °C (~0.86%/°C), heat rate > +6% (~0.2%/°C) (POWER, 2013-06-01);
+    // GT PRO aeroderivative ~26% below ISO at 45 °C (Wärtsilä, vendor).
+    // https://www.powermag.com/improving-warm-weather-performance-of-the-lm6000/
+    ambientDerate: { referenceC: 15, outputPercentPerC: 0.86, heatRatePercentPerC: 0.2 },
     leadTimeKey: 'gas-aero',
     tradeOff: 'Fast 5-minute starts and steep ramps for AI load swings, compact and lighter; moderate efficiency and a tight 2026 supply chain.',
   },
@@ -396,6 +412,12 @@ export const GAS_GENSET_TYPES = {
     forcedOutageRatePercent: 4, // judgment
     water: { consumptionLPerMWh: 0, withdrawalLPerMWh: 0 }, // judgment: dry simple cycle
     footprintM2PerMW: 60, // judgment
+    // Siemens SGT-800 (57 MW rating) power vs intake temperature: ~56.8 MW
+    // at 15 °C, 47.0 at 40 °C (~0.69%/°C); heat rate ~9.0 -> 9.46 MJ/kWh
+    // (~0.2%/°C) (brochure chart, read +/-2%). EPA CHP Catalog: Solar Taurus 70
+    // 80% of ISO output at 100 °F (~0.88%/°C).
+    // https://assets.new.siemens.com/siemens/assets/api/uuid:daeb2935-2ea5-4400-a5dc-653de64ca7d3/gas-turbine-sgt-800.pdf
+    ambientDerate: { referenceC: 15, outputPercentPerC: 0.7, heatRatePercentPerC: 0.2 },
     leadTimeKey: 'gas-industrial-sc',
     tradeOff: 'Lowest $/kW of the gas options and fine for backup that runs few hours; frame units are large and lumpy and wait ~5 years for delivery.',
   },
@@ -428,6 +450,13 @@ export const GAS_GENSET_TYPES = {
     water: { consumptionLPerMWh: Math.round(205 * LITRES_PER_GALLON), withdrawalLPerMWh: Math.round(255 * LITRES_PER_GALLON) },
     waterDryCooled: { consumptionLPerMWh: Math.round(2 * LITRES_PER_GALLON), withdrawalLPerMWh: Math.round(2 * LITRES_PER_GALLON) },
     footprintM2PerMW: 100, // judgment: incl. HRSG, steam turbine and cooling tower
+    // Plant output vs ambient: ~0.45%/°C (Arrieta & Lora 2005, 2 x 501F,
+    // search index) to 0.96%/°C (Şen et al. 2018 regression in the CPUC
+    // Energy Division proposal, R.21-10-002, 2023-01-20), which calibrated only
+    // ~0.17%/°C against CAISO curtailments (inlet cooling). Default judgment
+    // 0.5%/°C above ISO 15 °C; heat rate change not modeled (no source).
+    // https://www.cpuc.ca.gov/-/media/cpuc-website/divisions/energy-division/documents/resource-adequacy-homepage/r21-10-002/4_ed-proposal-for-phase-3-derates.pdf
+    ambientDerate: { referenceC: 15, outputPercentPerC: 0.5, heatRatePercentPerC: 0 },
     leadTimeKey: 'gas-ccgt',
     tradeOff: 'Best fuel efficiency and lowest running cost; slow starts, 600+ MW blocks, water-hungry with wet cooling, and the longest turbine wait.',
   },
@@ -460,6 +489,10 @@ export const GAS_GENSET_TYPES = {
     // Datasheet: ~9 m x 1.3 m per 325 kW server = ~36 m2/MW of equipment;
     // x ~1.7 for access aisles (judgment).
     footprintM2PerMW: 60,
+    // Bloom Energy Server 6.5: operating range -20 to 45 °C, no derate
+    // stated (datasheet, Feb 2026).
+    // https://www.bloomenergy.com/wp-content/uploads/bloom-energy-server-datasheet-feb-2026.pdf
+    ambientDerate: { referenceC: 45, outputPercentPerC: 0, heatRatePercentPerC: 0 },
     leadTimeKey: 'gas-sofc',
     tradeOff: 'Efficient, no water, near-zero NOx, small modules that permit fast; price is high and unpublished, and output ramps slowly, so it needs a battery for AI load swings.',
   },
@@ -486,6 +519,11 @@ export const GAS_GENSET_TYPES = {
     forcedOutageRatePercent: 5, // judgment
     water: { consumptionLPerMWh: 0, withdrawalLPerMWh: 0 }, // judgment
     footprintM2PerMW: 80, // judgment
+    // Solar Titan 130 (the SMT-130 core) available power: ~14.9 MW at 15 °C,
+    // 13.4 at 30 °C, 11.2 at 45 °C (~0.8%/°C); heat rate ~10.2 -> 10.75 MJ/kWh
+    // at 30 °C (~0.36%/°C) (datasheet chart, read +/-2%).
+    // https://www.globalpwr.com/wp-content/uploads/cut-sheets/gps-titan130-spec-sheet.pdf
+    ambientDerate: { referenceC: 15, outputPercentPerC: 0.8, heatRatePercentPerC: 0.36 },
     leadTimeKey: 'gas-bridge',
     tradeOff: 'Fastest path to on-site power (months) and easy to remove later; least efficient, highest emissions per MWh, and contested air permits.',
   },
@@ -536,6 +574,10 @@ export const GAS_GENSET_TYPES = {
     forcedOutageRatePercent: 2, // judgment (fail-to-start/run on demand)
     water: { consumptionLPerMWh: 0, withdrawalLPerMWh: 0 }, // radiator-cooled
     footprintM2PerMW: 40, // judgment: 40-ft enclosures with belly tanks in a generator yard, with access
+    // Cat 3516C cooling packages for ambients up to 50 °C; MTU DS3000 radiator
+    // rated 45 °C ("consult ... for temperature derations"). Above 45 °C:
+    // Cummins QSK95 ~12.1% per 10 °C (search index only).
+    ambientDerate: { referenceC: 45, outputPercentPerC: 1.2, heatRatePercentPerC: 0 },
     leadTimeKey: 'diesel-standby',
     // EPA emergency stationary engines (40 CFR 60.4211(f), Subpart IIII;
     // 63.6640(f), Subpart ZZZZ): emergency operation is unlimited; maintenance

@@ -29,7 +29,8 @@
    buildOutageCounts). The fewest N with at most H failing hours starts at
    ceil(required MW / unit size), required MW = the (H+1)-th largest need
    (all units available), and steps up while maintenance blocks overlap
-   needed hours. More units never remove capacity from any hour, so the
+   needed hours or hot hours derate the units (power.js ambientDerate: G(h)
+   uses each unit's output at that hour's temperature). More units never remove capacity from any hour, so the
    first N that passes is the minimum.
 
    Fallback ('bisection'). A reserve battery that is charged from spare gas
@@ -64,8 +65,9 @@ const NEED_MARGIN_KW = 1e-6;
 export function gasAvailableKW(units, firm) {
   const counts = buildOutageCounts(units, firm.outageHoursPerUnit, A.gasOutageStartDayOfYear * 24);
   const unitKW = firm.unitSizeMW * 1000;
+  const output = firm.ambient?.output;
   const available = new Float64Array(HOURS_PER_YEAR);
-  for (let h = 0; h < HOURS_PER_YEAR; h++) available[h] = Math.max(0, units - counts[h]) * unitKW;
+  for (let h = 0; h < HOURS_PER_YEAR; h++) available[h] = Math.max(0, units - counts[h]) * unitKW * (output ? output[h] : 1);
   return available;
 }
 
@@ -79,9 +81,10 @@ function failingHours(needs, units, firm) {
   if (units <= 0) return needs.length;
   const counts = buildOutageCounts(units, firm.outageHoursPerUnit, A.gasOutageStartDayOfYear * 24);
   const unitKW = firm.unitSizeMW * 1000;
+  const output = firm.ambient?.output;
   let failing = 0;
   for (const { hour, kW } of needs) {
-    if (Math.max(0, units - counts[hour]) * unitKW < kW + NEED_MARGIN_KW) failing += 1;
+    if (Math.max(0, units - counts[hour]) * unitKW * (output ? output[hour] : 1) < kW + NEED_MARGIN_KW) failing += 1;
   }
   return failing;
 }

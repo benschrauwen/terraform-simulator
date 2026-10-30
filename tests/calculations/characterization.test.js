@@ -70,6 +70,7 @@ const SCENARIOS = {
   horizon40: { analysisHorizonYears: 40 },
   aiCompute: { aiComputeEnabled: true },
   aiBattery8: { aiComputeEnabled: true, batteryEnabled: true, batteryCapacityMWh: 8, aiReliabilityTarget: 95 },
+  aiFixedLoad: { aiComputeEnabled: true, aiSizingMode: 'fixed', aiLoadKW: 60, aiReliabilityTarget: 99 },
   mars: { body: 'mars' },
   moon: { body: 'moon' },
 };

@@ -103,6 +103,12 @@ export const CORE_STATE_FIELDS = [
 
   { key: 'aiComputeEnabled', type: 'boolean', defaultValue: false },
   { key: 'aiReliabilityTarget', type: 'number', min: 0, max: 99.9999, defaultValue: 99.9 },
+  // GPU cluster sizing: 'max' = largest IT load the battery supports at the
+  // target; 'fixed' = the user's aiLoadKW with the battery auto-sized to it
+  // (batteryCapacityMWh is then kept but unused). normalizeState also caps
+  // aiLoadKW at the array's DC peak.
+  { key: 'aiSizingMode', type: 'enum', options: ['max', 'fixed'], defaultValue: 'max' },
+  { key: 'aiLoadKW', type: 'number', min: 1, max: 1e9, defaultValue: 100 },
   { key: 'aiTokenPricePerM', type: 'number', min: 0, max: 1e9, defaultValue: 3.0 },
   { key: 'aiMillionTokensPerMWh', type: 'number', min: 0, max: 1e9, defaultValue: 1000 },
   { key: 'aiGpuCapexPerKW', type: 'number', min: 0, max: 1e9, defaultValue: AI_COMPUTE_DEFAULTS.capexPerKW },

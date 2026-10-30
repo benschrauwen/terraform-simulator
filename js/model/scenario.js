@@ -180,7 +180,7 @@ export const scenarioMethods = {
      enabled with none. Report the seeded size (also once the UI has written
      it back into its state) so the UI can say where the battery came from. */
   getSeededAiBatteryMWh(rawState, normalizedState, annualSolarMWh) {
-    if (!normalizedState.aiComputeEnabled) return 0;
+    if (!normalizedState.aiComputeEnabled || normalizedState.aiSizingMode === 'fixed') return 0;
     const batteryMWh = normalizedState.batteryCapacityMWh || 0;
     const requested = Number(rawState?.batteryCapacityMWh);
     if (!(Number.isFinite(requested) && requested > 1e-9)) return batteryMWh;

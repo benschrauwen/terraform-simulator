@@ -66,6 +66,10 @@ const SCENARIOS = {
   euGrantWithAmmonia: { policyMode: 'eu_innovation_fund', ammoniaEnabled: true },
   ai: { aiComputeEnabled: true },
   aiBattery: { aiComputeEnabled: true, batteryCapacityMWh: 8, aiReliabilityTarget: 95 },
+  // GPU load set by the user, battery auto-sized; the user's 8 MWh stays in state unused.
+  aiFixedLoad: { aiComputeEnabled: true, aiSizingMode: 'fixed', aiLoadKW: 80, aiReliabilityTarget: 99.9, batteryCapacityMWh: 8 },
+  // Infeasible: more constant load than the array can carry at the target.
+  aiFixedLoadInfeasible: { aiComputeEnabled: true, aiSizingMode: 'fixed', aiLoadKW: 300, aiReliabilityTarget: 99 },
   mars: sitePreset('Mars'),
   moonPel: { ...sitePreset('Moon'), mountingType: 'dual' },
   berlin: sitePreset('Berlin'),
@@ -366,7 +370,9 @@ test('I6b revenue lines are physical output x price and follow their energy over
     });
     // Hardware is priced on its own sizing basis.
     relClose(result.electrolyzer.capex, result.electrolyzer.allocKW * state.electrolyzerCapex, 1e-12, `${name} electrolyzer capex`);
-    relClose(economics.capex.battery, state.batteryCapacityMWh * 1000 * state.batteryCostPerKWh, 1e-12, `${name} battery capex`);
+    // "Set load" AI sizing prices its own sized battery (the state keeps the user's).
+    const batteryMWh = result.ai.batterySizing ? result.ai.batterySizing.batteryMWh : state.batteryCapacityMWh;
+    relClose(economics.capex.battery, batteryMWh * 1000 * state.batteryCostPerKWh, 1e-12, `${name} battery capex`);
     relClose(result.solar.moduleCapex, state.systemSizeMW * 1e6 * state.panelCostPerW, 1e-12, `${name} module capex`);
   });
 });
@@ -424,6 +430,8 @@ function doubledOverrides(overrides) {
     ...overrides,
     systemSizeMW: base.systemSizeMW * 2,
     batteryCapacityMWh: base.batteryCapacityMWh * 2,
+    // A user-set AI load is extensive too ("Set load" sizing).
+    aiLoadKW: base.aiLoadKW * 2,
   };
 }
 

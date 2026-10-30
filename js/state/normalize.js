@@ -19,6 +19,8 @@ import {
 
 // C0 controls, DEL, zero-width / directional marks, and bidi embedding,
 // override and isolate controls (which can visually reorder text).
+const AI_LOAD_MIN_KW = CORE_STATE_FIELDS.find(field => field.key === 'aiLoadKW').min;
+
 const UNSAFE_LABEL_CHARS = /[\u0000-\u001F\u007F\u200B-\u200F\u202A-\u202E\u2066-\u2069]/g;
 
 export function hasBatteryStorage(state) {
@@ -195,9 +197,15 @@ export function normalizeState(rawState = {}, { seedAiBatteryMWh = () => 0 } = {
     ? input.solarProfileModel
     : solarProfileFallback;
 
-  if (normalized.aiComputeEnabled && normalized.batteryCapacityMWh <= 1e-9) {
+  // "Set load" sizes its own battery, so only "max" mode needs a seed.
+  if (normalized.aiComputeEnabled && normalized.aiSizingMode !== 'fixed' && normalized.batteryCapacityMWh <= 1e-9) {
     normalized.batteryCapacityMWh = seedAiBatteryMWh(normalized);
   }
+  // A constant IT load above the array's DC peak can never run on solar.
+  normalized.aiLoadKW = Math.max(
+    AI_LOAD_MIN_KW,
+    Math.min(normalized.aiLoadKW, Math.max(AI_LOAD_MIN_KW, normalized.systemSizeMW * 1000))
+  );
 
   normalizeModuleStateFields(input, normalized);
   Object.assign(normalized, enforceModuleDependencies(normalized));

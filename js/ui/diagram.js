@@ -4,6 +4,7 @@
    ============================================ */
 
 import { FormatNumbers } from './format-numbers.js';
+import { escapeHtml as esc } from './renderers/markup.js';
 
 const branchOffset = (from, to, amount) => {
   if (!from || !to) return 0;
@@ -831,14 +832,14 @@ export const Diagram = {
     const stroke = active ? this.rgba(color, 0.45) : '#2a3550';
     const tx = icon ? x + 30 : x + 12;
     const iconEl = icon
-      ? `<text x="${x + 12}" y="${y + h / 2 + 1}" font-size="18" dominant-baseline="middle">${icon}</text>`
+      ? `<text x="${x + 12}" y="${y + h / 2 + 1}" font-size="18" dominant-baseline="middle">${esc(icon)}</text>`
       : '';
     return `<g opacity="${opacity}" filter="url(#cardShadow)">
       <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>
       ${iconEl}
-      <text x="${tx}" y="${y + 16}" font-size="11" font-weight="700" fill="#e2e8f0">${title}</text>
-      <text x="${tx}" y="${y + 30}" font-size="12" font-weight="600" fill="${color}">${value}</text>
-      ${subtitle ? `<text x="${tx}" y="${y + h - 8}" font-size="9" fill="#64748b">${this.trunc(subtitle, 30)}</text>` : ''}
+      <text x="${tx}" y="${y + 16}" font-size="11" font-weight="700" fill="#e2e8f0">${esc(title)}</text>
+      <text x="${tx}" y="${y + 30}" font-size="12" font-weight="600" fill="${esc(color)}">${esc(value)}</text>
+      ${subtitle ? `<text x="${tx}" y="${y + h - 8}" font-size="9" fill="#64748b">${esc(this.trunc(subtitle, 30))}</text>` : ''}
     </g>`;
   },
 
@@ -857,7 +858,7 @@ export const Diagram = {
       const my = (y1 + y2) / 2 + labelOffsetY;
       const textWidth = label.length * 5.5 + 10;
       svg += `<rect x="${mx - textWidth / 2}" y="${my - 8}" width="${textWidth}" height="14" rx="4" fill="#111827" fill-opacity="0.9" stroke="${color}" stroke-width="0.5" stroke-opacity="0.3"/>`;
-      svg += `<text x="${mx}" y="${my + 2}" text-anchor="middle" font-size="8.5" font-weight="600" fill="${color}" opacity="0.9">${label}</text>`;
+      svg += `<text x="${mx}" y="${my + 2}" text-anchor="middle" font-size="8.5" font-weight="600" fill="${esc(color)}" opacity="0.9">${esc(label)}</text>`;
     }
 
     return svg;

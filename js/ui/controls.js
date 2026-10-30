@@ -2,6 +2,7 @@
 
 import { PolicyModel } from '../model/policy.js';
 import { CONTROL_SPECS, getModuleControlSpecs } from './control-spec.js';
+import { escapeHtml as esc } from './renderers/markup.js';
 
 function readRangeValue(el) {
   const sliderValue = parseFloat(el.value);
@@ -143,16 +144,16 @@ export const controlMethods = {
 
     container.innerHTML = inputs.map(input => `
       <label>
-        ${input.label}
+        ${esc(input.label)}
         <input
           type="range"
-          id="${input.key}"
-          min="${input.min}"
-          max="${input.max}"
-          step="${input.step}"
-          value="${input.value}"
+          id="${esc(input.key)}"
+          min="${esc(input.min)}"
+          max="${esc(input.max)}"
+          step="${esc(input.step)}"
+          value="${esc(input.value)}"
         >
-        <span class="range-value" id="${input.key}Value">${input.formattedValue}</span>
+        <span class="range-value" id="${esc(input.key)}Value">${esc(input.formattedValue)}</span>
       </label>
     `).join('');
 

@@ -47,6 +47,13 @@
   box-sizing: border-box;
 }
 
+/* The hidden attribute always wins over a display set by a class or element
+   rule (e.g. label { display: block }): the UI toggles visibility with
+   el.hidden, never inline styles (the CSP allows none). */
+[hidden] {
+  display: none !important;
+}
+
 html, body {
   height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;

@@ -3,6 +3,7 @@
 import { Calc } from '../model/index.js';
 import { ModuleCatalog } from '../data/module-catalog.js';
 import { FormatNumbers } from './format-numbers.js';
+import { escapeHtml } from './renderers/markup.js';
 
 const ALLOCATION_KIND_LABELS = {
   productMix: 'Product mix',
@@ -83,7 +84,7 @@ export const uiStateMethods = {
             <a href="https://joint-research-centre.ec.europa.eu/pvgis-online-tool_en" target="_blank" rel="noopener noreferrer">PVGIS</a>
             or
             <a href="https://globalsolaratlas.info/" target="_blank" rel="noopener noreferrer">Global Solar Atlas PVOUT</a>.`
-        : body.siteYieldNote;
+        : escapeHtml(body.siteYieldNote);
     }
     if (powerChartNote) {
       powerChartNote.textContent = body.chartNote || '';
@@ -131,7 +132,7 @@ export const uiStateMethods = {
     const usPolicyFootnotes = document.getElementById('usPolicyFootnotes');
     if (usPolicyFootnotes) {
       const isUsPolicy = String(this.state.policyMode || '').startsWith('us_');
-      usPolicyFootnotes.style.display = isUsPolicy ? '' : 'none';
+      usPolicyFootnotes.hidden = !isUsPolicy;
     }
 
     const debtTermInput = document.getElementById('debtTermYears');
@@ -149,17 +150,17 @@ export const uiStateMethods = {
     }
 
     const methaneMarketWrap = document.getElementById('methaneMarketWrap');
-    if (methaneMarketWrap) methaneMarketWrap.style.display = showMethaneMarket ? 'block' : 'none';
+    if (methaneMarketWrap) methaneMarketWrap.hidden = !showMethaneMarket;
 
     const methanolMarketWrap = document.getElementById('methanolMarketWrap');
-    if (methanolMarketWrap) methanolMarketWrap.style.display = showMethanolMarket ? 'block' : 'none';
+    if (methanolMarketWrap) methanolMarketWrap.hidden = !showMethanolMarket;
 
     const visibleModuleMarketIds = new Set();
     ModuleCatalog.getExploratoryModules().forEach(module => {
       const wrap = document.getElementById(`${module.id}MarketWrap`);
       const hasMarket = ModuleCatalog.hasMarket(module.id, this.state[`${module.id}Route`]);
       const showWrap = hasMarket && (results ? generatedExploratoryIds.has(module.id) : Boolean(this.state[`${module.id}Enabled`]));
-      if (wrap) wrap.style.display = showWrap ? 'block' : 'none';
+      if (wrap) wrap.hidden = !showWrap;
       if (showWrap) visibleModuleMarketIds.add(module.id);
     });
 
@@ -168,13 +169,13 @@ export const uiStateMethods = {
       const showWrap = results
         ? generatedExploratoryIds.size > 0
         : ModuleCatalog.getExploratoryModules().some(module => this.state[`${module.id}Enabled`]);
-      exploratoryOmWrap.style.display = showWrap ? 'block' : 'none';
+      exploratoryOmWrap.hidden = !showWrap;
     }
 
     const productMarketEmptyState = document.getElementById('productMarketEmptyState');
     if (productMarketEmptyState) {
       const hasVisibleMarketControl = showMethaneMarket || showMethanolMarket || visibleModuleMarketIds.size > 0;
-      productMarketEmptyState.style.display = hasVisibleMarketControl ? 'none' : 'block';
+      productMarketEmptyState.hidden = hasVisibleMarketControl;
     }
 
     ModuleCatalog.getExploratoryModules().forEach(module => {
@@ -193,7 +194,7 @@ export const uiStateMethods = {
     const mixInput = document.getElementById('methaneFeedstockSplit');
 
     if (mixControl) {
-      mixControl.style.display = mix.bothEnabled ? 'block' : 'none';
+      mixControl.hidden = !mix.bothEnabled;
     }
     if (mixInput) {
       mixInput.value = this.state.methaneFeedstockSplit;
@@ -207,7 +208,7 @@ export const uiStateMethods = {
 
     const mtgSplitControl = document.getElementById('mtgMethanolSplitControl');
     if (mtgSplitControl) {
-      mtgSplitControl.style.display = this.state.mtgEnabled && this.state.methanolEnabled ? 'block' : 'none';
+      mtgSplitControl.hidden = !(this.state.mtgEnabled && this.state.methanolEnabled);
     }
     const mtgSplitInput = document.getElementById('mtgMethanolSplit');
     if (mtgSplitInput) {

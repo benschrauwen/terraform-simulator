@@ -85,10 +85,10 @@ export function econRow(label, value, cls = '', title = '') {
 }
 
 /**
- * One cell of the production / environmental-impact grids.
- * `_icon` is unused (the dot colour comes from `cls`); it stays until the callers drop it.
+ * One cell of the production / environmental-impact grids (the dot colour
+ * comes from `cls`).
  */
-export function prodItem(cls, _icon, label, value, unit) {
+export function prodItem(cls, label, value, unit) {
   const unitMarkup = unit ? `<span class="prod-unit">${escapeHtml(unit)}</span>` : '';
   return `<div class="production-item ${escapeAttribute(cls)}">
       <span class="prod-label"><span class="prod-dot" aria-hidden="true"></span>${escapeHtml(label)}</span>

@@ -5,7 +5,7 @@ import { Diagram } from '../diagram.js';
 import { FormatNumbers } from '../format-numbers.js';
 import { formatIrrWithStatus, formatMirr, formatSystemSizeMW } from '../formatters.js';
 import { renderEconomicsBreakdown } from './economics.js';
-import { applyTooltip, EDUCATIONAL_TOOLTIPS, prodItem } from './markup.js';
+import { applyTooltip, EDUCATIONAL_TOOLTIPS, escapeAttribute, escapeHtml, prodItem } from './markup.js';
 
 export const rendererMethods = {
   updateInfoDisplays(r) {
@@ -213,7 +213,7 @@ export const rendererMethods = {
     arc.setAttribute('stroke', score >= 70 ? '#7ea96d' : score >= 40 ? '#c79a48' : '#c77379');
     document.getElementById('scoreNumber').textContent = FormatNumbers.fixed(score, 0);
     document.getElementById('scoreBadges').innerHTML = badges.slice(0, 4)
-      .map(badge => `<span class="badge ${badge.cls}">${badge.text}</span>`)
+      .map(badge => `<span class="badge ${escapeAttribute(badge.cls)}">${escapeHtml(badge.text)}</span>`)
       .join('');
 
     const card = document.getElementById('plantScoreCard');
@@ -228,35 +228,35 @@ export const rendererMethods = {
   updateProduction(r) {
     const cycleUnit = this.getCycleRateUnit(r);
     const rows = [
-      prodItem('solar', '☀️', 'Electricity', `${FormatNumbers.fixed(r.solar.annualMWh, 0)}`, 'MWh/yr'),
+      prodItem('solar', 'Electricity', `${FormatNumbers.fixed(r.solar.annualMWh, 0)}`, 'MWh/yr'),
     ];
 
     if (r.ai.enabled) {
-      rows.push(prodItem('electric', '🧠', 'AI Tokens', `${FormatNumbers.fixed(r.ai.annualTokensM / 1000, 2)}`, 'B/yr'));
+      rows.push(prodItem('electric', 'AI Tokens', `${FormatNumbers.fixed(r.ai.annualTokensM / 1000, 2)}`, 'B/yr'));
     }
 
     if (r.electrolyzer.enabled) {
-      rows.push(prodItem('h2', '💧', 'Hydrogen', `${FormatNumbers.fixed(r.electrolyzer.h2DailyKg, 1)}`, `kg/${cycleUnit}`));
+      rows.push(prodItem('h2', 'Hydrogen', `${FormatNumbers.fixed(r.electrolyzer.h2DailyKg, 1)}`, `kg/${cycleUnit}`));
     }
     if (r.dac.enabled) {
-      rows.push(prodItem('co2', '🌬️', 'CO₂ Captured', `${FormatNumbers.fixed(r.dac.co2DailyKg, 1)}`, `kg/${cycleUnit}`));
+      rows.push(prodItem('co2', 'CO₂ Captured', `${FormatNumbers.fixed(r.dac.co2DailyKg, 1)}`, `kg/${cycleUnit}`));
     }
 
     if (r.sabatier.enabled) {
-      rows.push(prodItem('ch4', '🔥', 'Methane', `${FormatNumbers.fixed(r.sabatier.ch4DailyMCF, 2)}`, `MCF/${cycleUnit}`));
+      rows.push(prodItem('ch4', 'Methane', `${FormatNumbers.fixed(r.sabatier.ch4DailyMCF, 2)}`, `MCF/${cycleUnit}`));
     }
     if (r.methanol.enabled && r.methanol.exportDailyKg > 0.1) {
-      rows.push(prodItem('fuel', '🧪', 'Methanol Export', `${FormatNumbers.fixed(r.methanol.dailyLiters, 1)}`, `L/${cycleUnit}`));
+      rows.push(prodItem('fuel', 'Methanol Export', `${FormatNumbers.fixed(r.methanol.dailyLiters, 1)}`, `L/${cycleUnit}`));
     }
     (r.exploratoryModules || [])
       .filter(module => module.enabled && module.outputDailyUnits > 0)
       .forEach(module => {
         const value = FormatNumbers.fixed(module.outputDailyUnits, module.outputDailyUnits >= 10 ? 0 : 1);
         const unit = module.outputUnit === 'm3' ? `m3/${cycleUnit}` : `t/${cycleUnit}`;
-        rows.push(prodItem('electric', '', module.outputLabel || module.label, value, unit));
+        rows.push(prodItem('electric', module.outputLabel || module.label, value, unit));
       });
-    if (r.h2Surplus > 0.1) rows.push(prodItem('h2', '💨', 'Unused H₂', `${FormatNumbers.fixed(r.h2Surplus, 1)}`, `kg/${cycleUnit}`));
-    if (r.co2Surplus > 0.1) rows.push(prodItem('co2', '☁️', 'CO₂ Surplus', `${FormatNumbers.fixed(r.co2Surplus, 1)}`, `kg/${cycleUnit}`));
+    if (r.h2Surplus > 0.1) rows.push(prodItem('h2', 'Unused H₂', `${FormatNumbers.fixed(r.h2Surplus, 1)}`, `kg/${cycleUnit}`));
+    if (r.co2Surplus > 0.1) rows.push(prodItem('co2', 'CO₂ Surplus', `${FormatNumbers.fixed(r.co2Surplus, 1)}`, `kg/${cycleUnit}`));
 
     document.getElementById('productionGrid').innerHTML = rows.join('');
   },
@@ -273,13 +273,13 @@ export const rendererMethods = {
     const cycleUnit = this.getCycleRateUnit(r);
     const env = r.environmental;
     const html = [
-      prodItem('co2', '🌍', 'CO₂ Captured', `${FormatNumbers.fixed(env.co2Captured, 1)}`, 't/yr'),
-      prodItem('co2', '🧱', 'CO₂ Bound in Products', `${FormatNumbers.fixed(env.co2BoundInProducts, 1)}`, 't/yr'),
-      prodItem('co2', '☁️', 'CO₂ Vented', `${FormatNumbers.fixed(env.co2Vented, 1)}`, 't/yr'),
-      prodItem('ch4', '♻️', 'Net CO₂ Avoided (fossil fuel displaced)', `${FormatNumbers.fixed(env.co2NetAvoided, 1)}`, 't/yr'),
-      prodItem('solar', '📐', 'Land Use', `${FormatNumbers.fixed(env.landAcres, 1)}`, 'acres'),
-      prodItem('h2', '♻️', 'Water Recycled', `${FormatNumbers.fixed(env.waterRecycledDaily, 0)}`, `L/${cycleUnit}`),
-      prodItem('h2', '💧', 'Net Water Needed (incl. ~25% purification rejects)', `${FormatNumbers.fixed(env.netWaterDaily, 0)}`, `L/${cycleUnit}`),
+      prodItem('co2', 'CO₂ Captured', `${FormatNumbers.fixed(env.co2Captured, 1)}`, 't/yr'),
+      prodItem('co2', 'CO₂ Bound in Products', `${FormatNumbers.fixed(env.co2BoundInProducts, 1)}`, 't/yr'),
+      prodItem('co2', 'CO₂ Vented', `${FormatNumbers.fixed(env.co2Vented, 1)}`, 't/yr'),
+      prodItem('ch4', 'Net CO₂ Avoided (fossil fuel displaced)', `${FormatNumbers.fixed(env.co2NetAvoided, 1)}`, 't/yr'),
+      prodItem('solar', 'Land Use', `${FormatNumbers.fixed(env.landAcres, 1)}`, 'acres'),
+      prodItem('h2', 'Water Recycled', `${FormatNumbers.fixed(env.waterRecycledDaily, 0)}`, `L/${cycleUnit}`),
+      prodItem('h2', 'Net Water Needed (incl. ~25% purification rejects)', `${FormatNumbers.fixed(env.netWaterDaily, 0)}`, `L/${cycleUnit}`),
     ];
     document.getElementById('impactGrid').innerHTML = html.join('');
   },

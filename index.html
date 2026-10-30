@@ -320,7 +320,7 @@
             aria-labelledby="loadTabChemicals"
           >
             <div class="range-control">
-              <label for="chemicalSizingPercent">Chemical peak sizing</label>
+              <label for="chemicalSizingPercent"><span class="tooltip-label" data-tooltip="100% is the smallest constant process capacity that clips no solar in the modeled year. That year repeats the clear-sky day shape scaled to the annual yield, so its peak is low at cloudy sites (Berlin, fixed tilt: 0.50 MW per MWdc). Real clear days there would exceed it and clip: 100% clips nothing within the model only.">Chemical peak sizing</span></label>
               <input type="range" id="chemicalSizingPercent" min="0" max="100" step="1" value="100">
               <span class="range-control-footer">
                 <span class="range-value" id="chemicalSizingPercentValue">100% of full-capture peak</span>

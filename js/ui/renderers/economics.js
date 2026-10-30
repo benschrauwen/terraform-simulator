@@ -559,11 +559,12 @@ function buildContextRows(context) {
     rows.push(econRow('Methane market', methaneMarket.applicability));
   }
   rows.push(...buildPolicyContextRows(context));
+  const ventNote = 'Unconverted reactor feed (and any H2 / CO2 with no consumer) is vented, not recycled to the reactor inlet; its production cost is charged to the products.';
   if (r.h2Surplus > 0.1) {
-    rows.push(econRow('Unused H₂', `${FormatNumbers.fixed(r.h2Surplus, 1)} kg/${cycleUnit}`));
+    rows.push(econRow('Unused H₂ (vented)', `${FormatNumbers.fixed(r.h2Surplus, 1)} kg/${cycleUnit}`, '', ventNote));
   }
   if (r.co2Surplus > 0.1) {
-    rows.push(econRow('Unused CO₂', `${FormatNumbers.fixed(r.co2Surplus, 1)} kg/${cycleUnit}`));
+    rows.push(econRow('Unused CO₂ (vented)', `${FormatNumbers.fixed(r.co2Surplus, 1)} kg/${cycleUnit}`, '', ventNote));
   }
   rows.push(...buildExploratoryContextRows(context));
   return rows;

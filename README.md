@@ -353,7 +353,7 @@ The headline default scenario is:
 
 ## Limitations
 
-- **Weather is clear-sky-equivalent.** Every day has the clear-sky shape, scaled to the annual yield and diffuse fraction, with no multi-day cloudy spells. AI reliability and battery firming are therefore optimistic. Off-preset Earth yields use a latitude/GHI heuristic, so a manual PVGIS value is better.
+- **Weather is clear-sky-equivalent.** Every day has the clear-sky shape, scaled to the annual yield and diffuse fraction, with no multi-day cloudy spells. AI reliability and battery firming are therefore optimistic. "100% chemical sizing clips no solar" holds within this modeled year only: at a cloudy site the scaled peak is low (Berlin, fixed tilt: 0.50 MW per MWdc) and real clear days would clip. Off-preset Earth yields use a latitude/GHI heuristic, so a manual PVGIS value is better.
 - **Policy is simplified.**
   - Credits for self-consumed solar under 45Y, EEG, SDE++ and the CfD are a proxy, since real schemes pay metered or sold output and a CfD reference price has no meaning for on-site use.
   - Eligibility (lifecycle, wage, ownership, location, certification) is not legally validated, and award values are user inputs.
@@ -363,14 +363,15 @@ The headline default scenario is:
 - **Process blocks follow solar freely,** with no minimum turndown, ramp limits or startup losses beyond the cycling penalty.
 - **Feed-buffer inventory is a flat-supply upper bound,** and its $/kg and $/t costs are assumptions. Methanol tankage is ignored.
 - **Some modes are stylized fallbacks.**
-  - There is no hydrogen sales line, and with no product enabled H2 and CO2 are simply vented.
+  - There is no hydrogen sales line, and with no product enabled H2 and CO2 are simply vented. Unconverted Sabatier / methanol feed is vented too, not recycled to the reactor inlet.
   - The battery has no capacity fade; its cycle life is consumed at the year-1 dispatch throughput (equivalent full cycles), with depth-of-discharge effects ignored.
   - AI compute is a constant-load token model, not a datacenter design.
   - Mars and Moon modes use literature-style benchmarks.
 - **Finance is minimal.**
   - Prices and costs are constant real values: no inflation, escalation, taxes, depreciation, tax equity or working capital.
   - O&M is a flat % of CAPEX.
-  - Salvage is straight-line book value (land at cost), not a resale estimate.
+  - Salvage is straight-line book value (land at cost), assumed realizable at the horizon, not a resale estimate. It is in NPV, IRR and ROI (short horizons look better) but not in payback.
+  - Equity NPV and equity MIRR are discounted at the project discount rate, not a separate cost of equity.
   - Debt is a single amortizing tranche sized on net CAPEX.
 
 ## Testing and validation

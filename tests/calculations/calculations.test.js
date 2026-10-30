@@ -1583,14 +1583,14 @@ test('legacy policy aliases and scheme lookup ignore inherited property names', 
   assert.equal(ModuleCatalog.getById('hasOwnProperty'), null);
 });
 
-test('feed-buffer toggles default on for buffer-capable modules', () => {
+// Buffers hold real H2/CO2 inventory that is now costed, and Terraform's design
+// runs the reactor intermittently without storage, so buffering is opt-in.
+test('feed-buffer toggles default off for every module', () => {
   const state = createState();
 
-  assert.equal(state.sabatierBufferEnabled, true, 'Expected Sabatier feed buffering to default on.');
-  assert.equal(state.methanolBufferEnabled, true, 'Expected methanol feed buffering to default on.');
-  assert.equal(state.mtgBufferEnabled, true, 'Expected MTG feed buffering to default on.');
-  assert.equal(state.carbonMonoxideBufferEnabled, true, 'Expected CO route feed buffering to default on when supported.');
-  assert.equal(state.ammoniaBufferEnabled, true, 'Expected ammonia feed buffering to default on when supported.');
+  ModuleCatalog.getAll().forEach(module => {
+    assert.equal(state[`${module.id}BufferEnabled`], false, `Expected ${module.id} feed buffering to default off.`);
+  });
 });
 
 test('enabled downstream modules auto-enable their upstream process dependencies', () => {

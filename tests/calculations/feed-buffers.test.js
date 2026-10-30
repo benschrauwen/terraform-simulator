@@ -30,7 +30,7 @@ test('buffered Sabatier holds peak-day feed x (1 - op hours / cycle hours)', () 
 });
 
 test('feed buffer storage is a capex block with process O&M; none without buffers', () => {
-  const buffered = runScenario();
+  const buffered = runScenario({ sabatierBufferEnabled: true });
   assert.ok(buffered.economics.capex.feedBuffers > 0);
   close(buffered.economics.capex.feedBuffers, buffered.feedBuffers.capex, 1e-9);
 

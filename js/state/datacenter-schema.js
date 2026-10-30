@@ -152,8 +152,12 @@ export const DATACENTER_STATE_FIELDS = [
 
   /* ---------- Solar (optional everywhere) ---------- */
   { key: 'solarSizeMWdc', type: 'number', min: 0, max: 100000, defaultValue: 0 },
-  // judgment: single-axis trackers are the US utility-scale norm.
-  { key: 'mountingType', type: 'enum', getOptions: () => Object.keys(MOUNTING_TYPES), defaultValue: 'single' },
+  // Owner decision: East-West fixed (MOUNTING_TYPES.ew), the dense low-tilt
+  // layout of the Terraform plant builder: ~0.92x the fixed-tilt yield but
+  // the lowest BOS and ~2.5x the trackers' ground coverage, so a solar field
+  // next to a datacenter needs the least land; its two-shoulder daily
+  // profile also spreads output over more of the day.
+  { key: 'mountingType', type: 'enum', getOptions: () => Object.keys(MOUNTING_TYPES), defaultValue: 'ew' },
   { key: 'panelCostPerW', type: 'number', min: 0, max: 100, derive: state => solarCost(state).panelCostPerW },
   { key: 'bosCostPerW', type: 'number', min: 0, max: 100, derive: state => solarCost(state).bosCostPerW },
   { key: 'panelEfficiency', type: 'number', min: 1, max: 100, defaultValue: DEFAULT_STATE.panelEfficiency },

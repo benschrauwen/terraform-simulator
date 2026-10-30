@@ -5,9 +5,11 @@ import test from 'node:test';
 
 import LZString from 'lz-string';
 
+import { getSolarCostPresetValues, MOUNTING_TYPES } from '../../js/data/reference-data.js';
 import {
   applyDatacenterPresetDefaults,
   DATACENTER_DEFAULT_STATE,
+  DATACENTER_SOLAR_COST_PRESET,
   DATACENTER_DERIVED_KEYS,
   getDatacenterSite,
   normalizeDatacenterState,
@@ -69,4 +71,20 @@ test('a corrupt link falls back to the defaults with an error; foreign hashes ar
   assert.ok(corrupt.error);
   assert.deepEqual(corrupt.state, normalizeDatacenterState({}));
   assert.equal(parseDatacenterHash('#flowView', LZString).ignored, true);
+});
+
+test('east-west fixed racking is the default solar mounting and survives preset resets', () => {
+  assert.equal(MOUNTING_TYPES.ew.label, 'East-West Fixed');
+  assert.equal(DATACENTER_DEFAULT_STATE.mountingType, 'ew');
+  // Its derived costs are the EW preset's: EW is the BOS reference, so no premium is added.
+  const ewCost = getSolarCostPresetValues(DATACENTER_SOLAR_COST_PRESET, 'ew');
+  assert.equal(DATACENTER_DEFAULT_STATE.bosCostPerW, ewCost.bosCostPerW);
+  assert.equal(DATACENTER_DEFAULT_STATE.panelCostPerW, ewCost.panelCostPerW);
+  // Resetting another selection, or normalizing a state without a mounting, keeps EW.
+  ['siteId', 'coolingTechnology', 'gasType', 'mountingType'].forEach(key => {
+    assert.equal(applyDatacenterPresetDefaults(DATACENTER_DEFAULT_STATE, key).mountingType, 'ew', key);
+  });
+  assert.equal(normalizeDatacenterState({ solarSizeMWdc: 200 }).mountingType, 'ew');
+  // The default hash stays empty (mounting is a base field, not a derived one).
+  assert.equal(serializeDatacenterHash({ ...DATACENTER_DEFAULT_STATE }, LZString), '');
 });

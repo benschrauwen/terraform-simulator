@@ -1325,6 +1325,10 @@ input[type="range"]::-moz-range-track {
   display: block;
 }
 
+.diagram-container .diagram-svg {
+  font-family: inherit;
+}
+
 .chart-section {
   background: var(--bg-card);
   border: 1px solid var(--border);

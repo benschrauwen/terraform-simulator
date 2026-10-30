@@ -61,10 +61,9 @@ export const siteMapMethods = {
     }
     this.siteMapTileLayer.addTo(this.siteMap);
 
-    const markerFill = this.hexToRgba(markerColor, 0.5);
     const siteIcon = L.divIcon({
       className: 'site-map-site-marker-wrap',
-      html: `<span class="site-map-site-marker-dot" style="background:${markerFill}"></span>`,
+      html: '<span class="site-map-site-marker-dot"></span>',
       iconSize: [14, 14],
       iconAnchor: [7, 7],
     });
@@ -73,6 +72,9 @@ export const siteMapMethods = {
       draggable: true,
       keyboard: false,
     }).addTo(this.siteMap);
+    // Colour set through CSSOM, not a style attribute: the CSP has no 'unsafe-inline' for styles.
+    const markerDot = this.siteMapMarker.getElement?.()?.querySelector('.site-map-site-marker-dot');
+    if (markerDot) markerDot.style.background = this.hexToRgba(markerColor, 0.5);
 
     this.siteMap.on('click', e => {
       if (typeof performance !== 'undefined' && performance.now() < (this._siteMapSuppressClickUntil || 0)) return;

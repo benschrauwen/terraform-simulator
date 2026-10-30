@@ -187,13 +187,17 @@ export const Diagram = {
     container.style.height = `${height}px`;
 
     container.innerHTML = [
-      `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:${height}px;font-family:inherit;">`,
+      // No style attribute: the CSP has no 'unsafe-inline' for styles. Width and font
+      // come from .diagram-svg; the pixel height is set through CSSOM below.
+      `<svg class="diagram-svg" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">`,
       '<defs><filter id="cardShadow"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.35"/></filter></defs>',
       this.drawGrid(width, height),
       ...connections.map(connection => this.drawConn(connection)),
       ...nodes.map(node => this.drawCard(node)),
       '</svg>',
     ].join('\n');
+    const svg = container.querySelector?.('svg.diagram-svg');
+    if (svg) svg.style.height = `${height}px`;
   },
 
   drawGrid(width, height) {

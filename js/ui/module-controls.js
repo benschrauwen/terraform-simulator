@@ -12,7 +12,7 @@ import {
   formatMtgMethanolSplit,
 } from './formatters.js';
 
-const hiddenStyle = show => (show ? '' : ' style="display:none;"');
+const hiddenAttr = show => (show ? '' : ' hidden');
 
 export const moduleControlMethods = {
   getSelectedModulePreset(moduleId, state = this.state) {
@@ -48,7 +48,7 @@ export const moduleControlMethods = {
         const priceKey = `${module.id}Price`;
         const currentValue = this.state[priceKey] ?? marketConfig.defaultValue;
         return `
-          <div id="${module.id}MarketWrap" class="market-exploratory-group" style="display:none;">
+          <div id="${module.id}MarketWrap" class="market-exploratory-group" hidden>
             <div class="module-note-title">${module.label}</div>
             <label>
               <span id="${module.id}MarketLabel">${marketConfig.label} (${marketConfig.unitLabel})</span>
@@ -68,7 +68,7 @@ export const moduleControlMethods = {
     if (!container) return;
 
     container.innerHTML = `
-      <div id="exploratoryOmWrap" class="market-exploratory-group" style="display:none;">
+      <div id="exploratoryOmWrap" class="market-exploratory-group" hidden>
         <div class="module-note-title">Shared exploratory plants</div>
         <label>
           Exploratory M&amp;O (% CAPEX / yr)
@@ -84,7 +84,7 @@ export const moduleControlMethods = {
 
     const bufferKey = `${module.id}BufferEnabled`;
     return `
-      <div id="${module.id}BufferWrap"${hiddenStyle(Calc.moduleSupportsFeedBuffer(module.id, route))}>
+      <div id="${module.id}BufferWrap"${hiddenAttr(Calc.moduleSupportsFeedBuffer(module.id, route))}>
         <label class="toggle-label">
           <input type="checkbox" id="${bufferKey}" ${this.state[bufferKey] ? 'checked' : ''}>
           <span>${Calc.getModuleFeedBufferLabel(module.id, route)}</span>
@@ -334,6 +334,6 @@ export const moduleControlMethods = {
     const wrap = document.getElementById(`${moduleId}BufferWrap`);
     if (!wrap) return;
     const route = this.state[`${moduleId}Route`];
-    wrap.style.display = Calc.moduleSupportsFeedBuffer(moduleId, route) ? 'block' : 'none';
+    wrap.hidden = !Calc.moduleSupportsFeedBuffer(moduleId, route);
   },
 };

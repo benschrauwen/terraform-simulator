@@ -87,7 +87,7 @@ function getEligibleCapexBreakdown(basis, capexItems = []) {
 
 /* Splits an upfront support amount across capex keys pro rata; the last key
    takes the remainder so the parts sum exactly to the total. */
-export function allocateUpfrontSupport(totalSupport, breakdown = {}) {
+function allocateUpfrontSupport(totalSupport, breakdown = {}) {
   const eligibleTotal = sumValues(breakdown);
   if (!Number.isFinite(totalSupport) || totalSupport <= 0 || eligibleTotal <= 0) {
     return Object.fromEntries(Object.keys(breakdown).map(key => [key, 0]));

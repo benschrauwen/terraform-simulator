@@ -147,7 +147,6 @@ export const MOUNTING_TYPES = {
     label: 'Fixed Tilt',
     yieldMult: 1.0,
     groundCoverageRatio: 0.45,
-    windRating: '130 mph',
     typicalBOS: 0.20,
     spacingLatitudeSensitivity: 0.45,
     spacingCloudRelief: 0.08,
@@ -160,7 +159,6 @@ export const MOUNTING_TYPES = {
     label: 'East-West Fixed',
     yieldMult: 0.92,
     groundCoverageRatio: 0.75,
-    windRating: '180 mph (vendor claim class)',
     typicalBOS: 0.12,
     spacingLatitudeSensitivity: 0.18,
     spacingCloudRelief: 0.10,
@@ -173,7 +171,6 @@ export const MOUNTING_TYPES = {
     label: 'Single-Axis Tracker',
     yieldMult: 1.18,
     groundCoverageRatio: 0.30,
-    windRating: '120 mph',
     typicalBOS: 0.35,
     spacingLatitudeSensitivity: 0.60,
     spacingCloudRelief: 0.15,
@@ -186,7 +183,6 @@ export const MOUNTING_TYPES = {
     label: 'Dual-Axis Tracker',
     yieldMult: 1.28,
     groundCoverageRatio: 0.22,
-    windRating: '90 mph',
     typicalBOS: 0.55,
     spacingLatitudeSensitivity: 0.55,
     spacingCloudRelief: 0.12,
@@ -199,13 +195,21 @@ export const MOUNTING_TYPES = {
 
 export const CHEMISTRY = {
   electrolysis: {
-    theoreticalMinimum: 39.4,
+    // Thermoneutral (HHV, enthalpy) energy of water splitting, kWh/kg H2:
+    // no electrolyzer at or above 100% HHV efficiency can use less without
+    // external heat. The reversible (Gibbs) minimum is 32.7 kWh/kg.
+    thermoneutralKwhPerKg: 39.4,
+    reversibleMinimumKwhPerKg: 32.7,
     h2EnergyContent: 33.33,
+    // Stoichiometric water (18.02 / 2.016 = 8.94 kg/kg H2); feed water incl.
+    // purification rejects is MODEL_ASSUMPTIONS.electrolysisFeedWaterPerKgH2.
     waterPerKgH2: 9,
   },
   dac: {
     co2MolarMass: 44.01,
-    atmosphericCO2ppm: 420,
+    // NOAA GML Mauna Loa annual mean, 2025: 427.35 ppm
+    // (https://gml.noaa.gov/webdata/ccgg/trends/co2/co2_annmean_mlo.txt, retrieved 2026-10).
+    atmosphericCO2ppm: 427,
     calcinationTemp: 900,
   },
   sabatier: {

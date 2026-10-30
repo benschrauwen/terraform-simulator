@@ -37,6 +37,9 @@ export const MODEL_ASSUMPTIONS = {
   // per ton-year as capex over output at 25% utilization ("331 kg CO2/day
   // (25% utilization)", "$14700/T-day" = $40.35/T-year).
   dacCapexReferenceUtilization: 0.25,
+  // Electrolyzer feed water per kg H2: 8.94 kg reacts (stoichiometric);
+  // demineralization/RO rejects bring typical withdrawals to ~10-15 kg/kg.
+  electrolysisFeedWaterPerKgH2: 12,
   // Feed-buffer pressure vessels / tanks (years); replaced on this life.
   feedBufferAssetLifeYears: 20,
   // Exploratory route asset life (years) when the route defines none.

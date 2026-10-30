@@ -21,7 +21,7 @@ import {
   PLANETARY_BODIES,
 } from '../data/reference-data.js';
 import { DEFAULT_STATE } from '../state/schema.js';
-import { crf, getAverageSolarDegradationFactor } from './finance.js';
+import { crf, getLevelizedSolarDegradationFactor } from './finance.js';
 import { SolarGeometry } from './solar-geometry.js';
 import { clampNumber } from './util.js';
 
@@ -230,7 +230,7 @@ export const solarMethods = {
       dailyMWh: solar.dailyMWh * ratio,
       dailyKWh: solar.dailyKWh * ratio,
       capacityFactor: solar.capacityFactor * ratio,
-      lifetimeAverageAnnualMWh: solar.lifetimeAverageAnnualMWh * ratio,
+      levelizedAnnualMWh: solar.levelizedAnnualMWh * ratio,
       lcoe: ratio > 0 ? solar.lcoe / ratio : 0,
       warnings: [{
         key: 'solar-yield-capped',
@@ -358,11 +358,14 @@ export const solarMethods = {
     const annualizedSolar = (depreciableSolarCapex * crf(rate, state.solarAssetLife)) + annualizedLand;
     const solarOmFrac = (state.solarOmPercent ?? DEFAULT_STATE.solarOmPercent) / 100;
     const annualSolarOm = (totalPanelCost + totalBOSCost) * solarOmFrac;
-    const lifetimeAverageAnnualMWh = annualMWh * getAverageSolarDegradationFactor(
+    // Levelized (discounted) energy over the array life, matching the CRF
+    // capital charge in the numerator.
+    const levelizedAnnualMWh = annualMWh * getLevelizedSolarDegradationFactor(
       state.panelDegradationAnnual,
-      state.solarAssetLife
+      state.solarAssetLife,
+      rate
     );
-    const lcoe = lifetimeAverageAnnualMWh > 0 ? (annualizedSolar + annualSolarOm) / lifetimeAverageAnnualMWh : 0;
+    const lcoe = levelizedAnnualMWh > 0 ? (annualizedSolar + annualSolarOm) / levelizedAnnualMWh : 0;
 
     const solarGeo = this.getSolarGeometry(
       state,
@@ -394,7 +397,7 @@ export const solarMethods = {
       sunHours: parseFloat(solarGeo.dayLengthHours.toFixed(1)),
       capacityFactor: state.systemSizeMW > 0 ? annualMWh / (state.systemSizeMW * 8760) : 0,
       annualMWh,
-      lifetimeAverageAnnualMWh,
+      levelizedAnnualMWh,
       dailyMWh,
       dailyKWh: dailyMWh * 1000,
       peakPowerKW,

@@ -76,7 +76,7 @@ export const dayViewMethods = {
     };
     const scaleSupportedModule = module => scaleFields(module, [
       'ch4DailyKg', 'ch4DailyMCF', 'h2Consumed', 'co2Consumed', 'waterProducedDaily',
-      'dailyKg', 'grossDailyKg', 'dailyLiters', 'grossDailyLiters', 'exportDailyKg',
+      'dailyKg', 'reactorDailyKg', 'dailyLiters', 'reactorDailyLiters', 'exportDailyKg',
     ]);
     const scaleExploratoryModule = module => scaleFields(module, [
       'dailyKWh', 'outputDailyUnits', 'h2Consumed', 'co2Consumed', 'methanolConsumed',
@@ -88,7 +88,7 @@ export const dayViewMethods = {
     return {
       ...r,
       ai: r.ai.enabled ? { ...r.ai, utilization: aiUtilization } : r.ai,
-      electrolyzer: scaleFields(r.electrolyzer, ['dailyKWh', 'h2DailyKg', 'waterDailyKg']),
+      electrolyzer: scaleFields(r.electrolyzer, ['dailyKWh', 'h2DailyKg', 'waterDailyKg', 'feedWaterDailyKg']),
       dac: scaleFields(r.dac, ['dailyKWh', 'co2DailyKg']),
       sabatier: scaleSupportedModule(r.sabatier),
       methanol: scaleSupportedModule(r.methanol),

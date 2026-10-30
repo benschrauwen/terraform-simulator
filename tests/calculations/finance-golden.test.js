@@ -10,6 +10,7 @@ import {
   buildDebtSchedule,
   calculateMIRR,
   crf,
+  getLevelizedSolarDegradationFactor,
 } from '../../js/model/finance.js';
 import { Calc, createState, runScenario } from './harness.js';
 
@@ -155,4 +156,27 @@ test('levelized annual profit equals NPV x CRF(r, N) and levelizes time-limited 
   for (let year = 1; year <= 10; year++) pv += economics.revenue.policyCredits * factors[year - 1] / Math.pow(1.08, year);
   close(economics.levelizedPolicyCredits, pv * crf(0.08, 30), 1e-6);
   assert.ok(economics.levelizedPolicyCredits < 0.65 * economics.revenue.policyCredits);
+});
+
+test('allocated unit costs conserve the plant cost and do not charge one product for another', () => {
+  const methaneOnly = runScenario().economics;
+  const mixed = runScenario({ methanolEnabled: true, methaneFeedstockSplit: 50 }).economics;
+  [methaneOnly, mixed].forEach(economics => {
+    const u = economics.unitCosts;
+    // No AI or exploratory routes: the two reactors carry the whole asset-life cost.
+    close(u.sabatierAnnualCost + u.methanolAnnualCost, economics.assetLifeAnnualCost, 1e-6);
+  });
+  // Every methane cost item scales with methane volume, so $/MCF does not
+  // depend on how much methanol is co-produced (dividing the whole plant
+  // cost by methane alone made it look ~2x higher at 50/50).
+  close(mixed.costPerMCF, methaneOnly.costPerMCF, 1e-6);
+});
+
+test('LCOE energy is levelized (discounted), not averaged', () => {
+  // 1%/yr degradation, 2 years at 10%: (1/1.1 + 0.99/1.21) x CRF(10%, 2)
+  //   = 1.727273 x 0.576190 = 0.995238 (the plain average would be 0.995).
+  close(getLevelizedSolarDegradationFactor(1, 2, 0.1), 0.995238, 1e-6);
+  close(getLevelizedSolarDegradationFactor(0, 30, 0.08), 1, 1e-12);
+  const solar = runScenario({ panelDegradationAnnual: 0 }).solar;
+  close(solar.lcoe, (solar.annualizedSolar + solar.annualSolarOm) / solar.annualMWh, 1e-9);
 });

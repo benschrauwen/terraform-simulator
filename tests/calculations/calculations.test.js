@@ -1055,10 +1055,12 @@ test('buffered electricity cost includes battery annualized cost and storage los
     result.solar.annualSolarOm +
     result.storage.annualizedCapex +
     (result.storage.capex * batteryOmFrac);
-  const degradationFactor = Calc.getAverageSolarDegradationFactor(state.panelDegradationAnnual, state.solarAssetLife);
-  const expectedLifetimeAverageAnnualMWh = ((result.chemicalSupply.dailyAvailableKWh * result.solar.cyclesPerYear) / 1000) * degradationFactor;
-  const expectedBufferedElectricityCost = expectedLifetimeAverageAnnualMWh > 0
-    ? expectedAnnualCost / expectedLifetimeAverageAnnualMWh
+  // Was the arithmetic-average degradation; energy is now levelized
+  // (discounted) like the CRF capital charge it is divided into.
+  const degradationFactor = Calc.getLevelizedSolarDegradationFactor(state.panelDegradationAnnual, state.solarAssetLife, state.discountRate / 100);
+  const expectedLevelizedAnnualMWh = ((result.chemicalSupply.dailyAvailableKWh * result.solar.cyclesPerYear) / 1000) * degradationFactor;
+  const expectedBufferedElectricityCost = expectedLevelizedAnnualMWh > 0
+    ? expectedAnnualCost / expectedLevelizedAnnualMWh
     : 0;
 
   assert.ok(
@@ -1069,10 +1071,10 @@ test('buffered electricity cost includes battery annualized cost and storage los
     ].join(' ')
   );
   assert.ok(
-    Math.abs(result.economics.bufferedElectricityLifetimeAverageAnnualMWh - expectedLifetimeAverageAnnualMWh) <= 1e-9,
+    Math.abs(result.economics.bufferedElectricityLevelizedAnnualMWh - expectedLevelizedAnnualMWh) <= 1e-9,
     [
       'Expected the buffered electricity denominator to use lifetime-average delivered MWh after storage losses.',
-      `Observed ${result.economics.bufferedElectricityLifetimeAverageAnnualMWh.toFixed(12)} vs expected ${expectedLifetimeAverageAnnualMWh.toFixed(12)} MWh/yr.`,
+      `Observed ${result.economics.bufferedElectricityLevelizedAnnualMWh.toFixed(12)} vs expected ${expectedLevelizedAnnualMWh.toFixed(12)} MWh/yr.`,
     ].join(' ')
   );
   assert.ok(

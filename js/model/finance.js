@@ -37,6 +37,20 @@ export function getAverageSolarDegradationFactor(degradationPercent, years) {
   return totalFactor / years;
 }
 
+/* Discounted (levelized) degradation factor over `years`: the constant
+   output with the same present value as the degrading output,
+   sum f_y / (1 + r)^y x CRF(r, years). LCOE divides an annualized (CRF)
+   cost, so the energy must be levelized the same way, not averaged. */
+export function getLevelizedSolarDegradationFactor(degradationPercent, years, rate) {
+  if (!Number.isFinite(years) || years <= 0) return 1;
+  const safeRate = Number.isFinite(rate) ? rate : 0;
+  let presentValue = 0;
+  for (let year = 1; year <= years; year++) {
+    presentValue += getSolarDegradationFactor(degradationPercent, year) / Math.pow(1 + safeRate, year);
+  }
+  return presentValue * crf(safeRate, years);
+}
+
 export function getPolicyDurationFactor(policy, year) {
   if (!policy || !Number.isFinite(policy.durationYears) || policy.durationYears <= 0) return 1;
   return year <= policy.durationYears ? 1 : 0;
@@ -567,6 +581,7 @@ export const financeMethods = {
   getSolarDegradationFactor,
   getSolarFactorForYear,
   getAverageSolarDegradationFactor,
+  getLevelizedSolarDegradationFactor,
   getPolicyDurationFactor,
   buildReplacementSchedule,
   calculateSimplePaybackYears,

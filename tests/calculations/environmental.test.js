@@ -36,7 +36,7 @@ test('net avoided counts only displaced fossil fuel combustion, not capture', ()
 test('methanol displacement follows its carbon content', () => {
   const result = runScenario({ sabatierEnabled: false, methanolEnabled: true });
   const env = result.environmental;
-  const methanolTons = result.methanol.grossAnnualTons;
+  const methanolTons = result.methanol.reactorAnnualTons;
   close(env.co2NetAvoided, methanolTons * CHEMISTRY.methanol.co2MassPerKgMeOH, 1e-6);
   close(env.co2BoundInProducts, env.co2NetAvoided, 1e-6);
 });

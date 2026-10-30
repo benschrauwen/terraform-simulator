@@ -16,7 +16,7 @@ import {
   calculateSimplePaybackYears,
   calculateSustainedPaybackYears,
   crf,
-  getAverageSolarDegradationFactor,
+  getLevelizedSolarDegradationFactor,
   getPolicyDurationFactor,
   getSolarFactorForYear,
 } from './finance.js';
@@ -97,11 +97,74 @@ export const economicsMethods = {
     };
   },
 
+  /* Levelized unit costs by cost cascade instead of dividing the whole
+     plant's cost by each product. Power (solar, land, battery and their
+     O&M; the chemical share of it in AI mode) is split by the
+     electrolyzer / DAC power shares; H2 and CO2 costs flow to each reactor
+     by its feed share (so vented feed is borne by the product that vents
+     it); feed-buffer storage by each module's share of buffer value. Costs
+     use per-asset CRF charges + O&M; outputs are levelized with the
+     chemical-energy factor over the horizon. Policy credits are excluded. */
+  allocateUnitCosts(state, {
+    annualizedCapex, powerAnnualCost, ai, electrolyzer, dac, sabatier, methanol,
+    feedBuffers, allocation, lifetimeEnergy, rate,
+  }) {
+    const processOmFrac = (state.processOmPercent ?? DEFAULT_STATE.processOmPercent) / 100;
+    const horizonYears = state.analysisHorizonYears;
+    const chemicalFactors = lifetimeEnergy?.chemicalFactorByYear;
+    let presentFactor = 0;
+    for (let year = 1; year <= horizonYears; year++) {
+      const factor = Array.isArray(chemicalFactors) && Number.isFinite(chemicalFactors[year - 1]) ? chemicalFactors[year - 1] : 1;
+      presentFactor += factor / Math.pow(1 + rate, year);
+    }
+    const levelizedOutputFactor = presentFactor * crf(rate, horizonYears);
+    const aiKWh = ai?.enabled ? (ai.annualAiServedKWh || 0) : 0;
+    const chemicalKWh = ai?.enabled ? (ai.chemicalAnnualKWh || 0) : 1;
+    const chemicalPowerShare = chemicalKWh + aiKWh > 0 ? chemicalKWh / (chemicalKWh + aiKWh) : 0;
+    const chemicalPowerCost = powerAnnualCost * chemicalPowerShare;
+    const assetCost = (key, capexValue) => (annualizedCapex[key] || 0) + ((capexValue || 0) * processOmFrac);
+
+    const h2AnnualCost = electrolyzer.enabled
+      ? chemicalPowerCost * (allocation?.electrolyzer || 0) + assetCost('electrolyzer', electrolyzer.capex)
+      : 0;
+    const co2AnnualCost = dac.enabled
+      ? chemicalPowerCost * (allocation?.dac || 0) + assetCost('dac', dac.capex)
+      : 0;
+    const bufferValue = module => ((module?.bufferH2Kg || 0) * Math.max(0, state.h2BufferCostPerKg || 0)) +
+      (((module?.bufferCO2Kg || 0) / 1000) * Math.max(0, state.co2BufferCostPerTon || 0));
+    const bufferAnnualCost = assetCost('feedBuffers', feedBuffers?.capex);
+    const bufferShare = module => ((feedBuffers?.capex || 0) > 0 ? bufferValue(module) / feedBuffers.capex : 0);
+    const reactorAnnualCost = (module, key) => (module?.enabled
+      ? (h2AnnualCost * (allocation?.feedShares?.h2?.[key] || 0)) +
+        (co2AnnualCost * (allocation?.feedShares?.co2?.[key] || 0)) +
+        assetCost(key, module.capex) +
+        (bufferAnnualCost * bufferShare(module))
+      : 0);
+    const sabatierAnnualCost = reactorAnnualCost(sabatier, 'sabatier');
+    const methanolAnnualCost = reactorAnnualCost(methanol, 'methanol');
+    const perUnit = (cost, annualOutput) => (annualOutput > 0 && levelizedOutputFactor > 0
+      ? cost / (annualOutput * levelizedOutputFactor)
+      : 0);
+
+    return {
+      levelizedOutputFactor,
+      chemicalPowerCost,
+      h2AnnualCost,
+      co2AnnualCost,
+      sabatierAnnualCost,
+      methanolAnnualCost,
+      costPerKgH2: perUnit(h2AnnualCost, electrolyzer.enabled ? electrolyzer.h2AnnualKg : 0),
+      costPerTonCO2: perUnit(co2AnnualCost, dac.enabled ? dac.co2AnnualTons : 0),
+      costPerMCF: perUnit(sabatierAnnualCost, sabatier.enabled ? sabatier.ch4AnnualMCF : 0),
+      costPerTonMethanol: perUnit(methanolAnnualCost, methanol.enabled ? (methanol.reactorAnnualTons ?? methanol.annualTons) : 0),
+    };
+  },
+
   calculateEconomics(state, context) {
     const {
       solar, storage, chemicalSupply, ai, electrolyzer, dac, sabatier, methanol,
       exploratoryModules, lifetimeEnergy, h2Surplus = 0, co2Surplus = 0,
-      feedBuffers = { capex: 0 },
+      feedBuffers = { capex: 0 }, allocation = null,
     } = context;
 
     const rate = state.discountRate / 100;
@@ -452,20 +515,37 @@ export const economicsMethods = {
     const aiCoreAnnualCost = ai.enabled
       ? annualizedCapex.solar + annualizedCapex.land + annualizedCapex.battery + annualizedCapex.ai + solar.annualSolarOm + (storage.capex * batteryOmFrac) + (ai.annualOM || 0)
       : 0;
-    const bufferedElectricityAnnualCost = solar.annualizedSolar +
+    // Same capital basis as the rest of the economics: annualized net of
+    // any upfront support (e.g. a 48E ITC), land at capital x r.
+    const bufferedElectricityAnnualCost = (annualizedCapex.solar || 0) +
+      (annualizedCapex.land || 0) +
+      (annualizedCapex.battery || 0) +
       solar.annualSolarOm +
-      (storage.annualizedCapex || 0) +
       (storage.capex * batteryOmFrac);
     const bufferedElectricityAnnualDeliveredMWh = (
       ai.enabled
         ? ((ai.annualAiServedKWh || 0) + (ai.chemicalAnnualKWh || 0))
         : ((chemicalSupply.dailyAvailableKWh || 0) * (solar.cyclesPerYear || 0))
     ) / 1000;
-    const bufferedElectricityLifetimeAverageAnnualMWh = bufferedElectricityAnnualDeliveredMWh *
-      getAverageSolarDegradationFactor(state.panelDegradationAnnual, state.solarAssetLife);
-    const bufferedElectricityCostPerMWh = bufferedElectricityLifetimeAverageAnnualMWh > 0
-      ? bufferedElectricityAnnualCost / bufferedElectricityLifetimeAverageAnnualMWh
+    const bufferedElectricityLevelizedAnnualMWh = bufferedElectricityAnnualDeliveredMWh *
+      getLevelizedSolarDegradationFactor(state.panelDegradationAnnual, state.solarAssetLife, rate);
+    const bufferedElectricityCostPerMWh = bufferedElectricityLevelizedAnnualMWh > 0
+      ? bufferedElectricityAnnualCost / bufferedElectricityLevelizedAnnualMWh
       : 0;
+
+    const unitCosts = this.allocateUnitCosts(state, {
+      annualizedCapex,
+      powerAnnualCost: bufferedElectricityAnnualCost,
+      ai,
+      electrolyzer,
+      dac,
+      sabatier,
+      methanol,
+      feedBuffers,
+      allocation,
+      lifetimeEnergy,
+      rate,
+    });
 
     return {
       capex,
@@ -527,13 +607,15 @@ export const economicsMethods = {
       aiCoreAnnualCost,
       bufferedElectricityAnnualCost,
       bufferedElectricityAnnualDeliveredMWh,
-      bufferedElectricityLifetimeAverageAnnualMWh,
+      bufferedElectricityLevelizedAnnualMWh,
       bufferedElectricityCostPerMWh,
       costPerMToken: ai.enabled && ai.annualTokensM > 0 ? aiCoreAnnualCost / ai.annualTokensM : 0,
       tokenMarginPerM: ai.enabled && ai.annualTokensM > 0 ? (state.aiTokenPricePerM || 0) - (aiCoreAnnualCost / ai.annualTokensM) : 0,
-      costPerKgH2: electrolyzer.enabled && electrolyzer.h2AnnualKg > 0 ? annualCost / electrolyzer.h2AnnualKg : 0,
-      costPerTonCO2: dac.enabled && dac.co2AnnualTons > 0 ? annualCost / dac.co2AnnualTons : 0,
-      costPerMCF: sabatier.enabled && sabatier.ch4AnnualMCF > 0 ? annualCost / sabatier.ch4AnnualMCF : 0,
+      unitCosts,
+      costPerKgH2: unitCosts.costPerKgH2,
+      costPerTonCO2: unitCosts.costPerTonCO2,
+      costPerMCF: unitCosts.costPerMCF,
+      costPerTonMethanol: unitCosts.costPerTonMethanol,
       feedBuffers,
       exploratoryDetails,
       modeledExploratoryModules: exploratoryDetails.map(module => module.label),
@@ -563,10 +645,11 @@ export const economicsMethods = {
     // All methanol carbon (exported, or converted to MTG hydrocarbons)
     // displaces the same fossil carbon: 1.374 t CO2 per t methanol.
     const methanolDisplaced = methanol.enabled
-      ? toTonsPerYear((methanol.grossDailyKg ?? methanol.dailyKg ?? 0) * CHEMISTRY.methanol.co2MassPerKgMeOH)
+      ? toTonsPerYear((methanol.reactorDailyKg ?? methanol.dailyKg ?? 0) * CHEMISTRY.methanol.co2MassPerKgMeOH)
       : 0;
     const co2NetAvoided = methaneDisplaced + methanolDisplaced;
-    const waterConsumedDaily = electrolyzer.enabled ? electrolyzer.waterDailyKg : 0;
+    // Feed water incl. purification rejects, not just the stoichiometric 9 kg/kg.
+    const waterConsumedDaily = electrolyzer.enabled ? (electrolyzer.feedWaterDailyKg ?? electrolyzer.waterDailyKg) : 0;
     const waterProducedDaily = (sabatier.waterProducedDaily || 0) + (methanol.waterProducedDaily || 0);
 
     return {

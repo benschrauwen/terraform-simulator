@@ -320,6 +320,7 @@ export const processMethods = {
         h2AnnualKg: 0,
         h2AnnualTons: 0,
         waterDailyKg: 0,
+        feedWaterDailyKg: 0,
         lhvEfficiency: 0,
         capex: 0,
       };
@@ -339,6 +340,7 @@ export const processMethods = {
       h2AnnualKg,
       h2AnnualTons: h2AnnualKg / 1000,
       waterDailyKg: h2DailyKg * CHEMISTRY.electrolysis.waterPerKgH2,
+      feedWaterDailyKg: h2DailyKg * MODEL_ASSUMPTIONS.electrolysisFeedWaterPerKgH2,
       lhvEfficiency: (CHEMISTRY.electrolysis.h2EnergyContent / state.electrolyzerEfficiency) * 100,
       capex: allocKW * state.electrolyzerCapex,
     };
@@ -494,13 +496,13 @@ export const processMethods = {
         family: 'air-water-chemistry',
         maturity: 'Supported',
         dailyKg: 0,
-        grossDailyKg: 0,
+        reactorDailyKg: 0,
         annualKg: 0,
-        grossAnnualKg: 0,
+        reactorAnnualKg: 0,
         annualTons: 0,
-        grossAnnualTons: 0,
+        reactorAnnualTons: 0,
         dailyLiters: 0,
-        grossDailyLiters: 0,
+        reactorDailyLiters: 0,
         exportDailyKg: 0,
         exportAnnualKg: 0,
         exportAnnualTons: 0,
@@ -545,14 +547,17 @@ export const processMethods = {
       title: 'Methanol',
       family: 'air-water-chemistry',
       maturity: 'Supported',
+      // reactor*: methanol leaving the reactor (after conversion losses);
+      // daily/annual*: methanol exported after any MTG offtake (the
+      // scenario lowers these once MTG consumption is known).
       dailyKg,
-      grossDailyKg: dailyKg,
+      reactorDailyKg: dailyKg,
       annualKg,
-      grossAnnualKg: annualKg,
+      reactorAnnualKg: annualKg,
       annualTons: annualKg / 1000,
-      grossAnnualTons: annualKg / 1000,
+      reactorAnnualTons: annualKg / 1000,
       dailyLiters: dailyKg / c.density,
-      grossDailyLiters: dailyKg / c.density,
+      reactorDailyLiters: dailyKg / c.density,
       exportDailyKg: dailyKg,
       exportAnnualKg: annualKg,
       exportAnnualTons: annualKg / 1000,
@@ -697,7 +702,7 @@ export const processMethods = {
     const h2Shares = allocationPlan?.feedShares?.h2 || {};
     const co2Shares = allocationPlan?.feedShares?.co2 || {};
     const methanolShares = allocationPlan?.feedShares?.methanol || {};
-    const grossMethanolDailyKg = supportedOutputs?.methanol?.grossDailyKg || supportedOutputs?.methanol?.dailyKg || 0;
+    const reactorMethanolDailyKg = supportedOutputs?.methanol?.reactorDailyKg || supportedOutputs?.methanol?.dailyKg || 0;
     const peakDayScale = effectiveDailyKWh > 0 && peakDailyKWh > 0
       ? Math.max(1, peakDailyKWh / effectiveDailyKWh)
       : 1;
@@ -718,7 +723,7 @@ export const processMethods = {
         const allocations = {
           h2Kg: (materialFlows.h2DailyKg || 0) * (h2Shares[module.id] || 0),
           co2Kg: (materialFlows.co2DailyKg || 0) * (co2Shares[module.id] || 0),
-          methanolKg: module.id === 'mtg' ? grossMethanolDailyKg * (methanolShares.mtg || 0) : 0,
+          methanolKg: module.id === 'mtg' ? reactorMethanolDailyKg * (methanolShares.mtg || 0) : 0,
         };
         const peakDayAllocations = {
           h2Kg: allocations.h2Kg * peakDayScale,

@@ -106,6 +106,7 @@ The current implementation makes several deliberate assumptions that should stay
 - Fossil gas displacement uses `0.0528 tCO2 / MCF`: combustion CO2 of pure CH4 at 19.25 kg/MCF (EPA's ~0.055 t/MCF is for pipeline gas at ~1,036 Btu/scf). Upstream emissions and methane leakage of the displaced gas, and of the synthetic gas itself, are excluded.
 - Captured CO2 that ends up in a fuel returns to the air when the fuel is burned, so the plant is not a removal: net avoided CO2 is only the displaced fossil combustion CO2 of its fuels (methane, methanol, MTG hydrocarbons). Exploratory non-fuel products are counted as bound, not avoided.
 - Default low-capex Terraform-style process presets are approximate, not universal truths.
+- Integrated unit costs (H2, CO2, CH4, methanol) are levelized costs allocated by a cost cascade (power by electrolyzer/DAC power share, feeds by reactor feed share, vented feed charged to the product that vents it), excluding policy credits.
 
 ## Core Formula Summary
 
@@ -132,6 +133,9 @@ annual_solar_mwh = solar_mwdc * site_yield_mwh_per_mwdc_year
 daily_solar_kwh_avg = annual_solar_mwh * 1000 / cycles_per_year
 
 capacity_factor = annual_solar_mwh / (solar_mwdc * 8760)
+
+lcoe = (solar_capex * crf(r, life) + land * r + solar_om)
+       / (annual_solar_mwh * sum_y f_y / (1 + r)^y * crf(r, life))   # discounted energy
 
 panel_area_m2 = solar_mwdc * 1e6 / (module_efficiency * 1000)
 
@@ -255,12 +259,13 @@ Core formulas:
 ```text
 h2_kg = electrolyzer_input_kwh / electrolyzer_kwh_per_kg_h2
 
-water_consumed_kg = h2_kg * 9
+water_reacted_kg = h2_kg * 9            # stoichiometric (8.94)
+feed_water_kg    = h2_kg * 12           # incl. purification rejects (typ. 10-15)
 ```
 
 Current default-style values:
 
-- Theoretical minimum: `39.4 kWh/kg H2`
+- Thermoneutral (HHV) energy: `39.4 kWh/kg H2` (the efficiency slider starts at 40; the reversible Gibbs minimum is `32.7 kWh/kg`)
 - Hydrogen LHV used for efficiency framing: `33.33 kWh/kg H2`
 - Terraform-style low-capex preset: `79 kWh/kg H2`
 
@@ -540,7 +545,7 @@ water_recycled_kgpd =
   meoh_daily_kg * 0.562
 
 net_water_needed_kgpd =
-  max(0, electrolyzer_water_kgpd - water_recycled_kgpd)
+  max(0, electrolyzer_feed_water_kgpd - water_recycled_kgpd)
 ```
 
 ## Current Defaults In The App

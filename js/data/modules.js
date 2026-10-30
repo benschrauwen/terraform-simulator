@@ -69,7 +69,9 @@ export const MODULE_DEFINITIONS = [
     ],
     defaultPreset: 'terraform-default',
     configs: [
-      { key: 'electrolyzerEfficiency', label: 'Efficiency (kWh/kg H2)', type: 'range', min: 39, max: 100, step: 1, unit: 'kWh/kg', defaultValue: 79 },
+      // Floor 40: below the 39.4 kWh/kg HHV (thermoneutral) energy an
+      // electrolyzer would exceed 100% HHV efficiency.
+      { key: 'electrolyzerEfficiency', label: 'Efficiency (kWh/kg H2)', type: 'range', min: 40, max: 100, step: 1, unit: 'kWh/kg', defaultValue: 79 },
       { key: 'electrolyzerCapex', label: 'CAPEX ($/kW)', type: 'range', min: 10, max: 5000, step: 10, unit: '$/kW', defaultValue: 100, scale: 'log' },
     ],
   },
@@ -139,7 +141,10 @@ export const MODULE_DEFINITIONS = [
     defaultAssetLife: 7,
     configs: [
       { key: 'sabatierConversion', label: 'Conversion Rate (%)', type: 'range', min: 80, max: 99.5, step: 0.5, unit: '%', defaultValue: 95 },
-      { key: 'sabatierCapex', label: 'CAPEX ($ per kW CH4)', type: 'range', min: 50, max: 5000, step: 50, unit: '$/kW-CH4', defaultValue: 50, scale: 'log' },
+      // Floor $5/kW-CH4: Terraform's whitepaper 2.0 reactor target ("internal
+      // cost target for the reactor is $2500" for a ~MW-scale module) is
+      // of order $10/kW-CH4.
+      { key: 'sabatierCapex', label: 'CAPEX ($ per kW CH4)', type: 'range', min: 5, max: 5000, step: 5, unit: '$/kW-CH4', defaultValue: 50, scale: 'log' },
     ],
   },
   {

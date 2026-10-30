@@ -448,9 +448,11 @@ function buildUnitRows({ r, e }) {
       )
     );
   }
-  if (e.costPerKgH2 > 0) rows.push(econRow('Integrated H₂ cost', `$${FormatNumbers.fixed(e.costPerKgH2, 2)}/kg`));
-  if (e.costPerTonCO2 > 0) rows.push(econRow('Integrated CO₂ cost', `$${FormatNumbers.fixed(e.costPerTonCO2, 0)}/ton`));
-  if (e.costPerMCF > 0) rows.push(econRow('Integrated CH₄ cost', `$${FormatNumbers.fixed(e.costPerMCF, 2)}/MCF`));
+  const allocationNote = 'Levelized cost allocated by cost cascade: power (solar, land, battery) by the electrolyzer/DAC power shares, H2 and CO2 to each reactor by its feed share (vented feed included), plus each block\'s own capital charge and O&M. Excludes policy credits.';
+  if (e.costPerKgH2 > 0) rows.push(econRow('Levelized H₂ cost', `$${FormatNumbers.fixed(e.costPerKgH2, 2)}/kg`, '', allocationNote));
+  if (e.costPerTonCO2 > 0) rows.push(econRow('Levelized CO₂ capture cost', `$${FormatNumbers.fixed(e.costPerTonCO2, 0)}/ton`, '', allocationNote));
+  if (e.costPerMCF > 0) rows.push(econRow('Levelized CH₄ cost', `$${FormatNumbers.fixed(e.costPerMCF, 2)}/MCF`, '', allocationNote));
+  if (e.costPerTonMethanol > 0) rows.push(econRow('Levelized methanol cost', `$${FormatNumbers.fixed(e.costPerTonMethanol, 0)}/ton`, '', allocationNote));
   return rows;
 }
 

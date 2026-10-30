@@ -100,3 +100,15 @@ test('electrolyzer and DAC power shares deliver H2:CO2 in the consumers combined
   const expectedRatio = (40 * s.h2MassPerKgCH4 + 60 * m.h2MassPerKgMeOH) / (40 * s.co2MassPerKgCH4 + 60 * m.co2MassPerKgMeOH);
   assert.ok(Math.abs(result.electrolyzer.h2DailyKg / result.dac.co2DailyKg - expectedRatio) < 1e-9);
 });
+
+test('exploratory peak sizing and the electrolyzer share one chemical power basis', () => {
+  // The annual dispatch never runs the chemical plant above its process
+  // capacity, so routes sized on the annual chemical peak and the
+  // electrolyzer sized on processPowerKW see the same kW.
+  [{}, { batteryEnabled: true, batteryCapacityMWh: 2 }, { chemicalSizingPercent: 70 }, { aiComputeEnabled: true }, { body: 'mars' }]
+    .forEach(overrides => {
+      const result = runScenario(overrides);
+      const processKW = result.chemicalSupply.processPowerKW;
+      assert.ok(Math.abs(result.annualDispatch.chemicalPeakKW - processKW) <= processKW * 1e-9, JSON.stringify(overrides));
+    });
+});

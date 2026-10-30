@@ -133,7 +133,7 @@ export const scenarioMethods = {
     const exploratoryCo2Consumed = exploratoryModules.reduce((sum, module) => sum + (module.co2Consumed || 0), 0);
     const exploratoryMethanolConsumed = exploratoryModules.reduce((sum, module) => sum + (module.methanolConsumed || 0), 0);
     if (methanol.enabled) {
-      const exportedDailyKg = Math.max(0, (methanol.grossDailyKg || methanol.dailyKg || 0) - exploratoryMethanolConsumed);
+      const exportedDailyKg = Math.max(0, (methanol.reactorDailyKg || methanol.dailyKg || 0) - exploratoryMethanolConsumed);
       methanol.exportDailyKg = exportedDailyKg;
       methanol.exportAnnualKg = exportedDailyKg * cyclesPerYear;
       methanol.exportAnnualTons = methanol.exportAnnualKg / 1000;
@@ -159,6 +159,7 @@ export const scenarioMethods = {
       co2Surplus,
       exploratoryModules,
       feedBuffers,
+      allocation,
       lifetimeEnergy,
     });
     const environmental = includeEnvironmental

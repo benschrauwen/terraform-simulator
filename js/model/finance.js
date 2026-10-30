@@ -42,36 +42,71 @@ export function getPolicyDurationFactor(policy, year) {
   return year <= policy.durationYears ? 1 : 0;
 }
 
+/* Replacement outflows and end-of-horizon salvage for a list of assets
+   { key, label, cost, replacementCost?, lifeYears, salvageAtCost? }.
+
+   Replacements fall at multiples of the (possibly fractional) life that are
+   strictly inside the horizon, each paid in the year it falls in
+   (ceil: end-of-year cash-flow convention), so a 11.3-year battery is paid
+   in years 12, 23, ... while the schedule itself does not drift. A
+   replacement costs `replacementCost` (default: the initial cost).
+
+   Salvage in the final year is straight-line: the last installation's cost x
+   remaining life / life, measured from its scheduled (fractional) install
+   time, so a 7-year asset replaced in year 28 of 30 returns 5/7 of its cost.
+   Assets without a finite life (land) are never replaced and return their
+   cost when `salvageAtCost` is set. */
 export function buildReplacementSchedule(analysisHorizonYears, assets) {
   const byYear = {};
   const entries = [];
+  const salvageItems = [];
+  const horizon = Number.isFinite(analysisHorizonYears) ? Math.max(0, analysisHorizonYears) : 0;
 
   for (const asset of assets) {
     if (!asset || !Number.isFinite(asset.cost) || asset.cost <= 0) continue;
-    if (!Number.isFinite(asset.lifeYears) || asset.lifeYears <= 0) continue;
+    if (!Number.isFinite(asset.lifeYears)) {
+      if (asset.salvageAtCost && horizon > 0) {
+        salvageItems.push({ key: asset.key, label: asset.label, cost: asset.cost, remainingYears: Infinity, value: asset.cost });
+      }
+      continue;
+    }
+    if (asset.lifeYears <= 0) continue;
 
+    const replacementCost = Number.isFinite(asset.replacementCost) ? Math.max(0, asset.replacementCost) : asset.cost;
+    let lastInstalledAt = 0;
+    let lastCost = asset.cost;
     let replacementAt = asset.lifeYears;
-    while (replacementAt < analysisHorizonYears - 1e-9) {
+    while (replacementAt < horizon - 1e-9) {
       const year = Math.max(1, Math.ceil(replacementAt - 1e-9));
-      if (!byYear[year]) {
-        byYear[year] = {
-          year,
-          total: 0,
-          items: [],
-        };
-        entries.push(byYear[year]);
+      if (replacementCost > 0) {
+        if (!byYear[year]) {
+          byYear[year] = {
+            year,
+            total: 0,
+            items: [],
+          };
+          entries.push(byYear[year]);
+        }
+
+        byYear[year].total += replacementCost;
+        byYear[year].items.push({
+          key: asset.key,
+          label: asset.label,
+          cost: replacementCost,
+          lifeYears: asset.lifeYears,
+          scheduledAtYear: replacementAt,
+        });
       }
 
-      byYear[year].total += asset.cost;
-      byYear[year].items.push({
-        key: asset.key,
-        label: asset.label,
-        cost: asset.cost,
-        lifeYears: asset.lifeYears,
-        scheduledAtYear: replacementAt,
-      });
-
+      lastInstalledAt = replacementAt;
+      lastCost = replacementCost;
       replacementAt += asset.lifeYears;
+    }
+
+    const remainingYears = Math.max(0, asset.lifeYears - (horizon - lastInstalledAt));
+    const value = lastCost * (remainingYears / asset.lifeYears);
+    if (value > 1e-9 && horizon > 0) {
+      salvageItems.push({ key: asset.key, label: asset.label, cost: lastCost, remainingYears, value });
     }
   }
 
@@ -81,6 +116,11 @@ export function buildReplacementSchedule(analysisHorizonYears, assets) {
     byYear,
     entries,
     total: entries.reduce((sum, entry) => sum + entry.total, 0),
+    salvage: {
+      year: horizon,
+      items: salvageItems,
+      total: salvageItems.reduce((sum, item) => sum + item.value, 0),
+    },
   };
 }
 
@@ -429,6 +469,7 @@ export function buildCashFlowTimeline(totalCapex, financing, yearlyCashFlows, po
   const annualPolicyCredits = [safeUpfrontPolicySupport];
   const annualOperatingCost = [0];
   const replacementCapex = [0];
+  const salvageValue = [0];
   const annualDebtService = [0];
   const projectCashFlow = [-safeNetCapexAtClose];
   const equityCashFlow = [-safeEquityUpfront];
@@ -445,6 +486,7 @@ export function buildCashFlowTimeline(totalCapex, financing, yearlyCashFlows, po
     const operatingCash = Number.isFinite(entry?.operatingCashFlow) ? entry.operatingCashFlow : 0;
     const operatingCost = Math.max(0, revenue - operatingCash);
     const replacements = Math.max(0, Number(entry?.replacementOutflow) || 0);
+    const salvage = Math.max(0, Number(entry?.salvageValue) || 0);
     const debtService = financed ? Math.max(0, Number(entry?.debtService) || 0) : 0;
     const projectCash = Number.isFinite(entry?.netCashFlow) ? entry.netCashFlow : 0;
     const equityCash = financed
@@ -465,6 +507,7 @@ export function buildCashFlowTimeline(totalCapex, financing, yearlyCashFlows, po
     annualPolicyCredits.push(policyCredits);
     annualOperatingCost.push(operatingCost);
     replacementCapex.push(replacements);
+    salvageValue.push(salvage);
     annualDebtService.push(debtService);
     projectCashFlow.push(projectCash);
     equityCashFlow.push(equityCash);
@@ -482,6 +525,7 @@ export function buildCashFlowTimeline(totalCapex, financing, yearlyCashFlows, po
     annualPolicyCredits,
     annualOperatingCost,
     replacementCapex,
+    salvageValue,
     annualDebtService,
     projectCashFlow,
     equityCashFlow,
@@ -494,6 +538,7 @@ export function buildCashFlowTimeline(totalCapex, financing, yearlyCashFlows, po
     hasDebtService: financed && annualDebtService.some(value => value > 1e-9),
     hasPolicyCredits: annualPolicyCredits.some(value => Math.abs(value) > 1e-9),
     hasReplacements: replacementCapex.some(value => value > 1e-9),
+    hasSalvage: salvageValue.some(value => value > 1e-9),
     hasSponsorSupport: financed && sponsorSupportNeeded.some(value => value > 1e-9),
     totalCapex: safeTotalCapex,
     netCapexAtClose: safeNetCapexAtClose,

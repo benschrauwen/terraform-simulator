@@ -37,8 +37,8 @@ function capexSlices(e) {
   return [
     ['Solar modules', solarBreakdown.solarModules || 0, '#f59e0b'],
     ['Solar BOS', solarBreakdown.solarBos || 0, '#fbbf24'],
-    ['Land', solarBreakdown.solarLand || 0, '#84cc16'],
     ['Site prep', solarBreakdown.solarSitePrep || 0, '#22c55e'],
+    ['Land', solarBreakdown.solarLand || 0, '#84cc16'],
     ['Battery', e.capex.battery, '#6366f1'],
     ['AI datacenter', e.capex.ai, '#38bdf8'],
     ['Electrolyzer', e.capex.electrolyzer, '#06b6d4'],

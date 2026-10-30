@@ -78,7 +78,7 @@ The simulator is useful, but it still has important limitations:
 - DAC-only and hydrogen-only operating modes are still stylized fallback cases rather than dedicated product modes.
 - Exploratory routes are rough techno-economic placeholders, not full first-principles process designs with validated thermal, logistics, startup, or quality constraints.
 - O&M is still represented as simple percentages of CAPEX rather than a detailed fixed-plus-variable cost model.
-- Financing is limited to a simple upfront debt share, fee, and amortizing annual debt service. Taxes, depreciation, inflation, salvage value, working capital, tax equity, and ownership structure are not modeled.
+- Financing is limited to a simple upfront debt share, fee, and amortizing annual debt service. Taxes, depreciation, inflation, working capital, tax equity, and ownership structure are not modeled. Salvage is straight-line book value (land at nominal cost), not a market resale estimate.
 - Policy eligibility is not legally validated against full lifecycle, jurisdictional, wage, certification, ownership, or contractual requirements.
 - Bid-based grants, premiums, CfDs, and correction mechanisms still depend on user-entered award assumptions rather than live auction or tariff datasets.
 - The battery model is a simplified firming heuristic, not a full storage engineering model or year-round plant-control system.
@@ -437,13 +437,20 @@ The app uses capital recovery factor annualization plus a discounted cash flow p
 crf(r, n) = r * (1 + r)^n / ((1 + r)^n - 1)
 
 annualized_capex_i = capex_i * crf(discount_rate, asset_life_i)
+annualized_land    = land_capex * discount_rate        # land does not wear out
 
-annual_cost = sum(annualized_capex_i) + annual_om
+annual_cost = sum(annualized_capex_i) + annualized_land + annual_om
+
+solar_capex          = modules + bos + site_prep       # 48E basis; land excluded
+solar_replacement    = modules + bos                   # repowering reuses the site
+
+salvage_N = sum_i last_install_cost_i * remaining_life_i / life_i + land_capex
 
 net_cash_flow_y =
   yearly_revenue_y -
   annual_om -
-  replacement_capex_y
+  replacement_capex_y +
+  (y == N ? salvage_N : 0)
 
 npv =
   -initial_capex +
@@ -466,7 +473,8 @@ Important implementation detail:
 
 - Yearly revenue streams follow the lifetime energy vectors (see Lifetime energy): AI revenue the AI-served energy, product and exploratory revenue the delivered chemical energy, with degradation restarting after each solar replacement.
 - Time-limited policy modes only apply for their modeled support duration.
-- Replacement CAPEX appears as discrete outflows when asset life rolls over within the analysis horizon.
+- Replacement CAPEX appears as discrete outflows when asset life rolls over within the analysis horizon, paid at the end of the year the (possibly fractional) life ends in; the schedule does not drift (an 11.3-year battery is paid in years 12, 23, ...).
+- The final year returns each asset's straight-line residual value (a 7-year block replaced in year 28 of 30 returns 5/7 of its cost), so lengthening the horizon no longer charges late replacements in full.
 - With financing enabled, the headline IRR switches from project IRR to equity IRR, while project NPV remains unlevered.
 
 IRR is reported only when a single economically meaningful root exists:

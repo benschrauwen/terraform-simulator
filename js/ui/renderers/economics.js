@@ -205,7 +205,17 @@ function buildReturnsRows({ e, labels }) {
         'Scheduled replacements',
         money(e.totalReplacementOutflows),
         'negative',
-        'Full equipment replacement CAPEX that lands inside the selected analysis horizon and is included in NPV, IRR, ROI, and payback.'
+        'Equipment replacement CAPEX that lands inside the selected analysis horizon and is included in NPV, IRR, ROI, and payback. A solar repowering replaces modules and BOS only.'
+      )
+    );
+  }
+  if (e.salvageValue > 0) {
+    rows.push(
+      econRow(
+        'Salvage value (final year)',
+        money(e.salvageValue),
+        'positive',
+        'Straight-line residual value of each asset at the end of the horizon (last installation cost x remaining life / life), plus land at cost. Included in NPV, IRR, ROI, and payback.'
       )
     );
   }
@@ -246,9 +256,18 @@ function buildCostRows({ r, e, state }) {
       'Balance of system: the non-panel parts of the solar installation, such as mounting structure, inverters, wiring, and installation labor.'
     )
   );
-  if ((solarBreakdown.solarLand || 0) > 0) rows.push(econRow('Land acquisition', money(solarBreakdown.solarLand)));
-  if ((solarBreakdown.solarSitePrep || 0) > 0) rows.push(econRow('Site prep', money(solarBreakdown.solarSitePrep)));
+  if ((solarBreakdown.solarSitePrep || 0) > 0) {
+    rows.push(econRow('Site prep', money(solarBreakdown.solarSitePrep), '', 'Depreciated with the array; a repowering reuses the prepared site, so it is not replaced.'));
+  }
   rows.push(econRow('Total solar installation', money(e.capex.solar)));
+  if ((e.capex.land || 0) > 0) {
+    rows.push(econRow(
+      'Land acquisition',
+      money(e.capex.land),
+      '',
+      'Not depreciated, never replaced and not part of the solar ITC basis. Its annual capital charge is land x discount rate, and it returns at cost as salvage in the final year.'
+    ));
+  }
   [
     ['battery', 'Battery'],
     ['ai', 'AI datacenter'],

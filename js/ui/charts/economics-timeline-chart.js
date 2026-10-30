@@ -25,6 +25,9 @@ function describeTimeline(timeline, financing) {
       ? 'The dashed green line starts at upfront CAPEX and tracks cumulative project cash before financing; the solid blue line starts at sponsor cash at close and tracks cumulative equity cash after debt service.'
       : 'The green line starts at upfront CAPEX at close and tracks cumulative project cash through the selected analysis horizon.',
   ];
+  if (timeline.hasSalvage) {
+    noteParts.push('The final year adds the straight-line residual value of every asset (land at cost), so late replacements are not charged in full.');
+  }
   if ((timeline.upfrontPolicySupport || 0) > 1e-9) {
     noteParts.push('If the selected scheme includes upfront capex support, the close bucket shows that support while the cumulative cash line starts from the net CAPEX at close.');
   }
@@ -87,6 +90,9 @@ function buildTimelineDatasets(timeline) {
     cashBar('O&M', negate(timeline.annualOperatingCost), 'rgba(148, 163, 184, 0.55)', '#94a3b8'),
     ...(timeline.hasReplacements
       ? [cashBar('Replacement CAPEX', negate(timeline.replacementCapex), 'rgba(199, 115, 121, 0.62)', '#c77379')]
+      : []),
+    ...(timeline.hasSalvage
+      ? [cashBar('Salvage value', timeline.salvageValue, 'rgba(132, 204, 22, 0.55)', '#84cc16')]
       : []),
     ...(timeline.hasDebtService
       ? [cashBar('Debt service', negate(timeline.annualDebtService), 'rgba(95, 127, 184, 0.6)', '#5f7fb8')]
@@ -162,6 +168,7 @@ export const economicsTimelineChartMethods = {
       annualPolicyCredits: timeline.annualPolicyCredits,
       annualOperatingCost: timeline.annualOperatingCost,
       replacementCapex: timeline.replacementCapex,
+      salvageValue: timeline.salvageValue,
       annualDebtService: timeline.annualDebtService,
       cumulativeProjectCash: timeline.cumulativeProjectCash,
       cumulativeEquityCash: timeline.financed ? timeline.cumulativeEquityCash : [],

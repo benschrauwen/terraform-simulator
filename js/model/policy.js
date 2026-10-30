@@ -85,6 +85,7 @@ function getEligibleCapexBreakdown(basis, capex = {}) {
   if (basis === 'total') {
     return {
       solar: capex.solar || 0,
+      land: capex.land || 0,
       battery: capex.battery || 0,
       ai: capex.ai || 0,
       electrolyzer: capex.electrolyzer || 0,

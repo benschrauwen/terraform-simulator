@@ -100,8 +100,18 @@ export const economicsMethods = {
     // Core capex blocks in a fixed order (sums, schedules and charts follow
     // it). `active: false` blocks carry no annualized capex. Exploratory
     // routes are appended per module.
+    // Land never wears out: no replacement, annual charge capital x r
+    // instead of CRF, and returned at cost as salvage (see solar.js).
     const coreAssets = [
-      { key: 'solar', label: 'Solar', capex: solar.totalSolarCapex, lifeYears: state.solarAssetLife, active: true },
+      {
+        key: 'solar',
+        label: 'Solar',
+        capex: solar.depreciableSolarCapex ?? solar.totalSolarCapex,
+        replacementCost: solar.solarReplacementCapex,
+        lifeYears: state.solarAssetLife,
+        active: true,
+      },
+      { key: 'land', label: 'Land', capex: solar.landCapex || 0, lifeYears: Infinity, salvageAtCost: true, perpetual: true, active: true },
       { key: 'battery', label: 'Battery', capex: storage.capex, lifeYears: batteryLifeYears, active: storage.enabled },
       { key: 'ai', label: 'AI datacenter', capex: ai.capex, lifeYears: ai.assetLifeYears, active: ai.enabled },
       { key: 'electrolyzer', label: 'Electrolyzer', capex: electrolyzer.capex, lifeYears: state.electrolyzerAssetLife, active: true },
@@ -116,8 +126,8 @@ export const economicsMethods = {
     const capexBreakdown = {
       solarModules: solar.moduleCapex,
       solarBos: solar.bosCapex,
-      solarLand: solar.landCapex,
       solarSitePrep: solar.sitePrepCapex,
+      solarLand: solar.landCapex,
     };
     const totalCapex = Object.values(capex).reduce((sum, value) => sum + value, 0);
     const policy = this.getPolicyCredits(state, {
@@ -129,11 +139,13 @@ export const economicsMethods = {
     const netCapexAtClose = Math.max(0, totalCapex - (policy.upfrontSupport || 0));
     const financing = buildFinancingModel(state, netCapexAtClose);
     const replacementSchedule = buildReplacementSchedule(state.analysisHorizonYears, [
-      ...coreAssets.map(asset => ({
+      ...coreAssets.filter(asset => asset.active).map(asset => ({
         key: asset.key,
         label: asset.label,
         cost: asset.capex,
+        replacementCost: asset.replacementCost,
         lifeYears: asset.lifeYears,
+        salvageAtCost: asset.salvageAtCost,
       })),
       ...exploratoryDetails.map(module => ({
         key: `exploratory-${module.id}`,
@@ -165,7 +177,9 @@ export const economicsMethods = {
     const annualizedCapex = {
       ...Object.fromEntries(coreAssets.map(asset => [
         asset.key,
-        asset.active ? netCapexByKey[asset.key] * crf(rate, asset.lifeYears) : 0,
+        asset.active
+          ? netCapexByKey[asset.key] * (asset.perpetual ? Math.max(0, rate) : crf(rate, asset.lifeYears))
+          : 0,
       ])),
       exploratory: exploratoryAnnualizedCapex,
     };
@@ -217,7 +231,10 @@ export const economicsMethods = {
       const operatingCashFlow = totalYearRevenue - annualOM;
       const replacementEvent = replacementSchedule.byYear[year];
       const replacementOutflow = replacementEvent ? replacementEvent.total : 0;
-      const netCashFlow = operatingCashFlow - replacementOutflow;
+      // Straight-line residual value of every asset (land at cost) returns
+      // in the final year, so a late replacement is not charged in full.
+      const salvageValue = year === state.analysisHorizonYears ? replacementSchedule.salvage.total : 0;
+      const netCashFlow = operatingCashFlow - replacementOutflow + salvageValue;
       const debtEntry = financing.byYear[year] || {
         startingBalance: 0,
         endingBalance: 0,
@@ -259,6 +276,8 @@ export const economicsMethods = {
         operatingCashFlow,
         replacementOutflow,
         replacementItems: replacementEvent ? replacementEvent.items : [],
+        salvageValue,
+        salvageItems: salvageValue > 0 ? replacementSchedule.salvage.items : [],
         netCashFlow,
         cumulativeOperatingCash: cumulativeOperatingAfter,
         cumulativeNetCash: cumulativeNetAfter,
@@ -342,7 +361,7 @@ export const economicsMethods = {
     const cashFlowTimeline = buildCashFlowTimeline(totalCapex, financingSummary, yearlyCashFlows, policy);
 
     const aiCoreAnnualCost = ai.enabled
-      ? annualizedCapex.solar + annualizedCapex.battery + annualizedCapex.ai + solar.annualSolarOm + (storage.capex * batteryOmFrac) + (ai.annualOM || 0)
+      ? annualizedCapex.solar + annualizedCapex.land + annualizedCapex.battery + annualizedCapex.ai + solar.annualSolarOm + (storage.capex * batteryOmFrac) + (ai.annualOM || 0)
       : 0;
     const bufferedElectricityAnnualCost = solar.annualizedSolar +
       solar.annualSolarOm +
@@ -374,6 +393,8 @@ export const economicsMethods = {
       annualProfit,
       replacementSchedule: replacementSchedule.entries,
       totalReplacementOutflows: replacementSchedule.total,
+      salvageValue: replacementSchedule.salvage.total,
+      salvageItems: replacementSchedule.salvage.items,
       averageAnnualRevenue,
       averageAnnualProfit,
       finalYearAnnualRevenue,

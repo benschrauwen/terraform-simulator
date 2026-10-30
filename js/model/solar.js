@@ -343,10 +343,19 @@ export const solarMethods = {
     const totalBOSCost = state.systemSizeMW * 1e6 * bosModel.bosCostPerW;
     const landCapex = acres * (state.landCostPerAcre || 0);
     const sitePrepCapex = acres * (state.sitePrepCostPerAcre || 0);
-    const totalSolarCapex = totalPanelCost + totalBOSCost + landCapex + sitePrepCapex;
+    // Land is not energy property and does not wear out: it is never
+    // replaced, stays out of the solar (48E) basis, carries an annual charge
+    // of capital x r (its opportunity cost; the land is recovered at the end)
+    // and is returned at cost as salvage. Site prep is part of the installed
+    // solar basis and is depreciated with the array, but a repowering reuses
+    // the prepared site, so only modules + BOS are replaced.
+    const depreciableSolarCapex = totalPanelCost + totalBOSCost + sitePrepCapex;
+    const solarReplacementCapex = totalPanelCost + totalBOSCost;
+    const totalSolarCapex = depreciableSolarCapex + landCapex;
 
     const rate = state.discountRate / 100;
-    const annualizedSolar = totalSolarCapex * crf(rate, state.solarAssetLife);
+    const annualizedLand = landCapex * Math.max(0, rate);
+    const annualizedSolar = (depreciableSolarCapex * crf(rate, state.solarAssetLife)) + annualizedLand;
     const solarOmFrac = (state.solarOmPercent ?? DEFAULT_STATE.solarOmPercent) / 100;
     const annualSolarOm = (totalPanelCost + totalBOSCost) * solarOmFrac;
     const lifetimeAverageAnnualMWh = annualMWh * getAverageSolarDegradationFactor(
@@ -403,7 +412,10 @@ export const solarMethods = {
       bosCapex: totalBOSCost,
       landCapex,
       sitePrepCapex,
+      depreciableSolarCapex,
+      solarReplacementCapex,
       totalSolarCapex,
+      annualizedLand,
       annualizedSolar,
       annualSolarOm,
       lcoe,

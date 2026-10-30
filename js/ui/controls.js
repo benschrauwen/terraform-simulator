@@ -45,6 +45,7 @@ export const controlMethods = {
     this.bindModuleControls();
     this.bindSavedSitePresetControls();
     this.bindOptimizeButtons();
+    this.bindMarketLadderTabs();
   },
 
   bindControlSpec(spec) {

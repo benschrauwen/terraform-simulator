@@ -52,7 +52,7 @@ js/util.js    dependency-free numeric helpers (clamps, step precision), usable b
 
 Imports run one way, top to bottom: a layer imports its own files, lower layers and `util.js`, never a higher layer. `tests/architecture/import-direction.test.js` enforces it.
 
-- `js/data/`: `reference-data.js` (bodies, `LOCATION_PRESETS`, `MOUNTING_TYPES`, `CHEMISTRY`, `METHANE_MARKET_PRESETS`, AI defaults), `assumptions.js` (`MODEL_ASSUMPTIONS`, the GHI/cloudiness heuristics and `SOLAR_LAYOUT_REFERENCE`), `modules.js` (supported and exploratory process modules), `module-catalog.js` (`ModuleCatalog`: normalizes `modules.js` into frozen modules and answers route, preset, market, buffer and capex-slider questions), `policies.js` (incentive schemes and picker groups).
+- `js/data/`: `reference-data.js` (bodies, `LOCATION_PRESETS`, `MOUNTING_TYPES`, `CHEMISTRY`, `METHANE_MARKET_PRESETS`, AI defaults), `assumptions.js` (`MODEL_ASSUMPTIONS`, the GHI/cloudiness heuristics and `SOLAR_LAYOUT_REFERENCE`), `modules.js` (supported and exploratory process modules), `module-catalog.js` (`ModuleCatalog`: normalizes `modules.js` into frozen modules and answers route, preset, market, buffer and capex-slider questions), `policies.js` (incentive schemes and picker groups), `market-ladders.js` (Terraform's methane and methanol market tiers).
 - `js/state/`: `schema.js` is the single source of state fields and defaults.
 - `js/model/`: one file per concern: `solar.js` + `solar-geometry.js` (resource, sky model, mountings), `annual-series.js` (hourly year), `battery.js` (storage + chemical dispatch), `ai-compute.js`, `lifetime-energy.js`, `process.js` (allocation, electrolyzer, DAC, reactors, exploratory routes, buffers), `economics.js`, `finance.js`, `policy.js`, `optimizer-search.js`, and `scenario.js` (the pipeline).
 - `js/ui/`: `app.js` plus mixins, `control-spec.js` + `controls.js`, `module-controls.js`, `renderers/`, `charts/` (one module per chart, registered in `charts/index.js`), `diagram.js`, `site-map.js`, `share.js`, `optimizer-client.js`, `formatters.js`.
@@ -89,6 +89,7 @@ After any of these changes, run `npm test`. Every recipe that changes the result
 | Exploratory route or new product (incl. a methanol consumer) | `js/data/modules.js` + its floor in `tests/calculations/energy-floor.test.js` |
 | Policy scheme | `js/data/policies.js` (+ its facts in `tests/calculations/policy-facts.test.js`) |
 | Earth site preset | `js/data/reference-data.js` |
+| Market ladder tier | `js/data/market-ladders.js` |
 | State field + control | `js/state/schema.js`, `index.html`, `js/ui/control-spec.js` |
 | Result row | the model file that computes it, `js/ui/renderers/economics.js` or `renderers/index.js` |
 | Chart | a module in `js/ui/charts/`, one `RESULT_CHARTS` entry, its `<canvas>` in `index.html` |
@@ -361,6 +362,20 @@ net avoided = CH4_MCF * 0.0528 + MeOH_t * 1.374     # fossil fuel displaced (met
 ```
 
 0.0528 t/MCF is the combustion CO2 of pure CH4 (19.25 kg x 44.01/16.04). EPA's ~0.055 t/MCF is for pipeline gas. Carbon in a fuel returns to the air when it is burned, so capture is not removal: net avoided counts only displaced fossil combustion. Upstream emissions and leakage are excluded, and non-fuel exploratory products are counted as bound, not avoided.
+
+### Market ladder (`market-ladder.js`)
+
+The Market Ladder chart places the site on Terraform's market ladder for each product it sells (tiers from Terraform's scale-up roadmap, `js/data/market-ladders.js`). Each tier has a price and the cumulative market size down to it; its own volume is its share of that market divided by its price, and shelves stack left to right on log axes.
+
+```text
+tier_volume_i      = (cumulative_market_i - cumulative_market_(i-1)) / price_i
+site point         = (annual volume sold, levelized unit cost)
+                     methane: MCF/yr x 1.01 MMBtu/MCF, costPerMCF / 1.01 (pure CH4 HHV)
+                     methanol: exported t/yr, costPerTonMethanol
+tiers cleared      = tiers with price >= site unit cost
+```
+
+The unit cost is the allocated plant cost per unit, excluding output credits. The dashed line is the assumed sale price. The ladder's x-axis is market volume, not this site's cost curve: Terraform's learning-curve path is not drawn.
 
 ## Defaults
 

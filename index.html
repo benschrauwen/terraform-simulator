@@ -694,6 +694,18 @@
           <canvas id="economicsTimelineChart"></canvas>
         </div>
       </div>
+
+      <div class="chart-section" id="marketLadderCard">
+        <h3><span class="tooltip-label" data-tooltip="Terraform's market ladder: premium niches at the top, bulk commodity at the bottom. Each shelf is a market tier's price; its width is that tier's annual volume, stacked left to right. A site can profitably sell into every tier priced at or above its levelized cost. Tiers from Terraform's scale-up roadmap; see Sources.">Market Ladder</span></h3>
+        <div class="chart-tabs" id="marketLadderTabs" role="tablist" aria-label="Market ladder product" hidden>
+          <button type="button" class="chart-tab active" data-ladder-product="methane" role="tab" aria-selected="true">Methane</button>
+          <button type="button" class="chart-tab" data-ladder-product="methanol" role="tab" aria-selected="false">Methanol</button>
+        </div>
+        <div class="field-note compact-note" id="marketLadderNote"></div>
+        <div class="chart-wrapper chart-wrapper-timeline">
+          <canvas id="marketLadderChart" aria-label="Market ladder with this site's levelized cost"></canvas>
+        </div>
+      </div>
     </section>
 
     <!-- RIGHT: Results Panel -->

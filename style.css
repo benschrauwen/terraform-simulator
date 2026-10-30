@@ -369,7 +369,8 @@ body {
   cursor: not-allowed;
 }
 
-.load-config-tabs {
+.load-config-tabs,
+.chart-tabs {
   display: flex;
   gap: 2px;
   margin-bottom: 10px;
@@ -379,7 +380,8 @@ body {
   padding: 2px;
 }
 
-.load-config-tab {
+.load-config-tab,
+.chart-tab {
   flex: 1;
   padding: 7px 8px;
   border: none;
@@ -392,12 +394,14 @@ body {
   transition: background-color var(--transition), color var(--transition);
 }
 
-.load-config-tab.active {
+.load-config-tab.active,
+.chart-tab.active {
   background: rgba(95, 127, 184, 0.18);
   color: var(--text-primary);
 }
 
-.load-config-tab:hover:not(.active) {
+.load-config-tab:hover:not(.active),
+.chart-tab:hover:not(.active) {
   color: var(--text-secondary);
   background: rgba(255, 255, 255, 0.03);
 }

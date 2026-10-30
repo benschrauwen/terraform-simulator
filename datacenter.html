@@ -6,6 +6,7 @@
   <title>Abundance Stack — Datacenter power &amp; cooling</title>
   <link rel="stylesheet" href="node_modules/leaflet/dist/leaflet.css">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="datacenter.css">
   <script src="node_modules/chart.js/dist/chart.umd.js"></script>
 </head>
 <body class="datacenter-app">
@@ -107,9 +108,9 @@
         <div class="section-body" id="batteryControls"></div>
       </section>
 
-      <section class="config-section" data-section="gas">
+      <section class="config-section open" data-section="gas">
         <h2 class="section-header" data-toggle="gas">
-          <span class="icon">🔥</span> Gas Generation
+          <span class="icon">🔥</span> Firm Generation: Gas / Nuclear
           <span class="chevron">▾</span>
         </h2>
         <div class="section-body" id="gasControls"></div>
@@ -152,8 +153,42 @@
         </div>
       </div>
 
+      <div class="chart-section" id="timelineCard">
+        <h3>Project Timeline <span class="chart-title-meta">— time to first power</span></h3>
+        <p class="dc-headline" id="timelineHeadline"></p>
+        <div class="dc-inline-controls" id="timelineControls"></div>
+        <div class="field-note compact-note" id="timelineNote"></div>
+        <div class="timeline-view" id="timelineView" role="region" aria-label="Project timeline" tabindex="0"></div>
+        <div id="timelineLegend"></div>
+      </div>
+
       <div class="chart-section" id="dispatchCard">
-        <h3>Dispatch <span id="dispatchMeta" class="chart-title-meta"></span></h3>
+        <h3>Power Dispatch <span id="dispatchMeta" class="chart-title-meta"></span></h3>
+        <div class="dc-inline-controls">
+          <label>View
+            <select id="dispatchMode">
+              <option value="day">Typical day (MW by hour)</option>
+              <option value="year">Whole year (MWh per day)</option>
+            </select>
+          </label>
+          <label>Month
+            <select id="dispatchMonth">
+              <option value="avg">Annual average</option>
+              <option value="0">January</option>
+              <option value="1">February</option>
+              <option value="2">March</option>
+              <option value="3">April</option>
+              <option value="4">May</option>
+              <option value="5">June</option>
+              <option value="6">July</option>
+              <option value="7">August</option>
+              <option value="8">September</option>
+              <option value="9">October</option>
+              <option value="10">November</option>
+              <option value="11">December</option>
+            </select>
+          </label>
+        </div>
         <div class="field-note compact-note" id="dispatchNote"></div>
         <div class="chart-wrapper chart-wrapper-lg">
           <canvas id="dispatchChart"></canvas>
@@ -201,12 +236,27 @@
         </div>
       </section>
 
-      <section class="results-section" data-section="sensitivity">
+      <section class="results-section open" data-section="sensitivity">
         <h2 class="section-header" data-toggle="sensitivity">
           <span class="icon">📈</span> Sensitivity
           <span class="chevron">▾</span>
         </h2>
-        <div class="section-body" id="sensitivityResults"></div>
+        <div class="section-body" id="sensitivityResults">
+          <div class="sensitivity-card" id="breakEvenCard">
+            <div class="sensitivity-card-title">Break-even price (NPV = 0)</div>
+            <div id="breakEvenRows"></div>
+          </div>
+          <div class="sensitivity-card tornado-card" id="tornadoCard" hidden>
+            <div class="sensitivity-card-title">What drives NPV</div>
+            <div class="tornado-swing" id="tornadoControls"></div>
+            <div class="field-note tornado-note">
+              Each row moves one input down and up by the chosen percentage of its current value while every other input stays put; bars run from the current NPV (white line) to the NPV at each end, and no input passes its allowed limits. Red dashes mark NPV = 0. "Schedule" stretches or shortens every lead time. Hover a bar for the input values.
+            </div>
+            <div class="chart-wrapper chart-wrapper-tornado">
+              <canvas id="tornadoChart" role="img" aria-label="NPV tornado chart"></canvas>
+            </div>
+          </div>
+        </div>
       </section>
     </aside>
   </main>

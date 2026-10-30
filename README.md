@@ -29,7 +29,7 @@ npm run preview   # serves dist/ the same way
 
 `PORT` and `HOST` override the dev server address. There is no bundler or framework: `index.html` loads the vendor scripts from `node_modules/` and one native ES module entry, `js/main.js`.
 
-`npm run build` copies an allowlist (`index.html`, `sources.html`, `datacenter.html`, `datacenter-sources.html`, `style.css`, `js/`, the vendor files, `README.md`, `LICENSE`) into `dist/`. Assets go under `dist/assets/<buildId>/`, where the build ID is a short SHA-256 of the shipped asset files (so identical content keeps its URL and any change gets a new one; `BUILD_ID` overrides it), and the pages are rewritten to point at them. `DIST_DIR` changes the output directory.
+`npm run build` copies an allowlist (`index.html`, `sources.html`, `datacenter.html`, `datacenter-sources.html`, `style.css`, `datacenter.css`, `js/`, the vendor files, `README.md`, `LICENSE`) into `dist/`. Assets go under `dist/assets/<buildId>/`, where the build ID is a short SHA-256 of the shipped asset files (so identical content keeps its URL and any change gets a new one; `BUILD_ID` overrides it), and the pages are rewritten to point at them. `DIST_DIR` changes the output directory.
 
 The footer shows which release a visitor is looking at: `v<package.json version> · <commit date> · <short sha>`, stamped into each page in `dist/` by the build (the unbuilt page says "Development build"). Bump `version` in `package.json` when you cut a release. Vercel deploys `dist/` using `vercel.json`, which runs the build, marks `/assets/*` immutable and sets a strict Content-Security-Policy. The only external host the CSP allows is the Esri satellite tile server used by the site map.
 

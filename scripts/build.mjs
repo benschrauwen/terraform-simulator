@@ -19,6 +19,7 @@ const PAGES = ['index.html', 'sources.html', 'datacenter.html', 'datacenter-sour
 const ASSETS = {
   // dist path (under ASSET_DIR) -> source path
   'style.css': 'style.css',
+  'datacenter.css': 'datacenter.css',
   'js': 'js',
   'vendor/chart.umd.js': 'node_modules/chart.js/dist/chart.umd.js',
   'vendor/leaflet/leaflet.js': 'node_modules/leaflet/dist/leaflet.js',

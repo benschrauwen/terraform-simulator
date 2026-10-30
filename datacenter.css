@@ -1,0 +1,548 @@
+/* Abundance Stack datacenter page: styles on top of style.css (shared shell, panels, controls).
+   Everything here is scoped to classes the datacenter UI renders (js/ui/datacenter/). */
+
+body.datacenter-app [hidden] {
+  display: none !important;
+}
+
+/* ---- Left panel: generated controls and info blocks ---- */
+
+.dc-field + .dc-field {
+  margin-top: 2px;
+}
+
+.dc-block:empty {
+  display: none;
+}
+
+.dc-block {
+  margin: 4px 0 12px;
+}
+
+.dc-info-lead {
+  margin: 0 0 6px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.dc-tradeoff {
+  margin: 0 0 6px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--warning);
+  background: var(--bg-surface);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.45;
+}
+
+.dc-cod-badge {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 8px 10px;
+  border: 1px solid rgba(155, 127, 209, 0.55);
+  border-radius: var(--radius);
+  background: rgba(155, 127, 209, 0.12);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.dc-cod-badge strong {
+  font-size: 18px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-details {
+  margin: 6px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+}
+
+.dc-details > summary {
+  padding: 7px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.dc-details > summary:focus-visible {
+  outline: 1px solid var(--electric);
+}
+
+.dc-details-body,
+.dc-details > .dc-table-scroll,
+.dc-details > .dc-example-list {
+  padding: 4px 10px 8px;
+}
+
+.dc-arch-cards {
+  display: grid;
+  gap: 8px;
+}
+
+.dc-arch-card {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  cursor: pointer;
+  transition: border-color var(--transition), background-color var(--transition);
+}
+
+.dc-arch-card:hover {
+  border-color: var(--border-light);
+}
+
+.dc-arch-card.selected {
+  border-color: var(--electric);
+  background: rgba(95, 127, 184, 0.12);
+}
+
+.dc-arch-card:focus-within {
+  outline: 1px solid var(--electric);
+}
+
+.dc-arch-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.dc-arch-head input {
+  accent-color: var(--electric);
+}
+
+.dc-arch-desc {
+  font-size: 10.5px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.dc-example-list {
+  margin: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.dc-example-list a {
+  color: var(--ai);
+  font-weight: 600;
+}
+
+.dc-example-date {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-table-scroll {
+  overflow-x: auto;
+}
+
+.dc-compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-compare-table th,
+.dc-compare-table td {
+  padding: 4px 4px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.dc-compare-table th[scope="row"],
+.dc-compare-table thead th:first-child {
+  text-align: left;
+  white-space: normal;
+  font-weight: 500;
+}
+
+.dc-compare-table .dc-selected-row {
+  color: var(--text-primary);
+  background: rgba(95, 127, 184, 0.14);
+}
+
+.dc-inline-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 6px;
+}
+
+.dc-inline-controls > label,
+.dc-inline-controls > .dc-field {
+  flex: 1 1 200px;
+  margin-bottom: 4px;
+}
+
+/* ---- Center: views ---- */
+
+#layoutView {
+  padding: 14px;
+  min-height: 0;
+}
+
+.dc-view-header h3 {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text-primary);
+}
+
+.dc-headline {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dc-empty {
+  padding: 30px 10px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.plant-layout-svg,
+.sankey-svg,
+.timeline-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: inherit;
+}
+
+.timeline-view {
+  overflow-x: auto;
+}
+
+.timeline-svg {
+  min-width: 560px;
+}
+
+/* Plant layout blocks */
+.pl-block rect {
+  stroke: rgba(255, 255, 255, 0.35);
+  stroke-width: 0.6;
+}
+
+.pl-building rect { fill: #3f5f8f; }
+.pl-coolingYard rect { fill: #3f8f9b; }
+.pl-substation rect { fill: #7f8a99; }
+.pl-solarField rect { fill: #8a6d2a; }
+.pl-battery rect { fill: #2f8a74; }
+.pl-gasPlant rect { fill: #9a5530; }
+.pl-nuclearPlant rect { fill: #6b569a; }
+
+.pl-name {
+  font-size: 12px;
+  font-weight: 600;
+  fill: #f8fafc;
+}
+
+.pl-detail {
+  font-size: 10px;
+  fill: #e2e8f0;
+}
+
+.pl-badge {
+  fill: var(--bg-primary);
+  stroke: #e2e8f0;
+  stroke-width: 1;
+}
+
+.pl-badge-text {
+  font-size: 9px;
+  font-weight: 700;
+  fill: #f8fafc;
+}
+
+.pl-scale line {
+  stroke: var(--text-secondary);
+  stroke-width: 1.5;
+}
+
+.pl-scale text {
+  font-size: 10px;
+  fill: var(--text-secondary);
+}
+
+.pl-scale .pl-grid {
+  fill: var(--ai);
+}
+
+.pl-legend {
+  list-style: none;
+  margin: 8px 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 4px 12px;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+
+.pl-legend-item {
+  display: grid;
+  grid-template-columns: 10px 14px auto 1fr;
+  align-items: baseline;
+  gap: 2px 6px;
+}
+
+.pl-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  align-self: center;
+}
+
+.pl-building .pl-swatch { background: #3f5f8f; }
+.pl-coolingYard .pl-swatch { background: #3f8f9b; }
+.pl-substation .pl-swatch { background: #7f8a99; }
+.pl-solarField .pl-swatch { background: #8a6d2a; }
+.pl-battery .pl-swatch { background: #2f8a74; }
+.pl-gasPlant .pl-swatch { background: #9a5530; }
+.pl-nuclearPlant .pl-swatch { background: #6b569a; }
+
+.pl-legend-num {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pl-legend-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pl-legend-detail {
+  color: var(--text-muted);
+}
+
+.pl-legend-area {
+  grid-column: 3 / -1;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sankey */
+.flow-view {
+  min-height: 120px;
+}
+
+.sk-band {
+  fill-opacity: 0.42;
+  stroke: none;
+}
+
+.sk-band:hover {
+  fill-opacity: 0.7;
+}
+
+.sk-node rect {
+  fill: #94a3b8;
+}
+
+.sk-label,
+.sk-value {
+  paint-order: stroke;
+  stroke: var(--bg-card);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.sk-label {
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--text-primary);
+}
+
+.sk-value {
+  font-size: 10px;
+  fill: var(--text-secondary);
+}
+
+.sk-band.sk-solar, .sk-solar rect { fill: #e0a83e; }
+.sk-band.sk-nuclear, .sk-nuclear rect { fill: #9b7fd1; }
+.sk-band.sk-grid, .sk-grid rect { fill: #5f7fb8; }
+.sk-band.sk-gas, .sk-gas rect, .sk-gasPlant rect { fill: #c56f3c; }
+.sk-band.sk-battery, .sk-battery rect { fill: #4fb39b; }
+.sk-band.sk-facility, .sk-facility rect { fill: #78a6d8; }
+.sk-it rect { fill: #a5b4fc; }
+.sk-cooling rect, .sk-band.sk-cooling { fill: #5ec4d6; }
+.sk-band.sk-it { fill: #a5b4fc; }
+.sk-band.sk-electricalLosses, .sk-electricalLosses rect { fill: #94a3b8; }
+.sk-curtailed rect, .sk-export rect, .sk-batteryLosses rect { fill: #6b7280; }
+.sk-band.sk-heatRejection, .sk-heatRejection rect { fill: #e07a5f; }
+.sk-air rect { fill: #cbd5e1; }
+.sk-vapour rect, .sk-evaporated rect { fill: #7dd3fc; }
+.sk-band.sk-waterSupply, .sk-waterSupply rect { fill: #38bdf8; }
+.sk-band.sk-coolingPlant, .sk-coolingPlant rect { fill: #5ec4d6; }
+.sk-band.sk-nuclearPlant, .sk-nuclearPlant rect { fill: #9b7fd1; }
+.sk-discharged rect { fill: #64748b; }
+.sk-atmosphere rect { fill: #9ca3af; }
+
+/* Timeline */
+.tl-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.tl-tick {
+  font-size: 10px;
+  fill: var(--text-muted);
+}
+
+.tl-label {
+  font-size: 10.5px;
+  fill: var(--text-secondary);
+}
+
+.tl-critical .tl-label {
+  fill: var(--text-primary);
+  font-weight: 700;
+}
+
+.tl-outline {
+  fill: none;
+  stroke: transparent;
+}
+
+.tl-critical .tl-outline {
+  stroke: #f87171;
+  stroke-width: 2;
+}
+
+.tl-optional .tl-seg {
+  fill-opacity: 0.45;
+}
+
+.tl-permit, .tl-swatch.tl-permit { fill: #8c84b4; background: #8c84b4; }
+.tl-procure, .tl-swatch.tl-procure { fill: #c79a48; background: #c79a48; }
+.tl-build, .tl-swatch.tl-build { fill: #5f9f7f; background: #5f9f7f; }
+.tl-wait, .tl-swatch.tl-wait { fill: #4b5563; background: repeating-linear-gradient(45deg, #4b5563 0 3px, #374151 3px 6px); }
+
+.tl-slack,
+.tl-cod {
+  font-size: 9.5px;
+  fill: var(--text-muted);
+}
+
+.tl-critical .tl-slack {
+  fill: #fca5a5;
+  font-weight: 600;
+}
+
+.tl-cod {
+  fill: #c4b5fd;
+  font-weight: 600;
+}
+
+.tl-energization line {
+  stroke: #34d399;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+.tl-energization text {
+  font-size: 10px;
+  font-weight: 600;
+  fill: #34d399;
+}
+
+.tl-legend {
+  list-style: none;
+  margin: 6px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.tl-legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.tl-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.tl-swatch-critical {
+  border: 2px solid #f87171;
+}
+
+/* ---- Right column ---- */
+
+.dc-warnings {
+  margin-bottom: 10px;
+  padding: 9px 10px;
+  border: 1px solid rgba(199, 154, 72, 0.6);
+  border-radius: var(--radius);
+  background: rgba(199, 154, 72, 0.12);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+
+.dc-warnings-title {
+  margin-bottom: 4px;
+  font-weight: 700;
+  color: var(--warning);
+}
+
+.dc-warnings ul {
+  margin: 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 4px;
+}
+
+.econ-row.sub .econ-label {
+  padding-left: 12px;
+  color: var(--text-muted);
+}
+
+.metric.dc-metric-good .metric-value {
+  color: var(--success);
+}
+
+.metric.dc-metric-bad .metric-value {
+  color: var(--danger);
+}
+
+#sensitivityResults {
+  display: grid;
+  gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .pl-legend {
+    grid-template-columns: 1fr;
+  }
+}

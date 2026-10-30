@@ -46,6 +46,7 @@ test('production build ships an allowlisted, versioned asset tree', t => {
     'README.md',
     'LICENSE',
     `${ASSET_DIR}/style.css`,
+    `${ASSET_DIR}/datacenter.css`,
     `${ASSET_DIR}/js/main.js`,
     `${ASSET_DIR}/js/ui/app.js`,
     `${ASSET_DIR}/js/datacenter-main.js`,

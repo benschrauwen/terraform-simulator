@@ -7,7 +7,7 @@ import { METHANE_MARKET_PRESETS, PLANETARY_BODIES } from '../data/reference-data
 import { Calc } from '../model/index.js';
 import { PolicyModel } from '../model/policy.js';
 import { DEFAULT_STATE } from '../state/schema.js';
-import { chartMethods } from './charts.js';
+import { chartMethods } from './charts/index.js';
 import { controlMethods } from './controls.js';
 import { dayViewMethods } from './day-view.js';
 import { layoutMethods } from './layout.js';

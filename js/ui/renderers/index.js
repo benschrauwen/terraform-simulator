@@ -52,16 +52,12 @@ export const rendererMethods = {
           : EDUCATIONAL_TOOLTIPS.dailyOpHours
       );
     }
-    const useChemicalUtilizationMetrics = r.ai.enabled ||
-      r.storage.enabled ||
-      (r.chemicalSupply?.sizingPercent ?? 100) < 99.999 ||
-      (r.chemicalSupply?.clippedDailyKWh || 0) > 1e-6;
-    const displayedCf = r.ai.enabled
-      ? r.chemicalSupply.effectiveCF
-      : (useChemicalUtilizationMetrics ? r.chemicalSupply.effectiveCF : r.solar.capacityFactor);
-    const displayedHours = r.ai.enabled
-      ? r.ai.chemicalDailyOpHours
-      : (useChemicalUtilizationMetrics ? r.chemicalSupply.dailyOpHours : r.solar.sunHours);
+    // Always the chemical plant's own utilization and dispatch operating
+    // hours. The solar capacity factor and day length are different
+    // quantities (energy / array nameplate; sunrise to sunset) even when
+    // the plant clips nothing.
+    const displayedCf = r.chemicalSupply.effectiveCF;
+    const displayedHours = r.chemicalSupply.dailyOpHours;
     document.getElementById('effectiveCF').textContent = `${FormatNumbers.fixed(displayedCf * 100, 1)}%`;
     document.getElementById('dailyOpHours').textContent = `${FormatNumbers.fixed(parseFloat(displayedHours), 1)} hrs`;
     const bufferedElectricityCost = document.getElementById('bufferedElectricityCost');
@@ -192,9 +188,7 @@ export const rendererMethods = {
       if (e.paybackYears < 5) badges.push({ text: 'Fast Payback', cls: 'gold' });
     }
 
-    const cf = (r.storage.enabled || (r.chemicalSupply?.sizingPercent ?? 100) < 99.999 || (r.chemicalSupply?.clippedDailyKWh || 0) > 1e-6)
-      ? r.chemicalSupply.effectiveCF
-      : r.solar.capacityFactor;
+    const cf = r.chemicalSupply.effectiveCF;
     score += cf * 18;
     if (cf > 0.22) badges.push({ text: 'High Utilization', cls: 'blue' });
 
@@ -204,7 +198,9 @@ export const rendererMethods = {
     score += Math.max(0, h2Util) * 10;
     if (h2Util > 0.9) badges.push({ text: 'Balanced Feeds', cls: 'green' });
 
-    if (r.sabatier.enabled && r.sabatier.designHourlyRate >= 0.8) {
+    // Average reactor load while running, as a share of its design rate
+    // (designHourlyRate is an absolute MCF/h, so it scaled with plant size).
+    if (r.sabatier.enabled && (r.sabatier.operatingUtilization || 0) >= 0.8) {
       score += 5;
       badges.push({ text: 'Near Design Rate', cls: 'gold' });
     }

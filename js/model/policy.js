@@ -72,31 +72,16 @@ function getPolicyInputDetails(state, scheme) {
   });
 }
 
-function getEligibleCapexBreakdown(basis, capex = {}) {
-  if (basis === 'solar') {
-    return { solar: capex.solar || 0 };
-  }
-  if (basis === 'electrolyzer') {
-    return { electrolyzer: capex.electrolyzer || 0 };
-  }
-  if (basis === 'dac') {
-    return { dac: capex.dac || 0 };
-  }
+/* Eligible CAPEX by item key. `capexItems` is the economics' one list of
+   installed-CAPEX items ({ key, capex }): a single-asset basis picks its
+   item, 'total' takes every item (land and each exploratory route too). */
+function getEligibleCapexBreakdown(basis, capexItems = []) {
   if (basis === 'total') {
-    return {
-      solar: capex.solar || 0,
-      land: capex.land || 0,
-      battery: capex.battery || 0,
-      ai: capex.ai || 0,
-      electrolyzer: capex.electrolyzer || 0,
-      dac: capex.dac || 0,
-      sabatier: capex.sabatier || 0,
-      methanol: capex.methanol || 0,
-      feedBuffers: capex.feedBuffers || 0,
-      exploratory: capex.exploratory || 0,
-    };
+    return Object.fromEntries(capexItems.map(item => [item.key, item.capex || 0]));
   }
-
+  if (basis === 'solar' || basis === 'electrolyzer' || basis === 'dac') {
+    return { [basis]: capexItems.find(item => item.key === basis)?.capex || 0 };
+  }
   return {};
 }
 
@@ -209,7 +194,7 @@ function getEligibleCapexLabel(basis) {
 function evaluatePolicy(state = {}, context = {}) {
   const scheme = getPolicyScheme(state.policyMode);
   const inputs = getPolicyInputDetails(state, scheme);
-  const capexBreakdown = getEligibleCapexBreakdown(scheme.eligibleCapexBasis, context.capex || {});
+  const capexBreakdown = getEligibleCapexBreakdown(scheme.eligibleCapexBasis, context.capexItems);
   const eligibleCapex = sumValues(capexBreakdown);
   const outputMetric = getOutputMetric(scheme.outputBasis, context);
 
@@ -256,7 +241,7 @@ function evaluatePolicy(state = {}, context = {}) {
       const co2SupportPerTon = inputs.find(input => input.key === 'customCo2Credit')?.value || 0;
       const quantities = getQualifyingQuantities(context);
 
-      upfrontSupport = sumValues(context.capex || {}) * capexShare;
+      upfrontSupport = eligibleCapex * capexShare;
       componentValues.solar = quantities.solarMwh * solarSupportPerMwh;
       componentValues.hydrogen = quantities.hydrogenKg * h2SupportPerKg;
       componentValues.co2 = quantities.co2Tons * co2SupportPerTon;

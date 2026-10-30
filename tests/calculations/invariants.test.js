@@ -11,6 +11,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { LOCATION_PRESETS } from '../../js/data/reference-data.js';
+import { capexChartSlices } from '../../js/ui/charts/capex-chart.js';
 import { Calc, ModuleCatalog, createState } from './harness.js';
 
 const EXPLORATORY = ModuleCatalog.getAll().filter(module => module.exploratory);
@@ -61,6 +62,8 @@ const SCENARIOS = {
   us48e: { policyMode: 'us_48e_solar' },
   us45y: { policyMode: 'us_45y_solar' },
   ukCfd: { policyMode: 'uk_cfd_solar_ar7' },
+  // A grant on total installed CAPEX, exploratory routes included.
+  euGrantWithAmmonia: { policyMode: 'eu_innovation_fund', ammoniaEnabled: true },
   ai: { aiComputeEnabled: true },
   aiBattery: { aiComputeEnabled: true, batteryCapacityMWh: 8, aiReliabilityTarget: 95 },
   mars: sitePreset('Mars'),
@@ -164,9 +167,9 @@ test('I3 capex components sum to the total; yearly arrays span the horizon; cumu
     const economics = result.economics;
     const horizon = result.state.analysisHorizonYears;
     relClose(sum(Object.values(economics.capex)), economics.totalCapex, 1e-12, `${name} capex sum`, 1e-6);
-    const breakdown = economics.capexBreakdown;
-    relClose(breakdown.solarModules + breakdown.solarBos + breakdown.solarSitePrep, economics.capex.solar, 1e-12, `${name} solar capex parts`, 1e-6);
-    relClose(breakdown.solarLand, economics.capex.land, 1e-12, `${name} land capex`, 1e-6);
+    const solarParts = economics.capexItems.find(item => item.key === 'solar').parts;
+    relClose(sum(solarParts.map(part => part.capex)), economics.capex.solar, 1e-12, `${name} solar capex parts`, 1e-6);
+    relClose(result.solar.landCapex, economics.capex.land, 1e-12, `${name} land capex`, 1e-6);
     relClose(
       sum(economics.replacementSchedule.map(entry => entry.total)),
       economics.totalReplacementOutflows,
@@ -364,7 +367,7 @@ test('I6b revenue lines are physical output x price and follow their energy over
     // Hardware is priced on its own sizing basis.
     relClose(result.electrolyzer.capex, result.electrolyzer.allocKW * state.electrolyzerCapex, 1e-12, `${name} electrolyzer capex`);
     relClose(economics.capex.battery, state.batteryCapacityMWh * 1000 * state.batteryCostPerKWh, 1e-12, `${name} battery capex`);
-    relClose(economics.capexBreakdown.solarModules, state.systemSizeMW * 1e6 * state.panelCostPerW, 1e-12, `${name} module capex`);
+    relClose(result.solar.moduleCapex, state.systemSizeMW * 1e6 * state.panelCostPerW, 1e-12, `${name} module capex`);
   });
 });
 
@@ -652,4 +655,31 @@ test('I15 battery life = rated cycles / equivalent full cycles of the dispatch, 
   const low = results.battery2LowCycles.storage;
   assert.ok(low.lifetimeYears > 1000 / 365 * 1.5 && low.lifetimeYears < 12, `cycle-limited life ${low.lifetimeYears}`);
   assert.ok(cycleLimited >= 1);
+});
+
+test('I16 every CAPEX-bearing block is in capexItems and the CAPEX chart, which both sum to the headline total', () => {
+  let withExploratory = 0;
+  forEachScenario((result, name) => {
+    const economics = result.economics;
+    // Rebuilt from the blocks' own capex, not from the economics' list: solar
+    // parts, land, battery, AI, process blocks, feed buffers and every enabled
+    // exploratory route. (The chart once listed slices by hand and dropped
+    // exploratory routes: header $555,888 vs chart $459,576 with ammonia on.)
+    const exploratoryCapex = sum(result.exploratoryModules.filter(module => module.enabled).map(module => module.capex));
+    if (exploratoryCapex > 0) withExploratory += 1;
+    const blocks = result.solar.moduleCapex + result.solar.bosCapex + result.solar.sitePrepCapex + result.solar.landCapex +
+      (result.storage.enabled ? result.storage.capex : 0) + (result.ai.enabled ? result.ai.capex : 0) +
+      result.electrolyzer.capex + result.dac.capex + result.sabatier.capex + result.methanol.capex +
+      result.feedBuffers.capex + exploratoryCapex;
+    relClose(economics.totalCapex, blocks, 1e-12, `${name} total CAPEX from blocks`, 1e-6);
+    relClose(sum(economics.capexItems.map(item => item.capex)), blocks, 1e-12, `${name} capexItems`, 1e-6);
+    relClose(sum(capexChartSlices(economics).values), blocks, 1e-12, `${name} CAPEX chart slices`, 1e-6);
+    const policy = economics.policy;
+    if (policy.eligibleCapexBasis === 'total') {
+      relClose(policy.eligibleCapex, blocks, 1e-12, `${name} 'total' policy basis`, 1e-6);
+      relClose(policy.upfrontSupport, blocks * result.state.euInnovationFundGrantShare, 1e-12, `${name} grant`, 1e-6);
+    }
+  });
+  assert.ok(withExploratory >= 3, 'matrix covers exploratory capex');
+  assert.equal(results.euGrantWithAmmonia.economics.policy.eligibleCapexBasis, 'total');
 });

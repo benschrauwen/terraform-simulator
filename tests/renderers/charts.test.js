@@ -72,17 +72,10 @@ test.afterEach(() => {
 function createEconomicsResult() {
   return {
     economics: {
-      capexBreakdown: {
-        solarModules: 100,
-      },
-      capex: {
-        battery: 0,
-        ai: 0,
-        electrolyzer: 0,
-        dac: 0,
-        sabatier: 0,
-        methanol: 0,
-      },
+      capexItems: [
+        { key: 'solar', label: 'Solar', capex: 100, parts: [{ key: 'solarModules', label: 'Solar modules', capex: 100 }] },
+        { key: 'battery', label: 'Battery', capex: 0 },
+      ],
     },
   };
 }

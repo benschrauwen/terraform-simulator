@@ -32,33 +32,47 @@ function compactCapexChartData(labels, values, colors) {
   };
 }
 
-function capexSlices(e) {
-  const solarBreakdown = e.capexBreakdown || {};
-  return [
-    ['Solar modules', solarBreakdown.solarModules || 0, '#f59e0b'],
-    ['Solar BOS', solarBreakdown.solarBos || 0, '#fbbf24'],
-    ['Site prep', solarBreakdown.solarSitePrep || 0, '#22c55e'],
-    ['Land', solarBreakdown.solarLand || 0, '#84cc16'],
-    ['Battery', e.capex.battery, '#6366f1'],
-    ['AI datacenter', e.capex.ai, '#38bdf8'],
-    ['Electrolyzer', e.capex.electrolyzer, '#06b6d4'],
-    ['DAC', e.capex.dac, '#8b5cf6'],
-    ['Methane', e.capex.sabatier, '#10b981'],
-    ['Methanol', e.capex.methanol, '#f97316'],
-    ['Feed buffers', e.capex.feedBuffers || 0, '#a3a3a3'],
-  ].filter(([, value]) => value > 0);
+// Fixed colors for the core items (solar by its parts); exploratory routes
+// cycle through EXPLORATORY_COLORS.
+const CAPEX_COLORS = {
+  solarModules: '#f59e0b',
+  solarBos: '#fbbf24',
+  solarSitePrep: '#22c55e',
+  land: '#84cc16',
+  battery: '#6366f1',
+  ai: '#38bdf8',
+  electrolyzer: '#06b6d4',
+  dac: '#8b5cf6',
+  sabatier: '#10b981',
+  methanol: '#f97316',
+  feedBuffers: '#a3a3a3',
+};
+const EXPLORATORY_COLORS = ['#e879f9', '#f472b6', '#fb7185', '#c084fc', '#2dd4bf', '#facc15', '#a78bfa', '#4ade80'];
+
+/** Doughnut slices from economics.capexItems (solar split into its parts);
+    they sum to economics.totalCapex. */
+export function capexChartSlices(economics) {
+  let exploratoryIndex = 0;
+  const slices = (economics.capexItems || [])
+    .flatMap(item => item.parts || [item])
+    .filter(item => item.capex > 0)
+    .map(item => ({
+      label: item.label,
+      value: item.capex,
+      color: CAPEX_COLORS[item.key] || EXPLORATORY_COLORS[exploratoryIndex++ % EXPLORATORY_COLORS.length],
+    }));
+  return compactCapexChartData(
+    slices.map(slice => slice.label),
+    slices.map(slice => slice.value),
+    slices.map(slice => slice.color)
+  );
 }
 
 export const capexChartMethods = {
   updateEconChart(r) {
     if (!ensureChartRuntime(this, 'econ', 'econChart')) return;
 
-    const slices = capexSlices(r.economics);
-    const compact = compactCapexChartData(
-      slices.map(([label]) => label),
-      slices.map(([, value]) => value),
-      slices.map(([, , color]) => color)
-    );
+    const compact = capexChartSlices(r.economics);
     const borderW = compact.labels.length > 7 ? 1 : 2;
 
     if (this.charts.econ) this.charts.econ.destroy();

@@ -240,6 +240,11 @@ export const economicsMethods = {
         replacementCost: solar.solarReplacementCapex,
         lifeYears: state.solarAssetLife,
         active: true,
+        parts: [
+          { key: 'solarModules', label: 'Solar modules', capex: solar.moduleCapex },
+          { key: 'solarBos', label: 'Solar structure + install BOS', capex: solar.bosCapex },
+          { key: 'solarSitePrep', label: 'Site prep', capex: solar.sitePrepCapex },
+        ],
       },
       { key: 'land', label: 'Land', capex: solar.landCapex || 0, lifeYears: Infinity, salvageAtCost: true, perpetual: true, active: true },
       { key: 'battery', label: 'Battery', capex: storage.capex, lifeYears: batteryLifeYears, active: storage.enabled },
@@ -256,23 +261,30 @@ export const economicsMethods = {
         active: true,
       },
     ];
+    // One list of every installed-CAPEX item (core blocks in the order
+    // above, then one per exploratory route): the total, the 'total' policy
+    // basis, the CAPEX rows and the CAPEX chart all iterate it, so nothing
+    // can be counted in one and missed in another. Solar carries its parts.
+    const capexItems = [
+      ...coreAssets.map(({ key, label, capex, parts }) => ({ key, label, capex, parts })),
+      ...exploratoryDetails.map(module => ({
+        key: `exploratory-${module.id}`,
+        label: module.label,
+        routeLabel: module.routeLabel,
+        capex: module.capex,
+      })),
+    ];
     const capex = {
       ...Object.fromEntries(coreAssets.map(asset => [asset.key, asset.capex])),
       exploratory: exploratoryCapex,
     };
-    const capexBreakdown = {
-      solarModules: solar.moduleCapex,
-      solarBos: solar.bosCapex,
-      solarSitePrep: solar.sitePrepCapex,
-      solarLand: solar.landCapex,
-    };
-    const totalCapex = Object.values(capex).reduce((sum, value) => sum + value, 0);
+    const totalCapex = capexItems.reduce((sum, item) => sum + item.capex, 0);
     const qualifying = this.getQualifyingOutput({ solar, chemicalSupply, electrolyzer, dac, h2Surplus, co2Surplus, lifetimeEnergy });
     const policy = this.getPolicyCredits(state, {
       solar,
       electrolyzer,
       dac,
-      capex,
+      capexItems,
       qualifying,
     });
     const netCapexAtClose = Math.max(0, totalCapex - (policy.upfrontSupport || 0));
@@ -293,24 +305,16 @@ export const economicsMethods = {
         lifeYears: module.assetLifeYears,
       })),
     ]);
-    const exploratoryUpfrontSupport = Math.max(0, Number(policy.upfrontSupportByCapexKey?.exploratory) || 0);
-    const exploratorySupportById = allocateUpfrontSupport(
-      exploratoryUpfrontSupport,
-      Object.fromEntries(exploratoryDetails.map(module => [module.id, module.capex]))
-    );
+    const supportByKey = policy.upfrontSupportByCapexKey || {};
     exploratoryDetails.forEach(module => {
-      const moduleCapex = Math.max(0, Number(module.capex) || 0);
-      module.upfrontSupport = exploratorySupportById[module.id];
-      module.netCapexAtClose = Math.max(0, moduleCapex - module.upfrontSupport);
+      module.upfrontSupport = supportByKey[`exploratory-${module.id}`] || 0;
+      module.netCapexAtClose = Math.max(0, module.capex - module.upfrontSupport);
       module.annualizedCapex = module.netCapexAtClose * crf(rate, module.assetLifeYears);
     });
-    const netCapexByKey = {
-      ...Object.fromEntries(coreAssets.map(asset => [
-        asset.key,
-        Math.max(0, asset.capex - (policy.upfrontSupportByCapexKey?.[asset.key] || 0)),
-      ])),
-      exploratory: Math.max(0, capex.exploratory - exploratoryUpfrontSupport),
-    };
+    const netCapexByKey = Object.fromEntries(coreAssets.map(asset => [
+      asset.key,
+      Math.max(0, asset.capex - (supportByKey[asset.key] || 0)),
+    ]));
     const exploratoryAnnualizedCapex = exploratoryDetails.reduce((sum, module) => sum + module.annualizedCapex, 0);
 
     const annualizedCapex = {
@@ -592,7 +596,7 @@ export const economicsMethods = {
 
     return {
       capex,
-      capexBreakdown,
+      capexItems,
       annualizedCapex,
       totalCapex,
       netCapexAtClose,

@@ -226,8 +226,23 @@ function buildReturnsRows({ e, labels }) {
   return rows;
 }
 
+// Tooltips for the installed-CAPEX rows that need one, by capexItems key.
+function capexNote(key, e) {
+  switch (key) {
+    case 'solarBos':
+      return 'Balance of system: the non-panel parts of the solar installation, such as mounting structure, inverters, wiring, and installation labor.';
+    case 'solarSitePrep':
+      return 'Depreciated with the array; a repowering reuses the prepared site, so it is not replaced.';
+    case 'land':
+      return 'Not depreciated, never replaced and not part of the solar ITC basis. Its annual capital charge is land x discount rate, and it returns at cost as salvage in the final year.';
+    case 'feedBuffers':
+      return `Working inventory of buffered modules: ${FormatNumbers.fixed(e.feedBuffers?.h2WorkingKg || 0, 1)} kg H2 and ${FormatNumbers.fixed(e.feedBuffers?.co2WorkingTons || 0, 2)} t CO2.`;
+    default:
+      return '';
+  }
+}
+
 function buildCostRows({ r, e, state }) {
-  const solarBreakdown = e.capexBreakdown || {};
   const exploratoryDetails = e.exploratoryDetails || [];
   const rows = [
     econRow('Levelized cost build', '', 'header'),
@@ -258,50 +273,17 @@ function buildCostRows({ r, e, state }) {
     econRow('Total levelized annual cost', money(e.annualCost), 'total', 'Capital charge levelized over the analysis horizon plus O&M.')
   );
 
-  rows.push(
-    econRow('Installed CAPEX', '', 'header'),
-    econRow('Solar modules', money(solarBreakdown.solarModules || 0)),
-    econRow(
-      'Solar structure + install BOS',
-      money(solarBreakdown.solarBos || 0),
-      '',
-      'Balance of system: the non-panel parts of the solar installation, such as mounting structure, inverters, wiring, and installation labor.'
-    )
-  );
-  if ((solarBreakdown.solarSitePrep || 0) > 0) {
-    rows.push(econRow('Site prep', money(solarBreakdown.solarSitePrep), '', 'Depreciated with the array; a repowering reuses the prepared site, so it is not replaced.'));
-  }
-  rows.push(econRow('Total solar installation', money(e.capex.solar)));
-  if ((e.capex.land || 0) > 0) {
-    rows.push(econRow(
-      'Land acquisition',
-      money(e.capex.land),
-      '',
-      'Not depreciated, never replaced and not part of the solar ITC basis. Its annual capital charge is land x discount rate, and it returns at cost as salvage in the final year.'
-    ));
-  }
-  [
-    ['battery', 'Battery'],
-    ['ai', 'AI datacenter'],
-    ['electrolyzer', 'Electrolyzer'],
-    ['dac', 'DAC'],
-    ['sabatier', 'Methane reactor'],
-    ['methanol', 'Methanol reactor'],
-  ].forEach(([key, label]) => {
-    if (e.capex[key] > 0) rows.push(econRow(label, money(e.capex[key])));
-  });
-  if ((e.capex.feedBuffers || 0) > 0) {
-    const buffers = e.feedBuffers || {};
-    rows.push(econRow(
-      'Feed buffer storage',
-      money(e.capex.feedBuffers),
-      '',
-      `Working inventory of buffered modules: ${FormatNumbers.fixed(buffers.h2WorkingKg || 0, 1)} kg H2 and ${FormatNumbers.fixed(buffers.co2WorkingTons || 0, 2)} t CO2.`
-    ));
-  }
-  exploratoryDetails.forEach(module => {
-    if (module.capex <= 0) return;
-    rows.push(econRow(`${module.label} (${module.routeLabel})`, money(module.capex)));
+  rows.push(econRow('Installed CAPEX', '', 'header'));
+  e.capexItems.forEach(item => {
+    if (item.parts) {
+      item.parts
+        .filter(part => part.capex > 0)
+        .forEach(part => rows.push(econRow(part.label, money(part.capex), '', capexNote(part.key, e))));
+      rows.push(econRow(`Total ${item.label.toLowerCase()} installation`, money(item.capex)));
+    } else if (item.capex > 0) {
+      const label = item.routeLabel ? `${item.label} (${item.routeLabel})` : item.label;
+      rows.push(econRow(label, money(item.capex), '', capexNote(item.key, e)));
+    }
   });
   rows.push(econRow('Total CAPEX', money(e.totalCapex), 'total'));
   if (Math.abs(e.policy.upfrontSupport || 0) > 1e-9) {

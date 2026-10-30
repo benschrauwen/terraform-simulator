@@ -9,16 +9,24 @@
    (replacement schedule, salvage, debt, IRR/MIRR) and the plant builder's
    summarizeReturns.
 
-   Timing (years from notice-to-proceed, t0 = energization month / 12):
-     capex          at close (year 0); the IT hardware at energization when
-                    itCapexTiming = 'energization' (paid in year floor(t0))
+   Timing (years from notice-to-proceed, t0 = energization month / 12).
+   Time is continuous within the annual end-of-year cash-flow grid, so NPV
+   moves smoothly with the first-power date:
+     capex          at close (year 0); the IT hardware at energization t0
+                    when itCapexTiming = 'energization'
      operations     revenue and every opex line x operating fraction
-                    f_y = clamp(y - t0, 0, 1) of project year y
-     replacements   every asset life after energization, paid in year
-                    ceil(t0 + k x life) (finance.js schedule, shifted)
+                    f_y = clamp(y - t0, 0, 1) of project year y (y - 1, y]
+     GPU rental     x R_y = integral of the rental-price factor over the
+                    operating time of year y (gpu.js), each fleet's year
+                    split at its replacement point t0 + k x life
+     replacements   at exactly t0 + k x life (finance.js schedule, shifted)
      salvage        straight-line book value at the horizon N (land at cost)
-     cf_y = f_y x (revenue x price factor_y - opex) - replacements_y - deferred capex_y + [y = N] salvage
-     (price factor_y = GPU rental decline, 1 for tokens and colocation)
+     A lump paid at a fractional time tau (deferred IT, replacements) is
+     booked across the two year-ends that bracket it, (ceil(tau) - tau) in
+     year floor(tau) and (tau - floor(tau)) in year ceil(tau): its mean
+     booking time is tau, so its present value is continuous in tau (a whole
+     lump jumping a year-end would move NPV by C x r / (1 + r)^tau).
+     cf_y = f_y x (revenue - opex) + (R_y - f_y) x GPU rental - replacements_y - deferred capex_y + [y = N] salvage
      NPV  = -capex_close + sum_y cf_y / (1 + r)^y
 
    Opex lines (full year): fixed O&M (facility, cooling, IT, solar, battery,
@@ -27,7 +35,7 @@
    O&M on delivered output (an own reactor backs down) or the contracted PPA
    (take-or-pay on all available output), water.
    Revenue: GPU rental (default, model/datacenter/gpu.js) = GPUs x 8760 x
-   occupancy x served share x $/GPU-hour x (1 - decline)^fleet age;
+   occupancy x served share x $/GPU-hour x R_y;
    tokens = served IT MWh x M tokens/MWh-IT x $/M tokens;
    colocation = $/kW-month x IT kW x 12 x served share of IT energy, plus
    (if colocationPowerPassThrough) the energy opex recovered at cost from
@@ -37,7 +45,7 @@ import { COOLING_TECHNOLOGIES } from '../../data/datacenter/cooling.js';
 import { FACILITY_DEFAULTS } from '../../data/datacenter/facility.js';
 import { DATACENTER_MODEL_ASSUMPTIONS as A } from '../../data/datacenter/model-assumptions.js';
 import { summarizeReturns } from '../economics.js';
-import { getGpuFleet, getRentalPriceFactor } from './gpu.js';
+import { getGpuFleet, getRentalRevenueFactor } from './gpu.js';
 import { onSiteNuclearMWh } from './impacts.js';
 import { buildFinancingModel, buildReplacementSchedule, crf } from '../finance.js';
 
@@ -137,9 +145,21 @@ export function buildRevenue(state, { energy, totals, opexLines }) {
   };
 }
 
+/* A lump paid at time tau (years after close) on the annual grid: shares
+   [{ year, share }] across the year-ends bracketing tau, weighted so the
+   mean booking time is tau (all of it in year tau when tau is whole). */
+export function splitLumpAcrossYears(tau) {
+  const lower = Math.floor(tau + 1e-9);
+  const fraction = tau - lower;
+  if (fraction <= 1e-9) return [{ year: lower, share: 1 }];
+  return [{ year: lower, share: 1 - fraction }, { year: lower + 1, share: fraction }];
+}
+
 /* finance.js replacement schedule with asset lives starting at energization
-   (t0 years after close): replacements move to year ceil(t0 + k x life);
-   salvage is measured at the horizon. */
+   (t0 years after close): each replacement falls at exactly t0 + k x life
+   and is booked across the bracketing year-ends (splitLumpAcrossYears);
+   salvage is measured at the horizon. Items carry the booked `cost`, the
+   `share` of the replacement it is and the exact `scheduledAtYear`. */
 function buildShiftedReplacementSchedule(assets, horizonYears, t0) {
   const operatingYears = horizonYears - t0;
   const base = buildReplacementSchedule(operatingYears > 0 ? operatingYears : 0, assets.map(asset => ({
@@ -148,10 +168,13 @@ function buildShiftedReplacementSchedule(assets, horizonYears, t0) {
   })));
   const byYear = {};
   base.entries.forEach(entry => entry.items.forEach(item => {
-    const year = Math.min(horizonYears, Math.max(1, Math.ceil(t0 + item.scheduledAtYear - 1e-9)));
-    if (!byYear[year]) byYear[year] = { year, total: 0, items: [] };
-    byYear[year].total += item.cost;
-    byYear[year].items.push({ ...item, scheduledAtYear: t0 + item.scheduledAtYear });
+    const tau = t0 + item.scheduledAtYear;
+    splitLumpAcrossYears(tau).forEach(({ year: bookedYear, share }) => {
+      const year = Math.min(horizonYears, Math.max(1, bookedYear));
+      if (!byYear[year]) byYear[year] = { year, total: 0, items: [] };
+      byYear[year].total += item.cost * share;
+      byYear[year].items.push({ ...item, cost: item.cost * share, fullCost: item.cost, share, scheduledAtYear: tau });
+    });
   }));
   const entries = Object.values(byYear).sort((a, b) => a.year - b.year);
   return { byYear, entries, total: base.total, salvage: { ...base.salvage, year: horizonYears } };
@@ -170,15 +193,22 @@ export function calculateDatacenterEconomics(state, ctx) {
   const operatingFraction = year => Math.max(0, Math.min(1, year - t0));
 
   const assets = buildDatacenterAssets(state, ctx);
+  // Hardware bought at energization is paid at t0, booked across the
+  // bracketing year-ends (a share in year 0 is paid at close).
   const deferredYear = Math.floor(t0);
-  const isDeferred = asset => asset.timing === 'energization' && deferredYear > 0;
-  const capexAtClose = assets.filter(asset => !isDeferred(asset)).reduce((sum, asset) => sum + asset.capex, 0);
+  const isDeferred = asset => asset.timing === 'energization' && t0 > 0;
   // Hardware due after the horizon (energization beyond it) is never bought.
-  const deferredAssets = assets.filter(asset => isDeferred(asset) && asset.capex > 0 && deferredYear <= horizonYears);
-  const deferredCapex = deferredAssets.reduce((sum, asset) => sum + asset.capex, 0);
+  const deferredAssets = assets.filter(asset => isDeferred(asset) && asset.capex > 0 && t0 <= horizonYears);
+  const deferredTotal = deferredAssets.reduce((sum, asset) => sum + asset.capex, 0);
+  const deferredSplit = splitLumpAcrossYears(t0);
+  const deferredByYear = {};
+  deferredSplit.forEach(({ year, share }) => { deferredByYear[year] = deferredTotal * share; });
+  const capexAtClose = assets.filter(asset => !isDeferred(asset)).reduce((sum, asset) => sum + asset.capex, 0) + (deferredByYear[0] || 0);
+  const deferredCapex = deferredTotal - (deferredByYear[0] || 0);
   const totalCapex = capexAtClose + deferredCapex;
+  const paidAtYear = Math.round(t0 * 100) / 100;
   const capexItems = assets.filter(asset => asset.capex > 0).map(({ key, label, capex, group, timing, parts }) => ({
-    key, label, capex, group, paidAtYear: isDeferred({ timing }) ? deferredYear : 0, ...(parts ? { parts } : {}),
+    key, label, capex, group, paidAtYear: isDeferred({ timing }) ? paidAtYear : 0, ...(parts ? { parts } : {}),
   }));
 
   const opexLines = buildOpexLines(state, ctx);
@@ -198,18 +228,22 @@ export function calculateDatacenterEconomics(state, ctx) {
   let pvOperatingYears = 0;
   let pvRentalYears = 0;
   let pvOpex = 0;
+  const annualGpuHoursSold = getGpuHoursSold(state, ctx.energy);
   for (let year = 1; year <= horizonYears; year++) {
     const f = operatingFraction(year);
     pvOperatingYears += f * discount(year);
-    const priceFactor = getRentalPriceFactor(state, year, t0);
-    pvRentalYears += f * priceFactor * discount(year);
-    const yearlyRevenue = Object.fromEntries(Object.entries(revenue).map(([key, value]) => [key, value * f * (key === 'gpuRental' ? priceFactor : 1)]));
+    // Operating time of the year weighted by the rental-price factor of the
+    // fleet in service (= f outside gpu-rental mode).
+    const rentalFactor = getRentalRevenueFactor(state, year, t0);
+    const priceFactor = f > 0 ? rentalFactor / f : 1;
+    pvRentalYears += rentalFactor * discount(year);
+    const yearlyRevenue = Object.fromEntries(Object.entries(revenue).map(([key, value]) => [key, value * (key === 'gpuRental' ? rentalFactor : f)]));
     const totalRevenue = Object.values(yearlyRevenue).reduce((sum, value) => sum + value, 0);
     const operatingCost = annualOM * f;
     pvOpex += operatingCost * discount(year);
     const operatingCashFlow = totalRevenue - operatingCost;
     const replacementEvent = replacementSchedule.byYear[year];
-    const deferredCapexOutflow = year === deferredYear ? deferredCapex : 0;
+    const deferredCapexOutflow = deferredAssets.length ? deferredByYear[year] || 0 : 0;
     const replacementOutflow = (replacementEvent ? replacementEvent.total : 0) + deferredCapexOutflow;
     const salvageValue = year === horizonYears ? replacementSchedule.salvage.total : 0;
     const netCashFlow = operatingCashFlow - replacementOutflow + salvageValue;
@@ -221,6 +255,7 @@ export function calculateDatacenterEconomics(state, ctx) {
       year,
       operatingFraction: f,
       rentalPriceFactor: priceFactor,
+      gpuHoursSold: annualGpuHoursSold * f,
       degradationFactor: 1,
       policyDurationFactor: 0,
       revenue: yearlyRevenue,
@@ -232,7 +267,10 @@ export function calculateDatacenterEconomics(state, ctx) {
       deferredCapexOutflow,
       replacementItems: [
         ...(replacementEvent ? replacementEvent.items : []),
-        ...(deferredCapexOutflow > 0 ? deferredAssets.map(asset => ({ key: asset.key, label: `${asset.label} (initial, at energization)`, cost: asset.capex, initial: true })) : []),
+        ...(deferredCapexOutflow > 0 ? deferredAssets.map(asset => ({
+          key: asset.key, label: `${asset.label} (initial, at energization)`, cost: asset.capex * deferredCapexOutflow / deferredTotal,
+          fullCost: asset.capex, share: deferredCapexOutflow / deferredTotal, scheduledAtYear: t0, initial: true,
+        })) : []),
       ],
       salvageValue,
       salvageItems: salvageValue > 0 ? replacementSchedule.salvage.items : [],
@@ -259,7 +297,11 @@ export function calculateDatacenterEconomics(state, ctx) {
   // levelized annual cost, so levelized profit = NPV x CRF(r, N) exactly.
   const pvReplacements = replacementSchedule.entries.reduce((sum, entry) => sum + entry.total * discount(entry.year), 0);
   const pvSalvage = replacementSchedule.salvage.total * discount(horizonYears);
-  const pvDeferred = deferredCapex * discount(deferredYear);
+  const pvDeferred = deferredAssets.length
+    ? Object.entries(deferredByYear).filter(([year]) => Number(year) > 0).reduce((sum, [year, amount]) => sum + amount * discount(Number(year)), 0)
+    : 0;
+  // PV of $1 of an energization-timed asset (its share at close undiscounted).
+  const deferredDiscount = deferredSplit.reduce((sum, { year, share }) => sum + share * discount(year), 0);
   const horizonCrf = crf(rate, horizonYears);
   const pvCapital = capexAtClose + pvDeferred + pvReplacements - pvSalvage;
   const levelizedCapitalCharge = pvCapital * horizonCrf;
@@ -274,7 +316,7 @@ export function calculateDatacenterEconomics(state, ctx) {
   });
 
   const assetPresentValue = asset => {
-    const initial = asset.capex * (isDeferred(asset) ? discount(deferredYear) : 1);
+    const initial = asset.capex * (isDeferred(asset) ? deferredDiscount : 1);
     const replacements = replacementSchedule.entries.reduce((sum, entry) => sum + entry.items
       .filter(item => item.key === asset.key)
       .reduce((s, item) => s + item.cost * discount(entry.year), 0), 0);
@@ -291,7 +333,6 @@ export function calculateDatacenterEconomics(state, ctx) {
   const pvItMWh = (ctx.energy.itServedKWh / 1000) * pvOperatingYears;
   const pvAllCost = pvCapital + pvOpex;
   const annualTokensM = state.revenueBasis === 'tokens' ? (ctx.energy.itServedKWh / 1000) * state.millionTokensPerMWhIT : 0;
-  const annualGpuHoursSold = getGpuHoursSold(state, ctx.energy);
 
   // NPV is linear in the revenue price (nothing else reads it):
   // NPV(p) = NPV(p0) + (p - p0) x V, V = revenue per unit price x PV of operating years.
@@ -315,7 +356,13 @@ export function calculateDatacenterEconomics(state, ctx) {
     totalCapex,
     capexAtClose,
     netCapexAtClose: capexAtClose,
-    deferredCapex: { year: deferredYear, total: deferredCapex, items: deferredAssets.map(({ key, label, capex }) => ({ key, label, capex })) },
+    // year: first year-end it is booked in; atYears: exact payment time;
+    // byYear: amounts per year-end (year 0 = paid at close, in capexAtClose).
+    deferredCapex: {
+      year: deferredYear, atYears: t0, total: deferredCapex,
+      byYear: deferredAssets.length ? deferredSplit.map(({ year }) => ({ year, total: deferredByYear[year] })) : [],
+      items: deferredAssets.map(({ key, label, capex }) => ({ key, label, capex })),
+    },
     assets: assets.map(({ key, label, group, capex, lifeYears, timing, annualFixedOm }) => ({ key, label, group, capex, lifeYears, timing, annualFixedOm })),
     opexLines,
     fixedOmLines,
@@ -344,6 +391,8 @@ export function calculateDatacenterEconomics(state, ctx) {
     operatingYearsPresentValue: pvOperatingYears,
     annualTokensM,
     annualGpuHoursSold,
+    // GPU-hours sold over the horizon: GPUs x occupancy x served share x hours operating.
+    totalGpuHoursSold: yearlyCashFlows.reduce((sum, entry) => sum + entry.gpuHoursSold, 0),
     gpuFleet: getGpuFleet(state),
     levelized: {
       costOfPowerPerMWh: pvFacilityMWh > 0 ? pvPowerCost / pvFacilityMWh : 0,

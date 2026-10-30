@@ -10,7 +10,8 @@ import { infoRow, note, typicalLeadMonths } from './info-panels.js';
 const BTU_PER_KWH = 3.412;
 
 const efficiency = heatRate => `${fixed((BTU_PER_KWH / heatRate) * 100, 0)}%`;
-const startTime = minutes => (minutes >= 120 ? `${fixed(minutes / 60, 0)} h` : `${fixed(minutes, 0)} min`);
+const startTime = minutes => (minutes >= 120 ? `${fixed(minutes / 60, 0)} h` : minutes < 1 ? `${fixed(minutes * 60, 0)} s` : `${fixed(minutes, 0)} min`);
+const pctOf = (part, whole) => `${fixed(whole > 0 ? (part / whole) * 100 : 0, part / whole < 0.1 ? 1 : 0)}%`;
 const waterText = water => (water?.consumptionLPerMWh > 0 ? `${fixed(water.consumptionLPerMWh, 0)} L/MWh consumed` : 'no water');
 const leadText = (key, scheduleCase) => `${fixed(typicalLeadMonths(POWER_LEAD_TIMES[key], scheduleCase), 0)} mo`;
 
@@ -32,6 +33,8 @@ function gasInfo(state) {
     `<p class="dc-tradeoff">${esc(gasTradeOffLine(type, state.scheduleCase))}</p>`,
     `<p class="dc-info-lead">${esc(type.tradeOff)}</p>`,
     infoRow('Unit sizes', type.unitSizeMW.max > type.unitSizeMW.min ? `${formatMW(type.unitSizeMW.min)} – ${formatMW(type.unitSizeMW.max)}` : formatMW(type.unitSizeMW.min)),
+    type.emergencyEngine ? note(`Standby only: never run on cost while the grid is up. EPA emergency engines: unlimited in utility outages, at most ${type.emergencyEngine.maxHoursPerYear} h/yr of testing and non-emergency use (${type.emergencyEngine.maxNonEmergencyHoursPerYear} h non-emergency). ${type.emissionsNote || ''}`) : '',
+    type.fuelStorageHours ? note(`On-site fuel: ${type.fuelStorageHours.typical} h at full load typical (Uptime Institute minimum ${type.fuelStorageHours.minimum} h); included in the installed cost.`) : '',
     note(`Examples: ${type.examples}`),
   ].join('');
 }
@@ -61,24 +64,60 @@ function nuclearInfo(state) {
   ].join('');
 }
 
+/* What the uptime target needs from gas (result.firm.sizingBasis, model/datacenter/firm-sizing.js). */
+function uptimeNeedRows(r) {
+  const basis = r.firm.sizingBasis;
+  if (!basis) return [];
+  const rows = [
+    infoRow(
+      'Needed for the uptime target',
+      basis.minUnits > 0 ? `${formatMW(basis.requiredMW)} → ${fixed(basis.minUnits, 0)} unit${basis.minUnits === 1 ? '' : 's'}` : 'none',
+      `Smallest firm capacity with which the year's dispatch serves the full load in all but ${fixed(basis.allowedUnservedHours, 0)} h (the ${r.reliability.targetPercent}% target), after the grid, solar and battery; unit count includes maintenance outages.`,
+    ),
+    infoRow('Hours short without it', `${fixed(basis.hoursShortWithoutFirm, 0)} h/yr (target allows ${fixed(basis.allowedUnservedHours, 0)})`),
+  ];
+  if (!basis.reachable) rows.push(note('The target cannot be met with any number of these units.', 'warning-note'));
+  return rows;
+}
+
+function firmCapexShare(r) {
+  const item = (r.economics?.capexItems || []).find(entry => entry.key === r.firm.family);
+  return item && r.economics.totalCapex > 0 ? infoRow('Share of CAPEX', `${pctOf(item.capex, r.economics.totalCapex)} ($${fixed(item.capex / 1e6, 0)}M)`) : '';
+}
+
 function firmSizing(state, r) {
-  if (!r || !(r.firm.capacityMW > 0)) {
-    return state.firmFamily === 'none' ? '' : note('No firm capacity: set at least one unit.', 'warning-note');
-  }
+  if (!r) return '';
   const firm = r.firm;
+  const auto = state.firmSizingMode === 'auto';
+  if (!(firm.capacityMW > 0)) {
+    if (state.firmFamily === 'none') return '';
+    if (firm.family === 'gas' && auto) {
+      return [note('No firm generation needed for the uptime target (spares only if you add units manually).'), ...uptimeNeedRows(r)].join('');
+    }
+    return [note('No firm capacity: set at least one unit.', 'warning-note'), ...uptimeNeedRows(r)].join('');
+  }
   const designPeak = r.load.designPeakMW;
   const rows = [infoRow('Installed', `${fixed(firm.units, 0)} × ${formatMW(firm.unitSizeMW)} = ${formatMW(firm.capacityMW)}`)];
   if (firm.family === 'gas') {
-    const needed = Math.ceil(designPeak / firm.unitSizeMW - 1e-9);
-    const spare = firm.units - needed;
+    const basis = firm.sizingBasis;
+    rows.push(...uptimeNeedRows(r));
+    if (basis) {
+      const spare = firm.units - basis.minUnits;
+      rows.push(infoRow('Redundancy', spare >= 0 ? `N+${spare} (N = ${basis.minUnits} for the uptime target)` : `short by ${-spare} unit${spare === -1 ? '' : 's'} for the uptime target`));
+    }
     rows.push(
-      infoRow('Design facility peak', formatMW(designPeak), 'IT nameplate x the hottest hour\'s PUE.'),
-      infoRow('Redundancy', spare >= 0 ? `N+${spare} (N = ${needed})` : `short by ${-spare} unit${spare === -1 ? '' : 's'}`),
+      infoRow('Design facility peak', formatMW(designPeak), 'IT nameplate x the hottest hour\'s PUE: what the plant would need to carry the full IT load on the hottest hour. Auto sizing covers the modeled load instead.'),
+      firmCapexShare(r),
     );
     if (r.dispatch.annual.gasRunHours > 0) rows.push(infoRow('Run hours', `${fixed(r.dispatch.annual.gasRunHours, 0)} h/yr`));
+    const engine = firm.emergencyEngine;
+    if (engine) {
+      rows.push(infoRow('EPA run hours', `${fixed(engine.emergencyRunHours, 0)} h emergency + ${fixed(engine.nonEmergencyRunHours, 0)} h other (+ ~${fixed(engine.testingHoursPerYear, 0)} h testing)`, `Limit: ${engine.maxHoursPerYear} h/yr of testing and non-emergency use, at most ${engine.maxNonEmergencyHoursPerYear} h non-emergency; utility outages are emergencies.`));
+    }
   } else {
     rows.push(infoRow('Average facility load', formatMW(r.load.meanFacilityMW)));
     if (!firm.onSite) rows.push(note('Contracted output from an existing plant, delivered over the grid or co-located; no on-site reactor.'));
+    rows.push(firmCapexShare(r));
   }
   return rows.join('');
 }
@@ -95,7 +134,7 @@ function firmCompare(state) {
       key,
       cells: [type.label, efficiency(type.heatRateMMBtuPerMWh.default), `$${fixed(type.capexPerKW.default, 0)}`, leadText(type.leadTimeKey, state.scheduleCase), startTime(type.startMinutes), type.water?.consumptionLPerMWh > 0 ? 'wet' : 'dry'],
     }));
-    return `<details class="dc-details"><summary>Compare gas options</summary>${compareTable(['Type', 'Eff.', '$/kW', 'To power', 'Start', 'Water'], rows, state.gasType)}</details>`;
+    return `<details class="dc-details"><summary>Compare generator options</summary>${compareTable(['Type', 'Eff.', '$/kW', 'To power', 'Start', 'Water'], rows, state.gasType)}</details>`;
   }
   if (state.firmFamily === 'nuclear') {
     const rows = Object.entries(NUCLEAR_TYPES).map(([key, type]) => ({

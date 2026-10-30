@@ -10,7 +10,7 @@ export const DISPATCH_SERIES = [
   { key: 'nuclearMW', label: 'Nuclear', color: '#9b7fd1', sign: 1 },
   { key: 'solarMW', label: 'Solar', color: '#e0a83e', sign: 1 },
   { key: 'gridMW', label: 'Grid', color: '#5f7fb8', sign: 1 },
-  { key: 'gasMW', label: 'Gas', color: '#c56f3c', sign: 1 },
+  { key: 'gasMW', label: 'Gas / diesel', color: '#c56f3c', sign: 1 },
   { key: 'batteryDischargeMW', label: 'Battery discharge', color: '#4fb39b', sign: 1 },
   { key: 'unservedMW', label: 'Unserved', color: '#e5484d', sign: 1 },
   { key: 'batteryChargeMW', label: 'Battery charging', color: 'rgba(79, 179, 155, 0.45)', sign: -1 },

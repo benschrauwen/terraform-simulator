@@ -228,12 +228,12 @@ export const DATACENTER_SECTIONS = {
       type: 'select', id: 'firmFamily', label: 'Firm generation',
       options: () => [
         { value: 'none', label: 'None' },
-        { value: 'gas', label: 'Gas engines / turbines / fuel cells' },
+        { value: 'gas', label: 'Generators: diesel standby, gas engines, turbines, fuel cells' },
         { value: 'nuclear', label: 'Nuclear' },
       ],
     },
     {
-      type: 'select', id: 'gasType', label: 'Gas technology', preset: 'gasType', visible: state => state.firmFamily === 'gas',
+      type: 'select', id: 'gasType', label: 'Generator technology', preset: 'gasType', visible: state => state.firmFamily === 'gas',
       options: () => Object.entries(GAS_GENSET_TYPES).map(([value, type]) => ({ value, label: type.label })),
     },
     { block: 'gasInfo', visible: state => state.firmFamily === 'gas' },
@@ -245,14 +245,22 @@ export const DATACENTER_SECTIONS = {
     {
       type: 'select', id: 'firmSizingMode', label: 'Sizing', visible: state => state.firmFamily !== 'none',
       options: state => [
-        { value: 'auto', label: state.firmFamily === 'nuclear' ? 'Auto (cover the average load)' : 'Auto (design peak + spare units)' },
+        { value: 'auto', label: state.firmFamily === 'nuclear' ? 'Auto (cover the average load)' : 'Auto (meet uptime target + spare units)' },
         { value: 'manual', label: 'Manual unit count' },
       ],
+      // Switching to manual starts from the units auto sizing had chosen.
+      onChange: (app, value, previous) => {
+        const units = app.lastResults?.firm?.units;
+        if (value === 'manual' && previous === 'auto' && Number.isInteger(units)) {
+          app.state.firmUnits = units;
+          app.syncStateToControls?.();
+        }
+      },
     },
     {
       type: 'range', id: 'firmSpareUnits', label: 'Spare units (N+x)', min: 0, max: 6, step: 1, format: value => `N+${fixed(value, 0)}`,
       visible: state => state.firmFamily === 'gas' && state.firmSizingMode === 'auto',
-      tooltip: 'Units on top of the ones the design peak needs, to cover maintenance and failures. Backup: N+1; islanded: N+2 is common.',
+      tooltip: 'Units on top of the ones the uptime target needs (which already allow for planned maintenance), for failures and load the model does not see. Backup: N+1; islanded: N+2 is common. None are added when the target needs no unit.',
     },
     {
       type: 'range', id: 'firmUnits', label: 'Units', min: 0, max: 300, step: 1, format: value => `${fixed(value, 0)} units`,
@@ -277,7 +285,7 @@ export const DATACENTER_SECTIONS = {
     },
     { type: 'range', id: 'nuclearPpaPricePerMWh', label: 'PPA price', min: 0, max: 250, step: 1, format: per(0, 'MWh'), visible: state => state.firmFamily === 'nuclear' && isContractedNuclear(state), tooltip: 'Take-or-pay on all available output.' },
     {
-      details: 'Gas plant costs and performance',
+      details: 'Generator costs and performance',
       visible: state => state.firmFamily === 'gas',
       items: [
         { type: 'range', id: 'gasCapexPerKW', label: 'Installed capex', min: 300, max: 9000, step: 25, format: per(0, 'kW') },

@@ -71,7 +71,12 @@ export function plantBlockItems(r) {
   const areas = r.footprint?.areasM2 || {};
   const items = BLOCKS
     .filter(block => (areas[block.key] || 0) > 0)
-    .map(block => ({ ...block, areaM2: areas[block.key], detail: blockDetail(block.key, r) }))
+    .map(block => ({
+      ...block,
+      name: block.key === 'gasPlant' && r.firm?.fuel === 'diesel' ? 'Diesel generators' : block.name,
+      areaM2: areas[block.key],
+      detail: blockDetail(block.key, r),
+    }))
     .sort((a, b) => b.areaM2 - a.areaM2);
   if (!r.grid?.connected) return items;
   const rank = key => (GRID_TIE_ORDER.includes(key) ? GRID_TIE_ORDER.indexOf(key) : GRID_TIE_ORDER.length);

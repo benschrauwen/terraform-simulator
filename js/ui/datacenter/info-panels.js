@@ -46,7 +46,7 @@ function coolingInfo(state, r) {
   if (!tech) return '';
   const live = r ? [
     infoRow('Annual PUE at this site', fixed(r.cooling.annualPue, 3), 'Facility energy / IT energy over the year, from the hourly typical-day temperatures.'),
-    infoRow('Peak PUE (hottest hour)', fixed(r.cooling.peakPue, 2), 'Sizes the grid connection, substation and auto-sized gas plant.'),
+    infoRow('Peak PUE (hottest hour)', fixed(r.cooling.peakPue, 2), 'Sizes the grid connection and substation.'),
     infoRow('WUE (withdrawn)', `${fixed(r.cooling.wueLPerKWhIT, 2)} L/kWh-IT`),
     infoRow('Cooling water', `${formatM3(r.water.cooling?.withdrawnM3 || 0)}/yr`),
   ].join('') : '';

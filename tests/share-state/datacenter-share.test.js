@@ -1,0 +1,72 @@
+/* Datacenter share links: the hash carries the non-default state plus every preset-derived
+   field, so a link round-trips exactly even when a derived value equals the default site's. */
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import LZString from 'lz-string';
+
+import {
+  applyDatacenterPresetDefaults,
+  DATACENTER_DEFAULT_STATE,
+  DATACENTER_DERIVED_KEYS,
+  getDatacenterSite,
+  normalizeDatacenterState,
+} from '../../js/state/datacenter-schema.js';
+import { ShareStateCodec } from '../../js/state/share-codec.js';
+import { parseDatacenterHash, serializeDatacenterHash } from '../../js/ui/datacenter/share.js';
+
+test('the default state has an empty hash and an empty hash gives the defaults', () => {
+  assert.equal(serializeDatacenterHash(DATACENTER_DEFAULT_STATE, LZString), '');
+  const parsed = parseDatacenterHash('', LZString);
+  assert.equal(parsed.hasShareState, false);
+  assert.deepEqual(parsed.state, normalizeDatacenterState({}));
+});
+
+test('a link keeps a user price that equals the default site\'s after the site changes', () => {
+  const abilenePrice = DATACENTER_DEFAULT_STATE.gridEnergyPricePerMWh;
+  const phoenix = applyDatacenterPresetDefaults({ ...DATACENTER_DEFAULT_STATE, siteId: 'phoenix-az' }, 'siteId');
+  assert.notEqual(phoenix.gridEnergyPricePerMWh, abilenePrice, 'precondition: the sites differ in price');
+  // The user then types Abilene's price back in: equal to the default, so a plain diff drops it.
+  const state = { ...phoenix, gridEnergyPricePerMWh: abilenePrice, itCapacityMW: 250 };
+
+  const plainDiff = ShareStateCodec.buildDiff(state, DATACENTER_DEFAULT_STATE, { excludeKeys: [] });
+  assert.equal(Object.hasOwn(plainDiff, 'gridEnergyPricePerMWh'), false, 'without derived keys the price would be lost');
+  assert.equal(normalizeDatacenterState(plainDiff).gridEnergyPricePerMWh, getDatacenterSite('phoenix-az').electricityPriceAltUsdPerMWh);
+
+  const hash = serializeDatacenterHash(state, LZString);
+  assert.match(hash, /^#s=/);
+  const parsed = parseDatacenterHash(hash, LZString);
+  assert.equal(parsed.hasShareState, true);
+  assert.equal(parsed.error, null);
+  assert.deepEqual(parsed.state, normalizeDatacenterState(state));
+  assert.equal(parsed.state.gridEnergyPricePerMWh, abilenePrice);
+
+  // Every derived key travels in the payload.
+  const { d } = ShareStateCodec.decodePayload(hash.slice('#s='.length), { lzString: LZString });
+  DATACENTER_DERIVED_KEYS.forEach(key => assert.ok(Object.hasOwn(d, key), `${key} in the link`));
+});
+
+test('round trips across architectures, families and GPU platforms', () => {
+  const steps = [
+    [['architecture', 'islanded'], ['firmFamily', 'gas'], ['gasType', 'aero'], ['firmSpareUnits', 2]],
+    [['firmFamily', 'nuclear'], ['nuclearType', 'bwrx-300'], ['solarSizeMWdc', 300], ['batteryCapacityMWh', 400]],
+    [['revenueBasis', 'tokens'], ['coolingTechnology', 'immersion'], ['mountingType', 'fixed']],
+    [['gpuPlatform', 'h100-sxm'], ['gpuRentalPricePerHour', 2.4], ['financingEnabled', true]],
+  ];
+  steps.forEach(sequence => {
+    let state = { ...DATACENTER_DEFAULT_STATE };
+    sequence.forEach(([key, value]) => {
+      state = { ...state, [key]: value };
+      state = applyDatacenterPresetDefaults(state, key);
+    });
+    const parsed = parseDatacenterHash(serializeDatacenterHash(state, LZString), LZString);
+    assert.deepEqual(parsed.state, normalizeDatacenterState(state), JSON.stringify(sequence));
+  });
+});
+
+test('a corrupt link falls back to the defaults with an error; foreign hashes are ignored', () => {
+  const corrupt = parseDatacenterHash('#s=not-a-real-payload', LZString);
+  assert.ok(corrupt.error);
+  assert.deepEqual(corrupt.state, normalizeDatacenterState({}));
+  assert.equal(parseDatacenterHash('#flowView', LZString).ignored, true);
+});

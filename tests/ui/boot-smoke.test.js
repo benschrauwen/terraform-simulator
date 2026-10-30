@@ -163,7 +163,7 @@ test('the app boots in headless Chrome, renders CAPEX and logs no errors', chrom
   assert.deepEqual(errors, []);
 });
 
-test('abundancestack.localhost serves the datacenter page, which boots without errors', chromeOptions, async t => {
+test('abundancestack.localhost serves the datacenter page, which boots, renders real results and logs no errors', chromeOptions, async t => {
   // Chrome resolves *.localhost to loopback; the dev server routes it like abundancestack.com.
   const { evaluate, errors } = await openPage(t, port => `http://abundancestack.localhost:${port}/`);
   await waitFor(
@@ -174,6 +174,25 @@ test('abundancestack.localhost serves the datacenter page, which boots without e
   assert.match(await evaluate('document.title'), /^Abundance Stack/);
   assert.equal(await evaluate('location.pathname'), '/');
   assert.equal(await evaluate("typeof Chart === 'function' && typeof LZString === 'object' && typeof L === 'object'"), true);
+
+  // Real numbers render: annual PUE and total CAPEX in the key metrics, the first-power date in the header.
+  const metrics = await waitFor(async () => {
+    const text = await evaluate("document.getElementById('keyMetrics')?.innerText || ''");
+    return /Annual PUE\s+1\.\d{3}/i.test(text) && /Total CAPEX\s+\$[\d.]+[KMB]/i.test(text) ? text : null;
+  }, BOOT_TIMEOUT_MS, 'the key metrics to render');
+  assert.match(metrics, /Uptime achieved\s+[\d.]+%/i);
+  assert.match(await evaluate("document.getElementById('headerMetrics').innerText"), /First power\s+[A-Z][a-z]{2} 20\d\d/);
+  // The views and charts draw: plant layout, Sankey, timeline (one critical path), dispatch chart.
+  assert.ok(await evaluate("document.querySelectorAll('#layoutView .pl-block').length") >= 3);
+  assert.ok(await evaluate("document.querySelectorAll('#flowView .sk-band').length") >= 2);
+  assert.equal(await evaluate("document.querySelectorAll('#timelineView [data-critical=\"true\"]').length"), 1);
+  assert.equal(await evaluate("Boolean(window.app.charts.dispatch && window.app.charts.econTimeline)"), true);
+  // Controls are generated and drive the model: switching to islanded hides the grid section.
+  await evaluate("(() => { const radio = document.querySelector('input[name=\"architecture\"][value=\"islanded\"]'); radio.checked = true; radio.dispatchEvent(new Event('change', { bubbles: true })); })()");
+  assert.equal(await evaluate("document.querySelector('[data-section=\"grid\"]').hidden"), true);
+  assert.match(await evaluate("document.getElementById('timelineHeadline').textContent"), /^Slowest path: /);
+  // The tornado (debounced) renders after the first paint.
+  await waitFor(async () => (await evaluate("window.app.lastTornado?.bars?.length || 0")) > 3, BOOT_TIMEOUT_MS, 'the tornado');
   await delay(500);
   assert.deepEqual(errors, []);
 });

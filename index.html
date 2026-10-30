@@ -798,8 +798,16 @@
         <div class="section-body">
           <div class="sensitivity-card tornado-card" id="tornadoCard" hidden>
             <div class="sensitivity-card-title">What drives NPV</div>
+            <label class="tornado-swing">Swing each input by
+              <select id="tornadoSwingPercent">
+                <option value="10">±10%</option>
+                <option value="20" selected>±20%</option>
+                <option value="30">±30%</option>
+                <option value="50">±50%</option>
+              </select>
+            </label>
             <div class="field-note tornado-note">
-              Each row moves one input from its low to its high bound while every other input stays at its current value; bars run from the current NPV (white line) to the NPV at each bound. Red dashes mark NPV = 0. Hover a bar for the input values.
+              Each row moves one input down and up by the chosen percentage of its current value while every other input stays put; bars run from the current NPV (white line) to the NPV at each end. Incentive credits use their real range instead (lowest level to current), and no input passes its allowed limits. Red dashes mark NPV = 0. Hover a bar for the input values.
             </div>
             <div class="chart-wrapper chart-wrapper-tornado">
               <canvas id="tornadoChart" role="img" aria-label="NPV tornado chart"></canvas>

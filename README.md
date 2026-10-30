@@ -110,7 +110,7 @@ After any of these changes, run `npm test`. Every recipe that changes the result
 
 The catalog derives everything else: the state keys (`<id>Enabled`, `BufferEnabled`, `Route`, `PriorityWeight`, `CapexBasis`, `Price`), normalization, the route select, the capex slider (0.25-4x the route default), the buffer toggle, the diagram card and its feed lines (from `feedstocks`), the CAPEX item, chart slice and economics rows. Only MTG-specific presentation (its split slider and note) is keyed by id in `ui/module-controls.js`.
 
-**Add an NPV tornado variable.** Append an entry to `SENSITIVITY_VARIABLES` in `js/data/sensitivity-variables.js`: the `stateKey` it moves (a numeric schema or module-config field), a `label`, a display `format`, `bounds` and an `appliesTo(state, result)` predicate that is false when the input cannot matter for the build (product off, no battery, AI off). Prefer `{ kind: 'absolute', low, high }` with a sourced benchmark for each end (put each URL in `sources.html`); use `{ kind: 'relative', low, high }` multipliers only where no absolute range fits every build, and say why in a comment. Bounds may be functions of the state. `runTornado` clamps them to the field's schema range and drops rows that do not move NPV; `tests/calculations/tornado.test.js` checks every bound against the schema.
+**Add an NPV tornado variable.** Append an entry to `SENSITIVITY_VARIABLES` in `js/data/sensitivity-variables.js`: the `stateKey` it moves (a numeric schema or module-config field), a `label`, a display `format` and an `appliesTo(state, result)` predicate that is false when the input cannot matter for the build (product off, no battery, AI off). By default it swings by the user's chosen ±% around its current value; give it `bounds: { kind: 'absolute', low, high }` only when it has a real range, as the incentive credit does. `runTornado` clamps values to the field's schema range and drops rows that do not move NPV; `tests/calculations/tornado.test.js` checks every variable resolves against the schema.
 
 **Add a policy scheme:**
 
@@ -394,15 +394,15 @@ net avoided = CH4_MCF * 0.0528 + MeOH_t * 1.374     # fossil fuel displaced (met
 
 ### NPV tornado (`tornado.js`)
 
-The "What drives NPV" card at the top of Sensitivity is a one-at-a-time tornado. For each input in `js/data/sensitivity-variables.js` that applies to the build, it reruns the scenario (fast path, same NPV as the full run) with that input at its low and at its high bound and every other input at its current value:
+The "What drives NPV" card at the top of Sensitivity is a one-at-a-time tornado. For each input in `js/data/sensitivity-variables.js` that applies to the build, it reruns the scenario (fast path, same NPV as the full run) with that input moved down and up by the chosen swing (±10/20/30/50% of its current value, default ±20%, `tornadoSwingPercent`, kept in share links) and every other input at its current value:
 
 ```text
-bar_i     = [NPV(x_i = low_i), NPV(x_i = high_i)], all other inputs at their current values
+bar_i     = [NPV(x_i * (1 - s)), NPV(x_i * (1 + s))], s = chosen swing, clamped to the field's limits
 swing_i   = max(NPV_base, NPV_low, NPV_high) - min(NPV_base, NPV_low, NPV_high)
 rows      sorted by swing, largest first; rows with no NPV change are dropped
 ```
 
-Market prices, solar costs, battery cost and the AI inputs use the sourced slider benchmarks as bounds; process CAPEX uses -30%/+50% of the current value (the wide end of an AACE Class 4 estimate range), process energy use and site yield +/-10% (judgment), the discount rate 5-11% and process O&M 2-5%/yr (judgment). The active policy's credit runs from the scheme's floor (0, or the lowest statutory tier where the slider stops above 0) to its current value. It ignores interactions: two inputs moving together can shift NPV by more or less than the sum of their bars. A refresh takes about 25 fast runs: ~20 ms at the defaults, ~200 ms with AI (its hourly battery dispatch dominates).
+Because every input moves by the same percentage, bars compare like with like and are always centred on the current setup; they do not say how uncertain each input is (a ±20% methane price is far more likely than a ±20% site yield). Values never pass a field's schema limits, so a bar can be one-sided near a limit (95% conversion cannot go above 100%). The active policy's credit is the exception: it runs over its real range, from the scheme's floor (0, or the lowest statutory tier where the slider stops above 0) to its current value. The tornado ignores interactions: two inputs moving together can shift NPV by more or less than the sum of their bars. A refresh takes about 25 fast runs: ~20 ms at the defaults, ~200 ms with AI (its hourly battery dispatch dominates).
 
 ### Market ladder (`market-ladder.js`)
 
@@ -526,7 +526,7 @@ Each value in `js/data/policies.js` carries its own source comment; the main ref
 - UK: [CfD AR7 results](https://www.gov.uk/government/publications/contracts-for-difference-cfd-allocation-round-7-results/contracts-for-difference-allocation-round-7-results-accessible-webpage), [Hydrogen allocation rounds](https://www.gov.uk/government/collections/hydrogen-allocation-rounds)
 - FX: [ECB euro reference rates](https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html) (2026-10-29)
 
-### Market benchmarks used for slider markers and NPV tornado bounds (retrieved 2026-10)
+### Market benchmarks used for slider markers (retrieved 2026-10)
 
 - Battery: [BNEF Energy Storage System Cost Survey 2025 (via Energy-Storage.news)](https://www.energy-storage.news/behind-the-numbers-bnef-finds-40-year-on-year-drop-in-bess-costs/): turnkey BESS $117/kWh global, $73 China, $177 Europe, $219 US
 - Modules: OPIS via pv magazine, [FOB China TOPCon, 2026-07-31](https://www.pv-magazine.com/2026/07/31/chinese-topcon-module-prices-fall-as-high-efficiency-supply-adds-pressure/) and [DDP US TOPCon, 2026-03-06](https://www.pv-magazine.com/2026/03/06/china-topcon-module-prices-edge-higher-as-march-cargoes-clear/)

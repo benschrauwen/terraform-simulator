@@ -127,6 +127,8 @@ export const CORE_STATE_FIELDS = [
 
   ...POLICY_INPUT_FIELDS,
 
+  // +/- swing of the "What drives NPV" tornado (UI setting, kept in share links).
+  { key: 'tornadoSwingPercent', type: 'number', min: 1, max: 90, defaultValue: 20 },
   { key: 'solarAssetLife', type: 'integer', min: 1, max: 100, defaultValue: 30 },
   { key: 'analysisHorizonYears', type: 'integer', min: 1, max: 100, defaultValue: 30 },
   { key: 'discountRate', type: 'number', min: 0, max: 1000, defaultValue: 8 },

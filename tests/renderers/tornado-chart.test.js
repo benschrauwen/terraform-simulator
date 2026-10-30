@@ -90,7 +90,7 @@ test('updateTornadoChart draws one horizontal floating bar per applicable input'
   config.data.datasets.forEach(dataset => assert.equal(dataset.data.length, expected.bars.length));
   assert.equal(config.options.plugins.tornadoReferenceLines.baseNpv, expected.baseNpv);
   assert.match(wrapper.style.height, /^\d+px$/);
-  assert.match(canvas.attributes['aria-label'], new RegExp(expected.bars[0].label));
+  assert.ok(canvas.attributes['aria-label'].includes(expected.bars[0].label));
 
   // A redraw replaces the previous chart instead of stacking a second one.
   app.updateTornadoChart(result);

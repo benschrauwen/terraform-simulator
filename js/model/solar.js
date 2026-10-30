@@ -246,7 +246,8 @@ export const solarMethods = {
   },
 
   getLocationAdjustedGroundCoverageRatio(state, preset, ghi, mounting) {
-    const baseGroundCoverageRatio = Math.max(0.05, Math.min(mounting?.groundCoverageRatio || 0.35, 0.95));
+    const { minGroundCoverageRatio, maxGroundCoverageRatio } = SOLAR_LAYOUT_REFERENCE;
+    const baseGroundCoverageRatio = Math.max(minGroundCoverageRatio, Math.min(mounting.groundCoverageRatio, maxGroundCoverageRatio));
     if ((state.body || 'earth') !== 'earth') {
       return {
         baseGroundCoverageRatio,
@@ -256,12 +257,16 @@ export const solarMethods = {
     }
 
     const locationFactors = this.getEarthLocationFactors(state, preset, ghi, state.body || 'earth');
-    const sunAngleRatio = SOLAR_LAYOUT_REFERENCE.winterNoonElevationDeg / Math.max(locationFactors.winterNoonElevationDeg, 6);
+    const sunAngleRatio = SOLAR_LAYOUT_REFERENCE.winterNoonElevationDeg /
+      Math.max(locationFactors.winterNoonElevationDeg, SOLAR_LAYOUT_REFERENCE.minWinterNoonElevationDeg);
     const spacingFromLatitude = Math.pow(sunAngleRatio, mounting?.spacingLatitudeSensitivity || 0);
     const cloudinessDelta = locationFactors.cloudiness - SOLAR_LAYOUT_REFERENCE.cloudiness;
-    const cloudinessRelief = Math.max(0.88, 1 - ((mounting?.spacingCloudRelief || 0) * cloudinessDelta));
-    const layoutSpacingMultiplier = Math.max(0.82, Math.min(spacingFromLatitude * cloudinessRelief, 1.35));
-    const groundCoverageRatio = Math.max(0.05, Math.min(baseGroundCoverageRatio / layoutSpacingMultiplier, 0.95));
+    const cloudinessRelief = Math.max(SOLAR_LAYOUT_REFERENCE.minCloudinessRelief, 1 - ((mounting?.spacingCloudRelief || 0) * cloudinessDelta));
+    const layoutSpacingMultiplier = Math.max(
+      SOLAR_LAYOUT_REFERENCE.minLayoutSpacingMultiplier,
+      Math.min(spacingFromLatitude * cloudinessRelief, SOLAR_LAYOUT_REFERENCE.maxLayoutSpacingMultiplier)
+    );
+    const groundCoverageRatio = Math.max(minGroundCoverageRatio, Math.min(baseGroundCoverageRatio / layoutSpacingMultiplier, maxGroundCoverageRatio));
 
     return {
       baseGroundCoverageRatio,
@@ -289,13 +294,13 @@ export const solarMethods = {
     );
     const cloudinessPenalty = Math.max(0, locationFactors.cloudiness - SOLAR_LAYOUT_REFERENCE.cloudiness);
     const bosLocationMultiplier = Math.max(
-      0.85,
+      SOLAR_LAYOUT_REFERENCE.minBosLocationMultiplier,
       Math.min(
         1 +
           ((mounting?.bosLayoutSensitivity || 0) * layoutShift) +
           ((mounting?.bosLatitudeSensitivity || 0) * winterPenalty) +
           ((mounting?.bosCloudSensitivity || 0) * cloudinessPenalty),
-        1.25
+        SOLAR_LAYOUT_REFERENCE.maxBosLocationMultiplier
       )
     );
 

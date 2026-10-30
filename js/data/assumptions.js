@@ -99,9 +99,24 @@ export const CLOUDINESS_BY_GHI = [
   { maxGhi: Infinity, cloudiness: 0.10 },
 ];
 
-/* Reference site the layout/BOS adjustments are relative to (Mojave-like). */
+/* Reference site the layout/BOS adjustments are relative to (Mojave-like),
+   and the clamps on those adjustments (solar.js getLocationAdjusted*). */
 export const SOLAR_LAYOUT_REFERENCE = {
   latitude: 35.05,
   winterNoonElevationDeg: 31.51,
   cloudiness: 0.05,
+  // Floor on a site's winter-noon sun elevation, so row spacing stays finite
+  // near the poles.
+  minWinterNoonElevationDeg: 6,
+  // Diffuse light lets a cloudy site tighten its rows by at most 12%.
+  minCloudinessRelief: 0.88,
+  // Row-pitch multiplier vs the reference site: at most 18% tighter, 35% wider.
+  minLayoutSpacingMultiplier: 0.82,
+  maxLayoutSpacingMultiplier: 1.35,
+  // BOS cost multiplier vs the reference site: -15% to +25%.
+  minBosLocationMultiplier: 0.85,
+  maxBosLocationMultiplier: 1.25,
+  // Physical bounds on any ground coverage ratio (array area / land area).
+  minGroundCoverageRatio: 0.05,
+  maxGroundCoverageRatio: 0.95,
 };

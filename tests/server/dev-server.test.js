@@ -1,8 +1,8 @@
-const assert = require('node:assert/strict');
-const path = require('node:path');
-const test = require('node:test');
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import test from 'node:test';
 
-const ROOT = path.resolve(__dirname, '../..');
+const ROOT = path.resolve(import.meta.dirname, '../..');
 
 function createMockResponse() {
   let statusCode = null;

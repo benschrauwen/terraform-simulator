@@ -2,7 +2,9 @@
    System Diagram — Registry driven renderer
    ============================================ */
 
-const Diagram = {
+import { FormatNumbers } from './format-numbers.js';
+
+export const Diagram = {
   colors: {
     solar: '#c6923a',
     electric: '#5f7fb8',

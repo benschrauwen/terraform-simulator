@@ -1,12 +1,20 @@
 /* Solar resource and PV plant */
 
+import {
+  LOCATION_PRESETS,
+  MODEL_ASSUMPTIONS,
+  MOUNTING_TYPES,
+  PLANETARY_BODIES,
+} from '../data/reference-data.js';
+import { SolarGeometry } from './solar-geometry.js';
+
 const SOLAR_LAYOUT_REFERENCE = {
   latitude: 35.05,
   winterNoonElevationDeg: 31.51,
   cloudiness: 0.05,
 };
 
-Object.assign(Calc, {
+export const solarMethods = {
   getBodyConfig(bodyKey) {
     return PLANETARY_BODIES[bodyKey] || PLANETARY_BODIES.earth;
   },
@@ -95,10 +103,6 @@ Object.assign(Calc, {
       peakIrradiance: Math.max(...shaped.rawProfile, 0),
       dailyInsolation: shaped.dailyInsolation,
     };
-  },
-
-  getSunHours(ghi) {
-    return ghi / 365;
   },
 
   getWinterNoonElevation(latitude) {
@@ -307,4 +311,4 @@ Object.assign(Calc, {
       solarGeo,
     };
   },
-});
+};

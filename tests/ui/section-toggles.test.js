@@ -1,11 +1,7 @@
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const test = require('node:test');
-const vm = require('node:vm');
+import assert from 'node:assert/strict';
+import test from 'node:test';
 
-const ROOT = path.resolve(__dirname, '..', '..');
-const APP_SOURCE = `${fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8')}\nwindow.TestApp = App;`;
+import { App } from '../../js/ui/app.js';
 
 function createClassList(initial = []) {
   const values = new Set(initial);
@@ -63,27 +59,27 @@ function createSection({ key, open = false, bodyId = '' }) {
 }
 
 function loadAppClass(sections) {
-  const context = {
-    window: {
-      requestAnimationFrame(callback) {
-        callback();
-      },
-      addEventListener() {},
+  globalThis.window = {
+    requestAnimationFrame(callback) {
+      callback();
     },
-    document: {
-      addEventListener() {},
-      querySelectorAll(selector) {
-        if (selector === '.section-header') return sections.map(section => section.header);
-        return [];
-      },
+    addEventListener() {},
+  };
+  globalThis.document = {
+    addEventListener() {},
+    querySelectorAll(selector) {
+      if (selector === '.section-header') return sections.map(section => section.header);
+      return [];
     },
   };
 
-  vm.createContext(context);
-  vm.runInContext(APP_SOURCE, context, { filename: 'js/app.js' });
-
-  return context.window.TestApp;
+  return App;
 }
+
+test.afterEach(() => {
+  delete globalThis.document;
+  delete globalThis.window;
+});
 
 function createApp() {
   return {

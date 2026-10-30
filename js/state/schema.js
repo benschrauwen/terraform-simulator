@@ -2,19 +2,28 @@
    Shared state schema and defaults
    ============================================ */
 
-const SOLAR_PROFILE_DEFAULTS_BY_BODY = {
+import {
+  AI_COMPUTE_DEFAULTS,
+  METHANE_MARKET_PRESETS,
+  MOUNTING_TYPES,
+  PLANETARY_BODIES,
+} from '../data/reference-data.js';
+import { ModuleCatalog } from '../model/module-catalog.js';
+import { POLICY_INPUT_FIELDS, POLICY_SCHEMES } from '../model/policy.js';
+
+export const SOLAR_PROFILE_DEFAULTS_BY_BODY = {
   earth: 'earth',
   mars: 'mars-average',
   moon: 'lunar-pel',
 };
 
-const SOLAR_PROFILE_OPTIONS_BY_BODY = {
+export const SOLAR_PROFILE_OPTIONS_BY_BODY = {
   earth: ['earth'],
   mars: ['mars', 'mars-average'],
   moon: ['moon', 'lunar-pel'],
 };
 
-const CORE_STATE_FIELDS = [
+export const CORE_STATE_FIELDS = [
   { key: 'loadConfigTab', type: 'enum', options: ['chemicals', 'ai'], defaultValue: 'chemicals' },
   { key: 'dayMode', type: 'enum', options: ['average', 'specific'], defaultValue: 'average' },
   { key: 'body', type: 'enum', getOptions: () => Object.keys(PLANETARY_BODIES), defaultValue: 'earth' },
@@ -90,7 +99,7 @@ const CORE_STATE_FIELDS = [
   { key: 'batteryOmPercent', type: 'number', min: 0, max: 100, defaultValue: 1.5 },
 ];
 
-const APP_CONTROL_SYNC_FIELDS = {
+export const APP_CONTROL_SYNC_FIELDS = {
   checkboxes: [
     { id: 'aiComputeEnabled' },
     { id: 'financingEnabled' },
@@ -108,7 +117,7 @@ const APP_CONTROL_SYNC_FIELDS = {
   ],
 };
 
-function getStateFieldOptions(field) {
+export function getStateFieldOptions(field) {
   if (typeof field.getOptions === 'function') {
     return field.getOptions();
   }
@@ -180,4 +189,4 @@ function buildDefaultState() {
   };
 }
 
-const DEFAULT_STATE = buildDefaultState();
+export const DEFAULT_STATE = buildDefaultState();

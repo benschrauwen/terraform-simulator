@@ -1,8 +1,22 @@
 /* Control binding and control sync helpers attached to App */
 
-const AppControlMethods = {
+import {
+  LOCATION_PRESETS,
+  MOUNTING_TYPES,
+} from '../data/reference-data.js';
+import { Calc } from '../model/index.js';
+import { ModuleCatalog } from '../model/module-catalog.js';
+import { SolarGeometry } from '../model/solar-geometry.js';
+import { SavedSitePresets } from '../state/saved-site-presets.js';
+import {
+  APP_CONTROL_SYNC_FIELDS,
+  SOLAR_PROFILE_DEFAULTS_BY_BODY,
+} from '../state/schema.js';
+import { FormatNumbers } from './format-numbers.js';
+
+export const controlMethods = {
   bindControls() {
-    AppControlMethods.bindLoadConfigTabs.call(this);
+    this.bindLoadConfigTabs();
 
     document.querySelectorAll('.day-tab').forEach(tab => {
       tab.addEventListener('click', () => {
@@ -12,7 +26,7 @@ const AppControlMethods = {
       });
     });
 
-    AppControlMethods.bindRange.call(this, 'dayOfYear', 'dayOfYear', value => {
+    this.bindRange('dayOfYear', 'dayOfYear', value => {
       const day = parseInt(value, 10);
       return `${SolarGeometry.dayToDateString(day)}${SolarGeometry.notableDay(day)}`;
     }, { skipRecalculate: true });
@@ -21,17 +35,17 @@ const AppControlMethods = {
       btn.addEventListener('click', () => {
         const day = parseInt(btn.dataset.day, 10);
         this.state.dayOfYear = day;
-        AppControlMethods.syncRangeDisplay.call(this, 'dayOfYear', day);
+        this.syncRangeDisplay('dayOfYear', day);
         this.refreshDaySpecificViews();
       });
     });
 
-    AppControlMethods.on.call(this, 'locationPreset', 'change', value => {
+    this.on('locationPreset', 'change', value => {
       this.skipInitialSavedSitePersist = false;
       if (value === 'custom') {
         this.state.locationPresetIsCustom = true;
         this.state.customSiteLabel = '';
-        AppControlMethods.syncStateToControls.call(this);
+        this.syncStateToControls();
         return;
       }
 
@@ -59,7 +73,7 @@ const AppControlMethods = {
           this.state.siteYieldSource = preset.siteYieldSource;
           this.state.customSiteLabel = preset.name;
         }
-        AppControlMethods.syncStateToControls.call(this);
+        this.syncStateToControls();
         return;
       }
 
@@ -73,12 +87,12 @@ const AppControlMethods = {
       this.state.longitude = loc.lon;
       this.state.siteYieldMwhPerMwdcYear = loc.baseYield;
       this.state.siteYieldSource = 'preset';
-      AppControlMethods.syncStateToControls.call(this);
+      this.syncStateToControls();
     });
 
-    AppControlMethods.bindNumber.call(this, 'latitude', 'latitude', () => AppControlMethods.handleLocationEdited.call(this));
-    AppControlMethods.bindNumber.call(this, 'longitude', 'longitude', () => AppControlMethods.handleLocationEdited.call(this));
-    AppControlMethods.bindNumber.call(this, 'siteYield', 'siteYieldMwhPerMwdcYear', () => {
+    this.bindNumber('latitude', 'latitude', () => this.handleLocationEdited());
+    this.bindNumber('longitude', 'longitude', () => this.handleLocationEdited());
+    this.bindNumber('siteYield', 'siteYieldMwhPerMwdcYear', () => {
       this.state.siteYieldSource = 'manual';
       this.state.locationPresetIsCustom = true;
       this.state.customSiteLabel = '';
@@ -86,79 +100,79 @@ const AppControlMethods = {
       if (locPresetEl) locPresetEl.value = 'custom';
     });
 
-    AppControlMethods.bindRange.call(this, 'systemSize', 'systemSizeMW', value => this.formatSystemSizeMW(value));
-    AppControlMethods.bindRange.call(this, 'panelEfficiency', 'panelEfficiency', value => `${FormatNumbers.fixed(parseFloat(value), 1)}%`);
-    AppControlMethods.bindRange.call(this, 'panelCost', 'panelCostPerW', value => `$${FormatNumbers.fixed(parseFloat(value), 2)}/W`);
-    AppControlMethods.bindRange.call(this, 'panelDegradationAnnual', 'panelDegradationAnnual', value => `${FormatNumbers.fixed(parseFloat(value), 2)}%/yr`);
-    AppControlMethods.on.call(this, 'mountingType', 'change', value => {
+    this.bindRange('systemSize', 'systemSizeMW', value => this.formatSystemSizeMW(value));
+    this.bindRange('panelEfficiency', 'panelEfficiency', value => `${FormatNumbers.fixed(parseFloat(value), 1)}%`);
+    this.bindRange('panelCost', 'panelCostPerW', value => `$${FormatNumbers.fixed(parseFloat(value), 2)}/W`);
+    this.bindRange('panelDegradationAnnual', 'panelDegradationAnnual', value => `${FormatNumbers.fixed(parseFloat(value), 2)}%/yr`);
+    this.on('mountingType', 'change', value => {
       this.state.mountingType = value;
       this.state.bosCostPerW = MOUNTING_TYPES[value].typicalBOS;
-      AppControlMethods.syncStateToControls.call(this);
+      this.syncStateToControls();
     });
-    AppControlMethods.bindRange.call(this, 'bosCost', 'bosCostPerW', value => `$${FormatNumbers.fixed(parseFloat(value), 2)}/W`);
-    AppControlMethods.bindRange.call(this, 'landCost', 'landCostPerAcre', value => `$${Math.round(parseFloat(value)).toLocaleString()}/acre`);
-    AppControlMethods.bindRange.call(this, 'sitePrepCost', 'sitePrepCostPerAcre', value => `$${Math.round(parseFloat(value)).toLocaleString()}/acre`);
+    this.bindRange('bosCost', 'bosCostPerW', value => `$${FormatNumbers.fixed(parseFloat(value), 2)}/W`);
+    this.bindRange('landCost', 'landCostPerAcre', value => `$${Math.round(parseFloat(value)).toLocaleString()}/acre`);
+    this.bindRange('sitePrepCost', 'sitePrepCostPerAcre', value => `$${Math.round(parseFloat(value)).toLocaleString()}/acre`);
 
-    AppControlMethods.bindRange.call(this, 'batteryCapacity', 'batteryCapacityMWh', value => `${FormatNumbers.fixed(parseFloat(value), 1)} MWh`, () => {
+    this.bindRange('batteryCapacity', 'batteryCapacityMWh', value => `${FormatNumbers.fixed(parseFloat(value), 1)} MWh`, () => {
       this.syncBatteryEnabledState();
     });
-    AppControlMethods.bindRange.call(this, 'batteryCost', 'batteryCostPerKWh', value => `$${FormatNumbers.fixed(parseInt(value, 10), 0)}/kWh`);
-    AppControlMethods.bindRange.call(this, 'batteryEfficiency', 'batteryEfficiency', value => `${FormatNumbers.fixed(parseInt(value, 10), 0)}%`);
-    AppControlMethods.bindRange.call(this, 'batteryCycles', 'batteryCycles', value => parseInt(value, 10).toLocaleString());
-    AppControlMethods.bindRange.call(this, 'chemicalSizingPercent', 'chemicalSizingPercent', value => this.formatChemicalSizingPercent(value));
+    this.bindRange('batteryCost', 'batteryCostPerKWh', value => `$${FormatNumbers.fixed(parseInt(value, 10), 0)}/kWh`);
+    this.bindRange('batteryEfficiency', 'batteryEfficiency', value => `${FormatNumbers.fixed(parseInt(value, 10), 0)}%`);
+    this.bindRange('batteryCycles', 'batteryCycles', value => parseInt(value, 10).toLocaleString());
+    this.bindRange('chemicalSizingPercent', 'chemicalSizingPercent', value => this.formatChemicalSizingPercent(value));
 
-    AppControlMethods.on.call(this, 'aiComputeEnabled', 'change', (_, el) => {
+    this.on('aiComputeEnabled', 'change', (_, el) => {
       this.state.aiComputeEnabled = el.checked;
       document.getElementById('aiComputeConfig').classList.toggle('active', el.checked);
       window.requestAnimationFrame(() => this.positionSliderMarkers());
     });
-    AppControlMethods.on.call(this, 'aiReliabilityTarget', 'change', value => {
+    this.on('aiReliabilityTarget', 'change', value => {
       this.state.aiReliabilityTarget = parseFloat(value);
     });
-    AppControlMethods.bindRange.call(this, 'aiGpuCapexPerKW', 'aiGpuCapexPerKW', value => `$${Math.round(parseFloat(value)).toLocaleString()}/kW`);
-    AppControlMethods.bindRange.call(this, 'aiTokenPrice', 'aiTokenPricePerM', value => `$${FormatNumbers.fixed(parseFloat(value), 2)} / 1M tokens`);
-    AppControlMethods.bindRange.call(this, 'aiTokensPerMWh', 'aiMillionTokensPerMWh', value => `${Math.round(parseFloat(value)).toLocaleString()} M tokens/MWh`);
-    AppControlMethods.bindRange.call(this, 'aiAssetLifeYears', 'aiAssetLifeYears', value => `${FormatNumbers.fixed(parseInt(value, 10), 0)} years`);
+    this.bindRange('aiGpuCapexPerKW', 'aiGpuCapexPerKW', value => `$${Math.round(parseFloat(value)).toLocaleString()}/kW`);
+    this.bindRange('aiTokenPrice', 'aiTokenPricePerM', value => `$${FormatNumbers.fixed(parseFloat(value), 2)} / 1M tokens`);
+    this.bindRange('aiTokensPerMWh', 'aiMillionTokensPerMWh', value => `${Math.round(parseFloat(value)).toLocaleString()} M tokens/MWh`);
+    this.bindRange('aiAssetLifeYears', 'aiAssetLifeYears', value => `${FormatNumbers.fixed(parseInt(value, 10), 0)} years`);
 
-    AppControlMethods.bindModuleControls.call(this);
+    this.bindModuleControls();
 
-    AppControlMethods.bindRange.call(this, 'methaneFeedstockSplit', 'methaneFeedstockSplit', value => this.formatMethaneFeedstockSplit(value));
-    AppControlMethods.bindRange.call(this, 'mtgMethanolSplit', 'mtgMethanolSplit', value => this.formatMtgMethanolSplit(value));
-    AppControlMethods.on.call(this, 'methaneMarketPreset', 'change', value => {
+    this.bindRange('methaneFeedstockSplit', 'methaneFeedstockSplit', value => this.formatMethaneFeedstockSplit(value));
+    this.bindRange('mtgMethanolSplit', 'mtgMethanolSplit', value => this.formatMtgMethanolSplit(value));
+    this.on('methaneMarketPreset', 'change', value => {
       this.state.methaneMarketPreset = value;
       this.syncDynamicVisibility();
     });
-    AppControlMethods.bindRange.call(this, 'methanePrice', 'methanePrice', value => `$${FormatNumbers.fixed(parseFloat(value), 2)}/MCF`);
-    AppControlMethods.bindRange.call(this, 'methanolPrice', 'methanolPrice', value => `$${FormatNumbers.fixed(parseInt(value, 10), 0)}/ton`);
+    this.bindRange('methanePrice', 'methanePrice', value => `$${FormatNumbers.fixed(parseFloat(value), 2)}/MCF`);
+    this.bindRange('methanolPrice', 'methanolPrice', value => `$${FormatNumbers.fixed(parseInt(value, 10), 0)}/ton`);
     ModuleCatalog.getExploratoryModules()
       .filter(module => ModuleCatalog.hasMarket(module.id, this.state[`${module.id}Route`] || ModuleCatalog.getDefaultRoute(module)))
       .forEach(module => {
         const priceKey = `${module.id}Price`;
-        AppControlMethods.bindRange.call(this, priceKey, priceKey, value => this.formatModuleMarketValue(module.id, value));
+        this.bindRange(priceKey, priceKey, value => this.formatModuleMarketValue(module.id, value));
       });
-    AppControlMethods.bindRange.call(this, 'exploratoryOmPercent', 'exploratoryOmPercent', value => this.formatExploratoryOmPercent(value));
+    this.bindRange('exploratoryOmPercent', 'exploratoryOmPercent', value => this.formatExploratoryOmPercent(value));
 
-    AppControlMethods.on.call(this, 'policyMode', 'change', value => {
+    this.on('policyMode', 'change', value => {
       this.state.policyMode = value;
       this.renderPolicyInputs();
       this.syncDynamicVisibility();
     });
-    AppControlMethods.bindRange.call(this, 'solarAssetLife', 'solarAssetLife', value => `${FormatNumbers.fixed(parseInt(value, 10), 0)} years`);
-    AppControlMethods.bindRange.call(this, 'analysisHorizonYears', 'analysisHorizonYears', value => `${FormatNumbers.fixed(parseInt(value, 10), 0)} years`);
-    AppControlMethods.bindRange.call(this, 'discountRate', 'discountRate', value => `${FormatNumbers.fixed(parseFloat(value), 1)}%`);
-    AppControlMethods.on.call(this, 'financingEnabled', 'change', (_, el) => {
+    this.bindRange('solarAssetLife', 'solarAssetLife', value => `${FormatNumbers.fixed(parseInt(value, 10), 0)} years`);
+    this.bindRange('analysisHorizonYears', 'analysisHorizonYears', value => `${FormatNumbers.fixed(parseInt(value, 10), 0)} years`);
+    this.bindRange('discountRate', 'discountRate', value => `${FormatNumbers.fixed(parseFloat(value), 1)}%`);
+    this.on('financingEnabled', 'change', (_, el) => {
       this.state.financingEnabled = el.checked;
       document.getElementById('financingConfig').classList.toggle('active', el.checked);
     });
-    AppControlMethods.bindRange.call(this, 'debtShare', 'debtSharePercent', value => `${FormatNumbers.fixed(parseInt(value, 10), 0)}%`);
-    AppControlMethods.bindRange.call(this, 'debtInterestRate', 'debtInterestRate', value => `${FormatNumbers.fixed(parseFloat(value), 2)}%`);
-    AppControlMethods.bindRange.call(this, 'debtTermYears', 'debtTermYears', value => `${FormatNumbers.fixed(parseInt(value, 10), 0)} years`);
-    AppControlMethods.bindRange.call(this, 'debtFeePercent', 'debtFeePercent', value => `${FormatNumbers.fixed(parseFloat(value), 2)}%`);
+    this.bindRange('debtShare', 'debtSharePercent', value => `${FormatNumbers.fixed(parseInt(value, 10), 0)}%`);
+    this.bindRange('debtInterestRate', 'debtInterestRate', value => `${FormatNumbers.fixed(parseFloat(value), 2)}%`);
+    this.bindRange('debtTermYears', 'debtTermYears', value => `${FormatNumbers.fixed(parseInt(value, 10), 0)} years`);
+    this.bindRange('debtFeePercent', 'debtFeePercent', value => `${FormatNumbers.fixed(parseFloat(value), 2)}%`);
 
-    AppControlMethods.bindRange.call(this, 'solarOmPercent', 'solarOmPercent', value => `${FormatNumbers.fixed(parseFloat(value), 1)}%/yr`);
-    AppControlMethods.bindRange.call(this, 'processOmPercent', 'processOmPercent', value => `${FormatNumbers.fixed(parseFloat(value), 1)}%/yr`);
-    AppControlMethods.bindRange.call(this, 'batteryOmPercent', 'batteryOmPercent', value => `${FormatNumbers.fixed(parseFloat(value), 1)}%/yr`);
-    AppControlMethods.bindSavedSitePresetControls.call(this);
+    this.bindRange('solarOmPercent', 'solarOmPercent', value => `${FormatNumbers.fixed(parseFloat(value), 1)}%/yr`);
+    this.bindRange('processOmPercent', 'processOmPercent', value => `${FormatNumbers.fixed(parseFloat(value), 1)}%/yr`);
+    this.bindRange('batteryOmPercent', 'batteryOmPercent', value => `${FormatNumbers.fixed(parseFloat(value), 1)}%/yr`);
+    this.bindSavedSitePresetControls();
     this.bindOptimizeButtons();
   },
 
@@ -172,8 +186,8 @@ const AppControlMethods = {
         if (typeof SavedSitePresets === 'undefined') return;
         const result = SavedSitePresets.addFromState(this.state, nameInput.value);
         if (!result.ok) {
-          if (result.error === 'empty' && typeof AppShareStateMethods.setShareFeedback === 'function') {
-            AppShareStateMethods.setShareFeedback.call(this, 'Enter a name to save', 'error');
+          if (result.error === 'empty' && typeof this.setShareFeedback === 'function') {
+            this.setShareFeedback('Enter a name to save', 'error');
           }
           return;
         }
@@ -181,10 +195,10 @@ const AppControlMethods = {
         this.state.customSiteLabel = result.preset.name;
         nameInput.value = '';
         this.populateLocationPresetSelect();
-        AppControlMethods.syncStateToControls.call(this);
+        this.syncStateToControls();
         this.recalculate();
-        if (typeof AppShareStateMethods.setShareFeedback === 'function') {
-          AppShareStateMethods.setShareFeedback.call(this, 'Site saved', 'success');
+        if (typeof this.setShareFeedback === 'function') {
+          this.setShareFeedback('Site saved', 'success');
         }
       };
       saveBtn.addEventListener('click', runSave);
@@ -214,10 +228,10 @@ const AppControlMethods = {
         this.state.locationPresetIsCustom = true;
         this.state.customSiteLabel = '';
         this.populateLocationPresetSelect();
-        AppControlMethods.syncStateToControls.call(this);
+        this.syncStateToControls();
         this.recalculate();
-        if (typeof AppShareStateMethods.setShareFeedback === 'function') {
-          AppShareStateMethods.setShareFeedback.call(this, 'Removed from my sites', 'success');
+        if (typeof this.setShareFeedback === 'function') {
+          this.setShareFeedback('Removed from my sites', 'success');
         }
       });
     }
@@ -227,7 +241,7 @@ const AppControlMethods = {
     const tabs = Array.from(document.querySelectorAll('.load-config-tab'));
     tabs.forEach(tab => {
       tab.addEventListener('click', () => {
-        AppControlMethods.selectLoadConfigTab.call(this, tab);
+        this.selectLoadConfigTab(tab);
       });
       tab.addEventListener('keydown', event => {
         const availableTabs = tabs.filter(item => !item.disabled);
@@ -246,16 +260,16 @@ const AppControlMethods = {
         if (!nextTab) return;
 
         event.preventDefault();
-        AppControlMethods.selectLoadConfigTab.call(this, nextTab, { focus: true });
+        this.selectLoadConfigTab(nextTab, { focus: true });
       });
     });
-    AppControlMethods.syncLoadConfigTabs.call(this);
+    this.syncLoadConfigTabs();
   },
 
   selectLoadConfigTab(tab, { focus = false } = {}) {
     if (!tab || tab.disabled) return;
     this.state.loadConfigTab = tab.dataset.loadTab || 'chemicals';
-    AppControlMethods.syncLoadConfigTabs.call(this);
+    this.syncLoadConfigTabs();
     if (focus && typeof tab.focus === 'function') tab.focus();
   },
 
@@ -281,31 +295,30 @@ const AppControlMethods = {
   bindModuleControls() {
     ModuleCatalog.getAll().forEach(module => {
       const enabledKey = `${module.id}Enabled`;
-      AppControlMethods.on.call(this, enabledKey, 'change', (_, el) => {
+      this.on(enabledKey, 'change', (_, el) => {
         this.state[enabledKey] = el.checked;
         this.enforceModuleDependencies();
         this.syncDerivedFeedControls();
       });
-      AppControlMethods.on.call(this, `${module.id}BufferEnabled`, 'change', (_, el) => {
+      this.on(`${module.id}BufferEnabled`, 'change', (_, el) => {
         this.state[`${module.id}BufferEnabled`] = el.checked;
       });
 
       if (ModuleCatalog.hasPresets(module)) {
-        AppControlMethods.on.call(this, `${module.id}Preset`, 'change', value => {
+        this.on(`${module.id}Preset`, 'change', value => {
           if (value === 'custom') {
-            AppControlMethods.syncModulePresetControl.call(this, module.id);
+            this.syncModulePresetControl(module.id);
             return;
           }
-          AppControlMethods.applyModulePreset.call(this, module.id, value);
+          this.applyModulePreset(module.id, value);
         });
       }
 
       ModuleCatalog.getConfigFields(module).forEach(config => {
         const extra = ModuleCatalog.isPresetConfigField(module, config.key)
-          ? { onInput: () => AppControlMethods.syncModulePresetControl.call(this, module.id) }
+          ? { onInput: () => this.syncModulePresetControl(module.id) }
           : undefined;
-        AppControlMethods.bindRange.call(
-          this,
+        this.bindRange(
           config.key,
           config.key,
           value => this.formatConfigValue(config.unit, value),
@@ -315,11 +328,11 @@ const AppControlMethods = {
 
       const assetLifeKey = ModuleCatalog.getAssetLifeKey(module);
       if (assetLifeKey) {
-        AppControlMethods.bindRange.call(this, assetLifeKey, assetLifeKey, value => `${FormatNumbers.fixed(parseInt(value, 10), 0)} years`);
+        this.bindRange(assetLifeKey, assetLifeKey, value => `${FormatNumbers.fixed(parseInt(value, 10), 0)} years`);
       }
 
       if (ModuleCatalog.hasRoutes(module)) {
-        AppControlMethods.on.call(this, `${module.id}Route`, 'change', value => {
+        this.on(`${module.id}Route`, 'change', value => {
           this.state[`${module.id}Route`] = value;
           this.syncModuleCapexControl(module.id);
           this.syncModuleMarketControl(module.id);
@@ -330,14 +343,12 @@ const AppControlMethods = {
       }
 
       if (module.exploratory) {
-        AppControlMethods.bindRange.call(
-          this,
+        this.bindRange(
           `${module.id}CapexBasis`,
           `${module.id}CapexBasis`,
           value => this.formatExploratoryCapexBasis(module.id, value)
         );
-        AppControlMethods.bindRange.call(
-          this,
+        this.bindRange(
           `${module.id}PriorityWeight`,
           `${module.id}PriorityWeight`,
           value => this.formatExploratoryPriorityWeight(value)
@@ -366,7 +377,7 @@ const AppControlMethods = {
         this.state.body || 'earth'
       );
       this.state.siteYieldSource = 'estimated';
-      AppControlMethods.syncStateToControls.call(this);
+      this.syncStateToControls();
     }
   },
 
@@ -389,7 +400,7 @@ const AppControlMethods = {
       const sliderValue = parseFloat(el.value);
       const actualValue = el.dataset.scale === 'log' ? Math.pow(10, sliderValue) : sliderValue;
       this.state[stateKey] = actualValue;
-      AppControlMethods.syncRangeDisplay.call(this, id, actualValue, formatter);
+      this.syncRangeDisplay(id, actualValue, formatter);
       if (extraConfig.onInput) extraConfig.onInput();
       this.syncDynamicVisibility();
       if (extraConfig.skipRecalculate) {
@@ -403,7 +414,7 @@ const AppControlMethods = {
   applyModulePreset(moduleId, presetValue) {
     const preset = ModuleCatalog.getPreset(moduleId, presetValue);
     if (!preset) {
-      AppControlMethods.syncModulePresetControl.call(this, moduleId);
+      this.syncModulePresetControl(moduleId);
       return;
     }
 
@@ -415,10 +426,10 @@ const AppControlMethods = {
           ? String(Math.log10(value))
           : String(value);
       }
-      AppControlMethods.syncRangeDisplay.call(this, stateKey, value);
+      this.syncRangeDisplay(stateKey, value);
     });
 
-    AppControlMethods.syncModulePresetControl.call(this, moduleId);
+    this.syncModulePresetControl(moduleId);
   },
 
   syncModulePresetControl(moduleId) {
@@ -530,7 +541,7 @@ const AppControlMethods = {
       el.value = el.dataset.scale === 'log' && Number.isFinite(numericState) && numericState > 0
         ? Math.log10(numericState)
         : stateValue;
-      AppControlMethods.syncRangeDisplay.call(this, binding.id, stateValue, binding.formatter);
+      this.syncRangeDisplay(binding.id, stateValue, binding.formatter);
     });
 
     ModuleCatalog.getAll().forEach(module => {
@@ -542,7 +553,7 @@ const AppControlMethods = {
       if (configEl) configEl.classList.toggle('active', Boolean(this.state[`${module.id}Enabled`]));
       const routeEl = document.getElementById(`${module.id}Route`);
       if (routeEl && this.state[`${module.id}Route`]) routeEl.value = this.state[`${module.id}Route`];
-      AppControlMethods.syncModulePresetControl.call(this, module.id);
+      this.syncModulePresetControl(module.id);
     });
 
     document.getElementById('aiComputeConfig').classList.toggle('active', this.state.aiComputeEnabled);
@@ -550,7 +561,7 @@ const AppControlMethods = {
     if (typeof this.renderPolicyInputs === 'function') {
       this.renderPolicyInputs();
     }
-    AppControlMethods.syncLoadConfigTabs.call(this);
+    this.syncLoadConfigTabs();
   },
 
   syncRangeDisplay(id, value, formatter) {
@@ -559,5 +570,3 @@ const AppControlMethods = {
     if (display && binding) display.textContent = binding(value);
   },
 };
-
-window.AppControlMethods = AppControlMethods;

@@ -1,5 +1,9 @@
 /* Rendering helpers attached to App */
 
+import { SolarGeometry } from '../model/solar-geometry.js';
+import { Diagram } from './diagram.js';
+import { FormatNumbers } from './format-numbers.js';
+
 const APP_EDUCATIONAL_TOOLTIPS = Object.freeze({
   projectIrr: 'Internal rate of return on project cash flows before debt financing.',
   equityIrr: 'Internal rate of return on sponsor equity cash flows after debt funding and debt service.',
@@ -10,7 +14,7 @@ const APP_EDUCATIONAL_TOOLTIPS = Object.freeze({
   residualChemHoursCycle: 'Average hours per cycle left for chemicals after AI load is served first.',
 });
 
-window.AppRendererMethods = {
+export const rendererMethods = {
   updateInfoDisplays(r) {
     document.getElementById('ghiValue').textContent = `${FormatNumbers.fixed(r.solar.ghi, 0)} kWh/m²/yr`;
     document.getElementById('sunHoursValue').textContent = `${FormatNumbers.fixed(r.solar.sunHours, 1)} ${r.solar.hoursPerCycleLabel}`;
@@ -26,7 +30,7 @@ window.AppRendererMethods = {
     const effectiveCfLabel = document.getElementById('effectiveCFLabel');
     if (effectiveCfLabel) {
       effectiveCfLabel.textContent = r.ai.enabled ? 'Residual Chem CF:' : 'Effective CF:';
-      window.AppRendererMethods.applyTooltip(
+      rendererMethods.applyTooltip(
         effectiveCfLabel,
         r.ai.enabled ? APP_EDUCATIONAL_TOOLTIPS.residualChemCf : APP_EDUCATIONAL_TOOLTIPS.effectiveCf
       );
@@ -36,7 +40,7 @@ window.AppRendererMethods = {
       dailyOpHoursLabel.textContent = r.ai.enabled
         ? (r.solar.bodyKey === 'earth' ? 'Residual Chem Hrs/Day:' : 'Residual Chem Hrs/Cycle:')
         : 'Daily Op Hours:';
-      window.AppRendererMethods.applyTooltip(
+      rendererMethods.applyTooltip(
         dailyOpHoursLabel,
         r.ai.enabled
           ? (r.solar.bodyKey === 'earth'
@@ -95,7 +99,7 @@ window.AppRendererMethods = {
     const irrLabel = document.getElementById('metricIrrLabel');
     if (irrLabel) {
       irrLabel.textContent = e.financing.enabled ? 'Equity IRR' : 'IRR';
-      window.AppRendererMethods.applyTooltip(
+      rendererMethods.applyTooltip(
         irrLabel,
         e.financing.enabled ? APP_EDUCATIONAL_TOOLTIPS.equityIrr : APP_EDUCATIONAL_TOOLTIPS.projectIrr
       );
@@ -256,8 +260,8 @@ window.AppRendererMethods = {
     const financingRows = [];
     const unitRows = [];
     const contextRows = [];
-    const econMetric = (...args) => window.AppRendererMethods.econMetric(...args);
-    const econGroup = (...args) => window.AppRendererMethods.econGroup(...args);
+    const econMetric = (...args) => rendererMethods.econMetric(...args);
+    const econGroup = (...args) => rendererMethods.econGroup(...args);
 
     summaryMetrics.push(
       econMetric(
@@ -705,7 +709,7 @@ window.AppRendererMethods = {
 
   econMetric(label, value, cls = '', note = '', title = '') {
     const tooltipText = title || note;
-    const labelMarkup = window.AppRendererMethods.tooltipLabel(label, tooltipText, 'econ-metric-label');
+    const labelMarkup = rendererMethods.tooltipLabel(label, tooltipText, 'econ-metric-label');
     const noteMarkup = note ? `<span class="econ-metric-note">${note}</span>` : '';
     return `<div class="econ-metric ${cls}">
       ${labelMarkup}
@@ -744,11 +748,11 @@ window.AppRendererMethods = {
   tooltipLabel(label, tooltip = '', className = '') {
     const classNames = [className, tooltip ? 'tooltip-label' : ''].filter(Boolean).join(' ');
     const classAttr = classNames ? ` class="${classNames}"` : '';
-    return `<span${classAttr}${window.AppRendererMethods.tooltipAttr(tooltip)}>${label}</span>`;
+    return `<span${classAttr}${rendererMethods.tooltipAttr(tooltip)}>${label}</span>`;
   },
 
   tooltipAttr(text = '') {
-    return text ? ` data-tooltip="${window.AppRendererMethods.escapeAttribute(text)}"` : '';
+    return text ? ` data-tooltip="${rendererMethods.escapeAttribute(text)}"` : '';
   },
 
   escapeAttribute(value) {
@@ -760,7 +764,7 @@ window.AppRendererMethods = {
   },
 
   econRow(label, value, cls = '', title = '') {
-    const labelMarkup = window.AppRendererMethods.tooltipLabel(label, title, 'econ-label');
+    const labelMarkup = rendererMethods.tooltipLabel(label, title, 'econ-label');
     return `<div class="econ-row ${cls}">
       ${labelMarkup}
       <span class="econ-value">${value}</span>

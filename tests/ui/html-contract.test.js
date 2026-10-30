@@ -1,9 +1,10 @@
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const test = require('node:test');
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = path.resolve(__dirname, '../..');
+const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 
 function tags(name) {
@@ -139,31 +140,35 @@ test('external links opened in new tabs declare a safe rel attribute', () => {
     });
 });
 
-test('script order preserves runtime dependencies', () => {
-  const scripts = tags('script').map(script => attr(script, 'src')).filter(Boolean);
-  const indexOf = src => {
-    const index = scripts.indexOf(src);
-    assert.notEqual(index, -1, `Expected script ${src} to be present.`);
-    return index;
-  };
-  const before = (left, right) => {
-    assert.ok(indexOf(left) < indexOf(right), `Expected ${left} to load before ${right}.`);
-  };
+test('index.html loads one module entry plus classic vendor scripts', () => {
+  const scripts = tags('script');
+  const moduleScripts = scripts.filter(script => attr(script, 'type') === 'module');
+  assert.deepEqual(moduleScripts.map(script => attr(script, 'src')), ['js/main.js']);
 
-  before('node_modules/lz-string/libs/lz-string.min.js', 'js/share-state.js');
-  before('js/module-catalog.js', 'js/state-schema.js');
-  before('js/state-schema.js', 'js/calculations/calculations-core.js');
-  before('js/calculations/calculations-core.js', 'js/calculations/calculations-solar.js');
-  before('js/calculations/calculations-core.js', 'js/calculations/calculations-battery.js');
-  before('js/calculations/calculations-core.js', 'js/calculations/calculations-process.js');
-  before('js/calculations/calculations-process.js', 'js/calculations/calculations-economics.js');
-  before('js/calculations/calculations-economics.js', 'js/diagram.js');
-  before('js/diagram.js', 'js/app.js');
-  before('js/app.js', 'js/app-share-state.js');
-  before('js/app.js', 'js/app-controls.js');
-  before('js/app.js', 'js/app-optimizer.js');
-  before('js/app.js', 'js/app-ui-state.js');
-  before('js/app.js', 'js/app-site-map.js');
-  before('js/app.js', 'js/app-renderers.js');
-  before('js/app.js', 'js/app-charts.js');
+  const classicScripts = scripts.filter(script => attr(script, 'type') !== 'module');
+  classicScripts.forEach(script => {
+    assert.ok(attr(script, 'src'), `Expected no inline scripts: ${script}`);
+  });
+  assert.deepEqual(classicScripts.map(script => attr(script, 'src')), [
+    'node_modules/chart.js/dist/chart.umd.js',
+    'node_modules/lz-string/libs/lz-string.min.js',
+    'node_modules/leaflet/dist/leaflet.js',
+  ]);
+  assert.ok(
+    html.indexOf('node_modules/lz-string/libs/lz-string.min.js') < html.indexOf('js/main.js'),
+    'Expected LZString to load before the module entry.'
+  );
+});
+
+test('index.html only references local assets that exist and declares no inline handlers', () => {
+  const urls = [...tags('script'), ...tags('link')]
+    .map(tag => attr(tag, 'src') || attr(tag, 'href'))
+    .filter(Boolean);
+
+  assert.ok(urls.length > 0);
+  urls.forEach(url => {
+    assert.doesNotMatch(url, /^(?:[a-z]+:)?\/\//i, `Expected self-hosted asset, got ${url}`);
+    assert.equal(fs.existsSync(path.join(ROOT, url)), true, `Expected ${url} to exist.`);
+  });
+  assert.doesNotMatch(html, /\son[a-z]+=/i, 'Expected no inline event handler attributes (blocked by CSP).');
 });

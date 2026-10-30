@@ -1,5 +1,10 @@
 /* Shareable URL state helpers attached to App */
 
+import { Calc } from '../model/index.js';
+import { SavedSitePresets } from '../state/saved-site-presets.js';
+import { DEFAULT_STATE } from '../state/schema.js';
+import { ShareStateCodec } from '../state/share-codec.js';
+
 const SHARE_STATE_COMPARE_KEYS = Object.keys(DEFAULT_STATE);
 const SHARE_FEEDBACK_DURATION_MS = 2200;
 const SHARE_URL_SYNC_DELAY_MS = 150;
@@ -16,7 +21,7 @@ function mergeStateForShareExport(state, defaults) {
   return merged;
 }
 
-const AppShareStateMethods = {
+export const shareMethods = {
   initSharedState() {
     this.shareFeedbackTimer = null;
     this.shareUrlSyncTimer = null;
@@ -24,7 +29,7 @@ const AppShareStateMethods = {
     this.deferSavedSitePersistUntilNextSync = false;
     this._hashHydratedState = null;
 
-    const result = AppShareStateMethods.readSharedStateFromHash.call(this, window.location.hash);
+    const result = this.readSharedStateFromHash(window.location.hash);
     if (result.state) {
       this.state = result.state;
     }
@@ -46,17 +51,16 @@ const AppShareStateMethods = {
     const resetButton = document.getElementById('resetStateButton');
     if (resetButton) {
       resetButton.addEventListener('click', () => {
-        AppShareStateMethods.resetState.call(this);
+        this.resetState();
       });
     }
 
     window.addEventListener('hashchange', () => {
-      AppShareStateMethods.handleHashChange.call(this);
+      this.handleHashChange();
     });
 
     if (this.pendingShareFeedback) {
-      AppShareStateMethods.setShareFeedback.call(
-        this,
+      this.setShareFeedback(
         this.pendingShareFeedback.message,
         this.pendingShareFeedback.tone
       );
@@ -106,17 +110,17 @@ const AppShareStateMethods = {
   },
 
   handleHashChange() {
-    const result = AppShareStateMethods.readSharedStateFromHash.call(this, window.location.hash);
+    const result = this.readSharedStateFromHash(window.location.hash);
 
     if (result.error) {
-      AppShareStateMethods.setShareFeedback.call(this, 'Shared link could not be loaded', 'error');
+      this.setShareFeedback('Shared link could not be loaded', 'error');
     }
 
     if (result.ignored || !result.state) return;
 
     if (ShareStateCodec.statesEqual(this.state, result.state, SHARE_STATE_COMPARE_KEYS)) {
       if (result.error) {
-        AppShareStateMethods.syncShareStateUrl.call(this);
+        this.syncShareStateUrl();
       }
       return;
     }
@@ -142,11 +146,11 @@ const AppShareStateMethods = {
     clearTimeout(this.shareUrlSyncTimer);
     this.shareUrlSyncTimer = window.setTimeout(() => {
       this.shareUrlSyncTimer = null;
-      AppShareStateMethods.syncShareStateUrl.call(this);
+      this.syncShareStateUrl();
       if (this.skipInitialSavedSitePersist) {
         this.skipInitialSavedSitePersist = false;
       } else {
-        AppShareStateMethods.persistSavedSiteAppStateIfNeeded.call(this);
+        this.persistSavedSiteAppStateIfNeeded();
       }
     }, SHARE_URL_SYNC_DELAY_MS);
   },
@@ -216,7 +220,7 @@ const AppShareStateMethods = {
     this.syncDynamicVisibility();
     this.syncDerivedFeedControls();
     this.recalculate();
-    AppShareStateMethods.setShareFeedback.call(this, 'Reset to defaults', 'success');
+    this.setShareFeedback('Reset to defaults', 'success');
   },
 
   setShareFeedback(message = '', tone = '') {
@@ -240,5 +244,3 @@ const AppShareStateMethods = {
     }, SHARE_FEEDBACK_DURATION_MS);
   },
 };
-
-window.AppShareStateMethods = AppShareStateMethods;

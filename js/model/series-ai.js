@@ -1,6 +1,10 @@
 /* Annual series scaling and AI dispatch */
 
-Object.assign(Calc, {
+import { AI_COMPUTE_DEFAULTS, MODEL_ASSUMPTIONS } from '../data/reference-data.js';
+import { DEFAULT_STATE } from '../state/schema.js';
+import { SolarGeometry } from './solar-geometry.js';
+
+export const seriesAiMethods = {
   scaleRawSeriesToAnnualEnergy(rawSeries, annualKWhTarget, peakKW) {
     if (!Array.isArray(rawSeries) || !rawSeries.length || !Number.isFinite(annualKWhTarget) || annualKWhTarget <= 0 || !Number.isFinite(peakKW) || peakKW <= 0) {
       return Array.isArray(rawSeries) ? rawSeries.map(() => 0) : [];
@@ -807,4 +811,4 @@ Object.assign(Calc, {
       }),
     };
   },
-});
+};

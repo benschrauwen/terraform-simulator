@@ -6,7 +6,9 @@
    for any latitude and day of year.
 */
 
-const SolarGeometry = {
+import { FormatNumbers } from '../ui/format-numbers.js';
+
+export const SolarGeometry = {
 
   DEG: Math.PI / 180,
 

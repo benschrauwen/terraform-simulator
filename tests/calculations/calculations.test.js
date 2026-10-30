@@ -1,7 +1,7 @@
-const assert = require('node:assert/strict');
-const test = require('node:test');
+import assert from 'node:assert/strict';
+import test from 'node:test';
 
-const {
+import {
   Calc,
   ModuleCatalog,
   PolicyModel,
@@ -9,7 +9,7 @@ const {
   formatMoney,
   runBatterySweep,
   runScenario,
-} = require('./harness');
+} from './harness.js';
 
 function npvAt(cashFlows, rate) {
   return cashFlows.reduce(
@@ -660,7 +660,7 @@ test('financing coverage metrics flag sponsor support when debt service exceeds 
     'Expected a one-year debt term to outrun year-one operating cash flow and require sponsor support.'
   );
   assert.deepEqual(
-    Array.from(financedModel.uncoveredDebtServiceYears),
+    financedModel.uncoveredDebtServiceYears,
     [1],
     `Expected only year 1 to need sponsor debt-service support, got ${JSON.stringify(financedModel.uncoveredDebtServiceYears)}.`
   );
@@ -715,7 +715,7 @@ test('financing coverage metrics stay clear when operating cash flow covers debt
     'Expected the 10-year debt case to keep scheduled debt service within operating cash flow in every debt year.'
   );
   assert.deepEqual(
-    Array.from(financedModel.uncoveredDebtServiceYears),
+    financedModel.uncoveredDebtServiceYears,
     [],
     `Expected no uncovered debt-service years, got ${JSON.stringify(financedModel.uncoveredDebtServiceYears)}.`
   );
@@ -746,7 +746,7 @@ test('cash-flow timeline starts at close and follows unlevered project cash', ()
   assert.ok(timeline, 'Expected economics results to include a chart-ready cash-flow timeline.');
   assert.equal(timeline.financed, false, 'Expected the default timeline to stay unlevered.');
   assert.deepEqual(
-    Array.from(timeline.labels),
+    timeline.labels,
     expectedLabels,
     'Expected cash-flow timeline labels to cover close plus each modeled year.'
   );

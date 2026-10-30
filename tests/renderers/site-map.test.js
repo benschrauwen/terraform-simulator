@@ -1,12 +1,7 @@
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const test = require('node:test');
-const vm = require('node:vm');
+import assert from 'node:assert/strict';
+import test from 'node:test';
 
-const ROOT = path.resolve(__dirname, '..', '..');
-const APP_SITE_MAP_PATH = path.join(ROOT, 'js', 'app-site-map.js');
-const APP_SITE_MAP_SOURCE = fs.readFileSync(APP_SITE_MAP_PATH, 'utf8');
+import { siteMapMethods } from '../../js/ui/site-map.js';
 
 function createElement(id) {
   return {
@@ -128,38 +123,22 @@ function createLeafletStub() {
 
 function loadSiteMapMethods({ L } = {}) {
   const elements = new Map();
-  const context = {
-    window: {
-      requestAnimationFrame(callback) {
-        callback();
-      },
+  globalThis.window = {
+    requestAnimationFrame(callback) {
+      callback();
     },
-    document: {
-      getElementById(id) {
-        return elements.get(id) || null;
-      },
-    },
-    FormatNumbers: {
-      fixed(value, digits = 0) {
-        const numeric = Number(value);
-        if (!Number.isFinite(numeric)) return 'N/A';
-        return numeric.toFixed(digits);
-      },
-    },
-    performance: {
-      now() {
-        return 1000;
-      },
+  };
+  globalThis.document = {
+    getElementById(id) {
+      return elements.get(id) || null;
     },
   };
 
-  if (L) context.L = L;
-
-  vm.createContext(context);
-  vm.runInContext(APP_SITE_MAP_SOURCE, context, { filename: 'js/app-site-map.js' });
+  if (L) globalThis.L = L;
+  else delete globalThis.L;
 
   return {
-    methods: context.window.AppSiteMapMethods,
+    methods: siteMapMethods,
     registerElement(id, initial = {}) {
       const element = Object.assign(createElement(id), initial);
       elements.set(id, element);
@@ -168,8 +147,14 @@ function loadSiteMapMethods({ L } = {}) {
   };
 }
 
+test.afterEach(() => {
+  delete globalThis.L;
+  delete globalThis.document;
+  delete globalThis.window;
+});
+
 function createApp(methods, overrides = {}) {
-  return {
+  return Object.assign(Object.create(methods), {
     state: {
       latitude: 37.7749,
       longitude: -122.4194,
@@ -179,44 +164,8 @@ function createApp(methods, overrides = {}) {
     siteMapModuleLayer: null,
     siteMapOverlay: null,
     siteMapTileLayer: null,
-    showSiteMapMessage(...args) {
-      return methods.showSiteMapMessage.call(this, ...args);
-    },
-    showSiteMap(...args) {
-      return methods.showSiteMap.call(this, ...args);
-    },
-    clearSiteMapModuleSquares(...args) {
-      return methods.clearSiteMapModuleSquares.call(this, ...args);
-    },
-    getSiteFootprintColor(...args) {
-      return methods.getSiteFootprintColor.call(this, ...args);
-    },
-    hexToRgba(...args) {
-      return methods.hexToRgba.call(this, ...args);
-    },
-    renderSiteFootprintEstimate(...args) {
-      return methods.renderSiteFootprintEstimate.call(this, ...args);
-    },
-    buildSiteFootprintEstimate(...args) {
-      return methods.buildSiteFootprintEstimate.call(this, ...args);
-    },
-    formatArea(...args) {
-      return methods.formatArea.call(this, ...args);
-    },
-    formatDistance(...args) {
-      return methods.formatDistance.call(this, ...args);
-    },
-    getSquareBounds(...args) {
-      return methods.getSquareBounds.call(this, ...args);
-    },
-    initSiteMap(...args) {
-      return methods.initSiteMap.call(this, ...args);
-    },
-    renderSiteMapModuleSquares(...args) {
-      return methods.renderSiteMapModuleSquares.call(this, ...args);
-    },
     ...overrides,
-  };
+  });
 }
 
 function registerMapElements(harness) {

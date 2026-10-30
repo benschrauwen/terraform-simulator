@@ -1,12 +1,4 @@
-(function (root, factory) {
-  const codec = factory();
-
-  if (typeof module === 'object' && module.exports) {
-    module.exports = codec;
-  }
-
-  root.ShareStateCodec = codec;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+export const ShareStateCodec = (function () {
   const VERSION = 1;
   const HASH_KEY = 's';
   const EXCLUDED_STATE_KEYS = ['batteryEnabled'];
@@ -165,4 +157,4 @@
     serializeHashFromState,
     statesEqual,
   };
-});
+})();

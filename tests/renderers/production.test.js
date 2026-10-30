@@ -1,46 +1,26 @@
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const test = require('node:test');
-const vm = require('node:vm');
+import assert from 'node:assert/strict';
+import test from 'node:test';
 
-const ROOT = path.resolve(__dirname, '..', '..');
-const APP_RENDERERS_PATH = path.join(ROOT, 'js', 'app-renderers.js');
-const APP_RENDERERS_SOURCE = fs.readFileSync(APP_RENDERERS_PATH, 'utf8');
+import { rendererMethods } from '../../js/ui/renderers.js';
 
 function loadRendererMethods() {
   const productionGrid = { innerHTML: '' };
-  const context = {
-    window: {},
-    document: {
-      getElementById(id) {
-        if (id === 'productionGrid') return productionGrid;
-        throw new Error(`Unexpected element lookup: ${id}`);
-      },
-    },
-    FormatNumbers: {
-      fixed(value, digits = 0) {
-        const numeric = Number(value);
-        if (!Number.isFinite(numeric)) return 'N/A';
-        return numeric.toLocaleString('en-US', {
-          minimumFractionDigits: digits,
-          maximumFractionDigits: digits,
-        });
-      },
-      formatMoney(value) {
-        return `$${value}`;
-      },
+  globalThis.document = {
+    getElementById(id) {
+      if (id === 'productionGrid') return productionGrid;
+      throw new Error(`Unexpected element lookup: ${id}`);
     },
   };
 
-  vm.createContext(context);
-  vm.runInContext(APP_RENDERERS_SOURCE, context, { filename: 'js/app-renderers.js' });
-
   return {
-    methods: context.window.AppRendererMethods,
+    methods: rendererMethods,
     productionGrid,
   };
 }
+
+test.afterEach(() => {
+  delete globalThis.document;
+});
 
 function createHarness() {
   const { methods, productionGrid } = loadRendererMethods();

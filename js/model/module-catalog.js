@@ -792,46 +792,13 @@ function resolveModule(moduleOrId) {
   return moduleOrId || null;
 }
 
-const EXPLORATORY_ROUTE_LIBRARY = Object.freeze(
-  Object.fromEntries(
-    MODULE_CATALOG
-      .filter(module => module.exploratory)
-      .map(module => [module.id, Object.freeze({ routes: module.routes || {} })])
-  )
-);
-
-const EXPLORATORY_MARKET_CONFIG = Object.freeze(
-  Object.fromEntries(
-    MODULE_CATALOG
-      .filter(module => module.exploratory && module.market)
-      .map(module => [module.id, module.market])
-  )
-);
-
-const ModuleCatalog = Object.freeze({
+export const ModuleCatalog = Object.freeze({
   getAll() {
     return MODULE_CATALOG;
   },
 
   getById(moduleId) {
     return MODULE_CATALOG_BY_ID[moduleId] || null;
-  },
-
-  list(filters = {}) {
-    return MODULE_CATALOG.filter(module => {
-      if (Object.prototype.hasOwnProperty.call(filters, 'exploratory') && module.exploratory !== Boolean(filters.exploratory)) {
-        return false;
-      }
-      if (filters.family && module.family !== filters.family) return false;
-      if (filters.kind && module.kind !== filters.kind) return false;
-      if (Object.prototype.hasOwnProperty.call(filters, 'hasRoutes') && this.hasRoutes(module) !== Boolean(filters.hasRoutes)) {
-        return false;
-      }
-      if (Object.prototype.hasOwnProperty.call(filters, 'hasMarket') && this.hasMarket(module) !== Boolean(filters.hasMarket)) {
-        return false;
-      }
-      return true;
-    });
   },
 
   getSupportedModules() {
@@ -844,10 +811,6 @@ const ModuleCatalog = Object.freeze({
 
   resolve(moduleOrId) {
     return resolveModule(moduleOrId);
-  },
-
-  isExploratory(moduleOrId) {
-    return Boolean(resolveModule(moduleOrId)?.exploratory);
   },
 
   hasRoutes(moduleOrId) {
@@ -961,14 +924,4 @@ const ModuleCatalog = Object.freeze({
       return groups;
     }, {});
   },
-
-  getExploratoryRouteLibrary() {
-    return EXPLORATORY_ROUTE_LIBRARY;
-  },
-
-  getExploratoryMarketConfigMap() {
-    return EXPLORATORY_MARKET_CONFIG;
-  },
 });
-
-const MODULE_REGISTRY = ModuleCatalog.getAll();

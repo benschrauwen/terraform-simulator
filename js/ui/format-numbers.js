@@ -2,7 +2,7 @@
    Display number formatting (en-US thousands)
    ============================================ */
 
-const FormatNumbers = {
+export const FormatNumbers = {
   /**
    * @param {number} n
    * @param {number} decimals

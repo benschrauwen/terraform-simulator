@@ -7,14 +7,15 @@
  *
  *   UPDATE_CHARACTERIZATION=1 node --test tests/calculations/characterization.test.js
  */
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const { Calc, ModuleCatalog, PolicyModel, createState } = require('./harness.js');
+import { Calc, ModuleCatalog, PolicyModel, createState } from './harness.js';
 
-const FIXTURE_PATH = path.join(__dirname, '..', 'fixtures', 'characterization.json');
+const FIXTURE_PATH = fileURLToPath(new URL('../fixtures/characterization.json', import.meta.url));
 const UPDATE = process.env.UPDATE_CHARACTERIZATION === '1';
 const REL_TOL = 1e-9;
 const ABS_TOL = 1e-6;

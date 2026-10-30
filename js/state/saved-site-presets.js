@@ -1,12 +1,4 @@
-(function (root, factory) {
-  const api = factory();
-
-  if (typeof module === 'object' && module.exports) {
-    module.exports = api;
-  }
-
-  root.SavedSitePresets = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+export const SavedSitePresets = (function () {
   const STORAGE_KEY = 'terraformIndustries.savedSitePresets';
   const APP_STATE_KEY_PREFIX = 'terraformIndustries.siteAppState.v1:';
   const MAX_PRESETS = 48;
@@ -223,4 +215,4 @@
     saveAppStateForSite,
     removeAppStateForSite,
   };
-});
+})();

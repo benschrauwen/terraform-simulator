@@ -1,10 +1,10 @@
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const http = require('node:http');
-const net = require('node:net');
-const os = require('node:os');
-const path = require('node:path');
-const test = require('node:test');
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import http from 'node:http';
+import net from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
 
 function makeTempRoot(t) {
   const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dev-server-')));

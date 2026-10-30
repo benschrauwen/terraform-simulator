@@ -24,28 +24,21 @@ Today it supports:
 - Daily power, annual dispatch, economics, sensitivity, environmental, and site-footprint views.
 - Inline IRR optimizers for battery capacity, chemical peak sizing, and methane-vs-methanol feedstock split.
 
-The app is still a mostly static front-end project, with a lightweight Node build that generates versioned `dist/` assets for deployment. The source is split into clearer modules:
+The app is still a mostly static front-end project built from native ES modules (no bundler), with a lightweight Node build that generates versioned `dist/` assets for deployment. The source is split into clearer modules:
 
-- `index.html`: app layout and control surfaces
+- `index.html`: app layout and control surfaces; loads the self-hosted vendor scripts plus a single `js/main.js` module entry
 - `style.css`: visual styling
-- `js/app.js`: app bootstrap, high-level coordination, and dynamic module rendering
-- `js/app-controls.js`: UI event binding and control behavior
-- `js/app-ui-state.js`: dynamic UI visibility, policy/market sync, planetary-mode UI sync, and derived control state
-- `js/app-charts.js`: power, dispatch, economics, and sensitivity charts
-- `js/app-renderers.js`: production, economics, and environmental result rendering
-- `js/app-site-map.js`: site-footprint map overlay and module footprint display
-- `js/app-optimizer.js` + `js/optimizer-worker.js`: worker-backed IRR search for inline optimize buttons
-- `js/asset-paths.js`: shared asset URL helper for clean local paths and versioned deployment output
-- `js/calculation-runtime-paths.js`: script loading order for the optimizer worker runtime
-- `js/policy-model.js`: named policy schemes, per-scheme inputs, cash-flow formulas, framework-only entries, and legacy-policy normalization
-- `js/reference-data.js`: presets, chemistry constants, methane market presets, and shared assumptions
-- `js/module-registry.js` + `js/exploratory-routes.js`: supported/exploratory module metadata and route assumptions
-- `js/state-schema.js`: shared defaults, normalization, and dependency rules
-- `js/slider-markers.js`: slider guide markers and benchmark labels
-- `js/solar-geometry.js`: Earth, Mars, and Moon solar-profile shaping
-- `js/diagram.js`: process diagram rendering
-- `js/format-numbers.js`: shared numeric formatting helpers
-- `js/calculations/`: split calculation modules for finance, solar, battery, AI dispatch, process, and economics logic
+- `js/main.js`: browser bootstrap (creates the `App` once the DOM is ready)
+- `js/data/reference-data.js`: presets, chemistry constants, methane market presets, and shared assumptions
+- `js/model/`: the DOM-free calculation engine shared by the UI, the optimizer worker, and the Node tests
+  - `index.js`: assembles and exports the `Calc` facade (plus `ModuleCatalog`, `PolicyModel`, `SolarGeometry`, `DEFAULT_STATE`)
+  - `core.js`, `solar.js`, `battery.js`, `series-ai.js`, `process.js`, `economics.js`: finance, solar, battery, AI dispatch, process, and economics logic
+  - `module-catalog.js`: supported/exploratory module metadata and route assumptions
+  - `policy.js`: named policy schemes, per-scheme inputs, cash-flow formulas, framework-only entries, and legacy-policy normalization
+  - `solar-geometry.js`: Earth, Mars, and Moon solar-profile shaping
+- `js/state/`: `schema.js` (shared defaults, normalization, and dependency rules), `share-codec.js` (shareable URL hash encoding), `saved-site-presets.js` (locally saved sites)
+- `js/ui/`: the `App` class (`app.js`) plus the method mixins it is assembled from: `controls.js`, `ui-state.js`, `charts.js`, `renderers.js`, `site-map.js`, `share.js`, `optimizer-client.js`; and the `diagram.js`, `format-numbers.js`, and `slider-markers.js` helpers
+- `js/workers/optimizer-worker.js`: module worker running the IRR search for the inline optimize buttons
 - `scripts/build.mjs` + `scripts/dev.mjs`: minimal build and static-serving scripts for local development and deployment output
 - `tests/`: Node-based regression tests for calculations and renderer output
 
@@ -468,7 +461,7 @@ Use the npm scripts:
 
 Notes:
 
-- The app depends on CDN-hosted `Chart.js` and `Leaflet`.
+- Run `npm install` first: `Chart.js`, `Leaflet`, and `lz-string` are self-hosted from `node_modules/` in development and copied into `dist/` by the build.
 - Earth satellite imagery depends on external map tiles.
 - Manual annual yield input is still the best option if you want to use a site-specific PV benchmark.
 - Vercel can deploy directly from `dist/`; the repo includes `vercel.json` so `npm run build` is used automatically.

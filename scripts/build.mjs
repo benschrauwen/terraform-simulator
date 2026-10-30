@@ -1,137 +1,53 @@
 import { execSync } from 'node:child_process';
-import { promises as fs } from 'node:fs';
+import { cpSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const ROOT = path.resolve(__dirname, '..');
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const DIST = path.join(ROOT, 'dist');
-const BUILD_ID = getBuildId();
-const BUILD_TOKEN = '__APP_BUILD_ID__';
-const EXTRA_COPY_FILES = ['node_modules/lz-string/libs/lz-string.min.js'];
+const ASSET_DIR = `assets/${getBuildId()}`;
 
-const EXCLUDED_PATH_PREFIXES = [
-  '.agents',
-  '.claude',
-  '.codex',
-  '.git',
-  'dist',
-  'node_modules',
-  'outputs',
-  'scripts',
-  'tests',
-];
-const EXCLUDED_ROOT_FILES = new Set(['.DS_Store', '.gitignore', 'package.json', 'package-lock.json', 'vercel.json']);
-const EXCLUDED_ANYWHERE_FILES = new Set(['.DS_Store', 'NOTES.md']);
-const TEXT_FILE_EXTENSIONS = new Set(['.css', '.html', '.js', '.json', '.md', '.svg', '.txt']);
+// Allowlist: nothing outside these paths reaches dist/. Versioned assets live under
+// dist/assets/<buildId>/ so relative ES-module imports and the worker URL inherit the
+// version, and only index.html needs rewriting.
+const ROOT_FILES = ['README.md', 'LICENSE'];
+const ASSETS = {
+  // dist path (under ASSET_DIR) -> source path
+  'style.css': 'style.css',
+  'js': 'js',
+  'vendor/chart.umd.js': 'node_modules/chart.js/dist/chart.umd.js',
+  'vendor/leaflet/leaflet.js': 'node_modules/leaflet/dist/leaflet.js',
+  'vendor/leaflet/leaflet.css': 'node_modules/leaflet/dist/leaflet.css',
+  'vendor/leaflet/images': 'node_modules/leaflet/dist/images',
+  'vendor/lz-string.min.js': 'node_modules/lz-string/libs/lz-string.min.js',
+};
 
-await fs.rm(DIST, { recursive: true, force: true });
-await fs.mkdir(DIST, { recursive: true });
-await copyProjectTree(ROOT, DIST, '');
-await copyExtraFiles(ROOT, DIST, EXTRA_COPY_FILES);
-await rewriteDistFiles(DIST);
+rmSync(DIST, { recursive: true, force: true });
+ROOT_FILES.forEach(file => cpSync(path.join(ROOT, file), path.join(DIST, file)));
+Object.entries(ASSETS).forEach(([target, source]) => {
+  cpSync(path.join(ROOT, source), path.join(DIST, ASSET_DIR, target), {
+    recursive: true,
+    filter: file => !path.basename(file).startsWith('.'),
+  });
+});
 
-console.log(`Built dist/ with asset version ${BUILD_ID}`);
+const html = readFileSync(path.join(ROOT, 'index.html'), 'utf8')
+  .replace(/\b(src|href)="([^"]+)"/g, (match, attribute, url) => {
+    if (/^(?:[a-z]+:|\/\/|#)/i.test(url)) return match;
+    const entry = Object.entries(ASSETS).find(([, source]) => url === source || url.startsWith(`${source}/`));
+    if (!entry) throw new Error(`index.html references ${url}, which is not in the build allowlist.`);
+    return `${attribute}="${ASSET_DIR}/${entry[0]}${url.slice(entry[1].length)}"`;
+  });
+writeFileSync(path.join(DIST, 'index.html'), html);
+
+console.log(`Built dist/ with assets under ${ASSET_DIR}/`);
 
 function getBuildId() {
-  const envBuildId = (
-    process.env.BUILD_ID ||
-    process.env.VERCEL_GIT_COMMIT_SHA ||
-    process.env.GITHUB_SHA ||
-    ''
-  ).trim();
-
-  if (envBuildId) return envBuildId.slice(0, 12);
-
+  const envBuildId = (process.env.BUILD_ID || process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || '').trim();
+  if (envBuildId) return envBuildId.slice(0, 12).replace(/[^\w.-]/g, '');
   try {
-    return execSync('git rev-parse --short HEAD', {
-      cwd: ROOT,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
+    return execSync('git rev-parse --short HEAD', { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
   } catch {
     return new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
   }
-}
-
-function shouldSkip(relativePath) {
-  const normalized = relativePath.split(path.sep).join('/');
-  if (!normalized) return false;
-
-  const pathParts = normalized.split('/');
-  if (EXCLUDED_PATH_PREFIXES.includes(pathParts[0])) return true;
-  if (EXCLUDED_ANYWHERE_FILES.has(pathParts.at(-1))) return true;
-  if (pathParts.length === 1 && EXCLUDED_ROOT_FILES.has(pathParts[0])) return true;
-
-  return false;
-}
-
-async function copyProjectTree(sourceDir, targetDir, relativePath) {
-  const entries = await fs.readdir(sourceDir, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const entryRelativePath = relativePath ? path.join(relativePath, entry.name) : entry.name;
-    if (shouldSkip(entryRelativePath)) continue;
-
-    const sourcePath = path.join(sourceDir, entry.name);
-    const targetPath = path.join(targetDir, entry.name);
-
-    if (entry.isDirectory()) {
-      await fs.mkdir(targetPath, { recursive: true });
-      await copyProjectTree(sourcePath, targetPath, entryRelativePath);
-      continue;
-    }
-
-    await fs.copyFile(sourcePath, targetPath);
-  }
-}
-
-async function copyExtraFiles(sourceRoot, targetRoot, relativePaths) {
-  for (const relativePath of relativePaths) {
-    const sourcePath = path.join(sourceRoot, relativePath);
-    const targetPath = path.join(targetRoot, relativePath);
-    await fs.mkdir(path.dirname(targetPath), { recursive: true });
-    await fs.copyFile(sourcePath, targetPath);
-  }
-}
-
-async function rewriteDistFiles(directory) {
-  const entries = await fs.readdir(directory, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const entryPath = path.join(directory, entry.name);
-
-    if (entry.isDirectory()) {
-      await rewriteDistFiles(entryPath);
-      continue;
-    }
-
-    if (!TEXT_FILE_EXTENSIONS.has(path.extname(entry.name))) continue;
-
-    const original = await fs.readFile(entryPath, 'utf8');
-    let updated = original.replaceAll(BUILD_TOKEN, BUILD_ID);
-
-    if (path.extname(entry.name) === '.html') {
-      updated = rewriteLocalAssetUrls(updated, BUILD_ID);
-    }
-
-    if (updated !== original) {
-      await fs.writeFile(entryPath, updated);
-    }
-  }
-}
-
-function rewriteLocalAssetUrls(html, buildId) {
-  return html.replace(/\b(src|href)=(["'])([^"']+)\2/g, (match, attribute, quote, url) => {
-    if (!shouldVersionAssetUrl(url)) return match;
-    const separator = url.includes('?') ? '&' : '?';
-    return `${attribute}=${quote}${url}${separator}v=${buildId}${quote}`;
-  });
-}
-
-function shouldVersionAssetUrl(url) {
-  if (/^(?:[a-z]+:)?\/\//i.test(url)) return false;
-  if (/^(?:data:|mailto:|tel:|#)/i.test(url)) return false;
-  return /\.(?:css|js)(?:$|[?#])/i.test(url);
 }

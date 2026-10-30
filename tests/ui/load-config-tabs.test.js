@@ -1,11 +1,7 @@
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const test = require('node:test');
-const vm = require('node:vm');
+import assert from 'node:assert/strict';
+import test from 'node:test';
 
-const ROOT = path.resolve(__dirname, '..', '..');
-const APP_CONTROLS_SOURCE = fs.readFileSync(path.join(ROOT, 'js', 'app-controls.js'), 'utf8');
+import { controlMethods } from '../../js/ui/controls.js';
 
 function createClassList() {
   const values = new Set();
@@ -60,32 +56,27 @@ function loadControlMethods() {
       createElement({ dataset: { loadPanel: 'ai' } }),
     ],
   };
-  const context = {
-    window: {
-      requestAnimationFrame(callback) {
-        callback();
-      },
+  globalThis.window = {
+    requestAnimationFrame(callback) {
+      callback();
     },
-    document: {
-      querySelectorAll(selector) {
-        if (selector === '.load-config-tab') return elements.tabs;
-        if (selector === '.load-config-panel') return elements.panels;
-        return [];
-      },
+  };
+  globalThis.document = {
+    querySelectorAll(selector) {
+      if (selector === '.load-config-tab') return elements.tabs;
+      if (selector === '.load-config-panel') return elements.panels;
+      return [];
     },
   };
 
-  vm.createContext(context);
-  vm.runInContext(APP_CONTROLS_SOURCE, context, { filename: 'js/app-controls.js' });
-
   return {
-    methods: context.window.AppControlMethods,
+    methods: controlMethods,
     elements,
   };
 }
 
 function createApp() {
-  return {
+  return Object.assign(Object.create(controlMethods), {
     state: {
       loadConfigTab: 'chemicals',
     },
@@ -93,8 +84,13 @@ function createApp() {
     positionSliderMarkers() {
       this.positionSliderMarkersCalled += 1;
     },
-  };
+  });
 }
+
+test.afterEach(() => {
+  delete globalThis.document;
+  delete globalThis.window;
+});
 
 test('load config tab sync exposes one selected tab and one visible panel', () => {
   const { methods, elements } = loadControlMethods();

@@ -1,8 +1,20 @@
 /* Core finance and shared helpers for Calc */
 
-const Calc = {};
+import {
+  MODEL_ASSUMPTIONS,
+  PLANETARY_BODIES,
+} from '../data/reference-data.js';
+import {
+  CORE_STATE_FIELDS,
+  DEFAULT_STATE,
+  SOLAR_PROFILE_DEFAULTS_BY_BODY,
+  SOLAR_PROFILE_OPTIONS_BY_BODY,
+  getStateFieldOptions,
+} from '../state/schema.js';
+import { ModuleCatalog } from './module-catalog.js';
+import { PolicyModel } from './policy.js';
 
-Object.assign(Calc, {
+export const coreMethods = {
   hasBatteryStorage(state) {
     const batteryCapacityMWh = Number(state?.batteryCapacityMWh);
     return Number.isFinite(batteryCapacityMWh) && batteryCapacityMWh > 1e-9;
@@ -440,12 +452,6 @@ Object.assign(Calc, {
     return Math.pow(1 - monthlyLeakage, stepHours / averageMonthHours);
   },
 
-  scaleCapex(referenceCapex, actualThroughput, referenceThroughput, exponent = 0.75) {
-    if (!referenceCapex || !actualThroughput || !referenceThroughput) return 0;
-    const normalized = Math.max(0.25, actualThroughput / referenceThroughput);
-    return referenceCapex * Math.pow(normalized, exponent);
-  },
-
   getSolarDegradationFactor(degradationPercent, year) {
     if (!Number.isFinite(year) || year <= 1) return 1;
     const annualRetention = Math.max(0, 1 - (Math.max(0, degradationPercent || 0) / 100));
@@ -550,10 +556,6 @@ Object.assign(Calc, {
     }
 
     return Infinity;
-  },
-
-  calculatePaybackYears(initialOutflow, yearlyCashFlows) {
-    return this.calculateSimplePaybackYears(initialOutflow, yearlyCashFlows);
   },
 
   buildDebtSchedule(principal, annualRate, termYears, analysisHorizonYears) {
@@ -719,4 +721,4 @@ Object.assign(Calc, {
     // If every real root is non-positive, keep the least-negative one.
     return uniqueRoots[uniqueRoots.length - 1] * 100;
   },
-});
+};

@@ -1,12 +1,8 @@
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const test = require('node:test');
-const vm = require('node:vm');
+import assert from 'node:assert/strict';
+import test from 'node:test';
 
-const ROOT = path.resolve(__dirname, '..', '..');
-const APP_CHARTS_PATH = path.join(ROOT, 'js', 'app-charts.js');
-const APP_CHARTS_SOURCE = fs.readFileSync(APP_CHARTS_PATH, 'utf8');
+import { Calc } from '../../js/model/index.js';
+import { chartMethods } from '../../js/ui/charts.js';
 
 function createElement(id) {
   return {
@@ -37,35 +33,20 @@ function createCanvas(id) {
 
 function loadChartMethods({ Chart, runSensitivity } = {}) {
   const elements = new Map();
-  const context = {
-    window: {},
-    document: {
-      getElementById(id) {
-        return elements.get(id) || null;
-      },
-    },
-    FormatNumbers: {
-      fixed(value, digits = 0) {
-        const numeric = Number(value);
-        if (!Number.isFinite(numeric)) return 'N/A';
-        return numeric.toFixed(digits);
-      },
-      formatMoney(value) {
-        return `$${Number(value).toFixed(0)}`;
-      },
-    },
-    Calc: {
-      runSensitivity: runSensitivity || (() => []),
+  globalThis.window = {};
+  globalThis.document = {
+    getElementById(id) {
+      return elements.get(id) || null;
     },
   };
 
-  if (Chart) context.Chart = Chart;
+  if (Chart) globalThis.Chart = Chart;
+  else delete globalThis.Chart;
 
-  vm.createContext(context);
-  vm.runInContext(APP_CHARTS_SOURCE, context, { filename: 'js/app-charts.js' });
+  Calc.runSensitivity = runSensitivity || (() => []);
 
   return {
-    methods: context.window.AppChartMethods,
+    methods: chartMethods,
     registerCanvas(id) {
       const element = createCanvas(id);
       elements.set(id, element.canvas);
@@ -78,6 +59,15 @@ function loadChartMethods({ Chart, runSensitivity } = {}) {
     },
   };
 }
+
+const originalRunSensitivity = Calc.runSensitivity;
+
+test.afterEach(() => {
+  Calc.runSensitivity = originalRunSensitivity;
+  delete globalThis.Chart;
+  delete globalThis.document;
+  delete globalThis.window;
+});
 
 function createEconomicsResult() {
   return {

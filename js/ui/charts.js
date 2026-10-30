@@ -1,5 +1,8 @@
 /* Chart helpers attached to App */
 
+import { Calc } from '../model/index.js';
+import { FormatNumbers } from './format-numbers.js';
+
 const CHART_UNAVAILABLE_MESSAGE = 'Charts are unavailable because Chart.js failed to load.';
 
 function isChartRuntimeAvailable() {
@@ -191,7 +194,7 @@ function getAlignedZeroBounds(primaryDatasets, secondaryDatasets, labelCount) {
   };
 }
 
-window.AppChartMethods = {
+export const chartMethods = {
   getPowerChartLabels(r) {
     const count = r.solar.hourlyProfile.length;
     if (r.solar.chartLabelMode === 'days') {

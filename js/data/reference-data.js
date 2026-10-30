@@ -2,7 +2,7 @@
    Reference data and presets
    ============================================ */
 
-const PLANETARY_BODIES = {
+export const PLANETARY_BODIES = {
   earth: {
     label: 'Earth',
     cycleHours: 24,
@@ -41,7 +41,7 @@ const PLANETARY_BODIES = {
   },
 };
 
-const LOCATION_PRESETS = [
+export const LOCATION_PRESETS = [
   {
     name: 'Mars - Noctis Labyrinthus',
     body: 'mars',
@@ -84,7 +84,7 @@ const LOCATION_PRESETS = [
   { name: 'Cape Town, SA', lat: -33.93, lon: 18.42, ghi: 1950, baseYield: 1620, region: 'temperate' },
 ];
 
-const MOUNTING_TYPES = {
+export const MOUNTING_TYPES = {
   fixed: {
     label: 'Fixed Tilt',
     yieldMult: 1.0,
@@ -139,7 +139,7 @@ const MOUNTING_TYPES = {
   },
 };
 
-const CHEMISTRY = {
+export const CHEMISTRY = {
   electrolysis: {
     theoreticalMinimum: 39.4,
     h2EnergyContent: 33.33,
@@ -167,7 +167,7 @@ const CHEMISTRY = {
   },
 };
 
-const METHANE_MARKET_PRESETS = {
+export const METHANE_MARKET_PRESETS = {
   terraform_commodity: {
     label: 'Commodity gas / whitepaper-style case',
     applicability: 'Generic / multi-country',
@@ -200,20 +200,20 @@ const METHANE_MARKET_PRESETS = {
   },
 };
 
-const MODEL_ASSUMPTIONS = {
+export const MODEL_ASSUMPTIONS = {
   fallbackYieldFromGhi: 0.82,
   batteryNominalLifeYears: 12,
   batteryMonthlyLeakage: 0.02,
   fossilGasEmissionsPerMCF: 0.053,
 };
 
-const AI_COMPUTE_DEFAULTS = {
+export const AI_COMPUTE_DEFAULTS = {
   capexPerKW: 50000,
   assetLifeYears: 5,
   omPercent: 4,
 };
 
-const AI_RELIABILITY_OPTIONS = [
+export const AI_RELIABILITY_OPTIONS = [
   { value: 90, label: '90.0%' },
   { value: 95, label: '95.0%' },
   { value: 99, label: '99.0%' },

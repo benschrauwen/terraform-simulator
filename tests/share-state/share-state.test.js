@@ -1,8 +1,9 @@
-const assert = require('node:assert/strict');
-const test = require('node:test');
+import assert from 'node:assert/strict';
+import test from 'node:test';
 
-const LZString = require('lz-string');
-const ShareStateCodec = require('../../js/share-state.js');
+import LZString from 'lz-string';
+
+import { ShareStateCodec } from '../../js/state/share-codec.js';
 
 test('share hash is empty when state matches defaults', () => {
   const defaults = {

@@ -1,11 +1,6 @@
 /* Optimizer helpers attached to App */
 
-function resolveOptimizerAssetPath(path) {
-  if (typeof AssetPaths !== 'undefined' && typeof AssetPaths.resolve === 'function') {
-    return AssetPaths.resolve(path);
-  }
-  return path;
-}
+import { Calc } from '../model/index.js';
 
 const APP_IRR_OPTIMIZER_BUTTONS = [
   {
@@ -31,30 +26,29 @@ const APP_IRR_OPTIMIZER_BUTTONS = [
   },
 ];
 
-const AppOptimizerMethods = {
+export const optimizerMethods = {
   bindOptimizeButtons() {
     APP_IRR_OPTIMIZER_BUTTONS.forEach(({ buttonId, ...options }) => {
-      AppOptimizerMethods.bindIrrOptimizerButton.call(this, buttonId, options);
+      this.bindIrrOptimizerButton(buttonId, options);
     });
   },
 
   bindIrrOptimizerButton(buttonId, options) {
     const button = document.getElementById(buttonId);
     if (!button) return;
-    AppOptimizerMethods.captureOptimizerButtonDefaults.call(this, button);
+    this.captureOptimizerButtonDefaults(button);
 
     button.addEventListener('click', async event => {
       event.preventDefault();
       if (button.disabled) return;
 
       button.disabled = true;
-      AppOptimizerMethods.setOptimizerButtonProgress.call(this, button, { percent: 0, stage: 'start' });
+      this.setOptimizerButtonProgress(button, { percent: 0, stage: 'start' });
       try {
         await new Promise(resolve => window.requestAnimationFrame(resolve));
-        const bestValue = await AppOptimizerMethods.findBestRangeValueForIrr.call(
-          this,
+        const bestValue = await this.findBestRangeValueForIrr(
           options,
-          progress => AppOptimizerMethods.setOptimizerButtonProgress.call(this, button, progress)
+          progress => this.setOptimizerButtonProgress(button, progress)
         );
         if (!Number.isFinite(bestValue)) return;
 
@@ -66,7 +60,7 @@ const AppOptimizerMethods = {
         input.focus();
       } finally {
         button.disabled = false;
-        AppOptimizerMethods.resetOptimizerButton.call(this, button);
+        this.resetOptimizerButton(button);
       }
     });
   },
@@ -79,7 +73,7 @@ const AppOptimizerMethods = {
 
   setOptimizerButtonProgress(button, progress = {}) {
     if (!button) return;
-    AppOptimizerMethods.captureOptimizerButtonDefaults.call(this, button);
+    this.captureOptimizerButtonDefaults(button);
 
     const defaultLabel = button.dataset.defaultLabel || 'optimize';
     const boundedPercent = Number.isFinite(progress.percent)
@@ -102,7 +96,7 @@ const AppOptimizerMethods = {
 
   resetOptimizerButton(button) {
     if (!button) return;
-    AppOptimizerMethods.captureOptimizerButtonDefaults.call(this, button);
+    this.captureOptimizerButtonDefaults(button);
     button.textContent = button.dataset.defaultLabel || 'optimize';
     button.removeAttribute('data-optimizing');
     button.style.removeProperty('--optimize-progress');
@@ -135,7 +129,7 @@ const AppOptimizerMethods = {
 
     if (typeof Worker === 'function') {
       try {
-        const workerResult = await AppOptimizerMethods.requestOptimizerWorkerSearch.call(this, search, onProgress);
+        const workerResult = await this.requestOptimizerWorkerSearch(search, onProgress);
         return workerResult?.bestValue ?? null;
       } catch (error) {
         console.warn('Optimizer worker failed, falling back to Calc on the main thread.', error);
@@ -150,7 +144,7 @@ const AppOptimizerMethods = {
   getOptimizerWorker() {
     if (this.optimizerWorker) return this.optimizerWorker;
 
-    this.optimizerWorker = new Worker(resolveOptimizerAssetPath('js/optimizer-worker.js'));
+    this.optimizerWorker = new Worker(new URL('../workers/optimizer-worker.js', import.meta.url), { type: 'module' });
     this.optimizerWorker.addEventListener('message', event => {
       const { requestId, messageType, progress, result, error } = event.data || {};
       const pending = this.optimizerRequests.get(requestId);
@@ -178,7 +172,7 @@ const AppOptimizerMethods = {
   },
 
   requestOptimizerWorkerSearch(search, onProgress = null) {
-    const worker = AppOptimizerMethods.getOptimizerWorker.call(this);
+    const worker = this.getOptimizerWorker();
     const requestId = ++this.optimizerRequestId;
     return new Promise((resolve, reject) => {
       this.optimizerRequests.set(requestId, { resolve, reject, onProgress });
@@ -196,5 +190,3 @@ const AppOptimizerMethods = {
     });
   },
 };
-
-window.AppOptimizerMethods = AppOptimizerMethods;

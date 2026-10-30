@@ -1,6 +1,10 @@
 /* Electrolyzer, DAC, products */
 
-Object.assign(Calc, {
+import { CHEMISTRY } from '../data/reference-data.js';
+import { DEFAULT_STATE } from '../state/schema.js';
+import { ModuleCatalog } from './module-catalog.js';
+
+export const processMethods = {
   getProductMix(state) {
     const methaneEnabled = Boolean(state.sabatierEnabled);
     const methanolEnabled = Boolean(state.methanolEnabled);
@@ -220,17 +224,6 @@ Object.assign(Calc, {
         dac: totalPowerDemand > 0 ? co2PowerDemand / totalPowerDemand : 0.5,
         exploratory: exploratoryPowerShares,
       },
-    };
-  },
-
-  getDownstreamDemand(state) {
-    const allocationPlan = this.buildProcessAllocationPlan(state);
-    return {
-      mix: allocationPlan.supported.mix,
-      label: allocationPlan.label,
-      h2PowerDemand: allocationPlan.powerProxy.electrolyzer,
-      co2PowerDemand: allocationPlan.powerProxy.dac,
-      exploratoryPowerDemand: allocationPlan.powerProxy.exploratoryTotal,
     };
   },
 
@@ -745,4 +738,4 @@ Object.assign(Calc, {
         };
       });
   },
-});
+};

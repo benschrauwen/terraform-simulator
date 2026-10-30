@@ -1,6 +1,8 @@
 /* Battery firming */
 
-Object.assign(Calc, {
+import { MODEL_ASSUMPTIONS } from '../data/reference-data.js';
+
+export const batteryMethods = {
   simulateAnnualChemicalDispatch(state, annualSolar, processPowerKW, options = {}) {
     const captureSeries = options.captureSeries !== false;
     const source = Array.isArray(annualSolar?.hourlyKW) ? annualSolar.hourlyKW : [];
@@ -418,4 +420,4 @@ Object.assign(Calc, {
       }),
     };
   },
-});
+};

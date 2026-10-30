@@ -1,51 +1,30 @@
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const test = require('node:test');
-const vm = require('node:vm');
+import assert from 'node:assert/strict';
+import test from 'node:test';
 
-const ROOT = path.resolve(__dirname, '..', '..');
-const ASSET_PATHS_SOURCE = fs.readFileSync(path.join(ROOT, 'js', 'asset-paths.js'), 'utf8');
-const APP_OPTIMIZER_SOURCE = fs.readFileSync(path.join(ROOT, 'js', 'app-optimizer.js'), 'utf8');
+import { Calc } from '../../js/model/index.js';
+import { optimizerMethods } from '../../js/ui/optimizer-client.js';
 
-function loadAssetPaths(buildId) {
-  const source = buildId === undefined
-    ? ASSET_PATHS_SOURCE
-    : ASSET_PATHS_SOURCE.replace("'__APP_BUILD_ID__'", JSON.stringify(buildId));
-  const context = {};
-
-  vm.createContext(context);
-  vm.runInContext(source, context, { filename: 'js/asset-paths.js' });
-
-  return context.AssetPaths;
-}
-
-function loadOptimizerMethods({ AssetPaths, Calc, Worker } = {}) {
+function loadOptimizerMethods(t, { Calc: calcOverrides, Worker } = {}) {
   const elements = new Map();
   const warnings = [];
-  const context = {
-    window: {},
-    document: {
-      getElementById(id) {
-        return elements.get(id) || null;
-      },
-    },
-    console: {
-      warn(...args) {
-        warnings.push(args);
-      },
+  globalThis.window = {};
+  globalThis.document = {
+    getElementById(id) {
+      return elements.get(id) || null;
     },
   };
+  t.mock.method(console, 'warn', (...args) => {
+    warnings.push(args);
+  });
 
-  if (AssetPaths) context.AssetPaths = AssetPaths;
-  if (Calc) context.Calc = Calc;
-  if (Worker !== undefined) context.Worker = Worker;
-
-  vm.createContext(context);
-  vm.runInContext(APP_OPTIMIZER_SOURCE, context, { filename: 'js/app-optimizer.js' });
+  Object.entries(calcOverrides || {}).forEach(([name, implementation]) => {
+    t.mock.method(Calc, name, implementation);
+  });
+  if (Worker !== undefined) globalThis.Worker = Worker;
+  else delete globalThis.Worker;
 
   return {
-    methods: context.window.AppOptimizerMethods,
+    methods: optimizerMethods,
     warnings,
     registerInput(id, overrides = {}) {
       const input = {
@@ -62,8 +41,14 @@ function loadOptimizerMethods({ AssetPaths, Calc, Worker } = {}) {
   };
 }
 
+test.afterEach(() => {
+  delete globalThis.Worker;
+  delete globalThis.document;
+  delete globalThis.window;
+});
+
 function createOptimizerApp(overrides = {}) {
-  return {
+  return Object.assign(Object.create(optimizerMethods), {
     state: {
       batteryCapacityMWh: 20,
     },
@@ -71,29 +56,43 @@ function createOptimizerApp(overrides = {}) {
     optimizerRequestId: 0,
     optimizerRequests: new Map(),
     ...overrides,
-  };
+  });
 }
 
-test('asset path resolver versions local assets only when the build token has been replaced', () => {
-  const developmentPaths = loadAssetPaths();
-  assert.equal(developmentPaths.version, '');
-  assert.equal(developmentPaths.resolve('js/optimizer-worker.js'), 'js/optimizer-worker.js');
+test('optimizer worker module answers search requests through the Calc facade', async t => {
+  const listeners = {};
+  const messages = [];
+  globalThis.self = {
+    addEventListener(type, listener) {
+      listeners[type] = listener;
+    },
+    postMessage(message) {
+      messages.push(message);
+    },
+  };
+  t.after(() => {
+    delete globalThis.self;
+  });
+  t.mock.method(Calc, 'findBestRangeValueForIrr', (state, search, { onProgress } = {}) => {
+    onProgress?.({ percent: 50, stage: 'coarse' });
+    return { bestValue: search.max };
+  });
 
-  const productionPaths = loadAssetPaths('build 123');
-  assert.equal(productionPaths.version, 'build 123');
-  assert.equal(
-    productionPaths.resolve('js/optimizer-worker.js'),
-    'js/optimizer-worker.js?v=build%20123'
-  );
-  assert.equal(
-    productionPaths.resolve('js/optimizer-worker.js?mode=fast'),
-    'js/optimizer-worker.js?mode=fast&v=build%20123'
-  );
+  await import('../../js/workers/optimizer-worker.js');
+  assert.equal(typeof listeners.message, 'function');
+
+  listeners.message({ data: { requestId: 7, type: 'findBestRangeValueForIrr', state: {}, search: { max: 12 } } });
+  listeners.message({ data: { requestId: 8, type: 'unrelated' } });
+
+  assert.deepEqual(messages, [
+    { requestId: 7, messageType: 'progress', progress: { percent: 50, stage: 'coarse' } },
+    { requestId: 7, messageType: 'result', result: { bestValue: 12 } },
+  ]);
 });
 
-test('IRR optimizer falls back to Calc when Worker construction fails', async () => {
+test('IRR optimizer falls back to Calc when Worker construction fails', async t => {
   const calcCalls = [];
-  const { methods, registerInput, warnings } = loadOptimizerMethods({
+  const { methods, registerInput, warnings } = loadOptimizerMethods(t, {
     Worker: function BlockedWorker() {
       throw new Error('Worker blocked by runtime policy.');
     },
@@ -134,11 +133,12 @@ test('IRR optimizer falls back to Calc when Worker construction fails', async ()
   assert.match(String(warnings[0][0]), /Optimizer worker failed/);
 });
 
-test('worker error rejects pending optimizer searches and clears the cached worker', async () => {
+test('worker error rejects pending optimizer searches and clears the cached worker', async t => {
   const workers = [];
   class FakeWorker {
-    constructor(url) {
+    constructor(url, options) {
       this.url = url;
+      this.options = options;
       this.listeners = {};
       workers.push(this);
     }
@@ -152,19 +152,14 @@ test('worker error rejects pending optimizer searches and clears the cached work
     }
   }
 
-  const { methods } = loadOptimizerMethods({
-    AssetPaths: {
-      resolve(assetPath) {
-        return `${assetPath}?v=test-build`;
-      },
-    },
-    Worker: FakeWorker,
-  });
+  const { methods } = loadOptimizerMethods(t, { Worker: FakeWorker });
   const app = createOptimizerApp();
   const request = methods.requestOptimizerWorkerSearch.call(app, { stateKey: 'batteryCapacityMWh' });
 
   assert.equal(workers.length, 1);
-  assert.equal(workers[0].url, 'js/optimizer-worker.js?v=test-build');
+  assert.ok(workers[0].url instanceof URL, 'Expected the worker to be resolved relative to the module URL.');
+  assert.match(workers[0].url.href, /\/js\/workers\/optimizer-worker\.js$/);
+  assert.deepEqual(workers[0].options, { type: 'module' });
   assert.equal(workers[0].message.requestId, 1);
   assert.equal(app.optimizerRequests.size, 1);
 
@@ -175,7 +170,7 @@ test('worker error rejects pending optimizer searches and clears the cached work
   assert.equal(app.optimizerWorker, null);
 });
 
-test('postMessage failures do not leave stale optimizer requests', async () => {
+test('postMessage failures do not leave stale optimizer requests', async t => {
   class ThrowingWorker {
     addEventListener() {}
 
@@ -184,7 +179,7 @@ test('postMessage failures do not leave stale optimizer requests', async () => {
     }
   }
 
-  const { methods } = loadOptimizerMethods({ Worker: ThrowingWorker });
+  const { methods } = loadOptimizerMethods(t, { Worker: ThrowingWorker });
   const app = createOptimizerApp();
 
   await assert.rejects(

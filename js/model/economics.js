@@ -1,6 +1,10 @@
 /* Economics, policy, environment, orchestration */
 
-Object.assign(Calc, {
+import { AI_COMPUTE_DEFAULTS, CHEMISTRY, MODEL_ASSUMPTIONS } from '../data/reference-data.js';
+import { ModuleCatalog } from './module-catalog.js';
+import { PolicyModel } from './policy.js';
+
+export const economicsMethods = {
   getMethaneSalePrice(state) {
     return state.methanePrice;
   },
@@ -758,4 +762,4 @@ Object.assign(Calc, {
       };
     });
   },
-});
+};

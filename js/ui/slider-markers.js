@@ -2,7 +2,7 @@
    Slider guide markers
    ============================================ */
 
-const SLIDER_MARKERS = {
+export const SLIDER_MARKERS = {
   chemicalSizingPercent: [
     { value: 70, label: 'Aggressive peak shaving' },
     { value: 85, label: 'Moderate peak shaving' },

@@ -49,7 +49,7 @@ const POLICY_SELECT_GROUPS = [
   },
 ];
 
-const POLICY_SCHEMES = {
+export const POLICY_SCHEMES = {
   none: {
     label: 'No direct support',
     selectLabel: 'No direct support',
@@ -981,7 +981,7 @@ function buildPolicyInputFields() {
   return fields;
 }
 
-const POLICY_INPUT_FIELDS = buildPolicyInputFields();
+export const POLICY_INPUT_FIELDS = buildPolicyInputFields();
 
 function getPolicyScheme(mode) {
   return POLICY_SCHEMES[mode] || POLICY_SCHEMES.none;
@@ -1256,7 +1256,7 @@ function evaluatePolicy(state = {}, context = {}) {
   };
 }
 
-const PolicyModel = {
+export const PolicyModel = {
   getInputDetails: getPolicyInputDetails,
   getScheme: getPolicyScheme,
   getSelectGroups: getPolicySelectGroups,

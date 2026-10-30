@@ -1,11 +1,7 @@
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const test = require('node:test');
-const vm = require('node:vm');
+import assert from 'node:assert/strict';
+import test from 'node:test';
 
-const ROOT = path.resolve(__dirname, '..', '..');
-const APP_UI_STATE_SOURCE = fs.readFileSync(path.join(ROOT, 'js', 'app-ui-state.js'), 'utf8');
+import { uiStateMethods } from '../../js/ui/ui-state.js';
 
 function createClassList() {
   const values = new Set();
@@ -49,39 +45,39 @@ function loadUiStateMethods({ body, dayMode }) {
     siteYieldNote: createElement(),
     powerChartNote: createElement(),
   };
-  const context = {
-    window: {},
-    document: {
-      querySelector(selector) {
-        if (selector === '.day-tab[data-mode="average"]') return averageTab;
-        if (selector === '.day-tab[data-mode="specific"]') return specificTab;
-        return null;
-      },
-      querySelectorAll(selector) {
-        return selector === '.day-tab' ? [averageTab, specificTab] : [];
-      },
-      getElementById(id) {
-        return elements[id] || null;
-      },
+  globalThis.window = {};
+  globalThis.document = {
+    querySelector(selector) {
+      if (selector === '.day-tab[data-mode="average"]') return averageTab;
+      if (selector === '.day-tab[data-mode="specific"]') return specificTab;
+      return null;
+    },
+    querySelectorAll(selector) {
+      return selector === '.day-tab' ? [averageTab, specificTab] : [];
+    },
+    getElementById(id) {
+      return elements[id] || null;
     },
   };
 
-  vm.createContext(context);
-  vm.runInContext(APP_UI_STATE_SOURCE, context, { filename: 'js/app-ui-state.js' });
-
   return {
-    app: {
+    app: Object.assign(Object.create(uiStateMethods), {
       state: { dayMode },
       getBodyConfig() {
         return body;
       },
-    },
+    }),
     averageTab,
     elements,
-    methods: context.window.AppUiStateMethods,
+    methods: uiStateMethods,
     specificTab,
   };
 }
+
+test.afterEach(() => {
+  delete globalThis.document;
+  delete globalThis.window;
+});
 
 test('day mode controls expose pressed state and show specific-day controls when active', () => {
   const { app, averageTab, elements, methods, specificTab } = loadUiStateMethods({

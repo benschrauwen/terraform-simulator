@@ -1,12 +1,16 @@
 /* UI state sync helpers attached to App */
 
+import { Calc } from '../model/index.js';
+import { ModuleCatalog } from '../model/module-catalog.js';
+import { FormatNumbers } from './format-numbers.js';
+
 function formatAllocationBasisLabel(label) {
   if (label === 'configured product mix') return 'Product mix';
   if (label === 'default methane case') return 'Default case';
   return label ? `${label[0].toUpperCase()}${label.slice(1)}` : 'Auto';
 }
 
-const AppUiStateMethods = {
+export const uiStateMethods = {
   syncPlanetaryUI() {
     const body = this.getBodyConfig();
     const averageTab = document.querySelector('.day-tab[data-mode="average"]');
@@ -159,9 +163,9 @@ const AppUiStateMethods = {
     }
 
     ModuleCatalog.getExploratoryModules().forEach(module => {
-      AppUiStateMethods.syncModuleCapexControl.call(this, module.id);
-      AppUiStateMethods.syncModuleMarketControl.call(this, module.id);
-      AppUiStateMethods.syncModuleBufferControl.call(this, module.id);
+      this.syncModuleCapexControl(module.id);
+      this.syncModuleMarketControl(module.id);
+      this.syncModuleBufferControl(module.id);
     });
   },
 
@@ -190,7 +194,7 @@ const AppUiStateMethods = {
   },
 
   syncExploratoryCapexControl(moduleId) {
-    return AppUiStateMethods.syncModuleCapexControl.call(this, moduleId);
+    return this.syncModuleCapexControl(moduleId);
   },
 
   syncModuleMarketControl(moduleId) {
@@ -227,7 +231,7 @@ const AppUiStateMethods = {
   },
 
   syncExploratoryBufferControl(moduleId) {
-    return AppUiStateMethods.syncModuleBufferControl.call(this, moduleId);
+    return this.syncModuleBufferControl(moduleId);
   },
 
   syncDerivedFeedControls() {
@@ -278,5 +282,3 @@ const AppUiStateMethods = {
     });
   },
 };
-
-window.AppUiStateMethods = AppUiStateMethods;

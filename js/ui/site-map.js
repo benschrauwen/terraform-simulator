@@ -1,6 +1,9 @@
 /* Site map helpers attached to App */
 
-window.AppSiteMapMethods = {
+import { Diagram } from './diagram.js';
+import { FormatNumbers } from './format-numbers.js';
+
+export const siteMapMethods = {
   applySiteLocationFromMap(lat, lng) {
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
     const clampedLat = Math.max(-90, Math.min(90, lat));

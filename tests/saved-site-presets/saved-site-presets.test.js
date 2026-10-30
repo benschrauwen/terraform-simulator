@@ -1,7 +1,7 @@
-const assert = require('node:assert/strict');
-const test = require('node:test');
+import assert from 'node:assert/strict';
+import test from 'node:test';
 
-const SavedSitePresets = require('../../js/saved-site-presets.js');
+import { SavedSitePresets } from '../../js/state/saved-site-presets.js';
 
 function installMockLocalStorage() {
   const store = new Map();

@@ -2,7 +2,30 @@
    App — Main controller, UI binding, charts
    ============================================ */
 
-class App {
+import {
+  AI_RELIABILITY_OPTIONS,
+  LOCATION_PRESETS,
+  METHANE_MARKET_PRESETS,
+  MOUNTING_TYPES,
+  PLANETARY_BODIES,
+} from '../data/reference-data.js';
+import { Calc } from '../model/index.js';
+import { ModuleCatalog } from '../model/module-catalog.js';
+import { PolicyModel } from '../model/policy.js';
+import { SolarGeometry } from '../model/solar-geometry.js';
+import { SavedSitePresets } from '../state/saved-site-presets.js';
+import { DEFAULT_STATE } from '../state/schema.js';
+import { chartMethods } from './charts.js';
+import { controlMethods } from './controls.js';
+import { FormatNumbers } from './format-numbers.js';
+import { optimizerMethods } from './optimizer-client.js';
+import { rendererMethods } from './renderers.js';
+import { shareMethods } from './share.js';
+import { siteMapMethods } from './site-map.js';
+import { SLIDER_MARKERS } from './slider-markers.js';
+import { uiStateMethods } from './ui-state.js';
+
+export class App {
   constructor() {
     this.state = { ...DEFAULT_STATE };
     this.charts = {};
@@ -69,14 +92,6 @@ class App {
 
   getSelectedModulePreset(moduleId, state = this.state) {
     return ModuleCatalog.getMatchingPreset(moduleId, state)?.value || 'custom';
-  }
-
-  getPowerChartLabels(r) {
-    return AppChartMethods.getPowerChartLabels.call(this, r);
-  }
-
-  syncPlanetaryUI() {
-    return AppUiStateMethods.syncPlanetaryUI.call(this);
   }
 
   populatePresets() {
@@ -389,57 +404,9 @@ class App {
     `;
   }
 
-  bindControls() {
-    return AppControlMethods.bindControls.call(this);
-  }
-
-  initSharedState() {
-    return AppShareStateMethods.initSharedState.call(this);
-  }
-
-  bindShareControls() {
-    return AppShareStateMethods.bindShareControls.call(this);
-  }
-
-  scheduleShareStateUrlSync() {
-    return AppShareStateMethods.scheduleShareStateUrlSync.call(this);
-  }
-
-  syncShareStateUrl() {
-    return AppShareStateMethods.syncShareStateUrl.call(this);
-  }
-
-  resetState() {
-    return AppShareStateMethods.resetState.call(this);
-  }
-
-  bindLoadConfigTabs() {
-    return AppControlMethods.bindLoadConfigTabs.call(this);
-  }
-
-  syncLoadConfigTabs() {
-    return AppControlMethods.syncLoadConfigTabs.call(this);
-  }
-
-  bindModuleControls() {
-    return AppControlMethods.bindModuleControls.call(this);
-  }
-
   enforceModuleDependencies() {
     this.state = Calc.enforceModuleDependencies(this.state);
     this.syncStateToControls();
-  }
-
-  handleLocationEdited() {
-    return AppControlMethods.handleLocationEdited.call(this);
-  }
-
-  on(id, event, handler) {
-    return AppControlMethods.on.call(this, id, event, handler);
-  }
-
-  bindRange(id, stateKey, formatter, extra) {
-    return AppControlMethods.bindRange.call(this, id, stateKey, formatter, extra);
   }
 
   requestRecalculate(options = {}) {
@@ -479,45 +446,6 @@ class App {
     if (results) this.updateSensitivityChart(results);
   }
 
-  bindOptimizeButtons() {
-    return AppOptimizerMethods.bindOptimizeButtons.call(this);
-  }
-
-  bindIrrOptimizerButton(buttonId, options) {
-    return AppOptimizerMethods.bindIrrOptimizerButton.call(this, buttonId, options);
-  }
-
-  captureOptimizerButtonDefaults(button) {
-    return AppOptimizerMethods.captureOptimizerButtonDefaults.call(this, button);
-  }
-
-  setOptimizerButtonProgress(button, progress = {}) {
-    return AppOptimizerMethods.setOptimizerButtonProgress.call(this, button, progress);
-  }
-
-  resetOptimizerButton(button) {
-    return AppOptimizerMethods.resetOptimizerButton.call(this, button);
-  }
-
-  async findBestRangeValueForIrr(
-    { inputId, stateKey, maxCoarseSamples = 257, maxTopRegions = 5 },
-    onProgress = null
-  ) {
-    return AppOptimizerMethods.findBestRangeValueForIrr.call(
-      this,
-      { inputId, stateKey, maxCoarseSamples, maxTopRegions },
-      onProgress
-    );
-  }
-
-  getOptimizerWorker() {
-    return AppOptimizerMethods.getOptimizerWorker.call(this);
-  }
-
-  requestOptimizerWorkerSearch(search, onProgress = null) {
-    return AppOptimizerMethods.requestOptimizerWorkerSearch.call(this, search, onProgress);
-  }
-
   syncBatteryEnabledState() {
     this.state.batteryEnabled = Number.isFinite(this.state.batteryCapacityMWh) && this.state.batteryCapacityMWh > 1e-9;
   }
@@ -542,10 +470,6 @@ class App {
     viability.classList.remove('viable', 'marginal', 'not-viable');
     viability.classList.add('not-viable');
     label.textContent = 'Calculation error';
-  }
-
-  bindNumber(id, stateKey, extra) {
-    return AppControlMethods.bindNumber.call(this, id, stateKey, extra);
   }
 
   bindSectionToggles() {
@@ -885,91 +809,11 @@ class App {
     this.hoverTooltip.classList.remove('visible');
   }
 
-  initSiteMap() {
-    return AppSiteMapMethods.initSiteMap.call(this);
-  }
-
-  applySiteLocationFromMap(lat, lng) {
-    return AppSiteMapMethods.applySiteLocationFromMap.call(this, lat, lng);
-  }
-
-  showSiteMapMessage(message, noteText) {
-    return AppSiteMapMethods.showSiteMapMessage.call(this, message, noteText);
-  }
-
-  showSiteMap(noteText) {
-    return AppSiteMapMethods.showSiteMap.call(this, noteText);
-  }
-
-  getRectBounds(lat, lon, widthMeters, heightMeters, minWidthMeters = 20, minHeightMeters = minWidthMeters) {
-    return AppSiteMapMethods.getRectBounds.call(
-      this,
-      lat,
-      lon,
-      widthMeters,
-      heightMeters,
-      minWidthMeters,
-      minHeightMeters
-    );
-  }
-
-  getSquareBounds(lat, lon, sideMeters, minSideMeters = 20) {
-    return AppSiteMapMethods.getSquareBounds.call(this, lat, lon, sideMeters, minSideMeters);
-  }
-
-  formatArea(areaM2) {
-    return AppSiteMapMethods.formatArea.call(this, areaM2);
-  }
-
-  formatDistance(meters) {
-    return AppSiteMapMethods.formatDistance.call(this, meters);
-  }
-
-  hexToRgba(hex, alpha) {
-    return AppSiteMapMethods.hexToRgba.call(this, hex, alpha);
-  }
-
-  getSiteFootprintColor(id) {
-    return AppSiteMapMethods.getSiteFootprintColor.call(this, id);
-  }
-
-  getSiteFootprintAbbreviation(id) {
-    return AppSiteMapMethods.getSiteFootprintAbbreviation.call(this, id);
-  }
-
-  buildSiteFootprintEstimate(r) {
-    return AppSiteMapMethods.buildSiteFootprintEstimate.call(this, r);
-  }
-
-  renderSiteFootprintEstimate() {
-    return AppSiteMapMethods.renderSiteFootprintEstimate.call(this);
-  }
-
-  offsetLatLon(lat, lon, offsetXMeters, offsetYMeters) {
-    return AppSiteMapMethods.offsetLatLon.call(this, lat, lon, offsetXMeters, offsetYMeters);
-  }
-
-  clearSiteMapModuleSquares() {
-    return AppSiteMapMethods.clearSiteMapModuleSquares.call(this);
-  }
-
-  renderSiteMapModuleSquares(lat, lon, footprint) {
-    return AppSiteMapMethods.renderSiteMapModuleSquares.call(this, lat, lon, footprint);
-  }
-
   formatSystemSizeMW(v) {
     const mw = parseFloat(v);
     if (!Number.isFinite(mw)) return '—';
     if (mw >= 1000) return `${FormatNumbers.fixed(mw / 1000, 2)} GW`;
     return `${FormatNumbers.fixed(mw, 1)} MW`;
-  }
-
-  syncStateToControls() {
-    return AppControlMethods.syncStateToControls.call(this);
-  }
-
-  syncRangeDisplay(id, value, formatter) {
-    return AppControlMethods.syncRangeDisplay.call(this, id, value, formatter);
   }
 
   formatMethaneFeedstockSplit(value) {
@@ -1139,26 +983,6 @@ class App {
     return this.formatModuleMarketValue(moduleId, value);
   }
 
-  syncDynamicVisibility() {
-    return AppUiStateMethods.syncDynamicVisibility.call(this);
-  }
-
-  syncModuleCapexControl(moduleId) {
-    return AppUiStateMethods.syncModuleCapexControl.call(this, moduleId);
-  }
-
-  syncExploratoryCapexControl(moduleId) {
-    return this.syncModuleCapexControl(moduleId);
-  }
-
-  syncModuleMarketControl(moduleId) {
-    return AppUiStateMethods.syncModuleMarketControl.call(this, moduleId);
-  }
-
-  syncDerivedFeedControls() {
-    return AppUiStateMethods.syncDerivedFeedControls.call(this);
-  }
-
   recalculate(options = {}) {
     const includeSensitivity = options.includeSensitivity !== false;
     if (this.pendingRecalculateFrame !== null) {
@@ -1192,85 +1016,17 @@ class App {
       this.showCalculationError(error);
     }
   }
-
-  updateInfoDisplays(r) {
-    return AppRendererMethods.updateInfoDisplays.call(this, r);
-  }
-
-  updateHeaderMetrics(r) {
-    return AppRendererMethods.updateHeaderMetrics.call(this, r);
-  }
-
-  updatePlantScore(r) {
-    return AppRendererMethods.updatePlantScore.call(this, r);
-  }
-
-  updateDiagram(r) {
-    return AppRendererMethods.updateDiagram.call(this, r);
-  }
-
-  updateSiteMap(r) {
-    return AppSiteMapMethods.updateSiteMap.call(this, r);
-  }
-
-  updateProduction(r) {
-    return AppRendererMethods.updateProduction.call(this, r);
-  }
-
-  prodItem(cls, _icon, label, value, unit) {
-    return AppRendererMethods.prodItem.call(this, cls, _icon, label, value, unit);
-  }
-
-  updateEconomics(r) {
-    return AppRendererMethods.updateEconomics.call(this, r);
-  }
-
-  econRow(label, value, cls = '', title = '') {
-    return AppRendererMethods.econRow.call(this, label, value, cls, title);
-  }
-
-  updateImpact(r) {
-    return AppRendererMethods.updateImpact.call(this, r);
-  }
-
-  updatePowerChart(r) {
-    return AppChartMethods.updatePowerChart.call(this, r);
-  }
-
-  updateAnnualDispatchChart(r) {
-    return AppChartMethods.updateAnnualDispatchChart.call(this, r);
-  }
-
-  updateEconomicsTimelineChart(r) {
-    return AppChartMethods.updateEconomicsTimelineChart.call(this, r);
-  }
-
-  updateEconChart(r) {
-    return AppChartMethods.updateEconChart.call(this, r);
-  }
-
-  updateSensitivityChart(r = this.lastResults) {
-    return AppChartMethods.updateSensitivityChart.call(this, r);
-  }
-
-  formatConfigValue(unit, value) {
-    return AppRendererMethods.formatConfigValue.call(this, unit, value);
-  }
-
-  formatMoney(val) {
-    return AppRendererMethods.formatMoney.call(this, val);
-  }
-
-  formatIrr(val) {
-    return AppRendererMethods.formatIrr.call(this, val);
-  }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  window.app = new App();
-  let resizeTimer;
-  window.addEventListener('resize', () => {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => window.app.recalculate(), 200);
-  });
-});
+// The App behaviour is split across mixin objects; each method runs with the
+// App instance as `this`, so they can call one another as `this.method()`.
+Object.assign(
+  App.prototype,
+  shareMethods,
+  controlMethods,
+  optimizerMethods,
+  uiStateMethods,
+  siteMapMethods,
+  rendererMethods,
+  chartMethods,
+);

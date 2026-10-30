@@ -109,6 +109,9 @@ function batteryInfo(state, r) {
     infoRow('Full cycles', `${fixed(b.equivalentFullCyclesPerYear, 0)}/yr`),
     infoRow('Life', `${fixed(b.lifetimeYears, 1)} years`),
     infoRow('Discharged', `${formatMWh(r.dispatch.annual.batteryDischargeMWh)}/yr`),
+    r.firm.sparesReplacedByBattery > 0
+      ? infoRow('Stands in for', `${fixed(r.firm.sparesReplacedByBattery, 0)} spare ${r.firm.sparesReplacedByBattery > 1 ? 'units' : 'unit'} (${formatMWh(r.firm.batteryReserveMWh)} reserve)`, 'Spare generator units not built: the battery keeps this energy as a floor, used only to avoid unserved load.')
+      : '',
     note(BATTERY_ROLES[r.dispatch.batteryRole] || ''),
   ].join('');
 }

@@ -51,6 +51,8 @@ const SCENARIOS = {
   scheduleHigh: { scheduleCase: 'high' },
   itCapexAtNtp: { itCapexTiming: 'ntp' },
   constructionCapexAtNtp: { constructionCapexTiming: 'ntp' },
+  islandedCarbon50: { architecture: 'islanded', carbonPricePerTonne: 50 },
+  islandedBatteryReserve: { architecture: 'islanded', solarSizeMWdc: 200, batteryCapacityMWh: 200, firmSpareUnits: 2 },
   demandCharge: { gridEnergyPricePerMWh: 75, gridDemandChargePerKWMonth: 12 },
   phoenixTower: { siteId: 'phoenix-az', coolingTechnology: 'dlc-cooling-tower' },
   luleaAir: { siteId: 'lulea-se', coolingTechnology: 'air-chiller' },

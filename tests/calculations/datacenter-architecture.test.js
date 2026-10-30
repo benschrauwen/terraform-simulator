@@ -47,7 +47,11 @@ test('the hybrid starting design follows its sizing rule (hand-derived at Abilen
   assert.equal(s.firmSpareUnits, GAS_REDUNDANCY_GUIDANCE.gridParallel.spareUnits);
   const r = designs.hybrid.result;
   const base = r.firm.sizingBasis.minUnits;
-  assert.equal(r.firm.units, base > 0 ? base + 1 : 0);
+  // The spare is the battery's: 100 MW covers a 10 MW engine and 400 MWh holds 4 h x 10 MW for
+  // it (batteryReplacesSpares), so no spare engine is built and 40 MWh is kept as reserve.
+  assert.equal(r.firm.sparesReplacedByBattery, 1);
+  assert.equal(r.firm.batteryReserveMWh, 40);
+  assert.equal(r.firm.units, base);
   // Reciprocating gas engines as prime power (not standby diesel, which never runs on cost and
   // would leave a grid design with solar): at $4/MMBtu they cost 7.8 x 4 + 7.4 = $38.6/MWh, below
   // Abilene's $67.7/MWh grid price, so the hybrid merit order runs them first.

@@ -26,6 +26,13 @@
       discharges only when the grid cannot carry the load (flexible-
       connection outages, import cap). The battery never charges from the
       grid to shift energy in time (no arbitrage).
+   4. Reserve floor (reserveFloorKWh, a battery standing in for spare gas
+      units, scenario.js getBatteryReserve). A shifting battery keeps that
+      much energy: it shifts only what is above the floor, and the floor is
+      discharged only for a deficit left after grid and gas (to avoid
+      unserved load). Below the floor it is topped up from spare grid or
+      (islanded) spare gas in an hour it did not discharge. A reserve
+      battery already discharges only to avoid unserved load.
 
    Hourly energy balance (asserted in tests):
      solar + nuclear + grid + gas + battery discharge + unserved
@@ -63,10 +70,26 @@ export function getBatteryRole(batteryState, solar, firm) {
   return (solar?.enabled || firm.mustTake) ? 'shift' : 'reserve';
 }
 
+/* Discharge up to `wantedKWh` keeping `floorKWh` stored and within the
+   power left this hour after `usedKWh`; returns the energy delivered. */
+function dischargeAbove(battery, wantedKWh, floorKWh, usedKWh) {
+  const deliveredKWh = Math.max(0, Math.min(
+    wantedKWh,
+    battery.maxDischargeOutputKWh - usedKWh,
+    (battery.socKWh - floorKWh) * battery.dischargeEff,
+  ));
+  if (!(deliveredKWh > 0)) return 0;
+  battery.socKWh = Math.max(0, battery.socKWh - deliveredKWh / battery.dischargeEff);
+  battery.dischargeThroughputKWh += deliveredKWh;
+  return deliveredKWh;
+}
+
 function runPass(inputs, startSocKWh, capture) {
   const { loadKW, solarKW, firm, grid, batteryState, order, exportAllowed, role } = inputs;
   const battery = createAnnualBattery(batteryState, startSocKWh);
   const hasBattery = role !== 'none';
+  // Reserve floor of a shifting battery (header, 4).
+  const floorKWh = role === 'shift' ? Math.min(inputs.reserveFloorKWh || 0, battery.capacityKWh) : 0;
   const mustTakeKW = firm.mustTake ? firm.availableKW : null;
   const gasKWAvailable = firm.family === 'gas' ? firm.availableKW : null;
   const gridAvailable = grid.connected ? grid.available : null;
@@ -121,7 +144,7 @@ function runPass(inputs, startSocKWh, capture) {
       t.solarToLoadKWh += solar;
       t.nuclearToLoadKWh += nuclear;
       if (role === 'shift') {
-        dischargeKW = dischargeBattery(battery, deficit);
+        dischargeKW = floorKWh > 0 ? dischargeAbove(battery, deficit, floorKWh, 0) : dischargeBattery(battery, deficit);
         deficit -= dischargeKW;
       }
       const takeGrid = () => {
@@ -149,18 +172,27 @@ function runPass(inputs, startSocKWh, capture) {
         takeReserve();
         takeGas();
       }
+      // Last resort: the reserve floor.
+      if (floorKWh > 0 && deficit > 1e-9) {
+        const delivered = dischargeAbove(battery, deficit, 0, dischargeKW);
+        dischargeKW += delivered;
+        deficit -= delivered;
+      }
       if (deficit < 1e-9) deficit = 0;
     }
 
     // Reserve battery top-up from spare grid (or, islanded, spare gas).
     let gridToBatteryKW = 0;
     let gasToBatteryKW = 0;
-    if (role === 'reserve' && dischargeKW === 0 && battery.socKWh < battery.capacityKWh - 1e-9) {
+    // A shifting battery below its reserve floor is topped up to the floor the same way.
+    const topUpToKWh = role === 'reserve' ? battery.capacityKWh : floorKWh;
+    if (topUpToKWh > 0 && dischargeKW === 0 && battery.socKWh < topUpToKWh - 1e-9) {
+      const wantedInput = (topUpToKWh - battery.socKWh) / battery.chargeEff;
       if (gridOk) {
-        gridToBatteryKW = chargeBattery(battery, Math.max(0, gridCap - gridKW)) / battery.chargeEff;
+        gridToBatteryKW = chargeBattery(battery, Math.min(wantedInput, Math.max(0, gridCap - gridKW))) / battery.chargeEff;
         gridKW += gridToBatteryKW;
       } else if (!grid.connected && gasCap > gasKW) {
-        gasToBatteryKW = chargeBattery(battery, gasCap - gasKW) / battery.chargeEff;
+        gasToBatteryKW = chargeBattery(battery, Math.min(wantedInput, gasCap - gasKW)) / battery.chargeEff;
         gasKW += gasToBatteryKW;
       }
     }
@@ -229,7 +261,8 @@ function runPass(inputs, startSocKWh, capture) {
 
 /**
  * Settled annual dispatch (periodic battery state of charge). `inputs`:
- * { loadKW, solarKW|null, firm, grid, batteryState, order, exportAllowed }.
+ * { loadKW, solarKW|null, firm, grid, batteryState, order, exportAllowed,
+ * reserveFloorKWh? }.
  * Returns { totals (kWh, MMBtu, hours), monthlyPeakGridKW, unservedKW
  * (8760), series (8760 per source when capture), battery, role, order,
  * settleIterations }.

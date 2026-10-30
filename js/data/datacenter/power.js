@@ -645,6 +645,32 @@ export const BATTERY_COSTS = {
   globalBasis: { energyPerKWh: 120, powerPerKW: 120 },
 };
 
+/* ---------- Battery as reserve (state batteryReplacesSpares, batteryReserveHours) ----------
+   A battery can stand in for spare generator units (N+x): it picks up a
+   tripped unit's load within the inverter response time and holds it while
+   the unit is restarted or replaced. Default reserve: 4 hours per replaced
+   unit (judgment from the reserve products below):
+   - ERCOT Non-Spinning Reserve must be sustained for four consecutive hours
+     (NPRR 1096, PUCT 2022-05-01); ECRS two hours.
+     https://www.bakerbotts.com/thought-leadership/publications/2023/april/2022-energy-memo_energy-storage-issues-in-the-ercot-market
+   - CPUC resource adequacy counts storage at its four-hour output (2022 RA
+     Guide, D.21-06-029).
+     https://www.cpuc.ca.gov/-/media/cpuc-website/divisions/energy-division/documents/resource-adequacy-homepage/resource-adequacy-compliance-materials/final-2022-ra-guide-clean-101821.pdf
+   - NERC BAL-002-2: contingency reserve restored within 90 minutes after
+     the 15-minute recovery period (a shorter bound).
+     https://nerc.com/pa/Stand/Project%202010141%20%20Phase%201%20of%20Balancing%20Authority%20Re/Project_2010-14_1%20BAL-002-2_Implementation_Plan-Clean-07012015.pdf
+   AI sites already pair batteries with on-site generation: xAI's Colossus
+   (Memphis) put Tesla Megapacks between the turbines and the GPUs to buffer
+   "millisecond spikes and drops in power" of training load (ServeTheHome,
+   2024-10-28) and as backup during grid disruptions (Introl, 2026-04-01).
+   The model's hourly dispatch does not see those transients.
+   https://www.servethehome.com/inside-100000-nvidia-gpu-xai-colossus-cluster-supermicro-helped-build-for-elon-musk/4/
+   https://introl.com/blog/xai-memphis-colossus-100000-gpu-supercomputer-infrastructure
+   (all retrieved 2026-10-30) */
+export const BATTERY_RESERVE = {
+  defaultHoursPerUnit: 4,
+};
+
 /* ---------- Nuclear ---------- */
 
 /* Nuclear supply options. New-build types carry overnight capex; the

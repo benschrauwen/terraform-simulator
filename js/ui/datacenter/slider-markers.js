@@ -3,6 +3,7 @@
    builder's SLIDER_MARKERS); the labels name the source the data file cites. */
 
 import { FACILITY_DEFAULTS } from '../../data/datacenter/facility.js';
+import { CARBON_PRICE_SCHEMES } from '../../data/datacenter/carbon.js';
 import { BATTERY_COSTS, GAS_DEFAULTS, GRID_DEFAULTS } from '../../data/datacenter/power.js';
 import { SLIDER_MARKERS } from '../slider-markers.js';
 
@@ -28,6 +29,10 @@ export const DATACENTER_SLIDER_MARKERS = {
     { value: GAS_DEFAULTS.henryHub2027PerMMBtu, label: 'Henry Hub 2027 forecast (EIA STEO Oct 2026)' },
     { value: GAS_DEFAULTS.henryHubPerMMBtu, label: 'Henry Hub 2026 average (EIA STEO Oct 2026)' },
   ],
+  // Statutory prices of the sites' schemes (data/datacenter/carbon.js).
+  carbonPricePerTonne: ['ca-cap-and-invest', 'wa-cca', 'eu-ets'].map(key => ({
+    value: CARBON_PRICE_SCHEMES[key].usdPerTonne, label: `${CARBON_PRICE_SCHEMES[key].label} (${CARBON_PRICE_SCHEMES[key].asOf})`,
+  })),
   gridUnavailableHoursPerYear: [
     { value: GRID_DEFAULTS.flexibleUnavailableHoursRange.low, label: 'Flexible connection, low (Camus / encoord / Princeton PJM study)' },
     { value: GRID_DEFAULTS.flexibleUnavailableHoursRange.high, label: 'Flexible connection, high (Camus / encoord / Princeton PJM study)' },

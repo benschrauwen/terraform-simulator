@@ -35,6 +35,8 @@ export function describeStartingDesign(r, addedUnits = 0) {
   if (r.firm.family === 'gas' && r.firm.units > 0) {
     let redundancy = s.firmSizingMode === 'auto' ? `N+${fixed(s.firmSpareUnits, 0)}` : '';
     if (s.firmSizingMode === 'auto' && s.architecture === 'grid') redundancy += ' standby';
+    const replaced = r.firm.sparesReplacedByBattery || 0;
+    if (replaced > 0) redundancy += `, ${fixed(replaced, 0)} spare${replaced > 1 ? 's' : ''} as battery reserve`;
     if (addedUnits > 0) redundancy = [redundancy, `${fixed(addedUnits, 0)} added to meet the uptime target`].filter(Boolean).join(', ');
     parts.push(`${fixed(r.firm.units, 0)} × ${formatMW(r.firm.unitSizeMW)} ${lowerFirst(GAS_GENSET_TYPES[s.gasType]?.label || 'gas units')}${redundancy ? ` (${redundancy})` : ''}`);
   }

@@ -222,6 +222,16 @@ export const DATACENTER_SECTIONS = {
       format: value => (value > 0 ? formatStorageMWh(value) : 'None'),
     },
     { type: 'range', id: 'batteryDurationHours', label: 'Duration', min: 1, max: 12, step: 0.5, format: hours, tooltip: 'Energy / power. A 4-hour battery of 400 MWh delivers 100 MW.' },
+    {
+      type: 'checkbox', id: 'batteryReplacesSpares', label: 'Battery stands in for spare generator units',
+      visible: state => state.batteryCapacityMWh > 0 && state.firmFamily === 'gas' && state.firmSizingMode === 'auto',
+      tooltip: 'Each spare unit (N+x) whose size the battery\'s power covers, and for which it holds the reserve hours below, is not built. That energy is kept as a floor and used only to avoid unserved load.',
+    },
+    {
+      type: 'range', id: 'batteryReserveHours', label: 'Reserve per replaced unit', min: 0.5, max: 12, step: 0.5, format: hours,
+      visible: state => state.batteryCapacityMWh > 0 && state.firmFamily === 'gas' && state.firmSizingMode === 'auto' && state.batteryReplacesSpares,
+      tooltip: 'Hours of the unit\'s output the battery holds for each spare it replaces: time to restart, repair or replace a tripped unit. 4 h matches ERCOT\'s Non-Spin and CPUC\'s 4-hour storage rule.',
+    },
     { block: 'batteryInfo' },
     {
       details: 'Battery costs',
@@ -294,6 +304,11 @@ export const DATACENTER_SECTIONS = {
       // Natural gas $0-15; diesel (standby type) up to $60/MMBtu (~$8.30/gal).
       range: state => (gasType(state).fuel === 'diesel' ? { min: 0, max: 60, step: 0.5 } : { min: 0, max: 15, step: 0.05 }),
       tooltip: 'HHV basis. Natural gas: Henry Hub plus delivery. Diesel: untaxed (dyed, off-road) price per gallon / 0.138 MMBtu.',
+    },
+    {
+      type: 'range', id: 'carbonPricePerTonne', label: 'Carbon price (on-site CO₂)', min: 0, max: 300, step: 1, format: per(0, 't CO₂'), visible: state => state.firmFamily === 'gas',
+      note: 'Defaults to the site\'s scheme (EU ETS, California, Washington; else 0). Set your own internal carbon price to test it.',
+      tooltip: 'Charged on the gas or diesel the plant burns, and part of its running cost when gas competes with the grid. Not on grid imports: their price already carries it. Resets when the site changes.',
     },
     { type: 'range', id: 'nuclearPpaPricePerMWh', label: 'PPA price', min: 0, max: 250, step: 1, format: per(0, 'MWh'), visible: state => state.firmFamily === 'nuclear' && isContractedNuclear(state), tooltip: 'Take-or-pay on all available output.' },
     {

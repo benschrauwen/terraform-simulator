@@ -55,7 +55,8 @@
    firm generation $/kW-yr), grid energy, grid demand charges (monthly peak
    import x $/kW-month), gas fuel, gas variable O&M, nuclear fuel + variable
    O&M on delivered output (an own reactor backs down) or the contracted PPA
-   (take-or-pay on all available output), water.
+   (take-or-pay on all available output), carbon price on on-site combustion
+   CO2 (data/datacenter/carbon.js; not on grid imports), water.
    Revenue: GPU rental (default, model/datacenter/gpu.js) = GPUs x 8760 x
    occupancy x served share x $/GPU-hour x R_y;
    tokens = served IT MWh x M tokens/MWh-IT x $/M tokens;
@@ -66,6 +67,7 @@
 import { COOLING_TECHNOLOGIES } from '../../data/datacenter/cooling.js';
 import { FACILITY_DEFAULTS } from '../../data/datacenter/facility.js';
 import { DATACENTER_MODEL_ASSUMPTIONS as A } from '../../data/datacenter/model-assumptions.js';
+import { getGensetFuel } from '../../data/datacenter/power.js';
 import { summarizeReturns } from '../economics.js';
 import { getGpuFleet, getRentalRevenueFactor } from './gpu.js';
 import { onSiteNuclearMWh } from './impacts.js';
@@ -153,6 +155,8 @@ export function buildOpexLines(state, { totals, monthlyPeakGridKW, water, firm }
     { key: 'gasVariableOm', label: diesel ? 'Diesel generator variable O&M' : 'Gas variable O&M', energy: true, annual: firm.family === 'gas' ? gasMWh * state.gasVariableOmPerMWh : 0 },
     { key: 'nuclearVariable', label: 'Nuclear fuel + variable O&M', energy: true, annual: firm.family === 'nuclear' && !contracted ? nuclearMWh * (state.nuclearFuelPerMWh + state.nuclearVariableOmPerMWh) : 0 },
     { key: 'nuclearPpa', label: 'Nuclear PPA', energy: true, annual: contracted ? nuclearMWh * state.nuclearPpaPricePerMWh : 0 },
+    // On-site combustion CO2 x carbon price (grid imports carry theirs in the power price).
+    { key: 'carbonPrice', label: 'Carbon price', energy: true, annual: firm.family === 'gas' ? totals.fuelMMBtu * getGensetFuel(firm.typeData).co2KgPerMMBtu / 1000 * state.carbonPricePerTonne : 0 },
     { key: 'water', label: 'Water', energy: false, annual: water.withdrawnM3 * state.waterPricePerM3 },
   ];
   return lines;

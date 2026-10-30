@@ -125,6 +125,8 @@ const SUPPLY_KEYS = [
   'batteryCapacityMWh', 'batteryDurationHours', 'batteryEfficiency', 'firmFamily', 'uptimeTargetPercent',
   'gasType', 'gasUnitSizeMW', 'gasHeatRateMMBtuPerMWh', 'gasAvailabilityPercent',
   'nuclearType', 'nuclearUnitSizeMW', 'nuclearCapacityFactorPercent', 'firmSizingMode',
+  // Battery as reserve (getBatteryReserve).
+  'batteryReplacesSpares', 'batteryReserveHours', 'firmSpareUnits',
 ];
 const dispatchCache = new Map();
 
@@ -134,6 +136,34 @@ function monthlyMeans(series) {
   const sums = new Array(12).fill(0);
   for (let h = 0; h < HOURS_PER_YEAR; h++) sums[MONTH_OF_HOUR[h]] += series[h];
   return sums.map((sum, month) => sum / (MONTH_DAYS[month] * 24));
+}
+
+/**
+ * Battery standing in for spare gas units (state batteryReplacesSpares):
+ * with auto-sized gas, k of the firmSpareUnits are not built, k the most
+ * whose total size the battery's power covers and whose reserve
+ * (batteryReserveHours x unit size each) its energy holds. That energy is
+ * a reserve floor (dispatch.js): the units the uptime target needs are
+ * sized with the battery less the floor (a battery of the remaining energy
+ * at the same power), so the floor never counts twice; in the dispatch it
+ * is used only to avoid unserved load. { units: k, floorKWh, sizingState }.
+ */
+export function getBatteryReserve(state) {
+  const powerMW = getBatteryPowerKW(state) / 1000;
+  const unitMW = state.gasUnitSizeMW;
+  const applies = state.batteryReplacesSpares && state.firmFamily === 'gas' && state.firmSizingMode === 'auto'
+    && state.firmSpareUnits > 0 && state.batteryCapacityMWh > 0 && unitMW > 0 && state.batteryReserveHours > 0;
+  const units = applies ? Math.max(0, Math.min(
+    state.firmSpareUnits,
+    Math.floor(powerMW / unitMW + 1e-9),
+    Math.floor(state.batteryCapacityMWh / (state.batteryReserveHours * unitMW) + 1e-9),
+  )) : 0;
+  const floorMWh = units * state.batteryReserveHours * unitMW;
+  const shiftMWh = state.batteryCapacityMWh - floorMWh;
+  const sizingState = units > 0
+    ? { ...state, batteryCapacityMWh: shiftMWh > 1e-9 ? shiftMWh : 0, batteryDurationHours: shiftMWh > 1e-9 ? shiftMWh / powerMW : state.batteryDurationHours }
+    : state;
+  return { units, floorKWh: floorMWh * 1000, sizingState };
 }
 
 /** Full datacenter scenario; see the header for the result shape. */
@@ -165,14 +195,17 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
   let firm = buildFirmSupply(state, { meanLoadKW });
   const order = getDispatchOrder(state, firm);
   const autoGas = firm.family === 'gas' && state.firmSizingMode === 'auto';
+  // Spares a battery stands in for (none without a plant: no spares to replace).
+  const reserve = getBatteryReserve(state);
   let sizing = null;
   if (firm.family === 'gas' && (autoGas || !fastMode)) {
     const key = JSON.stringify([...SUPPLY_KEYS.map(k => state[k]), order]);
-    sizing = sizeGasForUptime(state, { loadKW, solar, grid, firm, order, exportAllowed, key });
-    if (autoGas) firm = buildFirmSupply(state, { meanLoadKW, autoBaseUnits: sizing.minUnits });
+    sizing = sizeGasForUptime(reserve.sizingState, { loadKW, solar, grid, firm, order, exportAllowed, key });
+    if (autoGas) firm = buildFirmSupply(state, { meanLoadKW, autoBaseUnits: sizing.minUnits, replacedSpares: reserve.units });
   }
+  const reserveFloorKWh = firm.sparesReplacedByBattery > 0 ? reserve.floorKWh * firm.sparesReplacedByBattery / reserve.units : 0;
   const dispatchInputs = {
-    loadKW, solarKW: solar.hourlyKW, solar, firm, grid, batteryState: state, order, exportAllowed,
+    loadKW, solarKW: solar.hourlyKW, solar, firm, grid, batteryState: state, order, exportAllowed, reserveFloorKWh,
   };
   let run;
   if (fastMode) {
@@ -359,6 +392,9 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
       outageHoursPerUnit: firm.outageHoursPerUnit,
       marginalCostPerMWh: firm.marginalCostPerMWh,
       sizing: firm.sizing,
+      // Spare units a battery stands in for, and the energy it holds for them.
+      sparesReplacedByBattery: firm.sparesReplacedByBattery || 0,
+      batteryReserveMWh: reserveFloorKWh / 1000,
       // Gas: what the uptime target needs (firm-sizing.js); null for nuclear
       // and for a manual gas count in fast mode.
       fuel: firm.family === 'gas' ? (firm.typeData.fuel || 'natural-gas') : null,

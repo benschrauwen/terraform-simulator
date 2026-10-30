@@ -45,6 +45,7 @@ import {
   ARCHITECTURE_STARTING_DESIGNS,
   ARCHITECTURES,
   BATTERY_COSTS,
+  BATTERY_RESERVE,
   DEFAULT_ARCHITECTURE,
   DEFAULT_GAS_GENSET_TYPE,
   DEFAULT_NUCLEAR_TYPE,
@@ -55,6 +56,7 @@ import {
   ONSITE_SUBSTATION,
 } from '../data/datacenter/power.js';
 import { DATACENTER_SITES, DEFAULT_DATACENTER_SITE_ID } from '../data/datacenter/sites.js';
+import { CARBON_PRICE_SCHEMES, getSiteCarbonScheme } from '../data/datacenter/carbon.js';
 import { clampNumber } from '../util.js';
 import { normalizeCoreStateFields } from './normalize.js';
 import { DEFAULT_STATE } from './schema.js';
@@ -164,6 +166,10 @@ export const DATACENTER_STATE_FIELDS = [
   { key: 'gridEnergyPricePerMWh', type: 'number', min: 0, max: 1000, derive: state => getDatacenterSite(state.siteId).electricityPriceAltUsdPerMWh },
   { key: 'gridDemandChargePerKWMonth', type: 'number', min: 0, max: 100, defaultValue: 0 },
   { key: 'gridCo2KgPerMWh', type: 'number', min: 0, max: 2000, derive: state => getDatacenterSite(state.siteId).gridCo2KgPerMWh },
+  // $/t CO2 on on-site combustion only (gas, diesel); grid prices already
+  // carry it. Default: the compliance price of the site's scheme
+  // (data/datacenter/carbon.js: EU ETS, California, Washington; else 0).
+  { key: 'carbonPricePerTonne', type: 'number', min: 0, max: 1000, derive: state => CARBON_PRICE_SCHEMES[getSiteCarbonScheme(getDatacenterSite(state.siteId))].usdPerTonne },
   { key: 'gridExportEnabled', type: 'boolean', defaultValue: GRID_DEFAULTS.exportEnabled },
   { key: 'gridExportPricePerMWh', type: 'number', min: 0, max: 1000, defaultValue: GRID_DEFAULTS.exportPricePerMWh },
   { key: 'gridInterconnectionCapexPerKW', type: 'number', min: 0, max: 5000, defaultValue: GRID_DEFAULTS.interconnectionCapexPerKW },
@@ -196,6 +202,19 @@ export const DATACENTER_STATE_FIELDS = [
   { key: 'batteryEfficiency', type: 'number', min: 1, max: 100, defaultValue: DEFAULT_STATE.batteryEfficiency },
   { key: 'batteryCycles', type: 'number', min: 1, max: 1e6, defaultValue: DEFAULT_STATE.batteryCycles },
   { key: 'batteryOmPercent', type: 'number', min: 0, max: 100, defaultValue: DEFAULT_STATE.batteryOmPercent },
+  // Battery as reserve (model/datacenter/scenario.js): with auto-sized gas,
+  // each spare unit (N+x) whose size the battery's power covers and for
+  // which it holds batteryReserveHours x unit size of energy is not built;
+  // that energy is a state-of-charge floor used only to avoid unserved
+  // load. Default on: the battery is there anyway and answers within the
+  // inverter's response time, faster than any spare engine (judgment).
+  { key: 'batteryReplacesSpares', type: 'boolean', defaultValue: true },
+  // 4 h: ERCOT's longest ancillary reserve (Non-Spin) must be sustained for
+  // four consecutive hours, and CPUC resource adequacy counts storage at its
+  // four-hour output: time to restart, repair or replace a tripped unit
+  // (NERC restores contingency reserve within 90 min of the event).
+  // Sources in power.js BATTERY_RESERVE.
+  { key: 'batteryReserveHours', type: 'number', min: 0.25, max: 24, defaultValue: BATTERY_RESERVE.defaultHoursPerUnit },
 
   /* ---------- Firm generation: one family at a time ---------- */
   // Default 'gas' family with the standby-diesel type as STANDBY generation:
@@ -266,7 +285,7 @@ export const DATACENTER_DERIVED_KEYS = Object.freeze(DERIVED_FIELDS.map(field =>
 
 // Which derived fields each selection drives.
 const DERIVED_BY_SELECTION = {
-  siteId: ['siteYieldMwhPerMwdcYear', 'gridEnergyPricePerMWh', 'gridCo2KgPerMWh'],
+  siteId: ['siteYieldMwhPerMwdcYear', 'gridEnergyPricePerMWh', 'gridCo2KgPerMWh', 'carbonPricePerTonne'],
   coolingTechnology: ['coolingCapexPerKWIT', 'coolingOmPercent'],
   gpuPlatform: ['gpuRentalPricePerHour', 'gpuItKWPerGpu', 'gpuCapexPerGpu'],
   mountingType: ['panelCostPerW', 'bosCostPerW'],

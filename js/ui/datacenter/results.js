@@ -10,6 +10,7 @@ import { fixed, formatM3, formatMonths, formatTonnes, formatUptime, formatYearMo
 const signClass = value => (value >= 0 ? 'positive' : 'negative');
 const perMWh = value => (Number.isFinite(value) ? `$${fixed(value, 1)}/MWh` : '—');
 const payback = years => (Number.isFinite(years) ? `${fixed(years, 1)} yrs` : 'not within horizon');
+const carbonCost = e => e.opexLines?.find(line => line.key === 'carbonPrice')?.annual || 0;
 const PROJECT_PAYBACK_TIP = 'Years from notice-to-proceed until cumulative project cash (build, operations, GPU refreshes; salvage excluded) turns positive; also counted from first power.';
 const GPU_PAYBACK_TIP = 'One GPU on its own: years after it enters service until its rental revenue (occupancy, uptime, price decline with age) less its IT O&M and its share of energy and water repays its capex. Excludes the building, cooling and power plant, so it is far shorter than the project payback.';
 const afterFirstPower = e => (Number.isFinite(e.paybackAfterFirstPowerYears) ? `${fixed(e.paybackAfterFirstPowerYears, 1)} yrs after first power` : '');
@@ -41,7 +42,7 @@ export function renderKeyMetrics(r) {
     econMetric('Uptime achieved', formatUptime(rel.uptimePercent), rel.meetsTarget ? 'positive' : 'negative', `Target ${formatUptime(rel.targetPercent)}${rel.unservedHours > 0 ? ` · ${fixed(rel.unservedHours, 0)} h short` : ''}`, 'Share of the 8,760 hours with the full facility load served (supply adequacy only; IT and building faults are not modeled).'),
     econMetric('Delivered power cost', perMWh(e.levelized?.costOfPowerPerMWh), '', 'Levelized, per facility MWh', 'Present value of power-side capex and opex (grid, fuel, generation, storage, substation) less exports, over the present value of served facility energy.'),
     econMetric('First power', formatYearMonth(r.schedule.energizationDate), '', r.schedule.criticalPath ? `${formatMonths(r.schedule.energizationMonth)} · ${r.schedule.criticalPath.label}` : '', 'Energization: the slowest required path from notice-to-proceed.'),
-    econMetric('CO₂', `${formatTonnes(r.emissions.totalT)}/yr`, '', `${fixed(r.emissions.kgPerMWhServed, 0)} kg/MWh served`, 'Grid imports x grid intensity plus gas burned x 52.91 kg/MMBtu; combustion only.'),
+    econMetric('CO₂', `${formatTonnes(r.emissions.totalT)}/yr`, '', `${fixed(r.emissions.kgPerMWhServed, 0)} kg/MWh served${carbonCost(e) > 0 ? ` · carbon price ${money(carbonCost(e))}/yr` : ''}`, 'Grid imports x grid intensity plus gas burned x 52.91 kg/MMBtu (diesel 73.96); combustion only. The carbon price applies to the on-site part only.'),
     econMetric('Water', `${formatM3(water)}/yr`, '', `WUE ${fixed(r.cooling.wueLPerKWhIT, 2)} L/kWh-IT`, 'Withdrawn for evaporative cooling and on-site generation; most of it evaporates.'),
     econMetric('Total CAPEX', money(e.totalCapex), '', `$${fixed(capexPerKW, 0)}/kW-IT`, 'Every installed asset, incl. IT hardware when you own it. By default construction capex is paid over the build and the IT hardware at first power (Finance section).'),
     econMetric(e.financing?.enabled ? 'Project NPV' : 'NPV', money(e.npv), signClass(e.npv), `at ${fixed(e.discountRatePercent, 1)}% over ${fixed(e.analysisHorizonYears, 0)} yrs`, 'Discounted project cash flows from notice-to-proceed, including the build years without revenue.'),

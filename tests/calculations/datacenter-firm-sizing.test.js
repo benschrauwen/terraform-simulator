@@ -36,8 +36,11 @@ test('allowed unserved hours follow from uptime = fully served hours / 8760', ()
   assert.equal(allowedUnservedHours((8759 / 8760) * 100), 1);
 });
 
-/* The auto fleet meets the target; with one base unit fewer the target is missed. */
-function assertMinimal(state, label) {
+/* The auto fleet meets the target; with one base unit fewer the target is missed. (A battery
+   standing in for spares keeps a reserve floor the base units are sized without: checked in
+   datacenter-battery-reserve.test.js; off here so manual counts compare like for like.) */
+function assertMinimal(rawState, label) {
+  const state = { ...rawState, batteryReplacesSpares: false };
   const auto = run({ ...state, firmFamily: 'gas', firmSizingMode: 'auto' });
   const basis = auto.firm.sizingBasis;
   assert.ok(basis, `${label}: sizing basis reported`);

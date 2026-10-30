@@ -15,7 +15,7 @@
    Pure; no DOM. */
 
 import { DATACENTER_MODEL_ASSUMPTIONS as A } from '../../data/datacenter/model-assumptions.js';
-import { GAS_GENSET_TYPES, NUCLEAR_TYPES } from '../../data/datacenter/power.js';
+import { GAS_GENSET_TYPES, getGensetFuel, NUCLEAR_TYPES } from '../../data/datacenter/power.js';
 import { DEFAULT_STATE } from '../../state/schema.js';
 import { Calc, SolarGeometry } from '../index.js';
 import { HOURS_PER_YEAR } from './climate.js';
@@ -251,22 +251,27 @@ const EMPTY_FIRM = Object.freeze({
 /**
  * Firm generation: { family, type, typeData (power.js entry), label, units,
  * (gas 'auto': autoBaseUnits, the count firm-sizing.js finds for the uptime
- * target, + spare units),
+ * target, + spare units less replacedSpares, the spares a battery stands in
+ * for: scenario.js getBatteryReserve),
  * unitSizeMW, capacityMW, mustTake (nuclear runs as baseload), availableKW
  * (8760), outageHoursPerUnit, availabilityFraction, heatRate (gas, HHV
- * MMBtu/MWh), partLoad, marginalCostPerMWh (gas: fuel x heat rate + VOM),
+ * MMBtu/MWh), partLoad, marginalCostPerMWh (gas: (fuel price + carbon price
+ * x the fuel's t CO2/MMBtu) x heat rate + VOM), sparesReplacedByBattery,
  * onSite (false for an existing plant under contract), sizing }.
  */
-export function buildFirmSupply(state, { meanLoadKW, autoBaseUnits = 0 }) {
+export function buildFirmSupply(state, { meanLoadKW, autoBaseUnits = 0, replacedSpares = 0 }) {
   const family = state.firmFamily;
   if (family === 'gas') {
     const typeData = GAS_GENSET_TYPES[state.gasType];
     const unitSizeMW = state.gasUnitSizeMW;
     // 'auto': the units the uptime target needs (firm-sizing.js) plus the
     // spare units, which only come with a plant (none when no unit is needed).
+    const sparesReplacedByBattery = state.firmSizingMode === 'auto' && autoBaseUnits > 0 ? Math.min(replacedSpares, state.firmSpareUnits) : 0;
     const units = state.firmSizingMode === 'manual'
       ? state.firmUnits
-      : autoBaseUnits + (autoBaseUnits > 0 ? state.firmSpareUnits : 0);
+      : autoBaseUnits + (autoBaseUnits > 0 ? state.firmSpareUnits - sparesReplacedByBattery : 0);
+    // A carbon price on the plant's own CO2 is part of its running cost (and of the hybrid merit order).
+    const carbonPerMMBtu = state.carbonPricePerTonne * getGensetFuel(typeData).co2KgPerMMBtu / 1000;
     const availabilityFraction = state.gasAvailabilityPercent / 100;
     const outageHoursPerUnit = (1 - availabilityFraction) * HOURS_PER_YEAR;
     const counts = buildOutageCounts(units, outageHoursPerUnit, A.gasOutageStartDayOfYear * 24);
@@ -276,8 +281,8 @@ export function buildFirmSupply(state, { meanLoadKW, autoBaseUnits = 0 }) {
       family, type: state.gasType, typeData, label: typeData.label, units, unitSizeMW, capacityMW: units * unitSizeMW,
       mustTake: false, availableKW, outageHoursPerUnit, availabilityFraction,
       heatRate: state.gasHeatRateMMBtuPerMWh, partLoad: typeData.partLoad,
-      marginalCostPerMWh: state.gasHeatRateMMBtuPerMWh * state.gasFuelPricePerMMBtu + state.gasVariableOmPerMWh,
-      onSite: true, sizing: state.firmSizingMode,
+      marginalCostPerMWh: state.gasHeatRateMMBtuPerMWh * (state.gasFuelPricePerMMBtu + carbonPerMMBtu) + state.gasVariableOmPerMWh,
+      onSite: true, sizing: state.firmSizingMode, sparesReplacedByBattery,
     };
   }
   if (family === 'nuclear') {

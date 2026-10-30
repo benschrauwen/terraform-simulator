@@ -5,7 +5,7 @@
 
 import { ARCHITECTURES, GAS_GENSET_TYPES, NUCLEAR_TYPES, POWER_LEAD_TIMES } from '../../data/datacenter/power.js';
 import { escapeAttribute as attr, escapeHtml as esc } from '../renderers/markup.js';
-import { fixed, formatMW } from './format.js';
+import { fixed, formatMW, formatMWh } from './format.js';
 import { infoRow, note, typicalLeadMonths } from './info-panels.js';
 
 const BTU_PER_KWH = 3.412;
@@ -105,6 +105,10 @@ function firmSizing(state, r) {
     if (basis) {
       const spare = firm.units - basis.minUnits;
       rows.push(infoRow('Redundancy', spare >= 0 ? `N+${spare} (N = ${basis.minUnits} for the uptime target)` : `short by ${-spare} unit${spare === -1 ? '' : 's'} for the uptime target`));
+      if (firm.sparesReplacedByBattery > 0) {
+        const replaced = firm.sparesReplacedByBattery;
+        rows.push(infoRow('Spares as battery reserve', `${fixed(replaced, 0)} unit${replaced > 1 ? 's' : ''} (${formatMWh(firm.batteryReserveMWh)} held)`, 'The battery stands in for these spare units: its power covers them and it keeps this energy for them, used only to avoid unserved load (Battery section).'));
+      }
     }
     rows.push(
       infoRow('Design facility peak', formatMW(designPeak), 'IT nameplate x the hottest hour\'s PUE: what the plant would need to carry the full IT load on the hottest hour. Auto sizing covers the modeled load instead.'),

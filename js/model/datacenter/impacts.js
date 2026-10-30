@@ -16,15 +16,16 @@
      delivered electricity x (1 / efficiency - 1);
    - flows: electricity, heat, water and CO2 as lists of {from, to, value,
      unit} with node labels, for the Sankey views;
-   - footprint: building, cooling yard, solar field, battery, firm plant and
-     substation areas.
+   - footprint: building, cooling yard, solar field, battery, firm plant,
+     on-site substation and (grid-connected only) the utility switchyard at
+     the delivery point, sized for the import cap.
    Pure; no DOM. */
 
 import { SQUARE_METERS_PER_ACRE } from '../../data/assumptions.js';
 import { LATENT_HEAT_KWH_PER_LITRE } from '../../data/datacenter/cooling.js';
 import { FACILITY_DEFAULTS } from '../../data/datacenter/facility.js';
 import { DATACENTER_MODEL_ASSUMPTIONS as A } from '../../data/datacenter/model-assumptions.js';
-import { GAS_DEFAULTS, ONSITE_SUBSTATION } from '../../data/datacenter/power.js';
+import { GAS_DEFAULTS, GRID_DEFAULTS, ONSITE_SUBSTATION } from '../../data/datacenter/power.js';
 import { HOURS_PER_YEAR } from './climate.js';
 
 export const FLOW_NODE_LABELS = Object.freeze({
@@ -215,8 +216,8 @@ export function getSubstationKW(designPeakKW, totals) {
   return Math.max(designPeakKW, totals.peakExportKW || 0);
 }
 
-/** Plan areas in m2 (+ acres) of each block, and context notes. */
-export function calculateFootprint(state, { tech, solar, firm, substationKW }) {
+/** Plan areas in m2 (+ acres) of each block, and context notes. gridCapKW: 0 when islanded. */
+export function calculateFootprint(state, { tech, solar, firm, substationKW, gridCapKW = 0 }) {
   const itMW = state.itCapacityMW;
   let firmM2 = 0;
   if (firm.family === 'gas') firmM2 = firm.typeData.footprintM2PerMW * firm.capacityMW;
@@ -229,6 +230,7 @@ export function calculateFootprint(state, { tech, solar, firm, substationKW }) {
     gasPlant: firm.family === 'gas' ? firmM2 : 0,
     nuclearPlant: firm.family === 'nuclear' ? firmM2 : 0,
     substation: ONSITE_SUBSTATION.footprintM2PerMW * substationKW / 1000,
+    utilitySwitchyard: GRID_DEFAULTS.switchyardFootprintM2PerMW * gridCapKW / 1000,
   };
   const totalM2 = Object.values(areas).reduce((sum, value) => sum + value, 0);
   return {

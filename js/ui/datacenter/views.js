@@ -3,7 +3,7 @@
    sankey.js, timeline.js); this mixin wires them to the DOM. */
 
 import { escapeHtml as esc } from '../renderers/markup.js';
-import { fixed, formatArea, formatFlowValue, formatMW, formatYearMonth } from './format.js';
+import { fixed, formatArea, formatFlowValue, formatYearMonth } from './format.js';
 import { buildPlantLayout, renderPlantLayoutSvg, renderPlantLegend } from './plant-layout.js';
 import { buildSankeyLayout, renderSankeySvg } from './sankey.js';
 import { renderTimelineLegend, renderTimelineSvg, timelineHeadline } from './timeline.js';
@@ -43,19 +43,19 @@ export const viewMethods = {
     const container = document.getElementById('layoutView');
     if (!container) return;
     const layout = buildPlantLayout(r);
-    const largest = layout.blocks[0];
+    // Packing order puts the grid tie first, so find the largest block by area.
+    const largest = [...layout.blocks].sort((a, b) => b.areaM2 - a.areaM2)[0];
     const building = layout.blocks.find(block => block.key === 'building');
     const comparison = largest && building && largest !== building
       ? `The ${largest.name.toLowerCase()} covers ${fixed(largest.areaM2 / building.areaM2, largest.areaM2 / building.areaM2 >= 10 ? 0 : 1)}× the datacenter building's footprint.`
       : 'The datacenter building is the largest block.';
-    const gridLabel = r.grid.connected ? `Grid connection: ${formatMW(r.grid.importCapMW)} (${r.grid.connection})` : 'Islanded: no grid connection';
     const notes = [
       `Areas to scale (one scale for every block). Total ${formatArea(layout.totalM2)}. ${comparison}`,
       r.footprint.nuclearExclusionZone ? `Reactor emergency planning zone: ${r.footprint.nuclearExclusionZone}` : '',
     ].filter(Boolean);
     container.innerHTML = `<div class="dc-view-header"><h3>Plant layout <span class="chart-title-meta">— area to scale</span></h3></div>
       ${notes.map(text => `<div class="field-note compact-note">${esc(text)}</div>`).join('')}
-      <div class="plant-layout-canvas">${renderPlantLayoutSvg(layout, { gridLabel })}</div>
+      <div class="plant-layout-canvas">${renderPlantLayoutSvg(layout)}</div>
       ${renderPlantLegend(layout)}`;
   },
 

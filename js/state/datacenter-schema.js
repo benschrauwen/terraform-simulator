@@ -35,6 +35,7 @@ import { FACILITY_DEFAULTS } from '../data/datacenter/facility.js';
 import { DEFAULT_GPU_PLATFORM, GPU_PLATFORMS, GPU_RENTAL_DEFAULTS } from '../data/datacenter/gpu.js';
 import { DATACENTER_MODEL_ASSUMPTIONS } from '../data/datacenter/model-assumptions.js';
 import {
+  ARCHITECTURE_STARTING_DESIGNS,
   ARCHITECTURES,
   DEFAULT_ARCHITECTURE,
   DEFAULT_GAS_GENSET_TYPE,
@@ -290,4 +291,61 @@ export function applyDatacenterPresetDefaults(state, selectionKey) {
   const dependent = new Set(DERIVED_BY_SELECTION[selectionKey] || []);
   const input = Object.fromEntries(Object.entries(state || {}).filter(([key]) => !dependent.has(key)));
   return normalizeDatacenterState(input);
+}
+
+// Design peak / IT nameplate assumed when the caller has no model result
+// (judgment: above the default site's 1.31 and most climates' peak PUE, so
+// a fallback errs towards more gas).
+const FALLBACK_DESIGN_PEAK_PUE = 1.5;
+
+/** State fields a starting design sets (applyArchitectureDefaults). */
+export const ARCHITECTURE_DESIGN_KEYS = Object.freeze([
+  'architecture', 'gridConnection', 'solarSizeMWdc', 'batteryCapacityMWh', 'batteryDurationHours',
+  'firmFamily', 'firmSizingMode', 'firmSpareUnits', 'firmUnits',
+]);
+
+/**
+ * State after the user switches to `architecture` ('grid' | 'hybrid' |
+ * 'islanded'): the supply side is reset to that architecture's starting
+ * design (ARCHITECTURE_STARTING_DESIGNS in data/datacenter/power.js, where
+ * the sizes are justified); everything else (site, IT, cooling, prices, the
+ * gas type and its unit size, the solar mounting) is kept. Pure.
+ *
+ * - grid: firm connection, no solar or battery, gas auto-sized N+1 at the
+ *   design peak: exactly DATACENTER_DEFAULT_STATE's supply side.
+ * - hybrid: flexible connection, solar = 2 MWdc per MW IT, a 4-hour battery
+ *   of 4 h x IT MW, gas = ceil((design peak - battery MW) / unit) + 1 units
+ *   (manual sizing, so the count does not jump back to the full design peak).
+ * - islanded: no solar or battery, gas auto-sized N+2 at the design peak.
+ *
+ * `designPeakMW` (IT nameplate x peak PUE, result.load.designPeakMW) sizes
+ * the hybrid gas; without it IT x 1.5 is assumed. Solar and battery round to
+ * their slider steps (5 MWdc, 10 MWh).
+ */
+export function applyArchitectureDefaults(state, architecture, { designPeakMW } = {}) {
+  const base = normalizeDatacenterState(state);
+  const design = ARCHITECTURE_STARTING_DESIGNS[architecture];
+  if (!design) return base;
+  const itMW = base.itCapacityMW;
+  const peakMW = Number.isFinite(designPeakMW) && designPeakMW > 0 ? designPeakMW : itMW * FALLBACK_DESIGN_PEAK_PUE;
+  const roundTo = (value, step) => Math.round(value / step) * step;
+  const next = {
+    ...base,
+    architecture,
+    gridConnection: design.gridConnection || base.gridConnection,
+    solarSizeMWdc: roundTo(design.solarMWdcPerMWIT * itMW, 5),
+    batteryCapacityMWh: roundTo(design.batteryHoursOfIT * itMW, 10),
+    batteryDurationHours: design.batteryDurationHours || DATACENTER_DEFAULT_STATE.batteryDurationHours,
+    firmFamily: 'gas',
+    firmSizingMode: 'auto',
+    firmSpareUnits: design.gasSpareUnits,
+    firmUnits: DATACENTER_DEFAULT_STATE.firmUnits,
+  };
+  if (design.gasSizing === 'design-peak-less-battery') {
+    const batteryMW = next.batteryCapacityMWh / next.batteryDurationHours;
+    const needed = Math.ceil(Math.max(0, peakMW - batteryMW) / base.gasUnitSizeMW - 1e-9);
+    next.firmSizingMode = 'manual';
+    next.firmUnits = needed + design.gasSpareUnits;
+  }
+  return normalizeDatacenterState(next);
 }

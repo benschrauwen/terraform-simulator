@@ -2,13 +2,46 @@
    them with the shared control-binding mixin, syncs state -> controls (incl. bounds that follow a
    selection), section and control visibility, the architecture cards and the info blocks. */
 
+import { MOUNTING_TYPES } from '../../data/reference-data.js';
+import { ARCHITECTURES, GAS_GENSET_TYPES } from '../../data/datacenter/power.js';
+import { buildStartingDesign } from '../../model/datacenter/index.js';
 import { applyDatacenterPresetDefaults } from '../../state/datacenter-schema.js';
 import { collectVisibilityRules, renderSectionMarkup, selectOptions, sliderBounds } from './control-markup.js';
 import { getDatacenterSections, withPresetHandlers } from './control-spec.js';
 import { FIRM_BLOCK_RENDERERS, renderArchitectureCards } from './firm-info.js';
+import { fixed, formatMW, formatStorageMWh } from './format.js';
 import { INFO_BLOCK_RENDERERS } from './info-panels.js';
 
 const BLOCK_RENDERERS = { ...INFO_BLOCK_RENDERERS, ...FIRM_BLOCK_RENDERERS };
+
+const lowerFirst = text => (text ? text[0].toLowerCase() + text.slice(1) : '');
+
+/**
+ * The note shown after an architecture switch, from the starting design's result:
+ * "Applied a starting design for <architecture>: <supply>; adjust the sizes or use Optimize design."
+ */
+export function describeStartingDesign(r, addedUnits = 0) {
+  const s = r.state;
+  const parts = [];
+  if (r.grid.connected) {
+    parts.push(r.grid.connection === 'flexible'
+      ? `flexible grid connection (${formatMW(r.grid.importCapMW)}, curtailable ${fixed(r.grid.unavailableHours, 0)} h/yr)`
+      : `firm grid connection (${formatMW(r.grid.importCapMW)})`);
+  } else {
+    parts.push('no grid connection');
+  }
+  if (s.solarSizeMWdc > 0) parts.push(`${formatMW(s.solarSizeMWdc)}dc ${(MOUNTING_TYPES[s.mountingType]?.label || '').toLowerCase()} solar`);
+  if (s.batteryCapacityMWh > 0) parts.push(`${formatStorageMWh(s.batteryCapacityMWh)} / ${formatMW(r.dispatch.battery.powerMW)} battery`);
+  if (r.firm.family === 'gas' && r.firm.units > 0) {
+    let redundancy = s.firmSizingMode === 'auto' ? `N+${fixed(s.firmSpareUnits, 0)}` : (s.batteryCapacityMWh > 0 ? 'N+1 with the battery' : '');
+    if (s.firmSizingMode === 'auto' && s.architecture === 'grid') redundancy += ' standby';
+    if (addedUnits > 0) redundancy = [redundancy, `${fixed(addedUnits, 0)} added to meet the uptime target`].filter(Boolean).join(', ');
+    parts.push(`${fixed(r.firm.units, 0)} × ${formatMW(r.firm.unitSizeMW)} ${lowerFirst(GAS_GENSET_TYPES[s.gasType]?.label || 'gas units')}${redundancy ? ` (${redundancy})` : ''}`);
+  }
+  if (!(s.solarSizeMWdc > 0) && !(s.batteryCapacityMWh > 0)) parts.push('no solar or battery');
+  const label = ARCHITECTURES[s.architecture]?.label || s.architecture;
+  return `Applied a starting design for ${label}: ${parts.join(', ')}; adjust the sizes or use Optimize design.`;
+}
 
 // Whole sections that only apply to some designs.
 const SECTION_VISIBILITY = {
@@ -40,12 +73,48 @@ export const datacenterControlMethods = {
     document.querySelectorAll('input[name="architecture"]').forEach(radio => {
       radio.addEventListener('change', () => {
         if (!radio.checked) return;
-        this.state.architecture = radio.value;
-        this.syncArchitectureCards();
-        this.syncDynamicVisibility();
-        this.recalculate();
+        this.applyArchitecture(radio.value);
       });
     });
+  },
+
+  /** Switch architecture: apply its starting design (buildStartingDesign), recalculate, say what changed. */
+  applyArchitecture(architecture) {
+    let design;
+    try {
+      design = buildStartingDesign(this.state, architecture);
+    } catch (error) {
+      this.showCalculationError?.(error);
+      return;
+    }
+    this.state = { ...design.state };
+    this.syncStateToControls();
+    this.recalculate();
+    this.showArchitectureNote(describeStartingDesign(this.lastResults || design.result, design.addedUnits));
+  },
+
+  showArchitectureNote(text) {
+    const body = document.getElementById('architectureControls');
+    if (!body) return;
+    let note = document.getElementById('architectureDesignNote');
+    if (!note) {
+      note = document.createElement('div');
+      note.id = 'architectureDesignNote';
+      note.className = 'dc-arch-applied';
+      note.setAttribute('role', 'status');
+      const message = document.createElement('p');
+      message.className = 'dc-arch-applied-text';
+      const dismiss = document.createElement('button');
+      dismiss.type = 'button';
+      dismiss.className = 'dc-arch-applied-dismiss';
+      dismiss.setAttribute('aria-label', 'Dismiss');
+      dismiss.textContent = '×';
+      dismiss.addEventListener('click', () => { note.hidden = true; });
+      note.append(message, dismiss);
+      body.appendChild(note);
+    }
+    note.querySelector('.dc-arch-applied-text').textContent = text;
+    note.hidden = false;
   },
 
   /** A selection that drives preset defaults changed: reset its dependents, then re-sync. */

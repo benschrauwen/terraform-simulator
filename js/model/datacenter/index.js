@@ -10,13 +10,17 @@
      they read economics.yearlyCashFlows, which has the same fields);
    - the schema: DATACENTER_DEFAULT_STATE, DATACENTER_STATE_FIELDS,
      DATACENTER_DERIVED_KEYS, normalizeDatacenterState,
-     applyDatacenterPresetDefaults, getDatacenterSite. */
+     applyDatacenterPresetDefaults, applyArchitectureDefaults, getDatacenterSite;
+   - buildStartingDesign(state, architecture): the design applied when the
+     user switches architecture (./starting-design.js). */
 
 export { calculateDatacenterScenario } from './scenario.js';
 export { calculateDatacenterBreakEven, getDatacenterFieldRange, runDatacenterTornado } from './tornado.js';
 export { FLOW_NODE_LABELS } from './impacts.js';
+export { buildStartingDesign } from './starting-design.js';
 export { buildCashFlowCsv, buildCashFlowTable } from '../cash-flow-table.js';
 export {
+  applyArchitectureDefaults,
   applyDatacenterPresetDefaults,
   DATACENTER_DEFAULT_STATE,
   DATACENTER_DERIVED_KEYS,

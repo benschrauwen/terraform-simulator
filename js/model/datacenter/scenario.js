@@ -55,7 +55,7 @@
              gasWasteMWh, nuclearWasteMWh, batteryLossesMWh, reuse: { supplyTempC, potentialMWh, note } },
      flows: { labels{id: label}, electricity[], heat[], water[], co2[]: { from, to, value, unit }, unservedMWh },
      footprint: { areasM2: { building, coolingYard, solarField, battery, gasPlant, nuclearPlant,
-                  substation }, totalM2, totalAcres, referenceSiteAcresExclSolar, nuclearExclusionZone },
+                  substation, utilitySwitchyard (0 islanded) }, totalM2, totalAcres, referenceSiteAcresExclSolar, nuclearExclusionZone },
      schedule: { case, scale, noticeToProceed, energizationMonth, energizationYears, energizationDate
                  { year, month, label }, criticalPath { id, label, durationMonths },
                  paths[{ id, label, required, phases{ permittingMonths, procurementMonths,
@@ -174,7 +174,7 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
   const heat = calculateHeat({ tech, energy, water, totals, firm, batteryLossesKWh });
   const flows = buildFlows({ totals, energy, water, heat, emissions, batteryLossesKWh });
   const substationKW = getSubstationKW(designPeakKW, totals);
-  const footprint = calculateFootprint(state, { tech, solar, firm, substationKW });
+  const footprint = calculateFootprint(state, { tech, solar, firm, substationKW, gridCapKW: grid.connected ? grid.capKW : 0 });
   const schedule = buildSchedule(state, { firm, solarEnabled: solar.enabled });
   const economics = calculateDatacenterEconomics(state, {
     energy, totals, monthlyPeakGridKW: run.monthlyPeakGridKW, water, firm, solar,

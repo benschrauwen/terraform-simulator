@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Abundance Stack — Datacenter power &amp; cooling</title>
+  <link rel="stylesheet" href="node_modules/leaflet/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+  <script src="node_modules/chart.js/dist/chart.umd.js"></script>
+</head>
+<body class="datacenter-app">
+  <!--
+    Abundance Stack datacenter simulator. Served as / on abundancestack.com (vercel.json
+    routes that host here; locally http://abundancestack.localhost:4173/) and as
+    /datacenter.html on any host. The section bodies below are filled by js/ui/datacenter/.
+  -->
+  <header class="app-header">
+    <div class="header-left">
+      <h1>Abundance Stack</h1>
+      <span class="subtitle">Datacenter power &amp; cooling</span>
+      <div class="header-actions">
+        <button
+          type="button"
+          class="header-icon-button"
+          id="resetStateButton"
+          aria-label="Reset all settings"
+          title="Reset all settings"
+        ><span aria-hidden="true">&#8635;</span></button>
+        <span class="header-action-status" id="headerActionStatus" aria-live="polite"></span>
+      </div>
+    </div>
+    <div class="header-metrics" id="headerMetrics">
+      <!-- Filled by JS -->
+    </div>
+  </header>
+
+  <div class="mobile-pane-bar" id="mobilePaneBar">
+    <div class="mobile-pane-tabs" role="toolbar" aria-label="Panel navigation">
+      <button type="button" class="mobile-pane-toggle" data-panel-target="configPanel" aria-controls="configPanel" aria-expanded="false">
+        Inputs
+      </button>
+      <button type="button" class="mobile-pane-toggle active" data-panel-target="diagramArea" aria-controls="diagramArea" aria-expanded="true">
+        Overview
+      </button>
+      <button type="button" class="mobile-pane-toggle" data-panel-target="resultsPanel" aria-controls="resultsPanel" aria-expanded="false">
+        Results
+      </button>
+    </div>
+  </div>
+
+  <main class="app-main">
+    <!-- LEFT: Configuration Panel -->
+    <aside class="panel config-panel" id="configPanel">
+      <section class="config-section open" data-section="site">
+        <h2 class="section-header" data-toggle="site">
+          <span class="icon">📍</span> Site
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="siteControls"></div>
+      </section>
+
+      <section class="config-section open" data-section="datacenter">
+        <h2 class="section-header" data-toggle="datacenter">
+          <span class="icon">🏢</span> Datacenter
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="datacenterControls"></div>
+      </section>
+
+      <section class="config-section open" data-section="cooling">
+        <h2 class="section-header" data-toggle="cooling">
+          <span class="icon">❄️</span> Cooling
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="coolingControls"></div>
+      </section>
+
+      <section class="config-section open" data-section="architecture">
+        <h2 class="section-header" data-toggle="architecture">
+          <span class="icon">🔌</span> Power Architecture
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="architectureControls"></div>
+      </section>
+
+      <section class="config-section" data-section="grid">
+        <h2 class="section-header" data-toggle="grid">
+          <span class="icon">⚡</span> Grid
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="gridControls"></div>
+      </section>
+
+      <section class="config-section" data-section="solar">
+        <h2 class="section-header" data-toggle="solar">
+          <span class="icon">☀️</span> Solar
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="solarControls"></div>
+      </section>
+
+      <section class="config-section" data-section="battery">
+        <h2 class="section-header" data-toggle="battery">
+          <span class="icon">🔋</span> Battery
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="batteryControls"></div>
+      </section>
+
+      <section class="config-section" data-section="gas">
+        <h2 class="section-header" data-toggle="gas">
+          <span class="icon">🔥</span> Gas Generation
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="gasControls"></div>
+      </section>
+
+      <section class="config-section" data-section="revenue">
+        <h2 class="section-header" data-toggle="revenue">
+          <span class="icon">💰</span> Revenue
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="revenueControls"></div>
+      </section>
+
+      <section class="config-section" data-section="finance">
+        <h2 class="section-header" data-toggle="finance">
+          <span class="icon">🏦</span> Finance &amp; Valuation
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="financeControls"></div>
+      </section>
+    </aside>
+
+    <!-- CENTER: Visualizations -->
+    <section class="diagram-area mobile-open" id="diagramArea">
+      <div class="diagram-container" id="layoutView" role="region" aria-label="Plant layout">
+        <!-- Scaled plant layout (datacenter, cooling, solar, battery, gas, substation), rendered by JS -->
+      </div>
+
+      <div class="chart-section" id="flowCard">
+        <h3>Flows <span id="flowMeta" class="chart-title-meta"></span></h3>
+        <div class="chart-tabs" id="flowTabs" role="tablist" aria-label="Flow type">
+          <button type="button" class="chart-tab active" id="flowTabElectricity" data-flow="electricity" role="tab" aria-selected="true" aria-controls="flowView" tabindex="0">Electricity</button>
+          <button type="button" class="chart-tab" id="flowTabHeat" data-flow="heat" role="tab" aria-selected="false" aria-controls="flowView" tabindex="-1">Heat</button>
+          <button type="button" class="chart-tab" id="flowTabWater" data-flow="water" role="tab" aria-selected="false" aria-controls="flowView" tabindex="-1">Water</button>
+          <button type="button" class="chart-tab" id="flowTabCo2" data-flow="co2" role="tab" aria-selected="false" aria-controls="flowView" tabindex="-1">CO₂</button>
+        </div>
+        <div class="field-note compact-note" id="flowNote"></div>
+        <div class="flow-view" id="flowView" role="tabpanel" aria-labelledby="flowTabElectricity">
+          <!-- Sankey-style SVG, rendered by JS -->
+        </div>
+      </div>
+
+      <div class="chart-section" id="dispatchCard">
+        <h3>Dispatch <span id="dispatchMeta" class="chart-title-meta"></span></h3>
+        <div class="field-note compact-note" id="dispatchNote"></div>
+        <div class="chart-wrapper chart-wrapper-lg">
+          <canvas id="dispatchChart"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-section" id="economicsTimelineCard">
+        <h3>Economics Over Time <span id="economicsTimelineMode" class="chart-title-meta"></span></h3>
+        <div class="field-note compact-note" id="economicsTimelineNote"></div>
+        <div class="chart-wrapper chart-wrapper-timeline">
+          <canvas id="economicsTimelineChart"></canvas>
+        </div>
+        <details class="cash-flow-details" id="cashFlowDetails">
+          <summary>Yearly cash flows <span id="cashFlowSummary" class="chart-title-meta"></span></summary>
+          <div class="cash-flow-body">
+            <div class="cash-flow-toolbar">
+              <div class="field-note compact-note" id="cashFlowNote"></div>
+              <button type="button" id="cashFlowCsvButton" class="cash-flow-csv-btn">Download CSV</button>
+            </div>
+            <div class="cash-flow-table-scroll" id="cashFlowTableScroll" role="region" aria-label="Yearly cash flows" tabindex="0"></div>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <!-- RIGHT: Results Panel -->
+    <aside class="panel results-panel" id="resultsPanel">
+      <section class="results-section open" data-section="keyMetrics">
+        <h2 class="section-header" data-toggle="keyMetrics">
+          <span class="icon">📊</span> Key Metrics
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="keyMetrics"></div>
+      </section>
+
+      <section class="results-section open" data-section="economics">
+        <h2 class="section-header" data-toggle="economics">
+          <span class="icon">💵</span> Economics
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body">
+          <div class="econ-breakdown" id="econBreakdown">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+      </section>
+
+      <section class="results-section" data-section="sensitivity">
+        <h2 class="section-header" data-toggle="sensitivity">
+          <span class="icon">📈</span> Sensitivity
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="sensitivityResults"></div>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="app-footer">
+    <p>Abundance Stack — an independent educational tool for sizing datacenter power and cooling. Data from public sources; not investment advice.
+    View the source on <a href="https://github.com/benschrauwen/terraform-simulator" target="_blank" rel="noreferrer">GitHub</a>
+    · <a href="datacenter-sources.html">Sources</a>.
+    <span class="app-version" id="appVersion">Development build</span></p>
+  </footer>
+
+  <script src="node_modules/lz-string/libs/lz-string.min.js"></script>
+  <script src="node_modules/leaflet/dist/leaflet.js"></script>
+  <script type="module" src="js/datacenter-main.js"></script>
+</body>
+</html>

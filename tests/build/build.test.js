@@ -7,6 +7,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
+const PAGES = ['index.html', 'sources.html', 'datacenter.html', 'datacenter-sources.html'];
 
 // Every build goes to a fresh temp directory so tests never touch (or race) the real dist/.
 function build(t, env = {}) {
@@ -40,11 +41,15 @@ test('production build ships an allowlisted, versioned asset tree', t => {
   [
     'index.html',
     'sources.html',
+    'datacenter.html',
+    'datacenter-sources.html',
     'README.md',
     'LICENSE',
     `${ASSET_DIR}/style.css`,
     `${ASSET_DIR}/js/main.js`,
     `${ASSET_DIR}/js/ui/app.js`,
+    `${ASSET_DIR}/js/datacenter-main.js`,
+    `${ASSET_DIR}/js/ui/datacenter/app.js`,
     `${ASSET_DIR}/js/model/index.js`,
     `${ASSET_DIR}/js/model/scenario.js`,
     `${ASSET_DIR}/js/workers/optimizer-worker.js`,
@@ -60,7 +65,7 @@ test('production build ships an allowlisted, versioned asset tree', t => {
   const files = listFiles(dist);
   files.forEach(relativePath => {
     assert.ok(
-      ['index.html', 'sources.html', 'README.md', 'LICENSE'].includes(relativePath) || relativePath.startsWith(`${ASSET_DIR}/`),
+      [...PAGES, 'README.md', 'LICENSE'].includes(relativePath) || relativePath.startsWith(`${ASSET_DIR}/`),
       `Unexpected file outside the allowlist: ${relativePath}`
     );
     assert.equal(
@@ -85,6 +90,26 @@ test('production build ships an allowlisted, versioned asset tree', t => {
   assert.match(sourcesHtml, new RegExp(`href="${ASSET_DIR}/style\\.css"`));
   assert.match(sourcesHtml, /href="index\.html"/);
   assert.match(html, /href="sources\.html"/);
+
+  // The datacenter pages get the same treatment, with their own module entry.
+  const datacenterHtml = fs.readFileSync(path.join(dist, 'datacenter.html'), 'utf8');
+  const datacenterUrls = [...datacenterHtml.matchAll(/<(?:script|link)\b[^>]*\b(?:src|href)="([^"]+)"/g)].map(match => match[1]);
+  assert.ok(datacenterUrls.length >= 6);
+  datacenterUrls.forEach(url => {
+    assert.ok(url.startsWith(`${ASSET_DIR}/`), `Expected ${url} to be versioned under ${ASSET_DIR}/.`);
+    assert.equal(exists(url), true, `Expected ${url} to resolve inside dist.`);
+  });
+  assert.match(datacenterHtml, new RegExp(`<script type="module" src="${ASSET_DIR}/js/datacenter-main\\.js"></script>`));
+  assert.match(datacenterHtml, /href="datacenter-sources\.html"/);
+  const datacenterSourcesHtml = fs.readFileSync(path.join(dist, 'datacenter-sources.html'), 'utf8');
+  assert.match(datacenterSourcesHtml, new RegExp(`href="${ASSET_DIR}/style\\.css"`));
+  assert.match(datacenterSourcesHtml, /href="datacenter\.html"/);
+
+  // vercel.json routes abundancestack.com to these pages; every route target must ship.
+  const vercelConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
+  vercelConfig.routes.filter(route => route.dest).forEach(route => {
+    assert.equal(exists(route.dest.slice(1)), true, `Expected route target ${route.dest} in dist.`);
+  });
 });
 
 test('the asset version is a content hash, identical for identical sources', t => {
@@ -100,9 +125,10 @@ test('the asset version is a content hash, identical for identical sources', t =
 test('the footer shows the release version, commit date and short sha', t => {
   const { version } = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   const dist = build(t, { RELEASE_DATE: '2026-10-30', RELEASE_SHA: 'abcdef1234567890' });
-  const html = fs.readFileSync(path.join(dist, 'index.html'), 'utf8');
-
-  assert.match(html, new RegExp(`id="appVersion">v${version.replaceAll('.', '\\.')} · 2026-10-30 · abcdef1</span>`));
-  // The source page keeps a neutral label so `npm run dev` never claims to be a release.
-  assert.match(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'), /id="appVersion">Development build</);
+  PAGES.forEach(page => {
+    const html = fs.readFileSync(path.join(dist, page), 'utf8');
+    assert.match(html, new RegExp(`id="appVersion">v${version.replaceAll('.', '\\.')} · 2026-10-30 · abcdef1</span>`), page);
+    // The source pages keep a neutral label so `npm run dev` never claims to be a release.
+    assert.match(fs.readFileSync(path.join(ROOT, page), 'utf8'), /id="appVersion">Development build</, page);
+  });
 });

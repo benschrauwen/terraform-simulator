@@ -29,9 +29,27 @@ npm run preview   # serves dist/ the same way
 
 `PORT` and `HOST` override the dev server address. There is no bundler or framework: `index.html` loads the vendor scripts from `node_modules/` and one native ES module entry, `js/main.js`.
 
-`npm run build` copies an allowlist (`index.html`, `sources.html`, `style.css`, `js/`, the vendor files, `README.md`, `LICENSE`) into `dist/`. Assets go under `dist/assets/<buildId>/`, where the build ID is a short SHA-256 of the shipped asset files (so identical content keeps its URL and any change gets a new one; `BUILD_ID` overrides it), and `index.html` is rewritten to point at them. `DIST_DIR` changes the output directory.
+`npm run build` copies an allowlist (`index.html`, `sources.html`, `datacenter.html`, `datacenter-sources.html`, `style.css`, `js/`, the vendor files, `README.md`, `LICENSE`) into `dist/`. Assets go under `dist/assets/<buildId>/`, where the build ID is a short SHA-256 of the shipped asset files (so identical content keeps its URL and any change gets a new one; `BUILD_ID` overrides it), and the pages are rewritten to point at them. `DIST_DIR` changes the output directory.
 
-The footer shows which release a visitor is looking at: `v<package.json version> · <commit date> · <short sha>`, stamped into `dist/index.html` by the build (the unbuilt page says "Development build"). Bump `version` in `package.json` when you cut a release. Vercel deploys `dist/` using `vercel.json`, which runs the build, marks `/assets/*` immutable and sets a strict Content-Security-Policy. The only external host the CSP allows is the Esri satellite tile server used by the site map.
+The footer shows which release a visitor is looking at: `v<package.json version> · <commit date> · <short sha>`, stamped into each page in `dist/` by the build (the unbuilt page says "Development build"). Bump `version` in `package.json` when you cut a release. Vercel deploys `dist/` using `vercel.json`, which runs the build, marks `/assets/*` immutable and sets a strict Content-Security-Policy. The only external host the CSP allows is the Esri satellite tile server used by the site map.
+
+### Two sites, one codebase
+
+One build and one Vercel deployment serve two domains:
+
+| Host | `/` | `/sources.html` | Entry module |
+| --- | --- | --- | --- |
+| terraform-simulator.com (and any other host) | `index.html` (plant builder) | `sources.html` | `js/main.js` |
+| abundancestack.com, www.abundancestack.com | `datacenter.html` (Abundance Stack datacenter power & cooling simulator) | `datacenter-sources.html` | `js/datacenter-main.js` |
+
+The routing lives in `vercel.json` as `routes` with a `has: [{ "type": "host" }]` condition (`/` and `/index.html` go to `datacenter.html`, `/sources.html` to `datacenter-sources.html`); the URL in the browser does not change. It uses legacy `routes` rather than `rewrites` because Vercel applies `rewrites` only after checking the filesystem, and `/` and `/sources.html` exist as files, so a host rewrite would never fire. `datacenter.html` and `datacenter-sources.html` also work directly on any host.
+
+Locally, `scripts/dev.mjs` reads the same routes and treats `<name>.localhost` as `<name>.com`, so `npm run dev` serves:
+
+- http://127.0.0.1:4173/ (or localhost): the plant builder;
+- http://abundancestack.localhost:4173/: the datacenter simulator (Chrome and Firefox resolve `*.localhost` to loopback; elsewhere add `127.0.0.1 abundancestack.localhost` to `/etc/hosts`).
+
+`npm run preview` applies the same routing to `dist/`. The datacenter code lives in `js/data/datacenter/`, `js/model/datacenter/` and `js/ui/datacenter/`; URLs cited there (and in `datacenter.html`) belong on `datacenter-sources.html`, everything else on `sources.html` (`tests/ui/sources-page.test.js` checks both).
 
 ## Architecture
 
@@ -56,7 +74,7 @@ Imports run one way, top to bottom: a layer imports its own files, lower layers 
 - `js/state/`: `schema.js` is the single source of state fields and defaults.
 - `js/model/`: one file per concern: `solar.js` + `solar-geometry.js` (resource, sky model, mountings), `annual-series.js` (hourly year), `battery.js` (storage + chemical dispatch), `ai-compute.js`, `lifetime-energy.js`, `process.js` (allocation, electrolyzer, DAC, reactors, exploratory routes, buffers), `economics.js`, `finance.js`, `policy.js`, `optimizer-search.js`, `break-even.js` (NPV = 0 sale prices), `cash-flow-table.js` (yearly cash-flow rows + CSV), `scenario.js` (the pipeline), and two pure helpers the UI imports directly: `market-ladder.js` and `tornado.js` (one-at-a-time NPV sensitivity).
 - `js/ui/`: `app.js` plus mixins, `control-spec.js` + `controls.js`, `module-controls.js`, `renderers/`, `charts/` (one module per chart, registered in `charts/index.js`), `diagram.js`, `site-map.js`, `share.js`, `optimizer-client.js`, `formatters.js`.
-- `scripts/`: `dev.mjs` (hardened static server that also applies the `vercel.json` headers, CSP included) and `build.mjs`.
+- `scripts/`: `dev.mjs` (hardened static server that also applies the `vercel.json` routes: headers, CSP included, and host-based page routing) and `build.mjs`.
 
 **Key rule:** `data/`, `state/` and `model/` never touch the DOM. They run unchanged in the browser, in the worker and under Node tests. (`state/saved-site-presets.js` uses `localStorage` behind a guard.) The UI talks to the engine through the `Calc` facade, `ModuleCatalog`, `PolicyModel` and the schema exports (`DEFAULT_STATE`, `CORE_STATE_FIELDS`), and imports `data/` directly for option lists and labels. Every string the UI interpolates into HTML goes through `escapeHtml` (`ui/renderers/markup.js`); visibility is toggled with `el.hidden`, never inline styles (the CSP allows none).
 

@@ -177,3 +177,86 @@ test('index.html only references local assets that exist and declares no inline 
   });
   assert.doesNotMatch(html, /\son[a-z]+=/i, 'Expected no inline event handler attributes (blocked by CSP).');
 });
+
+/* datacenter.html: the Abundance Stack page shares the shell conventions above. */
+const datacenterHtml = fs.readFileSync(path.join(ROOT, 'datacenter.html'), 'utf8');
+const datacenterTags = name => datacenterHtml.match(new RegExp(`<${name}\\b[^>]*>`, 'gi')) || [];
+const hasDatacenterId = id => new RegExp(`\\bid=(["'])${id}\\1`).test(datacenterHtml);
+
+test('datacenter.html exposes the section and output anchors the datacenter UI fills', () => {
+  const missing = [
+    'resetStateButton', 'headerActionStatus', 'headerMetrics', 'mobilePaneBar',
+    'configPanel', 'diagramArea', 'resultsPanel',
+    'siteControls', 'datacenterControls', 'coolingControls', 'architectureControls', 'gridControls',
+    'solarControls', 'batteryControls', 'gasControls', 'revenueControls', 'financeControls',
+    'layoutView', 'flowTabs', 'flowView', 'flowNote', 'dispatchChart', 'dispatchNote',
+    'economicsTimelineChart', 'economicsTimelineMode', 'economicsTimelineNote',
+    'cashFlowDetails', 'cashFlowSummary', 'cashFlowNote', 'cashFlowCsvButton', 'cashFlowTableScroll',
+    'keyMetrics', 'econBreakdown', 'sensitivityResults', 'appVersion',
+  ].filter(id => !hasDatacenterId(id));
+  assert.deepEqual(missing, []);
+
+  const ids = [...datacenterHtml.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
+  assert.deepEqual(ids.filter((id, index) => ids.indexOf(id) !== index), [], 'Expected unique ids.');
+  // Visible text only: the GitHub repository URL keeps its historical name.
+  const visibleText = datacenterHtml.replace(/<!--[\s\S]*?-->|<[^>]*>/g, ' ');
+  assert.doesNotMatch(visibleText, /Terraform/i, 'The Abundance Stack site carries no Terraform branding.');
+});
+
+test('datacenter.html flow tabs expose a complete tablist contract', () => {
+  const flowTabs = datacenterTags('button').filter(button => button.includes('data-flow='));
+  assert.deepEqual(flowTabs.map(button => attr(button, 'data-flow')), ['electricity', 'heat', 'water', 'co2']);
+  flowTabs.forEach(button => {
+    assert.equal(attr(button, 'role'), 'tab');
+    assert.equal(attr(button, 'aria-controls'), 'flowView');
+    assert.match(attr(button, 'aria-selected'), /^(true|false)$/);
+    assert.match(attr(button, 'tabindex'), /^(?:-1|0)$/);
+  });
+  const panel = datacenterTags('div').find(div => attr(div, 'id') === 'flowView');
+  assert.equal(attr(panel, 'role'), 'tabpanel');
+  assert.equal(attr(panel, 'aria-labelledby'), attr(flowTabs.find(button => attr(button, 'aria-selected') === 'true'), 'id'));
+});
+
+test('datacenter.html buttons, mobile pane targets and new-tab links follow the shell rules', () => {
+  datacenterTags('button').forEach(button => {
+    assert.equal(attr(button, 'type'), 'button', `Expected explicit type="button" on ${button}`);
+  });
+  datacenterTags('button')
+    .filter(button => button.includes('mobile-pane-toggle'))
+    .forEach(button => {
+      const target = attr(button, 'data-panel-target');
+      assert.ok(hasDatacenterId(target), `Expected #${target}`);
+      assert.equal(attr(button, 'aria-controls'), target);
+    });
+  datacenterTags('a')
+    .filter(anchor => attr(anchor, 'target') === '_blank')
+    .forEach(anchor => assert.match(attr(anchor, 'rel'), /\bno(?:opener|referrer)\b/, anchor));
+});
+
+test('datacenter.html loads one module entry plus the same classic vendor scripts', () => {
+  const scripts = datacenterTags('script');
+  assert.deepEqual(scripts.filter(script => attr(script, 'type') === 'module').map(script => attr(script, 'src')), ['js/datacenter-main.js']);
+  const classicScripts = scripts.filter(script => attr(script, 'type') !== 'module');
+  classicScripts.forEach(script => assert.ok(attr(script, 'src'), `Expected no inline scripts: ${script}`));
+  assert.deepEqual(classicScripts.map(script => attr(script, 'src')), [
+    'node_modules/chart.js/dist/chart.umd.js',
+    'node_modules/lz-string/libs/lz-string.min.js',
+    'node_modules/leaflet/dist/leaflet.js',
+  ]);
+});
+
+test('every page only references local assets that exist and declares no inline handlers', () => {
+  ['index.html', 'sources.html', 'datacenter.html', 'datacenter-sources.html'].forEach(page => {
+    const pageHtml = fs.readFileSync(path.join(ROOT, page), 'utf8');
+    const urls = [...pageHtml.matchAll(/<(?:script|link)\b[^>]*\b(?:src|href)="([^"]+)"/gi)].map(match => match[1]);
+    assert.ok(urls.length > 0, page);
+    urls.forEach(url => {
+      assert.doesNotMatch(url, /^(?:[a-z]+:)?\/\//i, `${page}: expected self-hosted asset, got ${url}`);
+      assert.equal(fs.existsSync(path.join(ROOT, url)), true, `${page}: expected ${url} to exist.`);
+    });
+    assert.doesNotMatch(pageHtml, /\son[a-z]+=/i, `${page}: no inline event handlers (blocked by CSP).`);
+    assert.doesNotMatch(pageHtml, /<script\b(?![^>]*\bsrc=)[^>]*>/i, `${page}: no inline scripts (blocked by CSP).`);
+    const localLinks = [...pageHtml.matchAll(/<a\b[^>]*\bhref="([^"#:]+\.html)(?:#[^"]*)?"/g)].map(match => match[1]);
+    localLinks.forEach(link => assert.equal(fs.existsSync(path.join(ROOT, link)), true, `${page}: link to missing ${link}`));
+  });
+});

@@ -24,9 +24,3 @@ export function formatMoney(value) {
   if (absolute >= 1e3) return `${sign}$${(absolute / 1e3).toFixed(1)}K`;
   return `${sign}$${absolute.toFixed(0)}`;
 }
-
-// The defaults now reproduce Terraform's measured 2026 solar build (~$0.72/W
-// all-in), at which the default methane plant does not pay back. Tests that need
-// a profitable baseline (finite IRR, positive operating cash) use the earlier
-// aspirational solar costs explicitly instead of relying on the defaults.
-export const LOW_COST_SOLAR = Object.freeze({ panelCostPerW: 0.20, bosCostPerW: 0.12 });

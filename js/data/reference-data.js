@@ -142,17 +142,54 @@ export const LOCATION_PRESETS = [
    off-Earth profiles (Mars, generic Moon), relative to fixed tilt. The
    spacing and BOS sensitivities scale layout and balance-of-system cost with
    latitude and cloudiness relative to SOLAR_LAYOUT_REFERENCE. */
-// typicalBOS ($/Wdc, before site adjustments) is what a mounting change loads into
-// the BOS slider. East-West is calibrated to Terraform's 2026 build (~$0.72/W all-in
-// with $0.29/W modules leaves ~$0.40/W BOS; see bosCostPerW in js/state/schema.js).
-// The other mountings keep their earlier illustrative premiums over East-West
-// (+0.08 fixed, +0.23 single-axis, +0.43 dual-axis); they are not sourced quotes.
+// bosPremiumOverEw ($/Wdc) is the BOS a mounting adds over the East-West BOS of the
+// selected solar cost basis (SOLAR_COST_PRESETS); switching mounting shifts the BOS
+// slider by the difference. The premiums are illustrative, not sourced quotes.
+// Solar cost bases offered in the Solar Array section: module price and East-West
+// BOS ($/Wdc); land and site prep stay at their own sliders. The default is the
+// cheaper target so the default plant shows a working business case; the measured
+// build is one selection away.
+export const SOLAR_COST_PRESETS = {
+  'terraform-target': {
+    label: 'Terraform target: <1 ¢/kWh (~$0.35/W all-in)',
+    // Terraform's 2026 update targets power below 1 c/kWh. On the same undiscounted,
+    // no-O&M basis that reproduces its measured 1.6 c/kWh (see below), this stack
+    // gives ~0.74 c/kWh at the default site. The module/BOS split is illustrative.
+    // https://terraformindustries.wordpress.com/2026/10/21/terraform-2026-update/
+    panelCostPerW: 0.20,
+    ewBosCostPerW: 0.12,
+  },
+  'terraform-2026-build': {
+    label: 'Terraform 2026 build, measured (~$0.72/W all-in)',
+    // 1.8 MW for $1.3M "including land, site improvements" (~$0.72/W), 1.6 c/kWh
+    // amortized. No breakdown is given: modules take the OPIS DDP US TOPCon 600 W+
+    // price ($0.29/W, Mar 2026; the 2,984 panels average ~603 W) and BOS the
+    // remainder after default land and site prep.
+    // https://terraformindustries.wordpress.com/2026/10/27/how-terraform-built-the-cheapest-solar-in-north-america/
+    panelCostPerW: 0.29,
+    ewBosCostPerW: 0.40,
+  },
+};
+
+export const DEFAULT_SOLAR_COST_PRESET = 'terraform-target';
+
+/** Module price and BOS ($/Wdc) a solar cost basis implies for one mounting type. */
+export function getSolarCostPresetValues(presetId, mountingType) {
+  const preset = SOLAR_COST_PRESETS[presetId] || SOLAR_COST_PRESETS[DEFAULT_SOLAR_COST_PRESET];
+  const premium = MOUNTING_TYPES[mountingType]?.bosPremiumOverEw ?? 0;
+  return {
+    panelCostPerW: preset.panelCostPerW,
+    // Rounded to the BOS slider's $0.01 step so presets match slider values exactly.
+    bosCostPerW: Math.round((preset.ewBosCostPerW + premium) * 100) / 100,
+  };
+}
+
 export const MOUNTING_TYPES = {
   fixed: {
     label: 'Fixed Tilt',
     yieldMult: 1.0,
     groundCoverageRatio: 0.45,
-    typicalBOS: 0.48,
+    bosPremiumOverEw: 0.08,
     spacingLatitudeSensitivity: 0.45,
     spacingCloudRelief: 0.08,
     bosLayoutSensitivity: 0.30,
@@ -164,7 +201,7 @@ export const MOUNTING_TYPES = {
     label: 'East-West Fixed',
     yieldMult: 0.92,
     groundCoverageRatio: 0.75,
-    typicalBOS: 0.40,
+    bosPremiumOverEw: 0,
     spacingLatitudeSensitivity: 0.18,
     spacingCloudRelief: 0.10,
     bosLayoutSensitivity: 0.20,
@@ -176,7 +213,7 @@ export const MOUNTING_TYPES = {
     label: 'Single-Axis Tracker',
     yieldMult: 1.18,
     groundCoverageRatio: 0.30,
-    typicalBOS: 0.63,
+    bosPremiumOverEw: 0.23,
     spacingLatitudeSensitivity: 0.60,
     spacingCloudRelief: 0.15,
     bosLayoutSensitivity: 0.35,
@@ -188,7 +225,7 @@ export const MOUNTING_TYPES = {
     label: 'Dual-Axis Tracker',
     yieldMult: 1.28,
     groundCoverageRatio: 0.22,
-    typicalBOS: 0.83,
+    bosPremiumOverEw: 0.43,
     spacingLatitudeSensitivity: 0.55,
     spacingCloudRelief: 0.12,
     bosLayoutSensitivity: 0.32,

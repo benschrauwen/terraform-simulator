@@ -8,9 +8,11 @@
 import { POLICY_SCHEMES } from '../data/policies.js';
 import {
   AI_COMPUTE_DEFAULTS,
+  DEFAULT_SOLAR_COST_PRESET,
   METHANE_MARKET_PRESETS,
   MOUNTING_TYPES,
   PLANETARY_BODIES,
+  SOLAR_COST_PRESETS,
 } from '../data/reference-data.js';
 import { ModuleCatalog } from '../data/module-catalog.js';
 
@@ -81,15 +83,11 @@ export const CORE_STATE_FIELDS = [
   { key: 'siteYieldMwhPerMwdcYear', type: 'number', min: 0, max: 1e6, defaultValue: 1974 },
   { key: 'systemSizeMW', type: 'number', min: 0, max: 1e6, defaultValue: 1.0 },
   { key: 'panelEfficiency', type: 'number', min: 1, max: 100, defaultValue: 20 },
-  // Solar cost defaults reproduce Terraform's first real build: 1.8 MW for $1.3M
-  // "including land, site improvements" (~$0.72/W all-in), Kern County CA, 2026:
-  // https://terraformindustries.wordpress.com/2026/10/27/how-terraform-built-the-cheapest-solar-in-north-america/
-  // The post gives no breakdown. Modules take the OPIS DDP US TOPCon 600 W+ price
-  // ($0.29/W, Mar 2026; the 2,984 panels average ~603 W); BOS is the remainder
-  // (racking, wiring, labour, engineering, permitting) after default land and site prep.
-  { key: 'panelCostPerW', type: 'number', min: 0, max: 1e6, defaultValue: 0.29 },
+  // Solar costs default to the target basis on the default East-West mounting
+  // (see SOLAR_COST_PRESETS in js/data/reference-data.js for both bases and sources).
+  { key: 'panelCostPerW', type: 'number', min: 0, max: 1e6, defaultValue: SOLAR_COST_PRESETS[DEFAULT_SOLAR_COST_PRESET].panelCostPerW },
   { key: 'panelDegradationAnnual', type: 'number', min: 0, max: 100, defaultValue: 0.65 },
-  { key: 'bosCostPerW', type: 'number', min: 0, max: 1e6, defaultValue: 0.40 },
+  { key: 'bosCostPerW', type: 'number', min: 0, max: 1e6, defaultValue: SOLAR_COST_PRESETS[DEFAULT_SOLAR_COST_PRESET].ewBosCostPerW },
   { key: 'landCostPerAcre', type: 'number', min: 0, max: 1e9, defaultValue: 5000 },
   { key: 'sitePrepCostPerAcre', type: 'number', min: 0, max: 1e9, defaultValue: 15000 },
 

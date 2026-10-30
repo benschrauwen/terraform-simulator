@@ -16,6 +16,8 @@ import {
   SQUARE_METERS_PER_ACRE,
 } from '../data/assumptions.js';
 import {
+  DEFAULT_SOLAR_COST_PRESET,
+  getSolarCostPresetValues,
   LOCATION_PRESETS,
   MOUNTING_TYPES,
   PLANETARY_BODIES,
@@ -276,7 +278,7 @@ export const solarMethods = {
   },
 
   getLocationAdjustedBosCostPerW(state, preset, ghi, mounting, layoutSpacingMultiplier = 1) {
-    const baseBosCostPerW = Math.max(0, state.bosCostPerW ?? mounting?.typicalBOS ?? 0);
+    const baseBosCostPerW = Math.max(0, state.bosCostPerW ?? getSolarCostPresetValues(DEFAULT_SOLAR_COST_PRESET, state.mountingType).bosCostPerW);
     if ((state.body || 'earth') !== 'earth') {
       return {
         baseBosCostPerW,
@@ -331,7 +333,7 @@ export const solarMethods = {
     const annualMWh = state.systemSizeMW * siteYield;
     const dailyMWh = annualMWh / body.cyclesPerEarthYear;
     const peakPowerKW = state.systemSizeMW * 1000;
-    const baseBosCostPerW = Math.max(0, state.bosCostPerW ?? mounting.typicalBOS ?? 0);
+    const baseBosCostPerW = Math.max(0, state.bosCostPerW ?? getSolarCostPresetValues(DEFAULT_SOLAR_COST_PRESET, state.mountingType).bosCostPerW);
     const totalPanelCost = state.systemSizeMW * 1e6 * state.panelCostPerW;
 
     const panelArea = (state.systemSizeMW * 1e6) / ((state.panelEfficiency / 100) * 1000);

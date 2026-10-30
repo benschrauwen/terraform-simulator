@@ -12,7 +12,7 @@ import {
   crf,
   getLevelizedSolarDegradationFactor,
 } from '../../js/model/finance.js';
-import { Calc, createState, runScenario, LOW_COST_SOLAR } from './harness.js';
+import { Calc, createState, runScenario } from './harness.js';
 
 const close = (actual, expected, tolerance, message) => assert.ok(
   Math.abs(actual - expected) <= tolerance,
@@ -111,11 +111,11 @@ test('level-payment debt: P = 1e6 at 6.5% over 15 years', () => {
 });
 
 test('NPV identities: zero discount sums cash flows; independent recomputation matches; NPV(IRR) = 0', () => {
-  const zeroRate = runScenario({ ...LOW_COST_SOLAR, discountRate: 0 }).economics;
+  const zeroRate = runScenario({ discountRate: 0 }).economics;
   const undiscounted = -zeroRate.netCapexAtClose + zeroRate.yearlyCashFlows.reduce((sum, entry) => sum + entry.netCashFlow, 0);
   close(zeroRate.npv, undiscounted, 1e-6);
 
-  const economics = runScenario(LOW_COST_SOLAR).economics;
+  const economics = runScenario().economics;
   const rate = createState().discountRate / 100;
   const cashFlows = [-economics.netCapexAtClose, ...economics.yearlyCashFlows.map(entry => entry.netCashFlow)];
   const recomputed = cashFlows.reduce((sum, value, year) => sum + value / Math.pow(1 + rate, year), 0);

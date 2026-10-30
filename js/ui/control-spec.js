@@ -61,17 +61,32 @@ export const CONTROL_SPECS = Object.freeze([
   // Solar array
   { type: 'range', id: 'systemSize', stateKey: 'systemSizeMW', format: formatSystemSizeMW },
   { type: 'range', id: 'panelEfficiency', format: value => `${fixed(1)(value)}%` },
-  { type: 'range', id: 'panelCost', stateKey: 'panelCostPerW', format: value => `$${fixed(2)(value)}/W` },
+  {
+    type: 'range',
+    id: 'panelCost',
+    stateKey: 'panelCostPerW',
+    format: value => `$${fixed(2)(value)}/W`,
+    onInput: app => app.syncSolarCostPresetControl(),
+  },
   { type: 'range', id: 'panelDegradationAnnual', format: value => `${fixed(2)(value)}%/yr` },
   {
     type: 'select',
     id: 'mountingType',
-    onChange: (app, value) => {
-      app.state.bosCostPerW = MOUNTING_TYPES[value].typicalBOS;
+    // Keep the chosen cost basis: shift BOS by the mounting's premium over East-West.
+    onChange: (app, value, previous) => {
+      const premium = key => MOUNTING_TYPES[key]?.bosPremiumOverEw ?? 0;
+      const shifted = app.state.bosCostPerW + premium(value) - premium(previous);
+      app.state.bosCostPerW = Math.max(0, Math.round(shifted * 100) / 100);
       app.syncStateToControls();
     },
   },
-  { type: 'range', id: 'bosCost', stateKey: 'bosCostPerW', format: value => `$${fixed(2)(value)}/W` },
+  {
+    type: 'range',
+    id: 'bosCost',
+    stateKey: 'bosCostPerW',
+    format: value => `$${fixed(2)(value)}/W`,
+    onInput: app => app.syncSolarCostPresetControl(),
+  },
   { type: 'range', id: 'landCost', stateKey: 'landCostPerAcre', format: value => `${wholeDollars(value)}/acre` },
   { type: 'range', id: 'sitePrepCost', stateKey: 'sitePrepCostPerAcre', format: value => `${wholeDollars(value)}/acre` },
 

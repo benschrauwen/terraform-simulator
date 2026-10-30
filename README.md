@@ -373,7 +373,7 @@ node --input-type=module -e "import {DEFAULT_STATE} from './js/model/index.js'; 
 The headline default scenario is:
 
 - **Site:** Mojave Desert preset with base yield 1,974 MWh/MWdc-yr (PVGIS) on east-west fixed racking (x0.86). Earth annual-average view.
-- **Plant:** 1 MWdc at ~$0.72/W all-in, matching Terraform's first 1.8 MW build ($1.3M including land and site improvements, Oct 2026 post): $0.29/W modules (US delivered TOPCon price) and $0.40/W BOS as the remainder, since the post gives no breakdown. No battery, 100% chemical sizing, 30-year solar life with 0.65%/yr degradation. At these real build costs the default methane plant does not pay back; the earlier aspirational $0.20/$0.12 stack is a slider move away.
+- **Plant:** 1 MWdc on the "Terraform target" solar cost basis ($0.20/W modules, $0.12/W East-West BOS, ~$0.35/W all-in with land and site prep; ~0.74 ¢/kWh on Terraform's undiscounted amortization basis, matching its <1 ¢/kWh goal). The Solar Cost Basis select switches to Terraform's measured 2026 build (~$0.72/W all-in, Oct 2026 post), at which the default methane plant does not pay back. Both bases live in `SOLAR_COST_PRESETS` (`js/data/reference-data.js`). No battery, 100% chemical sizing, 30-year solar life with 0.65%/yr degradation.
 - **Products:** methane only. Electrolyzer at 79 kWh/kg and $100/kW, DAC at 3,440 kWh/t and $450 per t-yr, Sabatier at 95% and $50/kW-CH4, 7-year process lives. Methane sells at $20/MCF. Methanol, MTG, exploratory routes, feed buffers, AI and debt are all off.
 - **Policy and finance:** US 45V at $3.28/kg H2 for 10 years, an 8% discount rate and a 30-year horizon.
 

@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { Calc, createState, formatMoney, runScenario, LOW_COST_SOLAR } from './harness.js';
+import { Calc, createState, formatMoney, runScenario } from './harness.js';
 
 test('solar land use stays physically larger than panel area while preserving denser east-west packing', () => {
   const baseOverrides = {
@@ -301,7 +301,6 @@ test('undersizing the battery-backed chemical plant preserves the full-capture r
 
 test('specific-day selector no longer changes annual non-ai sizing or economics', () => {
   const average = runScenario({
-    ...LOW_COST_SOLAR,
     systemSizeMW: 100,
     batteryCapacityMWh: 0,
     chemicalSizingPercent: 72,
@@ -309,7 +308,6 @@ test('specific-day selector no longer changes annual non-ai sizing or economics'
     dayOfYear: 355,
   });
   const specific = runScenario({
-    ...LOW_COST_SOLAR,
     systemSizeMW: 100,
     batteryCapacityMWh: 0,
     chemicalSizingPercent: 72,

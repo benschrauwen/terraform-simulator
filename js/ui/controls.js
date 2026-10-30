@@ -41,6 +41,7 @@ export const controlMethods = {
     this.controlSpecs.forEach(spec => this.bindControlSpec(spec));
 
     this.bindLocationPresetControl();
+    this.bindSolarCostPresetControl();
     this.bindModuleControls();
     this.bindSavedSitePresetControls();
     this.bindOptimizeButtons();
@@ -79,8 +80,9 @@ export const controlMethods = {
       } else {
         value = spec.parse ? spec.parse(el.value) : el.value;
       }
+      const previous = this.state[stateKey];
       this.state[stateKey] = value;
-      spec.onChange?.(this, value);
+      spec.onChange?.(this, value, previous);
       this.recalculate();
     });
   },
@@ -98,6 +100,7 @@ export const controlMethods = {
   syncStateToControls() {
     (this.controlSpecs || []).forEach(spec => this.syncControlSpec(spec));
     this.syncLocationControls();
+    this.syncSolarCostPresetControl();
     this.syncModuleControls();
     this.renderPolicyInputs();
     this.syncLoadConfigTabs();

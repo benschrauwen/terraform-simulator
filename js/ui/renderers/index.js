@@ -1,5 +1,6 @@
 /* Result panels attached to App: info read-outs, header metrics, score, production, economics, impact */
 
+import { Calc } from '../../model/index.js';
 import { SolarGeometry } from '../../model/solar-geometry.js';
 import { Diagram } from '../diagram.js';
 import { FormatNumbers } from '../format-numbers.js';
@@ -293,6 +294,7 @@ export const rendererMethods = {
       state: this.state,
       methaneMarket: this.getMethaneMarketConfig(),
       cycleUnit: this.getCycleRateUnit(r),
+      breakEven: Calc.calculateBreakEvenPrices(r.state, { baseResult: r }),
     });
   },
 

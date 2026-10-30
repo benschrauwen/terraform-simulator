@@ -29,7 +29,7 @@ test('economics breakdown renders the unlevered row groups by default', () => {
     'Cost breakdown',
     'Revenue breakdown',
     'Unit economics',
-    'Context & routes',
+    'Context &amp; routes',
   ]);
   assert.match(html, /<span class="econ-metric-label tooltip-label"[^>]*>NPV<\/span>/);
   assert.doesNotMatch(html, /Equity IRR/);

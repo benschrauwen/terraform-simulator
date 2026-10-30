@@ -6,6 +6,7 @@ import {
   MOUNTING_TYPES,
 } from '../data/reference-data.js';
 import { PolicyModel } from '../model/policy.js';
+import { escapeAttribute, escapeHtml } from './renderers/markup.js';
 
 // Presentation-only grouping of the methane market presets; presets not listed stay ungrouped.
 const METHANE_MARKET_OPTGROUPS = {
@@ -15,7 +16,11 @@ const METHANE_MARKET_OPTGROUPS = {
 };
 
 function optionHtml({ value, label }) {
-  return `<option value="${value}">${label}</option>`;
+  return `<option value="${escapeAttribute(value)}">${escapeHtml(label)}</option>`;
+}
+
+function optgroupHtml(label, optionsHtml) {
+  return `<optgroup label="${escapeAttribute(label)}">${optionsHtml}</optgroup>`;
 }
 
 /** Render options in order, wrapping consecutive options that share a `group` in one <optgroup>. */
@@ -28,7 +33,7 @@ function groupedOptionsHtml(options) {
   });
   return runs.map(({ group, options: runOptions }) => {
     const html = runOptions.map(optionHtml).join('');
-    return group ? `<optgroup label="${group}">${html}</optgroup>` : html;
+    return group ? optgroupHtml(group, html) : html;
   }).join('');
 }
 
@@ -54,7 +59,7 @@ export const selectOptionMethods = {
       const optionsHtml = group.options
         .map(option => optionHtml({ value: option.id, label: option.label }))
         .join('');
-      return `<optgroup label="${group.label}">${optionsHtml}</optgroup>`;
+      return optgroupHtml(group.label, optionsHtml);
     }).join(''));
 
     setOptions('methaneMarketPreset', groupedOptionsHtml(

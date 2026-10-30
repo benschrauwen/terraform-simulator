@@ -1,4 +1,10 @@
-/* Small HTML-string builders shared by the result renderers */
+/*
+ * Small HTML-string builders shared by the result renderers.
+ *
+ * Every text argument is escaped. Only parameters explicitly named `...Html`
+ * (e.g. econGroup's rowsHtml) take markup, and callers must build those from
+ * these same builders.
+ */
 
 export const EDUCATIONAL_TOOLTIPS = Object.freeze({
   projectIrr: 'Internal rate of return on project cash flows before debt financing.',
@@ -11,13 +17,14 @@ export const EDUCATIONAL_TOOLTIPS = Object.freeze({
   residualChemHoursCycle: 'Average hours per cycle left for chemicals after AI load is served first.',
 });
 
-export function escapeAttribute(value) {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
+/** Escape a value for HTML text content or a double-quoted attribute value. */
+export function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => HTML_ESCAPES[char]);
 }
+
+export const escapeAttribute = escapeHtml;
 
 export function tooltipAttr(text = '') {
   return text ? ` data-tooltip="${escapeAttribute(text)}"` : '';
@@ -25,8 +32,8 @@ export function tooltipAttr(text = '') {
 
 export function tooltipLabel(label, tooltip = '', className = '') {
   const classNames = [className, tooltip ? 'tooltip-label' : ''].filter(Boolean).join(' ');
-  const classAttr = classNames ? ` class="${classNames}"` : '';
-  return `<span${classAttr}${tooltipAttr(tooltip)}>${label}</span>`;
+  const classAttr = classNames ? ` class="${escapeAttribute(classNames)}"` : '';
+  return `<span${classAttr}${tooltipAttr(tooltip)}>${escapeHtml(label)}</span>`;
 }
 
 /** Set or clear the data-tooltip of an existing element. */
@@ -46,23 +53,24 @@ export function applyTooltip(element, text = '') {
 export function econMetric(label, value, cls = '', note = '', title = '') {
   const tooltipText = title || note;
   const labelMarkup = tooltipLabel(label, tooltipText, 'econ-metric-label');
-  const noteMarkup = note ? `<span class="econ-metric-note">${note}</span>` : '';
-  return `<div class="econ-metric ${cls}">
+  const noteMarkup = note ? `<span class="econ-metric-note">${escapeHtml(note)}</span>` : '';
+  return `<div class="econ-metric ${escapeAttribute(cls)}">
       ${labelMarkup}
-      <span class="econ-metric-value">${value}</span>
+      <span class="econ-metric-value">${escapeHtml(value)}</span>
       ${noteMarkup}
     </div>`;
 }
 
+/** A collapsible group; `rowsHtml` is trusted markup built with econRow. */
 export function econGroup(title, summary, rowsHtml, hint = '') {
-  const hintMarkup = hint ? `<span class="econ-group-hint">${hint}</span>` : '';
+  const hintMarkup = hint ? `<span class="econ-group-hint">${escapeHtml(hint)}</span>` : '';
   return `<details class="econ-group">
       <summary>
         <span class="econ-group-copy">
-          <span class="econ-group-title">${title}</span>
+          <span class="econ-group-title">${escapeHtml(title)}</span>
           ${hintMarkup}
         </span>
-        <span class="econ-group-summary">${summary}</span>
+        <span class="econ-group-summary">${escapeHtml(summary)}</span>
       </summary>
       <div class="econ-group-body">${rowsHtml}</div>
     </details>`;
@@ -70,17 +78,20 @@ export function econGroup(title, summary, rowsHtml, hint = '') {
 
 export function econRow(label, value, cls = '', title = '') {
   const labelMarkup = tooltipLabel(label, title, 'econ-label');
-  return `<div class="econ-row ${cls}">
+  return `<div class="econ-row ${escapeAttribute(cls)}">
       ${labelMarkup}
-      <span class="econ-value">${value}</span>
+      <span class="econ-value">${escapeHtml(value)}</span>
     </div>`;
 }
 
-/** One cell of the production / environmental-impact grids. */
+/**
+ * One cell of the production / environmental-impact grids.
+ * `_icon` is unused (the dot colour comes from `cls`); it stays until the callers drop it.
+ */
 export function prodItem(cls, _icon, label, value, unit) {
-  const unitMarkup = unit ? `<span class="prod-unit">${unit}</span>` : '';
-  return `<div class="production-item ${cls}">
-      <span class="prod-label"><span class="prod-dot" aria-hidden="true"></span>${label}</span>
-      <span class="prod-value">${value}${unitMarkup}</span>
+  const unitMarkup = unit ? `<span class="prod-unit">${escapeHtml(unit)}</span>` : '';
+  return `<div class="production-item ${escapeAttribute(cls)}">
+      <span class="prod-label"><span class="prod-dot" aria-hidden="true"></span>${escapeHtml(label)}</span>
+      <span class="prod-value">${escapeHtml(value)}${unitMarkup}</span>
     </div>`;
 }

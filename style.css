@@ -1653,6 +1653,19 @@ input[type="range"]:disabled {
   height: 160px;
 }
 
+/* The tornado's height follows its row count (set from JS); this is the floor. */
+.tornado-card {
+  margin-bottom: 10px;
+}
+
+.tornado-card .tornado-note {
+  margin: 0 0 8px;
+}
+
+.sensitivity-card .chart-wrapper-tornado {
+  height: 220px;
+}
+
 /* ============ PLANT SCORE ============ */
 
 .plant-score-card {

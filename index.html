@@ -786,6 +786,15 @@
           <span class="chevron">▾</span>
         </h2>
         <div class="section-body">
+          <div class="sensitivity-card tornado-card" id="tornadoCard" hidden>
+            <div class="sensitivity-card-title">What drives NPV</div>
+            <div class="field-note tornado-note">
+              Each row moves one input from its low to its high bound while every other input stays at its current value; bars run from the current NPV (white line) to the NPV at each bound. Red dashes mark NPV = 0. Hover a bar for the input values.
+            </div>
+            <div class="chart-wrapper chart-wrapper-tornado">
+              <canvas id="tornadoChart" role="img" aria-label="NPV tornado chart"></canvas>
+            </div>
+          </div>
           <div class="sensitivity-grid">
             <div class="sensitivity-card" id="sensitivityMethaneCard" hidden>
               <div class="sensitivity-card-title">Methane price sensitivity</div>

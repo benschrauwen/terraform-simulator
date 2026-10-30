@@ -133,7 +133,7 @@ export class App {
       this.pendingSensitivityTimer = null;
       const pendingResults = this.pendingSensitivityResults || this.lastResults;
       this.pendingSensitivityResults = null;
-      if (pendingResults) this.updateSensitivityChart(pendingResults);
+      if (pendingResults) this.updateSensitivityCharts(pendingResults);
     }, this.sensitivityDebounceMs);
   }
 
@@ -141,7 +141,7 @@ export class App {
     clearTimeout(this.pendingSensitivityTimer);
     this.pendingSensitivityTimer = null;
     this.pendingSensitivityResults = null;
-    if (results) this.updateSensitivityChart(results);
+    if (results) this.updateSensitivityCharts(results);
   }
 
   showCalculationError(error) {

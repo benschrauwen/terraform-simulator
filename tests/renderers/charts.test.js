@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { Calc } from '../../js/model/index.js';
-import { chartMethods } from '../../js/ui/charts.js';
+import { chartMethods } from '../../js/ui/charts/index.js';
 
 function createElement(id) {
   return {

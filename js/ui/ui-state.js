@@ -1,4 +1,4 @@
-/* UI state sync helpers attached to App */
+/* Result-dependent visibility and derived read-outs (planetary labels, markets, feed split) */
 
 import { Calc } from '../model/index.js';
 import { ModuleCatalog } from '../model/module-catalog.js';
@@ -169,71 +169,6 @@ export const uiStateMethods = {
     });
   },
 
-  syncModuleCapexControl(moduleId) {
-    const input = document.getElementById(`${moduleId}CapexBasis`);
-    const label = document.getElementById(`${moduleId}CapexBasisLabel`);
-    if (!input) return;
-
-    const capexConfig = Calc.getModuleCapexControlConfig(moduleId, this.state[`${moduleId}Route`]);
-    input.min = String(capexConfig.min);
-    input.max = String(capexConfig.max);
-    input.step = String(capexConfig.step);
-    this.state[`${moduleId}CapexBasis`] = Calc.clampNumber(
-      this.state[`${moduleId}CapexBasis`],
-      capexConfig.min,
-      capexConfig.max,
-      capexConfig.defaultValue
-    );
-    input.value = String(this.state[`${moduleId}CapexBasis`]);
-    if (label) label.textContent = `CAPEX (${capexConfig.unitLabel})`;
-    this.syncRangeDisplay(
-      `${moduleId}CapexBasis`,
-      this.state[`${moduleId}CapexBasis`],
-      value => this.formatExploratoryCapexBasis(moduleId, value)
-    );
-  },
-
-  syncExploratoryCapexControl(moduleId) {
-    return this.syncModuleCapexControl(moduleId);
-  },
-
-  syncModuleMarketControl(moduleId) {
-    const input = document.getElementById(`${moduleId}Price`);
-    const label = document.getElementById(`${moduleId}MarketLabel`);
-    if (!input) return;
-
-    const marketConfig = ModuleCatalog.getMarketConfig(moduleId, this.state[`${moduleId}Route`]);
-    if (!marketConfig) return;
-
-    input.min = String(marketConfig.min);
-    input.max = String(marketConfig.max);
-    input.step = String(marketConfig.step);
-    this.state[`${moduleId}Price`] = Calc.clampNumber(
-      this.state[`${moduleId}Price`],
-      marketConfig.min,
-      marketConfig.max,
-      marketConfig.defaultValue
-    );
-    input.value = String(this.state[`${moduleId}Price`]);
-    if (label) label.textContent = `${marketConfig.label} (${marketConfig.unitLabel})`;
-    this.syncRangeDisplay(
-      `${moduleId}Price`,
-      this.state[`${moduleId}Price`],
-      value => this.formatModuleMarketValue(moduleId, value)
-    );
-  },
-
-  syncModuleBufferControl(moduleId) {
-    const wrap = document.getElementById(`${moduleId}BufferWrap`);
-    if (!wrap) return;
-    const route = this.state[`${moduleId}Route`];
-    wrap.style.display = Calc.moduleSupportsFeedBuffer(moduleId, route) ? 'block' : 'none';
-  },
-
-  syncExploratoryBufferControl(moduleId) {
-    return this.syncModuleBufferControl(moduleId);
-  },
-
   syncDerivedFeedControls() {
     const safeState = Calc.normalizeState(this.state);
     const allocation = Calc.getBalancedAllocation(safeState);
@@ -248,11 +183,7 @@ export const uiStateMethods = {
     if (mixInput) {
       mixInput.value = this.state.methaneFeedstockSplit;
     }
-    this.syncRangeDisplay(
-      'methaneFeedstockSplit',
-      this.state.methaneFeedstockSplit,
-      value => this.formatMethaneFeedstockSplit(value)
-    );
+    this.syncRangeDisplay('methaneFeedstockSplit', this.state.methaneFeedstockSplit);
     if (mixNote) {
       mixNote.textContent = mix.bothEnabled
         ? 'Shared H2 and CO2 production auto-balance from the combined methane and methanol demand.'
@@ -266,11 +197,7 @@ export const uiStateMethods = {
     const mtgSplitInput = document.getElementById('mtgMethanolSplit');
     if (mtgSplitInput) {
       mtgSplitInput.value = this.state.mtgMethanolSplit;
-      this.syncRangeDisplay(
-        'mtgMethanolSplit',
-        this.state.mtgMethanolSplit,
-        value => this.formatMtgMethanolSplit(value)
-      );
+      this.syncRangeDisplay('mtgMethanolSplit', this.state.mtgMethanolSplit);
     }
 
     ['electrolyzer', 'dac'].forEach(id => {

@@ -43,7 +43,11 @@ The app is still a mostly static front-end project built from native ES modules 
   - `policy.js`: policy evaluation over `data/policies.js`
   - `solar-geometry.js`: Earth, Mars, and Moon solar-profile shaping
 - `js/state/`: `schema.js` (field definitions and `DEFAULT_STATE`), `normalize.js` (state normalization and dependency rules), `migrations.js` (legacy state rewrites), `share-codec.js` (shareable URL hash encoding), `saved-site-presets.js` (locally saved sites)
-- `js/ui/`: the `App` class (`app.js`) plus the method mixins it is assembled from: `controls.js`, `ui-state.js`, `charts.js`, `renderers.js`, `site-map.js`, `share.js`, `optimizer-client.js`; and the `diagram.js`, `format-numbers.js`, and `slider-markers.js` helpers
+- `js/ui/`: the `App` class (`app.js`: state, init, recalculation) plus the method mixins it is assembled from
+  - `control-spec.js` + `controls.js`: one declarative list of state-backed controls drives both input binding and state -> control sync; `module-controls.js`, `site-controls.js`, and `select-options.js` cover the dynamic module cards, site presets, and data-generated option lists
+  - `ui-state.js`, `day-view.js`, `layout.js`, `tooltips.js`, `slider-markers.js`: visibility sync, specific-day display, section/mobile layout, tooltips, slider guides
+  - `renderers/` (result panels; `economics.js` builds the economics breakdown), `charts/` (one module per chart), `diagram.js`, `site-map.js`, `share.js`, `optimizer-client.js`
+  - `formatters.js` and `format-numbers.js`: display formatting shared by controls and renderers
 - `js/workers/optimizer-worker.js`: module worker running the IRR search for the inline optimize buttons
 - `scripts/build.mjs` + `scripts/dev.mjs`: minimal build and static-serving scripts for local development and deployment output
 - `tests/`: Node-based regression tests for calculations and renderer output

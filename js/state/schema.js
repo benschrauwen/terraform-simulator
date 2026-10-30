@@ -126,24 +126,6 @@ export const CORE_STATE_FIELDS = [
   { key: 'batteryOmPercent', type: 'number', min: 0, max: 100, defaultValue: 1.5 },
 ];
 
-export const APP_CONTROL_SYNC_FIELDS = {
-  checkboxes: [
-    { id: 'aiComputeEnabled' },
-    { id: 'financingEnabled' },
-  ],
-  selects: [
-    { id: 'mountingType' },
-    { id: 'policyMode' },
-    { id: 'methaneMarketPreset' },
-    { id: 'aiReliabilityTarget' },
-  ],
-  numbers: [
-    { id: 'latitude' },
-    { id: 'longitude' },
-    { id: 'siteYield', stateKey: 'siteYieldMwhPerMwdcYear' },
-  ],
-};
-
 export function getStateFieldOptions(field) {
   if (typeof field.getOptions === 'function') {
     return field.getOptions();

@@ -190,18 +190,6 @@ export const siteMapMethods = {
     return colorMap[id] || '#93a3b5';
   },
 
-  getSiteFootprintAbbreviation(id) {
-    const labelMap = {
-      ai: 'AI',
-      electrolyzer: 'ELY',
-      dac: 'DAC',
-      battery: 'BAT',
-      sabatier: 'CH4',
-      methanol: 'MeOH',
-    };
-    return labelMap[id] || String(id || '').slice(0, 4).toUpperCase();
-  },
-
   buildSiteFootprintEstimate(r) {
     const solarAreaM2 = Math.max(r?.solar?.landAreaM2 || 0, 0);
 

@@ -3,7 +3,7 @@
    ============================================
    Every process block the simulator knows: supported core modules
    (electrolyzer, DAC, Sabatier, methanol) and exploratory routes.
-   model/module-catalog.js normalizes these definitions (defaults, frozen
+   data/module-catalog.js normalizes these definitions (defaults, frozen
    copies) and exposes the ModuleCatalog query API.
 
    Common fields: id, label, family (key of MODULE_FAMILY_LABELS), exploratory,

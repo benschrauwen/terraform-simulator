@@ -22,7 +22,7 @@ import {
 } from '../data/reference-data.js';
 import { crf, getLevelizedSolarDegradationFactor } from './finance.js';
 import { SolarGeometry } from './solar-geometry.js';
-import { clampNumber } from './util.js';
+import { clampNumber } from '../util.js';
 
 function isInAridRegion(lat, lon) {
   return ARID_GHI_REGIONS.boxes.some(box =>

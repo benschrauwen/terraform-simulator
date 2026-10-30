@@ -1,5 +1,7 @@
-/* Small numeric helpers shared by the model, state and policy layers.
-   Plain functions (no `this`); the Calc facade re-exposes them as methods. */
+/* Small numeric helpers shared by every layer. Imports nothing, so data,
+   state, model and ui can all use it without breaking the one-way import
+   order (see tests/architecture/import-direction.test.js). Plain functions
+   (no `this`); the Calc facade re-exposes the clamp helpers as methods. */
 
 export function toFiniteNumber(value, fallback = 0) {
   const numeric = Number(value);

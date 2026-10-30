@@ -12,7 +12,7 @@ import {
   MOUNTING_TYPES,
   PLANETARY_BODIES,
 } from '../data/reference-data.js';
-import { ModuleCatalog } from '../model/module-catalog.js';
+import { ModuleCatalog } from '../data/module-catalog.js';
 
 export const SOLAR_PROFILE_DEFAULTS_BY_BODY = {
   earth: 'earth',
@@ -198,4 +198,4 @@ function buildDefaultState() {
   };
 }
 
-export const DEFAULT_STATE = buildDefaultState();
+export const DEFAULT_STATE = Object.freeze(buildDefaultState());

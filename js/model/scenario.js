@@ -6,7 +6,7 @@
    `fastMode` skips display-only series for the optimizer and IRR sweeps. */
 
 import { MODEL_ASSUMPTIONS } from '../data/assumptions.js';
-import { ModuleCatalog } from './module-catalog.js';
+import { ModuleCatalog } from '../data/module-catalog.js';
 import { methanolExportFields } from './process.js';
 
 export const scenarioMethods = {

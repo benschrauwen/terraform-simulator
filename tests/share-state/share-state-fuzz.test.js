@@ -8,7 +8,7 @@ import test from 'node:test';
 
 import LZString from 'lz-string';
 
-import { ModuleCatalog } from '../../js/model/module-catalog.js';
+import { ModuleCatalog } from '../../js/data/module-catalog.js';
 import { Calc, DEFAULT_STATE } from '../../js/model/index.js';
 import { CORE_STATE_FIELDS, SOLAR_PROFILE_OPTIONS_BY_BODY, getStateFieldOptions } from '../../js/state/schema.js';
 import { ShareStateCodec } from '../../js/state/share-codec.js';

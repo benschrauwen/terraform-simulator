@@ -6,8 +6,8 @@
    field rules, enforces module dependencies and body-specific constraints. */
 
 import { PLANETARY_BODIES } from '../data/reference-data.js';
-import { ModuleCatalog } from '../model/module-catalog.js';
-import { clampInteger, clampNumber } from '../model/util.js';
+import { ModuleCatalog } from '../data/module-catalog.js';
+import { clampInteger, clampNumber } from '../util.js';
 import { migrateLegacyState } from './migrations.js';
 import {
   CORE_STATE_FIELDS,

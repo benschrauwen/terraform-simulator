@@ -12,7 +12,7 @@
    undefined too (no outflows at all). One metric ranks the whole sweep so
    values are never compared across metrics. */
 
-import { getStepPrecision } from './util.js';
+import { getStepPrecision } from '../util.js';
 
 function snapRangeValue(value, min, max, step) {
   const precision = getStepPrecision(step);

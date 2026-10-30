@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { migrateLegacyState } from '../../js/state/migrations.js';
-import { Calc, ModuleCatalog, PolicyModel, createState, runScenario } from './harness.js';
+import { Calc, DEFAULT_STATE, ModuleCatalog, PolicyModel, createState, runScenario } from './harness.js';
 
 test('invalid inputs are normalized before calculations run', () => {
   const result = runScenario({
@@ -137,4 +137,11 @@ test('enabled downstream modules auto-enable their upstream process dependencies
   assert.equal(lowTempCoState.carbonMonoxideEnabled, true, 'Expected the low-temp CO route to stay enabled.');
   assert.equal(lowTempCoState.dacEnabled, true, 'Expected every CO route to auto-enable DAC.');
   assert.equal(lowTempCoState.electrolyzerEnabled, false, 'Expected non-RWGS CO routes to avoid forcing the electrolyzer.');
+});
+
+test('DEFAULT_STATE is frozen and the engine runs on it directly', () => {
+  assert.ok(Object.isFrozen(DEFAULT_STATE));
+  // Normalization and every model step must copy, never write into, the
+  // state they are given.
+  assert.ok(Calc.calculateAll(DEFAULT_STATE).economics.totalCapex > 0);
 });

@@ -3,9 +3,10 @@
    ============================================
    Normalizes the raw definitions in data/modules.js into frozen module objects
    and answers catalog questions (routes, presets, markets, feed buffers, capex
-   slider ranges). */
+   slider ranges). A pure accessor over the data, so it lives in the data
+   layer: state (defaults, normalization) and model both read it. */
 
-import { MODULE_DEFINITIONS, MODULE_FAMILY_LABELS } from '../data/modules.js';
+import { MODULE_DEFINITIONS, MODULE_FAMILY_LABELS } from './modules.js';
 
 const DEFAULT_FEED_BUFFER_LABEL = 'Feed buffer (cycle-average sizing)';
 

@@ -20,7 +20,7 @@
    ============================================ */
 
 import { MOUNTING_TYPES } from '../data/reference-data.js';
-import { ModuleCatalog } from '../model/module-catalog.js';
+import { ModuleCatalog } from '../data/module-catalog.js';
 import { SolarGeometry } from '../model/solar-geometry.js';
 import { FormatNumbers } from './format-numbers.js';
 import {

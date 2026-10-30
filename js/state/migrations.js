@@ -5,7 +5,7 @@
    current schema before normalization. Each alias maps a retired policyMode to
    its replacement scheme plus the input value the old mode implied. */
 
-import { toFiniteNumber } from '../model/util.js';
+import { toFiniteNumber } from '../util.js';
 
 const LEGACY_POLICY_MODE_ALIASES = {
   us_45v_tier4: state => ({

@@ -20,7 +20,7 @@ import {
   settleAnnualStartSoc,
 } from './battery.js';
 import { crf } from './finance.js';
-import { clampNumber } from './util.js';
+import { clampNumber } from '../util.js';
 
 export const aiComputeMethods = {
   getAiBatteryHeuristicMWh(state) {

@@ -17,7 +17,7 @@ import { optimizerSearchMethods } from './optimizer-search.js';
 import { processMethods } from './process.js';
 import { scenarioMethods } from './scenario.js';
 import { solarMethods } from './solar.js';
-import { utilMethods } from './util.js';
+import { utilMethods } from '../util.js';
 
 export const Calc = Object.assign(
   {},
@@ -35,7 +35,7 @@ export const Calc = Object.assign(
   scenarioMethods,
 );
 
-export { ModuleCatalog } from './module-catalog.js';
+export { ModuleCatalog } from '../data/module-catalog.js';
 export { PolicyModel } from './policy.js';
 export { SolarGeometry } from './solar-geometry.js';
 export { DEFAULT_STATE } from '../state/schema.js';

@@ -5,7 +5,7 @@
    annual support cash flows for the economics model. */
 
 import { POLICY_SCHEMES, POLICY_SELECT_GROUPS } from '../data/policies.js';
-import { getStepPrecision, sumValues, toFiniteNumber } from './util.js';
+import { getStepPrecision, sumValues, toFiniteNumber } from '../util.js';
 
 export { POLICY_SCHEMES };
 

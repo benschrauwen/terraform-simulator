@@ -1,7 +1,7 @@
 /* Process-module controls: card markup, preset/route selects, and route-dependent sliders */
 
 import { Calc } from '../model/index.js';
-import { ModuleCatalog } from '../model/module-catalog.js';
+import { ModuleCatalog } from '../data/module-catalog.js';
 import { FormatNumbers } from './format-numbers.js';
 import {
   formatConfigValue,

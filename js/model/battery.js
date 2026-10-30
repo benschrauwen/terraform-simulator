@@ -13,7 +13,7 @@
 import { MODEL_ASSUMPTIONS } from '../data/assumptions.js';
 import { hasBatteryStorage } from '../state/normalize.js';
 import { DEFAULT_STATE } from '../state/schema.js';
-import { clampNumber } from './util.js';
+import { clampNumber } from '../util.js';
 
 export function getBatteryLeakageRetention(stepHours) {
   const monthlyLeakage = Math.max(0, Math.min(0.999999, MODEL_ASSUMPTIONS.batteryMonthlyLeakage || 0));

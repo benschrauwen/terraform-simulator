@@ -7,7 +7,7 @@
 
 import { MODEL_ASSUMPTIONS } from '../data/assumptions.js';
 import { CHEMISTRY } from '../data/reference-data.js';
-import { ModuleCatalog } from './module-catalog.js';
+import { ModuleCatalog } from '../data/module-catalog.js';
 
 /* Feedstocks a route can consume, as keys of routeConfig.feedstocks (kg per
    output unit), and the allocation-plan share map each one is split by. H2

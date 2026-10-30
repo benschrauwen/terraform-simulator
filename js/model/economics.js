@@ -18,7 +18,7 @@ import {
   getPolicyDurationFactor,
   getSolarFactorForYear,
 } from './finance.js';
-import { ModuleCatalog } from './module-catalog.js';
+import { ModuleCatalog } from '../data/module-catalog.js';
 import { PolicyModel } from './policy.js';
 
 /* Constant output with the same present value as year-1 output x the

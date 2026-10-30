@@ -1,7 +1,7 @@
 /* Result-dependent visibility and derived read-outs (planetary labels, markets, feed split) */
 
 import { Calc } from '../model/index.js';
-import { ModuleCatalog } from '../model/module-catalog.js';
+import { ModuleCatalog } from '../data/module-catalog.js';
 import { FormatNumbers } from './format-numbers.js';
 
 const ALLOCATION_KIND_LABELS = {

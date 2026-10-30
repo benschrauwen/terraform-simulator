@@ -2,7 +2,7 @@
    Domain display formatters shared by controls and renderers
    ============================================ */
 
-import { ModuleCatalog } from '../model/module-catalog.js';
+import { ModuleCatalog } from '../data/module-catalog.js';
 import { FormatNumbers } from './format-numbers.js';
 
 export function formatSystemSizeMW(value) {

@@ -195,8 +195,9 @@ function buildYearlyCashFlows({ horizonYears, rate, revenue, annualOM, annualCos
 
 /* Horizon summaries of the yearly cash flows: cumulative and levelized
    totals, payback, ROI, IRR / MIRR (project and equity) and the debt
-   coverage / sponsor-support summary of the financing. */
-function summarizeReturns({ rate, horizonCrf, netCapexAtClose, financing, yearlyCashFlows, totalAnnualRevenue, annualCost, totalCapex, policy }) {
+   coverage / sponsor-support summary of the financing. Exported for the
+   datacenter model, which builds yearly entries with the same fields. */
+export function summarizeReturns({ rate, horizonCrf, netCapexAtClose, financing, yearlyCashFlows, totalAnnualRevenue, annualCost, totalCapex, policy }) {
   const discountFactor = year => Math.pow(1 + rate, -year);
   const total = select => yearlyCashFlows.reduce((sum, entry) => sum + select(entry), 0);
   const last = yearlyCashFlows[yearlyCashFlows.length - 1];

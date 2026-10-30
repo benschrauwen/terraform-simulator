@@ -35,9 +35,11 @@ export const DEFAULT_TORNADO_SWING_PERCENT = 20;
  * A variable's low/high input values for `state` (normalized), clamped to the
  * field's schema range; null when the field is unknown or the range is empty.
  * Variables without `bounds` swing by +/- swingFraction of their current value.
+ * `getRange(stateKey)` looks up the field range (the datacenter model passes
+ * its own schema's).
  */
-export function resolveVariableBounds(variable, state, swingFraction = DEFAULT_TORNADO_SWING_PERCENT / 100) {
-  const range = getStateFieldRange(variable.stateKey);
+export function resolveVariableBounds(variable, state, swingFraction = DEFAULT_TORNADO_SWING_PERCENT / 100, getRange = getStateFieldRange) {
+  const range = getRange(variable.stateKey);
   const current = Number(state[variable.stateKey]);
   if (!range || !Number.isFinite(current)) return null;
 

@@ -52,9 +52,9 @@ js/util.js    dependency-free numeric helpers (clamps, step precision), usable b
 
 Imports run one way, top to bottom: a layer imports its own files, lower layers and `util.js`, never a higher layer. `tests/architecture/import-direction.test.js` enforces it.
 
-- `js/data/`: `reference-data.js` (bodies, `LOCATION_PRESETS`, `MOUNTING_TYPES`, `CHEMISTRY`, `METHANE_MARKET_PRESETS`, AI defaults), `assumptions.js` (`MODEL_ASSUMPTIONS`, the GHI/cloudiness heuristics and `SOLAR_LAYOUT_REFERENCE`), `modules.js` (supported and exploratory process modules), `module-catalog.js` (`ModuleCatalog`: normalizes `modules.js` into frozen modules and answers route, preset, market, buffer and capex-slider questions), `policies.js` (incentive schemes and picker groups), `market-ladders.js` (Terraform's methane and methanol market tiers).
+- `js/data/`: `reference-data.js` (bodies, `LOCATION_PRESETS`, `MOUNTING_TYPES`, `CHEMISTRY`, `METHANE_MARKET_PRESETS`, AI defaults), `assumptions.js` (`MODEL_ASSUMPTIONS`, the GHI/cloudiness heuristics and `SOLAR_LAYOUT_REFERENCE`), `modules.js` (supported and exploratory process modules), `module-catalog.js` (`ModuleCatalog`: normalizes `modules.js` into frozen modules and answers route, preset, market, buffer and capex-slider questions), `policies.js` (incentive schemes and picker groups), `market-ladders.js` (Terraform's methane and methanol market tiers), `sensitivity-variables.js` (the inputs the NPV tornado moves and their low/high bounds).
 - `js/state/`: `schema.js` is the single source of state fields and defaults.
-- `js/model/`: one file per concern: `solar.js` + `solar-geometry.js` (resource, sky model, mountings), `annual-series.js` (hourly year), `battery.js` (storage + chemical dispatch), `ai-compute.js`, `lifetime-energy.js`, `process.js` (allocation, electrolyzer, DAC, reactors, exploratory routes, buffers), `economics.js`, `finance.js`, `policy.js`, `optimizer-search.js`, and `scenario.js` (the pipeline).
+- `js/model/`: one file per concern: `solar.js` + `solar-geometry.js` (resource, sky model, mountings), `annual-series.js` (hourly year), `battery.js` (storage + chemical dispatch), `ai-compute.js`, `lifetime-energy.js`, `process.js` (allocation, electrolyzer, DAC, reactors, exploratory routes, buffers), `economics.js`, `finance.js`, `policy.js`, `optimizer-search.js`, `scenario.js` (the pipeline), and two pure helpers the UI imports directly: `market-ladder.js` and `tornado.js` (one-at-a-time NPV sensitivity).
 - `js/ui/`: `app.js` plus mixins, `control-spec.js` + `controls.js`, `module-controls.js`, `renderers/`, `charts/` (one module per chart, registered in `charts/index.js`), `diagram.js`, `site-map.js`, `share.js`, `optimizer-client.js`, `formatters.js`.
 - `scripts/`: `dev.mjs` (hardened static server that also applies the `vercel.json` headers, CSP included) and `build.mjs`.
 
@@ -78,7 +78,7 @@ normalizeState -> calculateSolar -> buildAnnualSolarSeries
 
 `calculateEconomics` returns `capexItems`, the one list of installed-CAPEX items (`{ key, label, capex }`, solar with its parts, one item per exploratory route). The total CAPEX, the `'total'` policy basis, the CAPEX rows and the CAPEX chart all iterate it.
 
-**App mixins.** `App` (`ui/app.js`) owns `state`, `init()` and `recalculate()`. All other behavior lives in mixin objects (`controlMethods`, `rendererMethods`, `chartMethods`, `siteControlMethods`, ...) that are `Object.assign`ed onto `App.prototype`. Each mixin method runs with the App instance as `this`. State-backed inputs are declared once in `CONTROL_SPECS` and `getModuleControlSpecs()` (`ui/control-spec.js`). That one list drives both input-to-state binding and state-to-control sync. `recalculate()` renders the panels and calls `updateCharts(r)` once.
+**App mixins.** `App` (`ui/app.js`) owns `state`, `init()` and `recalculate()`. All other behavior lives in mixin objects (`controlMethods`, `rendererMethods`, `chartMethods`, `siteControlMethods`, ...) that are `Object.assign`ed onto `App.prototype`. Each mixin method runs with the App instance as `this`. State-backed inputs are declared once in `CONTROL_SPECS` and `getModuleControlSpecs()` (`ui/control-spec.js`). That one list drives both input-to-state binding and state-to-control sync. `recalculate()` renders the panels and calls `updateCharts(r)` once. The Sensitivity charts (price curves and the NPV tornado) rerun the model, so they refresh through `updateSensitivityCharts(r)`, debounced (`scheduleSensitivityUpdate`) while a slider is dragged.
 
 ## Extending
 
@@ -90,6 +90,7 @@ After any of these changes, run `npm test`. Every recipe that changes the result
 | Policy scheme | `js/data/policies.js` (+ its facts in `tests/calculations/policy-facts.test.js`) |
 | Earth site preset | `js/data/reference-data.js` |
 | Market ladder tier | `js/data/market-ladders.js` |
+| NPV tornado variable | `js/data/sensitivity-variables.js` |
 | State field + control | `js/state/schema.js`, `index.html`, `js/ui/control-spec.js` |
 | Result row | the model file that computes it, `js/ui/renderers/economics.js` or `renderers/index.js` |
 | Chart | a module in `js/ui/charts/`, one `RESULT_CHARTS` entry, its `<canvas>` in `index.html` |
@@ -108,6 +109,8 @@ After any of these changes, run `npm test`. Every recipe that changes the result
 2. Add the route to `FLOORS` in `tests/calculations/energy-floor.test.js`. The value is its reaction-enthalpy floor, or `null` with the reason (an external reductant supplies the energy). Unlisted routes fail that test.
 
 The catalog derives everything else: the state keys (`<id>Enabled`, `BufferEnabled`, `Route`, `PriorityWeight`, `CapexBasis`, `Price`), normalization, the route select, the capex slider (0.25-4x the route default), the buffer toggle, the diagram card and its feed lines (from `feedstocks`), the CAPEX item, chart slice and economics rows. Only MTG-specific presentation (its split slider and note) is keyed by id in `ui/module-controls.js`.
+
+**Add an NPV tornado variable.** Append an entry to `SENSITIVITY_VARIABLES` in `js/data/sensitivity-variables.js`: the `stateKey` it moves (a numeric schema or module-config field), a `label`, a display `format`, `bounds` and an `appliesTo(state, result)` predicate that is false when the input cannot matter for the build (product off, no battery, AI off). Prefer `{ kind: 'absolute', low, high }` with a sourced benchmark for each end (put each URL in `sources.html`); use `{ kind: 'relative', low, high }` multipliers only where no absolute range fits every build, and say why in a comment. Bounds may be functions of the state. `runTornado` clamps them to the field's schema range and drops rows that do not move NPV; `tests/calculations/tornado.test.js` checks every bound against the schema.
 
 **Add a policy scheme:**
 
@@ -376,6 +379,18 @@ net avoided = CH4_MCF * 0.0528 + MeOH_t * 1.374     # fossil fuel displaced (met
 
 0.0528 t/MCF is the combustion CO2 of pure CH4 (19.25 kg x 44.01/16.04). EPA's ~0.055 t/MCF is for pipeline gas. Carbon in a fuel returns to the air when it is burned, so capture is not removal: net avoided counts only displaced fossil combustion. Upstream emissions and leakage are excluded, and non-fuel exploratory products are counted as bound, not avoided.
 
+### NPV tornado (`tornado.js`)
+
+The "What drives NPV" card at the top of Sensitivity is a one-at-a-time tornado. For each input in `js/data/sensitivity-variables.js` that applies to the build, it reruns the scenario (fast path, same NPV as the full run) with that input at its low and at its high bound and every other input at its current value:
+
+```text
+bar_i     = [NPV(x_i = low_i), NPV(x_i = high_i)], all other inputs at their current values
+swing_i   = max(NPV_base, NPV_low, NPV_high) - min(NPV_base, NPV_low, NPV_high)
+rows      sorted by swing, largest first; rows with no NPV change are dropped
+```
+
+Market prices, solar costs, battery cost and the AI inputs use the sourced slider benchmarks as bounds; process CAPEX uses -30%/+50% of the current value (the wide end of an AACE Class 4 estimate range), process energy use and site yield +/-10% (judgment), the discount rate 5-11% and process O&M 2-5%/yr (judgment). The active policy's credit runs from the scheme's floor (0, or the lowest statutory tier where the slider stops above 0) to its current value. It ignores interactions: two inputs moving together can shift NPV by more or less than the sum of their bars. A refresh takes about 25 fast runs: ~20 ms at the defaults, ~200 ms with AI (its hourly battery dispatch dominates).
+
 ### Market ladder (`market-ladder.js`)
 
 The Market Ladder chart places the site on Terraform's market ladder for each product it sells (tiers from Terraform's scale-up roadmap, `js/data/market-ladders.js`). Each tier has a price and the cumulative market size down to it; its own volume is its share of that market divided by its price, and shelves stack left to right on log axes.
@@ -498,7 +513,7 @@ Each value in `js/data/policies.js` carries its own source comment; the main ref
 - UK: [CfD AR7 results](https://www.gov.uk/government/publications/contracts-for-difference-cfd-allocation-round-7-results/contracts-for-difference-allocation-round-7-results-accessible-webpage), [Hydrogen allocation rounds](https://www.gov.uk/government/collections/hydrogen-allocation-rounds)
 - FX: [ECB euro reference rates](https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html) (2026-10-29)
 
-### Market benchmarks used for slider markers (retrieved 2026-10)
+### Market benchmarks used for slider markers and NPV tornado bounds (retrieved 2026-10)
 
 - Battery: [BNEF Energy Storage System Cost Survey 2025 (via Energy-Storage.news)](https://www.energy-storage.news/behind-the-numbers-bnef-finds-40-year-on-year-drop-in-bess-costs/): turnkey BESS $117/kWh global, $73 China, $177 Europe, $219 US
 - Modules: OPIS via pv magazine, [FOB China TOPCon, 2026-07-31](https://www.pv-magazine.com/2026/07/31/chinese-topcon-module-prices-fall-as-high-efficiency-supply-adds-pressure/) and [DDP US TOPCon, 2026-03-06](https://www.pv-magazine.com/2026/03/06/china-topcon-module-prices-edge-higher-as-march-cargoes-clear/)

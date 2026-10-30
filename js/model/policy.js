@@ -120,45 +120,72 @@ export function allocateUpfrontSupport(totalSupport, breakdown = {}) {
   }, {});
 }
 
-function getOutputMetric(outputBasis, context = {}) {
-  const solarAnnualMwh = Math.max(0, Number(context?.solar?.annualMWh) || 0);
-  const hydrogenAnnualKg = context?.electrolyzer?.enabled
+/* Annual quantities that earn output-based support. Only output that
+   qualifies is credited: solar electricity delivered to the plant (clipped
+   output excluded), H2 converted into products and CO2 utilized in them
+   (vented surplus excluded). Falls back to gross output when the caller
+   passes no qualifying quantities. */
+function getQualifyingQuantities(context = {}) {
+  const qualifying = context.qualifying || {};
+  const grossSolarMwh = Math.max(0, Number(context?.solar?.annualMWh) || 0);
+  const grossH2Kg = context?.electrolyzer?.enabled
     ? Math.max(0, Number(context?.electrolyzer?.h2AnnualKg) || 0)
     : 0;
-  const co2AnnualTons = context?.dac?.enabled
+  const grossCo2Tons = context?.dac?.enabled
     ? Math.max(0, Number(context?.dac?.co2AnnualTons) || 0)
     : 0;
+  const pick = (value, fallback) => (Number.isFinite(value) ? Math.max(0, value) : fallback);
+  return {
+    solarMwh: pick(qualifying.solarDeliveredMWh, grossSolarMwh),
+    hydrogenKg: context?.electrolyzer?.enabled ? pick(qualifying.h2Kg, grossH2Kg) : 0,
+    co2Tons: context?.dac?.enabled ? pick(qualifying.co2Tons, grossCo2Tons) : 0,
+  };
+}
+
+const QUALIFYING_BASIS_NOTES = {
+  solar: 'Credited on solar electricity delivered to the plant (clipped output excluded). On-site use is a proxy: real schemes pay metered or sold output.',
+  hydrogen: 'Credited on hydrogen converted into products; unconverted H2 that is vented earns nothing.',
+  co2: 'Credited on DAC CO2 utilized in products; vented CO2 earns nothing. Utilization into fuel is further limited to the lifecycle net reduction (IRC 45Q(f)(5)(B)), not modeled: treat this as an upper bound.',
+};
+
+function getOutputMetric(outputBasis, context = {}) {
+  const quantities = getQualifyingQuantities(context);
 
   switch (outputBasis) {
     case 'solar_kwh':
       return {
-        label: 'Eligible solar output',
+        label: 'Qualifying solar output (delivered, excl. clipped)',
         unit: 'kWh/yr',
-        value: solarAnnualMwh * 1000,
+        value: quantities.solarMwh * 1000,
+        basisNote: QUALIFYING_BASIS_NOTES.solar,
       };
     case 'solar_mwh':
       return {
-        label: 'Eligible solar output',
+        label: 'Qualifying solar output (delivered, excl. clipped)',
         unit: 'MWh/yr',
-        value: solarAnnualMwh,
+        value: quantities.solarMwh,
+        basisNote: QUALIFYING_BASIS_NOTES.solar,
       };
     case 'hydrogen_kg':
       return {
-        label: 'Eligible hydrogen output',
+        label: 'Qualifying hydrogen (converted, excl. vented)',
         unit: 'kg/yr',
-        value: hydrogenAnnualKg,
+        value: quantities.hydrogenKg,
+        basisNote: QUALIFYING_BASIS_NOTES.hydrogen,
       };
     case 'co2_ton':
       return {
-        label: 'Eligible CO2 output',
+        label: 'Qualifying CO2 (utilized, excl. vented)',
         unit: 'tCO2/yr',
-        value: co2AnnualTons,
+        value: quantities.co2Tons,
+        basisNote: QUALIFYING_BASIS_NOTES.co2,
       };
     default:
       return {
         label: 'Eligible output',
         unit: '',
         value: 0,
+        basisNote: '',
       };
   }
 }
@@ -172,7 +199,7 @@ function getEligibleCapexLabel(basis) {
     case 'dac':
       return 'Eligible DAC CAPEX';
     case 'total':
-      return 'Eligible project CAPEX';
+      return 'Eligible CAPEX (total installed, incl. land)';
     default:
       return 'Eligible CAPEX';
   }
@@ -226,18 +253,12 @@ function evaluatePolicy(state = {}, context = {}) {
       const solarSupportPerMwh = inputs.find(input => input.key === 'customSolarSupportPerMwh')?.value || 0;
       const h2SupportPerKg = inputs.find(input => input.key === 'customH2Credit')?.value || 0;
       const co2SupportPerTon = inputs.find(input => input.key === 'customCo2Credit')?.value || 0;
-      const solarAnnualMwh = Math.max(0, Number(context?.solar?.annualMWh) || 0);
-      const hydrogenAnnualKg = context?.electrolyzer?.enabled
-        ? Math.max(0, Number(context?.electrolyzer?.h2AnnualKg) || 0)
-        : 0;
-      const co2AnnualTons = context?.dac?.enabled
-        ? Math.max(0, Number(context?.dac?.co2AnnualTons) || 0)
-        : 0;
+      const quantities = getQualifyingQuantities(context);
 
       upfrontSupport = sumValues(context.capex || {}) * capexShare;
-      componentValues.solar = solarAnnualMwh * solarSupportPerMwh;
-      componentValues.hydrogen = hydrogenAnnualKg * h2SupportPerKg;
-      componentValues.co2 = co2AnnualTons * co2SupportPerTon;
+      componentValues.solar = quantities.solarMwh * solarSupportPerMwh;
+      componentValues.hydrogen = quantities.hydrogenKg * h2SupportPerKg;
+      componentValues.co2 = quantities.co2Tons * co2SupportPerTon;
       annualSupport = sumValues(componentValues);
       break;
     }
@@ -274,6 +295,14 @@ function evaluatePolicy(state = {}, context = {}) {
     effectiveUnitSupport,
     outputBasis: scheme.outputBasis || null,
     outputMetric,
+    qualifyingBasisNote: scheme.cashflowType === 'custom_composite'
+      ? [QUALIFYING_BASIS_NOTES.solar, QUALIFYING_BASIS_NOTES.hydrogen, QUALIFYING_BASIS_NOTES.co2].join(' ')
+      : [
+          outputMetric.basisNote || '',
+          scheme.cashflowType === 'strike_minus_reference' && String(scheme.outputBasis).startsWith('solar')
+            ? 'A CfD settles strike minus a market reference price on exported power; self-consumed power has no reference price, so strike minus reference here is only a proxy for the contract value.'
+            : '',
+        ].filter(Boolean).join(' '),
     eligibleCapexBasis: scheme.eligibleCapexBasis || null,
     eligibleCapex,
     eligibleCapexLabel: getEligibleCapexLabel(scheme.eligibleCapexBasis),

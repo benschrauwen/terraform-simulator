@@ -29,9 +29,10 @@ export const economicsMethods = {
 
   /* Per-year multipliers on year-1 revenue streams from the lifetime energy
      vectors (falls back to plain PV degradation without them). Policy
-     credits on solar output follow the solar factor; credits on hydrogen or
-     CO2 output follow chemical energy; the custom composite blends its
-     solar and product components by their year-1 values. */
+     credits on solar output follow delivered (unclipped) solar energy;
+     credits on hydrogen or CO2 output follow chemical energy; the custom
+     composite blends its solar and product components by their year-1
+     values. */
   getYearlyEnergyFactors(state, lifetimeEnergy, policy) {
     const at = (series, year, fallback) => {
       const value = Array.isArray(series) ? series[year - 1] : undefined;
@@ -41,6 +42,13 @@ export const economicsMethods = {
     const solarComponent = Math.max(0, components.solar || 0);
     const productComponent = Math.max(0, (components.hydrogen || 0) + (components.co2 || 0));
     const outputBasis = String(policy?.outputBasis || '');
+    // Solar credits follow delivered (unclipped) generation.
+    const solarKWh = lifetimeEnergy?.solarKWhByYear;
+    const clippedKWh = lifetimeEnergy?.clippedKWhByYear;
+    const deliveredKWh = year => (Array.isArray(solarKWh) && Array.isArray(clippedKWh)
+      ? (solarKWh[year - 1] ?? NaN) - (clippedKWh[year - 1] ?? NaN)
+      : NaN);
+    const deliveredYear1 = deliveredKWh(1);
     return year => {
       const degradationFactor = at(
         lifetimeEnergy?.solarFactorByYear,
@@ -49,21 +57,49 @@ export const economicsMethods = {
       );
       const aiFactor = at(lifetimeEnergy?.aiServedFactorByYear, year, degradationFactor);
       const chemicalFactor = at(lifetimeEnergy?.chemicalFactorByYear, year, degradationFactor);
-      let policyFactor = degradationFactor;
+      const deliveredRatio = deliveredYear1 > 0 ? deliveredKWh(year) / deliveredYear1 : NaN;
+      const deliveredSolarFactor = Number.isFinite(deliveredRatio) ? Math.max(0, deliveredRatio) : degradationFactor;
+      let policyFactor = deliveredSolarFactor;
       if (solarComponent + productComponent > 0) {
-        policyFactor = ((solarComponent * degradationFactor) + (productComponent * chemicalFactor)) /
+        policyFactor = ((solarComponent * deliveredSolarFactor) + (productComponent * chemicalFactor)) /
           (solarComponent + productComponent);
       } else if (outputBasis === 'hydrogen_kg' || outputBasis === 'co2_ton') {
         policyFactor = chemicalFactor;
       }
-      return { degradationFactor, aiFactor, chemicalFactor, policyFactor };
+      return { degradationFactor, aiFactor, chemicalFactor, deliveredSolarFactor, policyFactor };
+    };
+  },
+
+  /* Year-1 output that earns output-based support: solar delivered to the
+     plant (generation minus clipping, from the annual dispatch), H2 and
+     CO2 actually converted into products (production minus vented surplus). */
+  getQualifyingOutput({ solar, chemicalSupply, electrolyzer, dac, h2Surplus = 0, co2Surplus = 0, lifetimeEnergy }) {
+    const cyclesPerYear = solar?.cyclesPerYear || 0;
+    const solarYear1KWh = lifetimeEnergy?.solarKWhByYear?.[0];
+    const clippedYear1KWh = lifetimeEnergy?.clippedKWhByYear?.[0];
+    const grossSolarMWh = Math.max(0, solar?.annualMWh || 0);
+    const clippedMWh = Number.isFinite(clippedYear1KWh)
+      ? clippedYear1KWh / 1000
+      : ((chemicalSupply?.clippedDailyKWh || 0) * cyclesPerYear) / 1000;
+    // Clipping is measured on the dispatch series; scale it onto the
+    // reported generation if the two differ.
+    const clippedShare = Number.isFinite(solarYear1KWh) && solarYear1KWh > 0
+      ? Math.max(0, Math.min(1, clippedYear1KWh / solarYear1KWh))
+      : (grossSolarMWh > 0 ? Math.max(0, Math.min(1, clippedMWh / grossSolarMWh)) : 0);
+    const h2AnnualKg = electrolyzer?.enabled ? Math.max(0, electrolyzer.h2AnnualKg || 0) : 0;
+    const co2AnnualTons = dac?.enabled ? Math.max(0, dac.co2AnnualTons || 0) : 0;
+    return {
+      solarDeliveredMWh: grossSolarMWh * (1 - clippedShare),
+      solarClippedShare: clippedShare,
+      h2Kg: Math.max(0, h2AnnualKg - (h2Surplus * cyclesPerYear)),
+      co2Tons: Math.max(0, co2AnnualTons - ((co2Surplus * cyclesPerYear) / 1000)),
     };
   },
 
   calculateEconomics(state, context) {
     const {
       solar, storage, chemicalSupply, ai, electrolyzer, dac, sabatier, methanol,
-      exploratoryModules, lifetimeEnergy,
+      exploratoryModules, lifetimeEnergy, h2Surplus = 0, co2Surplus = 0,
     } = context;
 
     const rate = state.discountRate / 100;
@@ -130,11 +166,13 @@ export const economicsMethods = {
       solarLand: solar.landCapex,
     };
     const totalCapex = Object.values(capex).reduce((sum, value) => sum + value, 0);
+    const qualifying = this.getQualifyingOutput({ solar, chemicalSupply, electrolyzer, dac, h2Surplus, co2Surplus, lifetimeEnergy });
     const policy = this.getPolicyCredits(state, {
       solar,
       electrolyzer,
       dac,
       capex,
+      qualifying,
     });
     const netCapexAtClose = Math.max(0, totalCapex - (policy.upfrontSupport || 0));
     const financing = buildFinancingModel(state, netCapexAtClose);

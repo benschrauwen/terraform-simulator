@@ -412,7 +412,9 @@ function buildPolicyContextRows({ e }) {
     rows.push(
       econRow(
         policy.outputMetric.label,
-        `${FormatNumbers.fixed(policy.outputMetric.value, digits)} ${policy.outputMetric.unit}`
+        `${FormatNumbers.fixed(policy.outputMetric.value, digits)} ${policy.outputMetric.unit}`,
+        '',
+        policy.qualifyingBasisNote || ''
       )
     );
   }

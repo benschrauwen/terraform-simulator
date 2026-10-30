@@ -420,12 +420,12 @@ The policy model now uses a small set of direct cash-flow archetypes plus framew
 ```text
 upfront_capex_support = eligible_capex * chosen_share
 
-annual_output_support = eligible_output * unit_support
+annual_output_support = qualifying_output * unit_support
 
-two_way_support = eligible_output * (strike_price - reference_price)
+two_way_support = qualifying_output * (strike_price - reference_price)
 
 base_minus_correction_support =
-  eligible_output * max(base_amount - correction_amount, 0)
+  qualifying_output * max(base_amount - correction_amount, 0)
 ```
 
 Implementation assumptions:
@@ -433,7 +433,8 @@ Implementation assumptions:
 - Named schemes model one program or framework at a time.
 - `Custom mixed support` can stack total-capex support with solar, hydrogen, and CO2 annual support.
 - Upfront support reduces net CAPEX at close and the annualized capital charge on the supported initial build.
-- Annual support follows the modeled output basis (`solar`, `H2`, or `CO2`) and stops when the scheme duration expires.
+- Annual support is paid on qualifying output only and stops when the scheme duration expires: solar electricity delivered to the plant (generation minus clipping), H2 converted into products and CO2 utilized in them (vented surplus earns nothing). Solar schemes on self-consumed power (45Y, EEG, SDE++, CfD) are proxies: real schemes pay metered or sold output, and a CfD's strike-minus-reference has no reference price for power used on site. 45Q utilization into fuel is further limited to the lifecycle net reduction (IRC 45Q(f)(5)(B)), which is not modeled, so 45Q here is an upper bound.
+- `Custom mixed support` applies its capex share to total installed CAPEX including land.
 - Framework-only entries intentionally change scenario context without inventing a cash flow.
 
 ### Finance

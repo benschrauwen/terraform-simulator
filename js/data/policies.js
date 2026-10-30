@@ -152,7 +152,7 @@ export const POLICY_SCHEMES = {
     basis: 'Annual solar-output support on eligible PV generation',
     // Sale/metering rule: IRC §45Y(a)(1)(A)(ii); termination: §45Y(d)(4) (P.L. 119-21).
     // https://www.law.cornell.edu/uscode/text/26/45Y (retrieved 2026-10)
-    note: 'Modeled on annual solar generation at the 2026 amount (IRS Notice 2026-47: 0.6 ¢/kWh base, 3.1 ¢/kWh with prevailing wage and apprenticeship; indexed yearly). Power used on site counts only if an unrelated party owns and operates the meter. Under the One Big Beautiful Bill Act, solar that began construction after 2026-07-04 must be placed in service by 2027-12-31; FEOC restrictions apply. Status as of Oct 2026; not tax advice.',
+    note: 'Modeled on solar generation delivered to the plant (clipped output excluded) at the 2026 amount (IRS Notice 2026-47: 0.6 ¢/kWh base, 3.1 ¢/kWh with prevailing wage and apprenticeship; indexed yearly). Power used on site counts only if an unrelated party owns and operates the meter. Under the One Big Beautiful Bill Act, solar that began construction after 2026-07-04 must be placed in service by 2027-12-31; FEOC restrictions apply. Status as of Oct 2026; not tax advice.',
     cashflowType: 'unit_support',
     outputBasis: 'solar_kwh',
     inputs: [
@@ -233,7 +233,7 @@ export const POLICY_SCHEMES = {
     // IRC §45Q(a)(3)(B)(iii) parity, (b)(1)(A) indexing after 2026 (2025 base),
     // (d)(1) construction before 2033-01-01, (f)(5)(B) LCA rule, (h) 5x multiplier.
     // https://www.law.cornell.edu/uscode/text/26/45Q (retrieved 2026-10)
-    note: 'Modeled on gross annual DAC capture. Since the One Big Beautiful Bill Act, utilization earns the same rate as geologic storage for equipment placed in service after 2025-07-04: DAC $36/t base, $180/t with prevailing wage and apprenticeship (point source $85/t); amounts are indexed after 2026. Construction must begin before 2033-01-01; 12-year credit period. For CO2 made into fuel, the creditable tonnage is limited to the lifecycle-analysis net reduction (IRC §45Q(f)(5)(B)), which can be far below gross capture. Status as of Oct 2026; not tax advice.',
+    note: 'Modeled on DAC CO2 utilized in products (vented surplus excluded). Since the One Big Beautiful Bill Act, utilization earns the same rate as geologic storage for equipment placed in service after 2025-07-04: DAC $36/t base, $180/t with prevailing wage and apprenticeship (point source $85/t); amounts are indexed after 2026. Construction must begin before 2033-01-01; 12-year credit period. For CO2 made into fuel, the creditable tonnage is limited to the lifecycle-analysis net reduction (IRC §45Q(f)(5)(B)), which can be far below gross capture. Status as of Oct 2026; not tax advice.',
     cashflowType: 'unit_support',
     outputBasis: 'co2_ton',
     inputs: [
@@ -915,15 +915,15 @@ export const POLICY_SCHEMES = {
     renewableAttributeGate: 0,
     domesticContentOrLocationBonus: 'User-defined',
     stackingOrExclusivity: 'Custom mode can stack the entered capex, solar, H2, and CO2 support terms.',
-    implementationFormula: 'support_t0 = total_capex * custom_grant_share; annual_support_t = solar_MWh_t * custom_solar_support + H2_kg_t * custom_H2_support + CO2_t_t * custom_CO2_support',
+    implementationFormula: 'support_t0 = total_capex * custom_grant_share; annual_support_t = delivered_solar_MWh_t * custom_solar_support + converted_H2_kg_t * custom_H2_support + utilized_CO2_t_t * custom_CO2_support',
     basis: 'User-entered stacked capex and output support',
-    note: 'Capex support is applied to total installed CAPEX. Annual solar support is entered per MWh, while H2 and CO2 support are entered per kg and per ton.',
+    note: 'Capex support is applied to total installed CAPEX including land. Annual support is paid on qualifying output: delivered (unclipped) solar, H2 converted into products and CO2 utilized in them. Annual solar support is entered per MWh, while H2 and CO2 support are entered per kg and per ton.',
     cashflowType: 'custom_composite',
     eligibleCapexBasis: 'total',
     inputs: [
       {
         key: 'customCapexGrantShare',
-        label: 'Custom capex support share',
+        label: 'Custom capex support share (of total CAPEX incl. land)',
         min: 0,
         max: 1,
         step: 0.05,

@@ -28,10 +28,14 @@ export function hasBatteryStorage(state) {
   return Number.isFinite(batteryCapacityMWh) && batteryCapacityMWh > 1e-9;
 }
 
-export function normalizeCoreStateFields(input = {}, normalized = {}) {
+/* Applies the field rules (enum, integer, number, boolean, string) of
+   `fields` (default: the plant builder's CORE_STATE_FIELDS; the datacenter
+   schema passes its own) to `normalized`, reading values from `input`.
+   Booleans are read from `normalized`, which the caller seeds from input. */
+export function normalizeCoreStateFields(input = {}, normalized = {}, fields = CORE_STATE_FIELDS) {
   const enumOrDefault = (value, allowed, fallback) => (allowed.has(value) ? value : fallback);
 
-  CORE_STATE_FIELDS.forEach(field => {
+  fields.forEach(field => {
     if (field.type === 'enum') {
       normalized[field.key] = enumOrDefault(
         input[field.key],

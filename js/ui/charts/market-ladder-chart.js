@@ -6,7 +6,7 @@ import { LADDER_TIER_KINDS } from '../../data/market-ladders.js';
 import { buildMarketLadder, getMarketPosition, getSiteWorkingPoint } from '../../model/market-ladder.js';
 import { FormatNumbers } from '../format-numbers.js';
 import { escapeHtml } from '../renderers/markup.js';
-import { axisGrid, axisTicks, axisTitle, clearChartUnavailable, ensureChartRuntime } from './chart-utils.js';
+import { axisGrid, axisTicks, axisTitle, clearChartUnavailable, ensureChartRuntime, legendLabels } from './chart-utils.js';
 
 const PRODUCTS = [
   { key: 'methane', color: '#10b981', isActive: r => Boolean(r?.sabatier?.enabled) && (r.sabatier.ch4AnnualMCF || 0) > 0 },
@@ -16,6 +16,8 @@ const PRODUCTS = [
 // Segment colors follow Terraform's methanol chart: as made, purified, methanol-to-X.
 const KIND_COLORS = { 'as-is': '#5f7fb8', purified: '#22c55e', mtx: '#a855f7' };
 const SALE_PRICE_COLOR = '#f59e0b';
+const SITE_LABEL = 'This site (levelized cost)';
+const SALE_PRICE_LABEL = 'Your sale price (Market & Incentives)';
 // Tiers the site cannot serve at its cost stay readable but recede.
 const DIMMED_ALPHA = '99';
 
@@ -71,7 +73,7 @@ function buildTierDatasets(ladder, position, xMin) {
 /** Tier names drawn at the left end of each shelf, skipping any that would overlap. */
 const tierLabelPlugin = {
   id: 'marketLadderTierLabels',
-  afterDatasetsDraw(chart, args, { ladder }) {
+  afterDatasetsDraw(chart, args, { ladder, salePrice }) {
     const { ctx, chartArea } = chart;
     const placed = [];
     ctx.save();
@@ -93,6 +95,15 @@ const tierLabelPlugin = {
       ctx.fillStyle = dataset.borderColor;
       ctx.fillText(text, x, y);
     });
+
+    const saleIndex = chart.data.datasets.findIndex(dataset => dataset.label === SALE_PRICE_LABEL);
+    const saleLine = chart.getDatasetMeta(saleIndex)?.data?.[0];
+    if (saleLine && saleLine.y > chartArea.top + 12 && saleLine.y < chartArea.bottom) {
+      const text = `Your sale price · ${price(salePrice, ladder)}`;
+      ctx.fillStyle = SALE_PRICE_COLOR;
+      ctx.textAlign = 'right';
+      ctx.fillText(text, chartArea.right - 4, saleLine.y - 3);
+    }
     ctx.restore();
   },
 };
@@ -102,17 +113,18 @@ function createLadderChart(canvas, ladder, point, position, color) {
   const datasets = [
     ...buildTierDatasets(ladder, position, bounds.xMin),
     {
-      label: 'Assumed sale price',
+      label: SALE_PRICE_LABEL,
       data: [{ x: bounds.xMin, y: point.salePrice }, { x: bounds.xMax, y: point.salePrice }],
       showLine: true,
       borderColor: SALE_PRICE_COLOR,
       borderDash: [5, 4],
       borderWidth: 1.5,
+      pointStyle: 'line',
       pointRadius: 0,
       pointHoverRadius: 0,
     },
     {
-      label: 'This site',
+      label: SITE_LABEL,
       data: [{ x: point.annualVolume, y: point.unitCost }],
       borderColor: '#f8fafc',
       backgroundColor: color,
@@ -132,10 +144,19 @@ function createLadderChart(canvas, ladder, point, position, color) {
       maintainAspectRatio: false,
       animation: false,
       plugins: {
-        legend: { display: false },
-        marketLadderTierLabels: { ladder },
+        // Only the site dot and the sale-price line need a key; tiers are labelled in place.
+        legend: {
+          display: true,
+          position: 'bottom',
+          labels: legendLabels({
+            usePointStyle: true,
+            boxHeight: 6,
+            filter: item => item.text === SITE_LABEL || item.text === SALE_PRICE_LABEL,
+          }),
+        },
+        marketLadderTierLabels: { ladder, salePrice: point.salePrice },
         tooltip: {
-          filter: item => item.dataset.label !== 'Assumed sale price' || item.dataIndex === 0,
+          filter: item => item.dataset.label !== SALE_PRICE_LABEL || item.dataIndex === 0,
           callbacks: {
             label(context) {
               const { dataset } = context;
@@ -146,13 +167,13 @@ function createLadderChart(canvas, ladder, point, position, color) {
                   `${LADDER_TIER_KINDS[tier.kind]}; market to here ${FormatNumbers.formatMoney(tier.cumulativeMarket)}/yr`,
                 ];
               }
-              if (dataset.label === 'This site') {
+              if (dataset.label === SITE_LABEL) {
                 return [
                   `This site: ${price(point.unitCost, ladder)} levelized cost`,
                   `${FormatNumbers.fixed(point.annualNativeVolume, 0)} ${point.nativeUnit} sold`,
                 ];
               }
-              return `Assumed sale price: ${price(point.salePrice, ladder)}`;
+              return `${SALE_PRICE_LABEL}: ${price(point.salePrice, ladder)}`;
             },
           },
         },
@@ -194,6 +215,10 @@ function describePosition(ladder, point, position) {
   if (position.nextTier) {
     parts.push(`The next tier, ${escapeHtml(position.nextTier.label)} at ${escapeHtml(price(position.nextTier.price, ladder))}, `
       + `needs the cost to fall ${escapeHtml(FormatNumbers.fixed(position.costCutToNextTier * 100, 0))}%.`);
+  }
+  if (Number.isFinite(point.salePrice)) {
+    const margin = point.salePrice >= point.unitCost ? 'above' : 'below';
+    parts.push(`The dashed line is the sale price you set under Market &amp; Incentives (${escapeHtml(price(point.salePrice, ladder))}), ${margin} this site's cost.`);
   }
   parts.push(`One site like this would fill ${escapeHtml(FormatNumbers.fixed(position.beachheadShare * 100, position.beachheadShare < 0.01 ? 2 : 1))}% of the beachhead tier.`);
   return parts.join(' ');

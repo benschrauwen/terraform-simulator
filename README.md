@@ -31,17 +31,17 @@ The app is still a mostly static front-end project built from native ES modules 
 - `js/main.js`: browser bootstrap (creates the `App` once the DOM is ready)
 - `js/data/`: reference data only, no logic
   - `reference-data.js`: planetary bodies (incl. orbital constants), site presets, mounting types, chemistry constants, methane market notes, AI defaults
-  - `assumptions.js`: fixed model heuristics (`MODEL_ASSUMPTIONS`, GHI/cloudiness tables, mounting yield adjustments, layout reference site)
+  - `assumptions.js`: fixed model heuristics (`MODEL_ASSUMPTIONS`, GHI/cloudiness tables, diffuse-fraction fallback, layout reference site)
   - `modules.js`: supported and exploratory process modules and their routes (add a route or module here)
   - `policies.js`: the incentive scheme registry and policy picker groups (add a scheme here)
 - `js/model/`: the DOM-free calculation engine shared by the UI, the optimizer worker, and the Node tests
   - `index.js`: assembles and exports the `Calc` facade (plus `ModuleCatalog`, `PolicyModel`, `SolarGeometry`, `DEFAULT_STATE`)
-  - `solar.js`, `annual-series.js`, `battery.js`, `ai-compute.js`, `process.js`, `economics.js`: solar resource and plant, hourly annual series, battery storage and chemical dispatch, AI datacenter dispatch, process chain, and project economics
+  - `solar.js`, `annual-series.js`, `battery.js`, `ai-compute.js`, `lifetime-energy.js`, `process.js`, `economics.js`: solar resource and plant, hourly annual series, battery storage and chemical dispatch, AI datacenter dispatch, per-year energy on the degrading array, process chain, and project economics
   - `scenario.js`: the end-to-end scenario pipeline (`calculateAll`, `calculateIrr`, `runSensitivity`)
   - `finance.js`, `util.js`, `optimizer-search.js`: financial primitives (CRF, debt, payback, IRR), numeric helpers, and the IRR slider search
   - `module-catalog.js`: the `ModuleCatalog` API over `data/modules.js`
   - `policy.js`: policy evaluation over `data/policies.js`
-  - `solar-geometry.js`: Earth, Mars, and Moon solar-profile shaping
+  - `solar-geometry.js`: sun position, clear-sky irradiance, plane-of-array transposition per mounting, and Earth, Mars, and Moon solar profiles
 - `js/state/`: `schema.js` (field definitions and `DEFAULT_STATE`), `normalize.js` (state normalization and dependency rules), `migrations.js` (legacy state rewrites), `share-codec.js` (shareable URL hash encoding), `saved-site-presets.js` (locally saved sites)
 - `js/ui/`: the `App` class (`app.js`: state, init, recalculation) plus the method mixins it is assembled from
   - `control-spec.js` + `controls.js`: one declarative list of state-backed controls drives both input binding and state -> control sync; `module-controls.js`, `site-controls.js`, and `select-options.js` cover the dynamic module cards, site presets, and data-generated option lists
@@ -72,7 +72,8 @@ These are the parts of the app that are currently structured well enough to be u
 
 The simulator is useful, but it still has important limitations:
 
-- Earth fallback solar yield still relies on a latitude and GHI heuristic when the user is not using a preset or manual annual yield.
+- Earth fallback solar yield still relies on a latitude/GHI irradiance heuristic and a fixed performance ratio when the user is not using a preset or manual annual yield.
+- Every modeled day has the clear-sky profile shape; multi-day weather is not modeled, so AI reliability and battery-firmed chemical hours are clear-sky-equivalent.
 - Hydrogen-only sales are not yet modeled as a revenue line.
 - DAC-only and hydrogen-only operating modes are still stylized fallback cases rather than dedicated product modes.
 - Exploratory routes are rough techno-economic placeholders, not full first-principles process designs with validated thermal, logistics, startup, or quality constraints.
@@ -89,15 +90,16 @@ The simulator is useful, but it still has important limitations:
 The current implementation makes several deliberate assumptions that should stay visible:
 
 - Annual economics are driven by `siteYieldMwhPerMwdcYear`; the day selector mainly changes charting and Earth day-level visualization, not the annual non-AI economics.
-- `siteYieldMwhPerMwdcYear` is treated as a base annual yield. Mounting effects are applied on top of that base yield rather than asking the user for a fully mounting-adjusted number.
+- `siteYieldMwhPerMwdcYear` is treated as a base annual yield for the reference mounting (fixed optimal tilt; vertical sun-tracking at the lunar pole). Mounting effects are applied on top of that base yield rather than asking the user for a fully mounting-adjusted number.
 - With AI compute enabled, the model builds an annual dispatch path and serves AI first; the chemical plant and battery charging use residual solar after the AI load.
 - `chemicalSizingPercent` scales the full-capture chemical peak and allows intentional clipping of the highest-solar hours.
 - Feed buffers, when enabled, are treated as part of the process block and are not costed or modeled as standalone storage assets.
 - Supported products and exploratory routes share H2, CO2, methanol, and power through an auto-balanced weighted allocation rather than a user-entered process-flow sheet.
 - Panel efficiency affects panel area and land use, not annual energy yield, because the model is framed around user-set fixed MWdc nameplate rather than auto-resizing solar capacity to a target output.
 - Earth-site acreage and solar BOS keep the user-selected installed MWdc fixed, then apply location-aware layout heuristics on top of the mounting baseline instead of solving a new required MWdc for each site.
-- Stored energy always loses a fixed `2%/month` through standing leakage.
-- Solar-linked revenue degrades with panel degradation over time, including AI token revenue and exploratory-route revenue.
+- Stored energy always loses a fixed `2%/month` through standing leakage, and the battery charges or discharges at most `capacity / duration` per hour (default 4 h).
+- Revenue follows the year-by-year energy of the fixed plant design re-dispatched on the degrading array (AI token revenue degrades less than PV output, residual chemistry more); degradation restarts after a solar replacement.
+- Weather is represented only through the annual yield and the site's diffuse fraction: every modeled day has the clear-sky shape, so there are no multi-day cloudy spells.
 - Named incentive schemes are non-stacked by default except in `Custom mixed support`, framework-only entries do not change cash flow, and time-limited support ends after the modeled support duration.
 - Upfront capex support is applied at close against the eligible capex basis only; later replacement CAPEX is not automatically re-subsidized in the current model.
 - Default methane volume conversion assumes `19.25 kg CH4 / MCF`.
@@ -109,6 +111,13 @@ The current implementation makes several deliberate assumptions that should stay
 The formulas below are the current conceptual backbone of the app.
 
 ### Solar
+
+`base_yield` is the yield of a reference mounting: on Earth and Mars a fixed,
+equator-facing array at its optimal tilt; at the lunar peak of eternal light
+(PEL) vertical, sun-tracking panels. Earth presets carry PVGIS v5.3 yields
+(crystalline Si, 14% system loss, optimal tilt) and horizontal irradiation,
+plus the Global Solar Atlas annual diffuse fraction (sources and retrieval date
+in `js/data/reference-data.js`).
 
 ```text
 base_yield_mwh_per_mwdc_year =
@@ -134,21 +143,70 @@ solar_bos_cost_per_w =
   user_selected_bos_baseline adjusted by mounting + Earth-site layout heuristics
 ```
 
-For Earth sites, the fallback base-yield estimate is still:
+Earth sky and mounting geometry (`solar-geometry.js`):
 
 ```text
-estimated_base_yield_mwh_per_mwdc_year = ghi * 0.82
+dni_clear = 1353 * 0.7^(air_mass^0.678) * earth_sun_distance_factor   (Meinel)
+dhi_clear = 0.1 * dni_clear
+ghi       = dni_clear * sin(elevation) + dhi_clear
+
+# clouds/aerosols move a share (1 - t) of the beam into diffuse, conserving
+# GHI; t is solved so the annual DHI/GHI matches the site's diffuse fraction
+dni = t * dni_clear
+dhi = dhi_clear + (1 - t) * dni_clear * sin(elevation)
+
+# Hay-Davies transposition (A = dni / extraterrestrial dni, Rb = cos(aoi) / cos(zenith))
+poa = dni * cos(aoi) + dhi * (A * Rb + (1 - A) * (1 + cos(tilt)) / 2)
+      + 0.2 * ghi * (1 - cos(tilt)) / 2
+
+mounting_yield_multiplier (Earth) =
+  annual_poa(mounting) / annual_poa(fixed at the modeled optimal tilt)
 ```
 
-That fallback is intentionally treated as a heuristic, not a project-grade solar dataset.
+Mountings: fixed tilt at the modeled optimum (golden-section search on annual
+POA), 8 deg east-west racks, horizontal N-S single-axis trackers limited to
++/-60 deg with backtracking at the row ground-coverage ratio, and ideal
+dual-axis tracking. At Mojave this gives E-W 0.86, single-axis 1.21, dual 1.43
+(PVGIS: 0.85, 1.30 and 1.46 for unconstrained, unshaded trackers); London E-W
+0.84 (PVGIS 0.82). At the lunar PEL the Sun circles ~1 deg above the horizon,
+so the multiplier vs vertical sun-tracking panels is ~0.52 for a horizontal-axis
+tracker, ~1/pi for a fixed vertical panel and ~0.05 for low-tilt E-W racks.
+Mars and the generic Moon profile use the `MOUNTING_TYPES` table.
+
+The hourly annual series has the modeled clear-sky shape scaled to the annual
+energy, with every hour capped at DC nameplate. A yield that cannot fit under
+that cap during modeled daylight is capped (and flagged in the UI) rather than
+inventing energy.
+
+For Earth sites away from a preset, the base-yield estimate is:
+
+```text
+diffuse_fraction = 0.18 + 0.38 * cloudiness            (preset: measured)
+estimated_base_yield = ghi * modeled_poa_gain(optimal_tilt) * 0.78
+```
+
+That fallback is a heuristic (PVGIS performance ratios span 0.73-0.81), not a project-grade solar dataset.
 
 ### Chemical sizing and allocation
 
-The app first determines a full-capture peak, then optionally undersizes the chemical plant:
+Chemical energy, clipping, operating hours and process sizing all come from
+one hour-by-hour dispatch over the annual solar series (Earth: 8760 h; Mars:
+one orbital year of sols, annualized; Moon: the local cycle repeated over an
+Earth year). Solar feeds the process first, the battery covers shortfalls and
+absorbs surplus within its power rating, the rest is clipped; the year is
+settled to a periodic battery state. The 100% size is the smallest constant
+capacity that clips nothing over that year:
 
 ```text
-chemical_peak_kw = full_capture_peak_kw * chemical_sizing_fraction
+full_capture_kw = annual solar peak                        (no battery)
+                = min { P : clipped_kwh(P, battery) = 0 }  (battery; bisection)
+
+chemical_peak_kw = full_capture_kw * chemical_sizing_fraction
+
+battery_power_kw = battery_capacity_kwh / battery_duration_hours
 ```
+
+Average-day curves in the charts are hour-of-day averages of that annual dispatch.
 
 Power and feed shares are then auto-balanced from the enabled downstream routes:
 
@@ -311,6 +369,34 @@ annual_ai_revenue = annual_tokens_m * price_per_million_tokens
 
 GPU CAPEX uses `$ / kW` of installed IT load at the solved `load_kw`. The UI also reports full-rate reliability, integrated `$ / M token`, and token margin versus the token price.
 
+Reliability is clear-sky-equivalent: every modeled day has the clear-sky shape
+scaled to the site's annual yield, so multi-day cloudy spells are not modeled
+and the battery needed for a real-world uptime target is larger. AI sizing
+needs storage; with the battery at 0 the model adds 1 MWh per GWh/yr of solar
+and says so in the AI panel.
+
+### Lifetime energy (degradation)
+
+The plant is sized on year-1 solar. The same design (AI load, chemical
+capacity, battery) is re-dispatched at four PV output factors spanning the
+horizon, and energies are interpolated per year:
+
+```text
+solar_factor_y = (1 - degradation)^((y - 1) mod solar_asset_life)   # resets after repowering
+
+ai_factor_y       = ai_served_kwh(solar_factor_y)  / ai_served_kwh(1)
+chemical_factor_y = chemical_kwh(solar_factor_y)   / chemical_kwh(1)
+
+revenue_ai_y       = revenue_ai_1 * ai_factor_y
+revenue_products_y = revenue_products_1 * chemical_factor_y
+policy_credits_y   = credits_1 * (solar_factor_y for solar-output credits,
+                                  chemical_factor_y for H2/CO2 credits)
+```
+
+AI is served first, so it loses less than the PV output while the residual
+chemistry loses more; the AI panel reports the lowest yearly (late-life)
+reliability of the fixed design load.
+
 ### Policy layer
 
 The policy model now uses a small set of direct cash-flow archetypes plus framework-only backdrop modes:
@@ -369,7 +455,7 @@ equity_cash_flow_y = net_cash_flow_y - debt_service_y
 
 Important implementation detail:
 
-- Solar-linked revenue degrades with panel degradation over time, including AI token revenue and exploratory-route revenue.
+- Yearly revenue streams follow the lifetime energy vectors (see Lifetime energy): AI revenue the AI-served energy, product and exploratory revenue the delivered chemical energy, with degradation restarting after each solar replacement.
 - Time-limited policy modes only apply for their modeled support duration.
 - Replacement CAPEX appears as discrete outflows when asset life rolls over within the analysis horizon.
 - With financing enabled, the headline IRR switches from project IRR to equity IRR, while project NPV remains unlevered.
@@ -395,14 +481,14 @@ The current default state is roughly a `1 MW` Mojave-style methane scenario:
 
 - Site: Mojave Desert Earth preset
 - Analysis cycle: `Annual Average`
-- Annual base yield: `2050 MWh / MWdc / year`
+- Annual base yield: `1974 MWh / MWdc / year` (PVGIS v5.3, fixed optimal tilt)
 - Mounting: East-West fixed
 - System size: `1 MW`
 - Panel efficiency: `20%`
 - Module cost: `$0.20/W`
 - BOS cost: `$0.12/W`
 - Panel degradation: `0.65%/yr`
-- Battery: off by default (`0 MWh`), with `$150/kWh` storage cost when enabled
+- Battery: off by default (`0 MWh`), with `$150/kWh` storage cost and a `4 h` duration (power = capacity / 4 h) when enabled
 - Chemical peak sizing: `100%`
 - Electrolyzer: `79 kWh/kg H2`, `$100/kW`
 - DAC: `3440 kWh/t-CO2`, `$450/kW`

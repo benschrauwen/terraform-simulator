@@ -136,8 +136,8 @@
               <input type="number" id="longitude" value="-117.60" min="-180" max="180" step="0.1">
             </label>
           </div>
-          <label>Annual Yield (MWh / MWdc / year)
-            <input type="number" id="siteYield" value="2050" min="500" max="3500" step="10">
+          <label><span class="tooltip-label" data-tooltip="Annual PV output per MWdc of the reference mounting: a fixed, equator-facing array at its optimal tilt (vertical sun-tracking panels at the lunar pole). Other mountings scale it by the modeled mounting multiplier.">Annual Yield (MWh / MWdc / year)</span>
+            <input type="number" id="siteYield" value="1974" min="0" max="10000" step="10">
           </label>
           <div class="field-note" id="siteYieldNote">
             This is the long-run annual PV output per MWdc. For a more accurate site-specific number, use a
@@ -181,7 +181,7 @@
             <span class="range-value" id="panelDegradationAnnualValue">0.65%/yr</span>
           </label>
           <div class="field-note compact-note">
-            Multi-year economics fade solar-linked output by the selected annual PV degradation rate.
+            Multi-year economics re-dispatch the fixed plant design on the degraded array each year (degradation restarts after a solar replacement).
           </div>
           <label>Mounting Type
             <select id="mountingType"></select>
@@ -199,9 +199,14 @@
             <span class="range-value" id="sitePrepCostValue">$15,000/acre</span>
           </label>
           <div class="info-row">
-            <span class="tooltip-label" data-tooltip="Modeled yearly solar output per MWdc before multiplying by plant size.">Base Yield:</span>
+            <span class="tooltip-label" data-tooltip="Site yield of the reference mounting (named below), per MWdc, before the mounting multiplier and plant size.">Base Yield:</span>
             <span id="baseYieldValue" class="highlight">— MWh/MWdc-yr</span>
           </div>
+          <div class="info-row">
+            <span class="tooltip-label" data-tooltip="Selected mounting's annual yield relative to the reference mounting, from the model's sun geometry with the site's diffuse-light share (Hay-Davies sky, trackers limited to ±60° with backtracking).">Mounting Multiplier:</span>
+            <span id="mountingYieldMultValue" class="highlight">—</span>
+          </div>
+          <div class="field-note compact-note" id="solarYieldWarning" hidden></div>
           <div class="info-row">
             <span class="tooltip-label" data-tooltip="Total electricity the solar array generates in a typical year.">Annual Production:</span>
             <span id="annualProduction" class="highlight">— MWh</span>
@@ -256,6 +261,10 @@
             <label>Cycle Life
               <input type="range" id="batteryCycles" min="1000" max="10000" step="500" value="4000">
               <span class="range-value" id="batteryCyclesValue">4,000</span>
+            </label>
+            <label><span class="tooltip-label" data-tooltip="Energy-to-power ratio. The battery charges or discharges at most capacity ÷ duration per hour (a 4 h battery is a 0.25C system).">Duration (hours at full power)</span>
+              <input type="range" id="batteryDurationHours" min="0.5" max="12" step="0.5" value="4">
+              <span class="range-value" id="batteryDurationHoursValue">4.0 h</span>
             </label>
             <div class="info-row">
               <span id="effectiveCFLabel" class="tooltip-label" data-tooltip="Average utilization of the chemical plant after storage smooths solar output.">Effective CF:</span>
@@ -381,6 +390,10 @@
                   The AI load is auto-sized from the current solar plus battery system to satisfy the selected full-rate uptime target. The chemical plant then ramps up and down only on the residual energy left after AI load and battery charging.
                 </div>
                 <div class="field-note compact-note">
+                  Reliability is clear-sky-equivalent: every modeled day has the clear-sky shape scaled to the site's annual yield, so multi-day cloudy spells are not modeled and real-world uptime at the same battery size will be lower. AI sizing needs storage; with the battery at 0, one of 1 MWh per GWh/yr of solar is added automatically.
+                </div>
+                <div class="field-note compact-note" id="aiBatterySeedNote" hidden></div>
+                <div class="field-note compact-note">
                   GPU CAPEX is modeled on a direct-current datacenter framing ($/kW installed IT load).
                 </div>
                 <label>GPU CAPEX ($/kW)
@@ -408,8 +421,12 @@
                   <span id="aiUtilizationValue" class="highlight">—</span>
                 </div>
                 <div class="info-row">
-                  <span class="tooltip-label" data-tooltip="Share of time the AI load can run at full target output.">Full-rate reliability:</span>
+                  <span class="tooltip-label" data-tooltip="Share of hours the AI load runs at full design output in year 1, on a clear-sky-equivalent year (no multi-day weather).">Full-rate reliability (clear-sky eq.):</span>
                   <span id="aiFullRateValue" class="highlight">—</span>
+                </div>
+                <div class="info-row">
+                  <span class="tooltip-label" data-tooltip="Lowest yearly full-rate reliability over the analysis horizon: the year-1 design load re-dispatched on the degraded array (degradation restarts after a solar replacement).">Late-life reliability:</span>
+                  <span id="aiLateLifeReliabilityValue" class="highlight">—</span>
                 </div>
                 <div class="info-row">
                   <span class="tooltip-label" data-tooltip="Total yearly AI tokens produced and sold in the model.">Annual tokens:</span>

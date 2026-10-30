@@ -33,7 +33,11 @@ function selectPowerSeries(r, dayContext, { showSpecificDay, aiMode, useOrbitalM
     };
   }
 
-  const solar = r.solar.hourlyProfile.map(v => Math.min((v * r.solar.dailyKWh) / r.solar.binHours, r.solar.peakPowerKW));
+  // Average cycle of the annual dispatch (Mars: across the modeled orbit).
+  const dispatch = r.annualDispatch;
+  const solar = (Array.isArray(dispatch?.averageDaySolarKW) && dispatch.averageDaySolarKW.length)
+    ? dispatch.averageDaySolarKW
+    : (r.annualSolar?.averageDayKW || []);
   return {
     solar,
     ai: [],
@@ -71,22 +75,20 @@ function describePowerChart(r, { aiMode, showSpecificDay, hasClipping, useOrbita
       noteParts.push(`Residual chemistry is capped at ${sizingPercent}% of the full-capture peak, so the red band shows clipped solar above the chemical nameplate.`);
     }
   } else if (r.storage.enabled) {
+    const lead = showSpecificDay
+      ? 'Battery-backed dispatch for the selected day.'
+      : `Average hour-of-${isEarth ? 'day' : cycleUnit} battery-backed dispatch across the modeled year.`;
     noteParts.push(hasClipping
-      ? (showSpecificDay
-          ? `Battery-backed dispatch for the selected day. The chemical plant is capped at ${sizingPercent}% of the full-capture peak, so the red band shows solar clipped once the battery and plant are both full.`
-          : `Representative battery-backed dispatch for the modeled cycle. The chemical plant is capped at ${sizingPercent}% of the full-capture peak, so the red band shows solar clipped once the battery and plant are both full.`)
-      : (showSpecificDay
-          ? 'Battery-backed dispatch for the selected day. The chemical plant is sized to the lowest peak load that still absorbs the modeled solar energy; excess solar charges the battery and stored energy extends operation later in the day.'
-          : 'Representative battery-backed dispatch for the modeled cycle. The chemical plant is sized to the lowest peak load that still absorbs the modeled solar energy; excess solar charges the battery and stored energy extends operation later in the cycle.'));
+      ? `${lead} The chemical plant is capped at ${sizingPercent}% of its full-capture size, so the red band shows solar clipped once the battery and plant are both full.`
+      : `${lead} At 100% sizing the chemical plant is the smallest constant load that clips no solar over the annual dispatch; excess solar charges the battery and stored energy extends operation later.`);
     if (r.solar.chartNote) noteParts.push(r.solar.chartNote);
   } else {
+    const lead = showSpecificDay
+      ? 'Chemical load for the selected day with no battery shifting.'
+      : `Average hour-of-${isEarth ? 'day' : cycleUnit} chemical load across the modeled year, with no battery shifting.`;
     noteParts.push(hasClipping
-      ? (showSpecificDay
-          ? `Chemical load for the selected day with no battery shifting. The plant is capped at ${sizingPercent}% of the full-capture peak, and the red band shows the clipped midday solar.`
-          : `Representative chemical load with no battery shifting. The plant is capped at ${sizingPercent}% of the full-capture peak, and the red band shows the clipped solar.`)
-      : (showSpecificDay
-          ? 'Chemical load for the selected day with no battery shifting. The process follows the solar profile directly.'
-          : 'Representative chemical load with no battery shifting. The process follows the solar profile directly.'));
+      ? `${lead} The plant is capped at ${sizingPercent}% of the year's peak solar output, and the red band shows the clipped solar.`
+      : `${lead} At 100% sizing the plant matches the year's peak solar output and follows the solar profile directly.`);
     if (r.solar.chartNote) noteParts.push(r.solar.chartNote);
   }
   if (isEarth && showSpecificDay) {

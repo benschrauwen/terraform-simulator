@@ -132,44 +132,92 @@ export const SolarGeometry = {
     });
   },
 
-  planeOfArrayIrradiance(normal, tiltDeg, sunVec, dni, dhi) {
+  /* Mounting geometry shared by every body. East-west racks are low-tilt
+     (PEG-style); single-axis trackers rotate about a horizontal north-south
+     axis within +/-60 deg and backtrack to avoid row-to-row shading. */
+  EAST_WEST_TILT_DEG: 8,
+  TRACKER_ROTATION_LIMIT_DEG: 60,
+  GROUND_ALBEDO: 0.2,
+
+  /* Hay-Davies transposition: beam on the plane; sky diffuse split into a
+     circumsolar part (anisotropy index A = DNI / extraterrestrial DNI, treated
+     like beam via Rb = cos(incidence) / cos(zenith)) and an isotropic part
+     weighted by the sky view factor; plus ground-reflected light (albedo).
+     Without `dniExtra` the sky is isotropic. */
+  planeOfArrayIrradiance(normal, tiltDeg, sunVec, dni, dhi, ghi = 0, dniExtra = 0) {
     const cosIncidence = Math.max(0, this.dot(sunVec, normal));
-    const skyView = (1 + Math.cos(tiltDeg * this.DEG)) / 2;
-    return (dni * cosIncidence) + (dhi * skyView);
+    const cosTilt = Math.cos(tiltDeg * this.DEG);
+    const skyView = (1 + cosTilt) / 2;
+    const groundView = (1 - cosTilt) / 2;
+    const anisotropy = dniExtra > 0 ? this.clamp(dni / dniExtra, 0, 1) : 0;
+    const rb = cosIncidence / Math.max(sunVec.up, 0.01745);
+    const skyDiffuse = dhi * ((anisotropy * rb) + ((1 - anisotropy) * skyView));
+    return (dni * cosIncidence) + skyDiffuse + (this.GROUND_ALBEDO * ghi * groundView);
   },
 
-  mountingPlaneIrradiance({ sunVec, dni, dhi, latitude, mountingKey }) {
+  /* Rotation (radians, + toward east) of a horizontal N-S axis tracker:
+     true tracking, backtracking when the rows would shade each other
+     (flat-terrain rule, Anderson & Mikofski 2020: when cos(theta_T) < GCR,
+     theta = theta_T - sign(theta_T) * acos(cos(theta_T) / GCR)), then the
+     mechanical rotation limit. */
+  singleAxisTrackerRotation(sunVec, groundCoverageRatio = 0) {
+    let theta = Math.atan2(sunVec.east, Math.max(sunVec.up, 1e-9));
+    const gcr = Number(groundCoverageRatio) || 0;
+    if (gcr > 0 && gcr < 1) {
+      const cosTheta = Math.cos(theta);
+      if (cosTheta < gcr) {
+        theta -= Math.sign(theta) * Math.acos(cosTheta / gcr);
+      }
+    }
+    const limit = this.TRACKER_ROTATION_LIMIT_DEG * this.DEG;
+    return this.clamp(theta, -limit, limit);
+  },
+
+  /* Plane-of-array irradiance (W/m2) for one mounting. `fixedTiltDeg`
+     defaults to the site's modeled optimum; `fixedAzimuthDeg` defaults to
+     equator-facing. */
+  mountingPlaneIrradiance({
+    sunVec,
+    dni,
+    dhi,
+    ghi = 0,
+    dniExtra = 0,
+    latitude,
+    mountingKey,
+    fixedTiltDeg,
+    fixedAzimuthDeg,
+    groundCoverageRatio = 0,
+  }) {
     if (sunVec.up <= 0) return 0;
 
-    const fixedTilt = this.clamp(Math.abs(latitude) * 0.85, 10, 35);
-    const equatorFacingAzimuth = latitude >= 0 ? 180 : 0;
-    const eastWestTilt = 8;
+    const poa = (normal, tiltDeg) =>
+      this.planeOfArrayIrradiance(normal, tiltDeg, sunVec, dni, dhi, ghi, dniExtra);
+    const eastWestTilt = this.EAST_WEST_TILT_DEG;
 
     if (mountingKey === 'ew') {
-      const east = this.planeOfArrayIrradiance(this.panelNormal(eastWestTilt, 90), eastWestTilt, sunVec, dni, dhi);
-      const west = this.planeOfArrayIrradiance(this.panelNormal(eastWestTilt, 270), eastWestTilt, sunVec, dni, dhi);
+      const east = poa(this.panelNormal(eastWestTilt, 90), eastWestTilt);
+      const west = poa(this.panelNormal(eastWestTilt, 270), eastWestTilt);
       return 0.5 * (east + west);
     }
 
     if (mountingKey === 'single') {
-      const normal = this.trackerNormal(sunVec);
-      const tiltDeg = Math.acos(this.clamp(normal.up, -1, 1)) / this.DEG;
-      return this.planeOfArrayIrradiance(normal, tiltDeg, sunVec, dni, dhi);
+      const theta = this.singleAxisTrackerRotation(sunVec, groundCoverageRatio);
+      return poa({ east: Math.sin(theta), north: 0, up: Math.cos(theta) }, Math.abs(theta) / this.DEG);
     }
 
     if (mountingKey === 'dual') {
       const normal = this.normalizeVec(sunVec);
-      const tiltDeg = Math.acos(this.clamp(normal.up, -1, 1)) / this.DEG;
-      return this.planeOfArrayIrradiance(normal, tiltDeg, sunVec, dni, dhi);
+      return poa(normal, Math.acos(this.clamp(normal.up, -1, 1)) / this.DEG);
     }
 
-    return this.planeOfArrayIrradiance(
-      this.panelNormal(fixedTilt, equatorFacingAzimuth),
-      fixedTilt,
-      sunVec,
-      dni,
-      dhi
-    );
+    const tilt = Number.isFinite(fixedTiltDeg) ? fixedTiltDeg : this.defaultFixedTiltDeg(latitude);
+    const azimuth = Number.isFinite(fixedAzimuthDeg) ? fixedAzimuthDeg : (latitude >= 0 ? 180 : 0);
+    return poa(this.panelNormal(tilt, azimuth), tilt);
+  },
+
+  /* Rule-of-thumb fixed tilt, used only when no modeled optimum is given. */
+  defaultFixedTiltDeg(latitude) {
+    return this.clamp(Math.abs(Number(latitude) || 0) * 0.85, 0, 45);
   },
 
   /**
@@ -226,14 +274,128 @@ export const SolarGeometry = {
   },
 
   /**
-   * Clear-sky direct normal irradiance (W/m²) based on air mass.
-   * Simplified Hottel model.
+   * Clear-sky direct normal irradiance (W/m²) from air mass: Meinel & Meinel
+   * (1976), DNI = 1353 * 0.7^(AM^0.678) (947 W/m² at AM1, 838 W/m² at AM2).
+   * Seasonal Earth-Sun distance is applied separately (extraterrestrialFactor).
    */
   clearSkyDNI(airMass) {
     if (!isFinite(airMass) || airMass <= 0) return 0;
-    // Atmospheric transmittance model
-    const tau = 0.7 * Math.pow(0.678, airMass);
-    return 1361 * tau; // Solar constant * transmittance
+    return 1353 * Math.pow(0.7, Math.pow(airMass, 0.678));
+  },
+
+  /* Clear-sky diffuse horizontal irradiance as a share of DNI (the usual
+     companion to the Meinel model: diffuse ~10% of the direct beam). */
+  CLEAR_SKY_DIFFUSE_RATIO: 0.1,
+
+  /**
+   * Sky irradiance at one instant. Clear sky is Meinel DNI plus 10% diffuse;
+   * `beamTransmittance` (0-1) then moves a share of the beam into isotropic
+   * diffuse, conserving GHI, so a site's measured annual diffuse fraction can
+   * be matched (clouds/aerosols redistribute light more than they remove it
+   * on the profile shape; annual energy is scaled to the site yield anyway).
+   */
+  skyIrradiance(elevationDeg, etFactor = 1, beamTransmittance = 1) {
+    if (!(elevationDeg > 0)) return { dni: 0, dhi: 0, ghi: 0, dniExtra: 0 };
+    const sinElevation = Math.sin(elevationDeg * this.DEG);
+    const dniClear = this.clearSkyDNI(this.airMass(elevationDeg)) * etFactor;
+    const dhiClear = this.CLEAR_SKY_DIFFUSE_RATIO * dniClear;
+    const transmittance = this.clamp(Number.isFinite(beamTransmittance) ? beamTransmittance : 1, 0, 1);
+    return {
+      dni: transmittance * dniClear,
+      dhi: dhiClear + ((1 - transmittance) * dniClear * sinElevation),
+      ghi: (dniClear * sinElevation) + dhiClear,
+      dniExtra: 1361 * etFactor,
+    };
+  },
+
+  /**
+   * Beam transmittance that reproduces an annual diffuse fraction (DHI/GHI)
+   * at a latitude. With clear-sky annual beam-on-horizontal B and diffuse D0,
+   * moving (1 - t) of the beam to diffuse gives DF = (D0 + (1 - t) B) / (B + D0),
+   * so t = 1 - (DF (B + D0) - D0) / B, clamped to [0, 1].
+   */
+  beamTransmittanceForDiffuseFraction(latitude, diffuseFraction) {
+    if (!Number.isFinite(diffuseFraction)) return 1;
+    const key = `${Number(latitude).toFixed(2)}|${diffuseFraction.toFixed(4)}`;
+    const cache = this._beamTransmittanceCache || (this._beamTransmittanceCache = new Map());
+    if (cache.has(key)) return cache.get(key);
+
+    const latRad = latitude * this.DEG;
+    let beam = 0;
+    let diffuse = 0;
+    for (let day = 8; day <= 365; day += 15) {
+      const decl = this.declination(day);
+      const etFactor = this.extraterrestrialFactor(day);
+      for (let step = 0; step < 48; step++) {
+        const hourAngle = (((step + 0.5) / 2) - 12) * 15 * this.DEG;
+        const elevDeg = this.solarElevation(latRad, decl, hourAngle) / this.DEG;
+        if (elevDeg <= 0) continue;
+        const sky = this.skyIrradiance(elevDeg, etFactor, 1);
+        beam += sky.dni * Math.sin(elevDeg * this.DEG);
+        diffuse += sky.dhi;
+      }
+    }
+    const transmittance = beam > 0
+      ? this.clamp(1 - ((diffuseFraction * (beam + diffuse)) - diffuse) / beam, 0, 1)
+      : 1;
+    cache.set(key, transmittance);
+    return transmittance;
+  },
+
+  /* Annual plane-of-array insolation (kWh/m2/yr) on a coarse sample grid
+     (24 days x 48 half-hours), for tilt optimization. */
+  sampledAnnualPlaneOfArrayKWh(latitude, mountingKey, options = {}) {
+    const latRad = latitude * this.DEG;
+    let total = 0;
+    for (let day = 8; day <= 365; day += 15) {
+      const decl = this.declination(day);
+      const etFactor = this.extraterrestrialFactor(day);
+      for (let step = 0; step < 48; step++) {
+        const hourAngle = (((step + 0.5) / 2) - 12) * 15 * this.DEG;
+        const elevDeg = this.solarElevation(latRad, decl, hourAngle) / this.DEG;
+        if (elevDeg <= 0) continue;
+        const sky = this.skyIrradiance(elevDeg, etFactor, options.beamTransmittance);
+        total += this.mountingPlaneIrradiance({
+          sunVec: this.sunVectorLocal(latRad, decl, hourAngle),
+          ...sky,
+          latitude,
+          mountingKey,
+          fixedTiltDeg: options.fixedTiltDeg,
+          groundCoverageRatio: options.groundCoverageRatio,
+        });
+      }
+    }
+    // 24 sampled days, half-hour steps -> scale to 365 days of kWh.
+    return (total * 0.5 * (365 / 24)) / 1000;
+  },
+
+  /* Equator-facing tilt (deg) that maximizes modeled annual POA insolation,
+     by golden-section search over 0-75 deg. Cached per site. */
+  optimalFixedTiltDeg(latitude, beamTransmittance = 1) {
+    const key = `${Number(latitude).toFixed(2)}|${Number(beamTransmittance).toFixed(4)}`;
+    const cache = this._optimalTiltCache || (this._optimalTiltCache = new Map());
+    if (cache.has(key)) return cache.get(key);
+
+    const yieldAt = tilt => this.sampledAnnualPlaneOfArrayKWh(latitude, 'fixed', { beamTransmittance, fixedTiltDeg: tilt });
+    const ratio = (Math.sqrt(5) - 1) / 2;
+    let lo = 0;
+    let hi = 75;
+    let a = hi - (ratio * (hi - lo));
+    let b = lo + (ratio * (hi - lo));
+    let fa = yieldAt(a);
+    let fb = yieldAt(b);
+    while (hi - lo > 0.25) {
+      if (fa < fb) {
+        lo = a; a = b; fa = fb;
+        b = lo + (ratio * (hi - lo)); fb = yieldAt(b);
+      } else {
+        hi = b; b = a; fb = fa;
+        a = hi - (ratio * (hi - lo)); fa = yieldAt(a);
+      }
+    }
+    const tilt = Math.round((lo + hi) / 2);
+    cache.set(key, tilt);
+    return tilt;
   },
 
   /**
@@ -248,9 +410,12 @@ export const SolarGeometry = {
 
   /**
    * Generate 24-hour power profile for a specific day.
+   * `options`: { beamTransmittance, fixedTiltDeg, groundCoverageRatio } (see
+   * skyIrradiance / mountingPlaneIrradiance); defaults are clear sky, the
+   * rule-of-thumb tilt and an unshaded tracker.
    * Returns { profile: [24 values normalized 0-1], sunrise, sunset, dayLength, peakIrradiance }
    */
-  dailyProfile(latitude, dayOfYear, mountingKey = 'fixed') {
+  dailyProfile(latitude, dayOfYear, mountingKey = 'fixed', options = {}) {
     const latRad = latitude * this.DEG;
     const decl = this.declination(dayOfYear);
     const omegaS = this.sunriseHourAngle(latRad, decl);
@@ -282,15 +447,14 @@ export const SolarGeometry = {
 
         if (elevDeg > 0) {
           const sunVec = this.sunVectorLocal(latRad, decl, hourAngle);
-          const am = this.airMass(elevDeg);
-          const dni = this.clearSkyDNI(am) * etFactor;
-          const dhi = 80 * Math.max(0, sunVec.up);
+          const sky = this.skyIrradiance(elevDeg, etFactor, options.beamTransmittance);
           totalIrr += this.mountingPlaneIrradiance({
             sunVec,
-            dni,
-            dhi,
+            ...sky,
             latitude,
             mountingKey,
+            fixedTiltDeg: options.fixedTiltDeg,
+            groundCoverageRatio: options.groundCoverageRatio,
           });
         }
       }
@@ -318,7 +482,7 @@ export const SolarGeometry = {
    * Generate annual average profile by averaging profiles across the year.
    * Samples ~12 days evenly spaced.
    */
-  annualAverageProfile(latitude, mountingKey = 'fixed') {
+  annualAverageProfile(latitude, mountingKey = 'fixed', options = {}) {
     const sampleDays = [15, 46, 74, 105, 135, 166, 196, 227, 258, 288, 319, 349];
     const avgProfile = new Array(24).fill(0);
     let totalInsolation = 0;
@@ -327,7 +491,7 @@ export const SolarGeometry = {
     let totalSunset = 0;
 
     for (const day of sampleDays) {
-      const result = this.dailyProfile(latitude, day, mountingKey);
+      const result = this.dailyProfile(latitude, day, mountingKey, options);
       for (let h = 0; h < 24; h++) {
         avgProfile[h] += result.rawProfile[h];
       }
@@ -595,38 +759,12 @@ export const SolarGeometry = {
     illuminatedFraction = 0.85,
     mountingKey = 'ew',
   }) {
-    const targetDarkFraction = this.clamp(1 - illuminatedFraction, 0.05, 0.22);
-    const majorShadowWidth = this.clamp(0.03 + (targetDarkFraction * 0.25), 0.04, 0.085);
-    const mountCapture = phase => {
-      if (mountingKey === 'dual') return 1;
-      if (mountingKey === 'single') {
-        return Math.max(0.72, 0.94 + (0.03 * Math.cos((2 * Math.PI) * (phase - 0.10))));
-      }
-      if (mountingKey === 'ew') {
-        return Math.max(0.65, 0.88 + (0.05 * Math.cos((2 * Math.PI) * (phase - 0.12))));
-      }
-      return Math.max(0.3, 0.62
-        + (0.22 * Math.cos((2 * Math.PI) * (phase - 0.21)))
-        + (0.04 * Math.cos((4 * Math.PI) * (phase - 0.05))));
-    };
+    const visibility = this.lunarPolarVisibility(bins, illuminatedFraction);
+    const rawProfile = visibility.map((visible, i) =>
+      1361 * visible * this.lunarPolarMountCapture((i + 0.5) / bins, mountingKey));
 
-    // Approximate a high ridge near the lunar south pole:
-    // mostly illuminated, with repeated shallow terrain dips and one deeper outage.
-    const rawProfile = Array.from({ length: bins }, (_, i) => {
-      const phase = (i + 0.5) / bins;
-      const broadIllumination = 0.80 + (0.08 * Math.cos((2 * Math.PI) * (phase - 0.18)));
-      const microVariation = 0.02 * Math.cos((4 * Math.PI) * (phase - 0.05));
-      const terrainLoss = (0.14 * this.gaussianWrappedPhase(phase, 0.19, 0.028))
-        + (0.20 * this.gaussianWrappedPhase(phase, 0.43, 0.028))
-        + (0.34 * this.gaussianWrappedPhase(phase, 0.61, 0.038))
-        + (1.05 * this.gaussianWrappedPhase(phase, 0.83, majorShadowWidth));
-      const visibility = this.clamp(broadIllumination + microVariation - terrainLoss, 0, 1);
-      return 1000 * visibility * mountCapture(phase);
-    });
-
-    const peak = Math.max(...rawProfile, 0);
-    const darkThreshold = peak * 0.02;
-    const darkSegments = this.getCyclicSegments(rawProfile, value => value <= darkThreshold);
+    // Start the cycle at the end of the longest terrain outage.
+    const darkSegments = this.getCyclicSegments(visibility, value => value <= 0.02);
     const longestDarkSegment = darkSegments.reduce((best, segment) =>
       (!best || segment.lengthBins > best.lengthBins ? segment : best), null);
     const alignedProfile = longestDarkSegment
@@ -634,6 +772,99 @@ export const SolarGeometry = {
       : rawProfile;
 
     return this.normalizeProfile(alignedProfile, cycleHours);
+  },
+
+  /* Terrain visibility (0-1) of the Sun from a high ridge near the lunar
+     south pole over one lunation: mostly illuminated, with repeated shallow
+     terrain dips and one deeper outage. */
+  lunarPolarVisibility(bins = 24, illuminatedFraction = 0.85) {
+    const targetDarkFraction = this.clamp(1 - illuminatedFraction, 0.05, 0.22);
+    const majorShadowWidth = this.clamp(0.03 + (targetDarkFraction * 0.25), 0.04, 0.085);
+    return Array.from({ length: bins }, (_, i) => {
+      const phase = (i + 0.5) / bins;
+      const broadIllumination = 0.80 + (0.08 * Math.cos((2 * Math.PI) * (phase - 0.18)));
+      const microVariation = 0.02 * Math.cos((4 * Math.PI) * (phase - 0.05));
+      const terrainLoss = (0.14 * this.gaussianWrappedPhase(phase, 0.19, 0.028))
+        + (0.20 * this.gaussianWrappedPhase(phase, 0.43, 0.028))
+        + (0.34 * this.gaussianWrappedPhase(phase, 0.61, 0.038))
+        + (1.05 * this.gaussianWrappedPhase(phase, 0.83, majorShadowWidth));
+      return this.clamp(broadIllumination + microVariation - terrainLoss, 0, 1);
+    });
+  },
+
+  /* At the lunar PEL the Sun circles the horizon once per lunation at about
+     +1 deg elevation (latitude ~89.5 S, 1.54 deg obliquity). */
+  LUNAR_PEL_SUN_ELEVATION_DEG: 1,
+
+  /* Share of the normal-incidence beam (no atmosphere, no diffuse) a
+     mounting captures at a lunation phase (sun azimuth = 360 deg x phase).
+     Sun-pointing "dual" panels (vertical, rotating about a vertical axis)
+     capture ~100%; a horizontal-axis tracker within +/-60 deg ~55%; a fixed
+     vertical panel facing one direction ~1/pi; 8 deg east-west racks ~6%.
+     Panels are treated as unshaded (spaced masts, no row shading). */
+  lunarPolarMountCapture(phase, mountingKey) {
+    const elevation = this.LUNAR_PEL_SUN_ELEVATION_DEG * this.DEG;
+    const azimuth = 2 * Math.PI * phase;
+    const sunVec = {
+      east: Math.cos(elevation) * Math.sin(azimuth),
+      north: Math.cos(elevation) * Math.cos(azimuth),
+      up: Math.sin(elevation),
+    };
+    return this.mountingPlaneIrradiance({
+      sunVec,
+      dni: 1,
+      dhi: 0,
+      ghi: 0,
+      latitude: -89.5,
+      mountingKey,
+      fixedTiltDeg: 90,
+      fixedAzimuthDeg: 0,
+      groundCoverageRatio: 0,
+    });
+  },
+
+  /* Lunar PEL yield multiple of a mounting vs. sun-pointing panels (the
+     PEL base-yield reference), weighting each phase by terrain visibility. */
+  lunarPolarMountingFactor(mountingKey, illuminatedFraction = 0.85, bins = 96) {
+    const visibility = this.lunarPolarVisibility(bins, illuminatedFraction);
+    let mount = 0;
+    let reference = 0;
+    visibility.forEach((visible, i) => {
+      const phase = (i + 0.5) / bins;
+      mount += visible * this.lunarPolarMountCapture(phase, mountingKey);
+      reference += visible * this.lunarPolarMountCapture(phase, 'dual');
+    });
+    return reference > 0 ? mount / reference : 0;
+  },
+
+  /* Hourly plane-of-array irradiance (W/m2) over a 365-day Earth year:
+     { hourly: Float64Array(8760), sum }. Cached per site and mounting;
+     callers must not mutate the returned array. */
+  annualHourlyPlaneOfArray(latitude, mountingKey, options = {}) {
+    const key = [
+      Number(latitude).toFixed(4),
+      mountingKey,
+      Number(options.beamTransmittance ?? 1).toFixed(4),
+      options.fixedTiltDeg ?? '',
+      Number(options.groundCoverageRatio ?? 0).toFixed(4),
+    ].join('|');
+    const cache = this._annualPoaCache || (this._annualPoaCache = new Map());
+    if (cache.has(key)) return cache.get(key);
+
+    const hourly = new Float64Array(365 * 24);
+    let sum = 0;
+    for (let day = 1; day <= 365; day++) {
+      const raw = this.dailyProfile(latitude, day, mountingKey, options).rawProfile;
+      for (let h = 0; h < 24; h++) {
+        const value = Math.max(0, raw[h]);
+        hourly[((day - 1) * 24) + h] = value;
+        sum += value;
+      }
+    }
+    const entry = { hourly, sum };
+    if (cache.size >= 24) cache.delete(cache.keys().next().value);
+    cache.set(key, entry);
+    return entry;
   },
 
   /**

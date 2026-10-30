@@ -5,6 +5,7 @@
    dispatch (battery or AI) -> process allocation -> products -> economics.
    `fastMode` skips display-only series for the optimizer and IRR sweeps. */
 
+import { MODEL_ASSUMPTIONS } from '../data/assumptions.js';
 import { CHEMISTRY } from '../data/reference-data.js';
 import { ModuleCatalog } from './module-catalog.js';
 
@@ -23,60 +24,45 @@ export const scenarioMethods = {
         normalizedState[`${module.id}Route`]
       );
     });
-    const includeAnnualSolar = !fastMode || normalizedState.aiComputeEnabled || exploratoryEnabled || bufferedModuleEnabled;
-    const includeAnnualSolarWindowSummaries = !fastMode;
-    const includeDispatchSeries = !fastMode;
-    const includeDisplayDispatchSeries = !fastMode;
-    const includeBatterySeries = !fastMode;
+    const includeSeries = !fastMode;
     const includeSupportedModules = !fastMode;
     const includeExploratoryModules = !fastMode || exploratoryEnabled;
     const includeEnvironmental = !fastMode;
-    const solar = this.calculateSolar(normalizedState);
-    const annualSolar = includeAnnualSolar
-      ? this.buildAnnualSolarSeries(normalizedState, solar, {
-          includeWindowSummaries: includeAnnualSolarWindowSummaries,
-        })
-      : null;
-    const shouldRunAiModel = normalizedState.aiComputeEnabled || !fastMode || exploratoryEnabled || bufferedModuleEnabled;
-    const ai = shouldRunAiModel
+    const solarModel = this.calculateSolar(normalizedState);
+    // The annual hourly dispatch is the single basis for delivered energy,
+    // clipping, operating hours and sizing in every mode (Earth year; Mars
+    // orbital year, annualized; Moon repeated local cycle).
+    const annualSolar = this.buildAnnualSolarSeries(normalizedState, solarModel, {
+      includeWindowSummaries: includeSeries,
+    });
+    const dispatchBasis = this.getAnnualDispatchBasis(normalizedState, solarModel, annualSolar, {
+      includeWindowSummaries: includeSeries,
+    });
+    const solar = this.reconcileSolarWithDispatchSeries(solarModel, dispatchBasis);
+    const supply = normalizedState.aiComputeEnabled
       ? this.calculateAICompute(normalizedState, solar, annualSolar, {
-          captureDispatchSeries: includeDispatchSeries,
-          captureDailySummaries: bufferedModuleEnabled,
-          includeDisplayDispatchSeries,
+          dispatchBasis,
+          captureDispatchSeries: includeSeries,
+          captureDailySummaries: true,
+          includeDisplayDispatchSeries: includeSeries,
         })
-      : this.buildDisabledAiSummary(normalizedState);
-    const batterySummary = ai.enabled
-      ? null
-      : this.calculateBattery(normalizedState, solar, {
-          includeSeries: includeBatterySeries,
+      : this.calculateBattery(normalizedState, solar, annualSolar, {
+          dispatchBasis,
+          includeSeries,
         });
-    const storage = ai.enabled ? ai.storage : batterySummary.storage;
-    const chemicalSupply = ai.enabled ? ai.chemicalSupply : batterySummary.chemicalSupply;
-    // Earth display series for the battery-firmed chemical plant. It differs
-    // from the zero-load AI pass above (where the battery charges but never
-    // discharges), so both dispatches are needed.
-    const annualChemicalDisplayDispatch = (!ai.enabled &&
-      includeDisplayDispatchSeries &&
-      normalizedState.body === 'earth' &&
-      annualSolar &&
-      Array.isArray(annualSolar.hourlyKW) &&
-      annualSolar.hourlyKW.length)
+    const ai = normalizedState.aiComputeEnabled
       ? {
-          ...this.simulateAnnualChemicalDispatch(
-            normalizedState,
-            annualSolar,
-            chemicalSupply.processPowerKW,
-            { captureSeries: true }
-          ),
-          dayLabels: annualSolar.dayLabels || [],
+          ...supply,
+          batterySeededMWh: this.getSeededAiBatteryMWh(state, normalizedState, solarModel.annualMWh),
         }
-      : null;
+      : this.buildDisabledAiSummary(normalizedState);
+    const { storage, chemicalSupply, lifetimeEnergy } = supply;
+    const annualDispatch = supply.dispatch || null;
     const cyclesPerYear = this.getBodyConfig(normalizedState.body || 'earth').cyclesPerEarthYear;
-    const effectiveDailyKWh = ai.enabled
-      ? ai.chemicalAnnualKWh / Math.max(cyclesPerYear, 1)
-      : chemicalSupply.dailyAvailableKWh;
-    const peakChemicalDailyKWh = Array.isArray(ai.dispatch?.dailyChemicalKWh) && ai.dispatch.dailyChemicalKWh.length
-      ? Math.max(...ai.dispatch.dailyChemicalKWh, 0)
+    const effectiveDailyKWh = chemicalSupply.dailyAvailableKWh;
+    const dailyChemicalKWh = Array.isArray(annualDispatch?.dailyChemicalKWh) ? annualDispatch.dailyChemicalKWh : [];
+    const peakChemicalDailyKWh = dailyChemicalKWh.length
+      ? Math.max(...dailyChemicalKWh, 0)
       : effectiveDailyKWh;
     const peakDayScale = effectiveDailyKWh > 0 && peakChemicalDailyKWh > 0
       ? Math.max(1, peakChemicalDailyKWh / effectiveDailyKWh)
@@ -84,11 +70,9 @@ export const scenarioMethods = {
     const effectivePeakKW = chemicalSupply.processPowerKW;
     const peakSizingKW = Math.max(
       effectivePeakKW,
-      Number.isFinite(ai.dispatch?.chemicalPeakKW) ? ai.dispatch.chemicalPeakKW : 0
+      Number.isFinite(annualDispatch?.chemicalPeakKW) ? annualDispatch.chemicalPeakKW : 0
     );
-    const opHours = ai.enabled
-      ? ai.chemicalDailyOpHours
-      : chemicalSupply.dailyOpHours;
+    const opHours = chemicalSupply.dailyOpHours;
     const allocationPlan = this.buildProcessAllocationPlan(normalizedState);
     const allocation = this.getAllocationFromPlan(allocationPlan);
     const reactorSizingPeakKW = effectivePeakKW;
@@ -173,6 +157,7 @@ export const scenarioMethods = {
       h2Surplus,
       co2Surplus,
       exploratoryModules,
+      lifetimeEnergy,
     });
     const environmental = includeEnvironmental
       ? this.calculateEnvironmental(solar, dac, sabatier, methanol, electrolyzer)
@@ -185,8 +170,9 @@ export const scenarioMethods = {
       storage,
       chemicalSupply,
       ai,
-      annualDispatch: ai.dispatch || null,
-      annualChemicalDisplayDispatch,
+      annualDispatch,
+      lifetimeEnergy,
+      warnings: [...(solar.warnings || [])],
       allocation,
       electrolyzer,
       dac,
@@ -201,6 +187,18 @@ export const scenarioMethods = {
       effectiveDailyKWh,
       opHours,
     };
+  },
+
+  /* AI sizing needs storage, so normalizeState seeds a battery when AI is
+     enabled with none. Report the seeded size (also once the UI has written
+     it back into its state) so the UI can say where the battery came from. */
+  getSeededAiBatteryMWh(rawState, normalizedState, annualSolarMWh) {
+    if (!normalizedState.aiComputeEnabled) return 0;
+    const batteryMWh = normalizedState.batteryCapacityMWh || 0;
+    const requested = Number(rawState?.batteryCapacityMWh);
+    if (!(Number.isFinite(requested) && requested > 1e-9)) return batteryMWh;
+    const seedMWh = (Math.max(0, annualSolarMWh || 0) / 1000) * MODEL_ASSUMPTIONS.aiBatterySeedMWhPerSolarGWh;
+    return seedMWh > 0 && Math.abs(batteryMWh - seedMWh) <= seedMWh * 1e-9 ? batteryMWh : 0;
   },
 
   calculateAll(state) {

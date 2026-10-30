@@ -12,6 +12,7 @@ import { annualSeriesMethods } from './annual-series.js';
 import { batteryMethods } from './battery.js';
 import { economicsMethods } from './economics.js';
 import { financeMethods } from './finance.js';
+import { lifetimeEnergyMethods } from './lifetime-energy.js';
 import { catalogMethods } from './module-catalog.js';
 import { optimizerSearchMethods } from './optimizer-search.js';
 import { processMethods } from './process.js';
@@ -30,6 +31,7 @@ export const Calc = Object.assign(
   annualSeriesMethods,
   batteryMethods,
   aiComputeMethods,
+  lifetimeEnergyMethods,
   processMethods,
   economicsMethods,
   scenarioMethods,

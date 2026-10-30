@@ -17,6 +17,17 @@ export function getSolarDegradationFactor(degradationPercent, year) {
   return Math.pow(annualRetention, year - 1);
 }
 
+/* PV output factor in a project year when the array is repowered every
+   `solarAssetLife` years (the replacement schedule replaces it at the end
+   of each life): degradation restarts from 1 in the first year after each
+   replacement. */
+export function getSolarFactorForYear(degradationPercent, year, solarAssetLife) {
+  const life = Number.isFinite(solarAssetLife) && solarAssetLife >= 1 ? Math.round(solarAssetLife) : Infinity;
+  const safeYear = Number.isFinite(year) ? Math.max(1, Math.floor(year)) : 1;
+  const ageYears = Number.isFinite(life) ? (safeYear - 1) % life : safeYear - 1;
+  return getSolarDegradationFactor(degradationPercent, ageYears + 1);
+}
+
 export function getAverageSolarDegradationFactor(degradationPercent, years) {
   if (!Number.isFinite(years) || years <= 0) return 1;
   let totalFactor = 0;
@@ -410,6 +421,7 @@ export function buildCashFlowTimeline(totalCapex, financing, yearlyCashFlows, po
 export const financeMethods = {
   crf,
   getSolarDegradationFactor,
+  getSolarFactorForYear,
   getAverageSolarDegradationFactor,
   getPolicyDurationFactor,
   buildReplacementSchedule,

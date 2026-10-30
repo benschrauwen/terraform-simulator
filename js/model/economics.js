@@ -16,7 +16,7 @@ import {
   crf,
   getAverageSolarDegradationFactor,
   getPolicyDurationFactor,
-  getSolarDegradationFactor,
+  getSolarFactorForYear,
 } from './finance.js';
 import { ModuleCatalog } from './module-catalog.js';
 import { PolicyModel, allocateUpfrontSupport } from './policy.js';
@@ -26,10 +26,43 @@ export const economicsMethods = {
     return PolicyModel.evaluate(state, context);
   },
 
+  /* Per-year multipliers on year-1 revenue streams from the lifetime energy
+     vectors (falls back to plain PV degradation without them). Policy
+     credits on solar output follow the solar factor; credits on hydrogen or
+     CO2 output follow chemical energy; the custom composite blends its
+     solar and product components by their year-1 values. */
+  getYearlyEnergyFactors(state, lifetimeEnergy, policy) {
+    const at = (series, year, fallback) => {
+      const value = Array.isArray(series) ? series[year - 1] : undefined;
+      return Number.isFinite(value) ? value : fallback;
+    };
+    const components = policy?.componentValues || {};
+    const solarComponent = Math.max(0, components.solar || 0);
+    const productComponent = Math.max(0, (components.hydrogen || 0) + (components.co2 || 0));
+    const outputBasis = String(policy?.outputBasis || '');
+    return year => {
+      const degradationFactor = at(
+        lifetimeEnergy?.solarFactorByYear,
+        year,
+        getSolarFactorForYear(state.panelDegradationAnnual, year, state.solarAssetLife)
+      );
+      const aiFactor = at(lifetimeEnergy?.aiServedFactorByYear, year, degradationFactor);
+      const chemicalFactor = at(lifetimeEnergy?.chemicalFactorByYear, year, degradationFactor);
+      let policyFactor = degradationFactor;
+      if (solarComponent + productComponent > 0) {
+        policyFactor = ((solarComponent * degradationFactor) + (productComponent * chemicalFactor)) /
+          (solarComponent + productComponent);
+      } else if (outputBasis === 'hydrogen_kg' || outputBasis === 'co2_ton') {
+        policyFactor = chemicalFactor;
+      }
+      return { degradationFactor, aiFactor, chemicalFactor, policyFactor };
+    };
+  },
+
   calculateEconomics(state, context) {
     const {
       solar, storage, chemicalSupply, ai, electrolyzer, dac, sabatier, methanol,
-      exploratoryModules,
+      exploratoryModules, lifetimeEnergy,
     } = context;
 
     const rate = state.discountRate / 100;
@@ -166,17 +199,19 @@ export const economicsMethods = {
     let peakSponsorSupport = 0;
     let peakSponsorSupportYear = null;
     const uncoveredDebtServiceYears = [];
+    const yearFactors = this.getYearlyEnergyFactors(state, lifetimeEnergy, policy);
     for (let year = 1; year <= state.analysisHorizonYears; year++) {
-      const degradationFactor = getSolarDegradationFactor(state.panelDegradationAnnual, year);
+      const { degradationFactor, aiFactor, chemicalFactor, policyFactor } = yearFactors(year);
       const policyDurationFactor = getPolicyDurationFactor(policy, year);
-      // Every stream scales with PV degradation; policy credits also stop
-      // after the scheme's support period.
-      const yearlyRevenue = Object.fromEntries(Object.entries(revenue).map(([key, value]) => [
-        key,
-        key === 'policyCredits'
-          ? value * degradationFactor * policyDurationFactor
-          : value * degradationFactor,
-      ]));
+      // Each stream follows the energy that produces it on the re-dispatched
+      // degraded (and repowered) array: AI revenue the AI-served energy,
+      // product revenue the delivered chemical energy, policy credits their
+      // output basis. Policy credits also stop after the support period.
+      const yearlyRevenue = Object.fromEntries(Object.entries(revenue).map(([key, value]) => {
+        if (key === 'policyCredits') return [key, value * policyFactor * policyDurationFactor];
+        if (key === 'ai') return [key, value * aiFactor];
+        return [key, value * chemicalFactor];
+      }));
       const totalYearRevenue = Object.values(yearlyRevenue).reduce((sum, value) => sum + value, 0);
       const operatingCashFlow = totalYearRevenue - annualOM;
       const replacementEvent = replacementSchedule.byYear[year];

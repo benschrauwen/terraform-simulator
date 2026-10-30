@@ -24,7 +24,10 @@ const SABATIER_POSITIVE_ROOT_CAPEX = 100;
 // top tier ($3.00/kg). The app default is now the 2026 inflation-adjusted $3.28/kg
 // (IRS Notice 2026-41), so pin $3.00 here to keep exercising the same cash-flow shapes.
 const IRR_REGRESSION_45V_PER_KG = 3.00;
-const SABATIER_UPPER_BRANCH_METHANE_PRICE = 22;
+// Re-tuned (22 -> 24 $/MCF) and the IRR regression values below re-pinned when
+// chemical energy moved to the annual-dispatch basis with PVGIS site yields:
+// the cases still sit on the same multi-root branches, at lower energy.
+const SABATIER_UPPER_BRANCH_METHANE_PRICE = 24;
 
 test('default scenario stays numerically sane', () => {
   const state = createState();
@@ -336,12 +339,12 @@ test('headline IRR stays on the discount-rate root when replacement cycles creat
     ].join(' ')
   );
   assert.ok(
-    Math.abs(higherConversionResult.economics.irr - 9.343476546909224) <= 1e-6,
-    `Expected the 85% Sabatier regression case to stay near a 9.343477% headline IRR, got ${higherConversionResult.economics.irr}.`
+    Math.abs(higherConversionResult.economics.irr - 6.443170422615385) <= 1e-6,
+    `Expected the 85% Sabatier regression case to stay near a 6.443170% headline IRR, got ${higherConversionResult.economics.irr}.`
   );
   assert.ok(
-    Math.abs(lowerConversionResult.economics.irr - 9.172778734473585) <= 1e-6,
-    `Expected the 84% Sabatier regression case to stay near a 9.172779% headline IRR, got ${lowerConversionResult.economics.irr}.`
+    Math.abs(lowerConversionResult.economics.irr - 6.245101475475911) <= 1e-6,
+    `Expected the 84% Sabatier regression case to stay near a 6.245101% headline IRR, got ${lowerConversionResult.economics.irr}.`
   );
   assert.ok(
     Math.abs(lowerConversionResult.economics.irr - leanLowerConversionIrr) <= 1e-9,
@@ -389,12 +392,12 @@ test('equity IRR stays on the positive branch when longer debt terms add another
     ].join(' ')
   );
   assert.ok(
-    Math.abs(twentyYearDebtResult.economics.equityIrr - 31.034426174126008) <= 1e-6,
-    `Expected the 20-year debt regression case to stay near a 31.034426% equity IRR, got ${twentyYearDebtResult.economics.equityIrr}.`
+    Math.abs(twentyYearDebtResult.economics.equityIrr - 21.844573513232955) <= 1e-6,
+    `Expected the 20-year debt regression case to stay near a 21.844574% equity IRR, got ${twentyYearDebtResult.economics.equityIrr}.`
   );
   assert.ok(
-    Math.abs(twentyOneYearDebtResult.economics.equityIrr - 31.733603550541922) <= 1e-6,
-    `Expected the 21-year debt regression case to stay near a 31.733604% equity IRR, got ${twentyOneYearDebtResult.economics.equityIrr}.`
+    Math.abs(twentyOneYearDebtResult.economics.equityIrr - 22.74936546747458) <= 1e-6,
+    `Expected the 21-year debt regression case to stay near a 22.749365% equity IRR, got ${twentyOneYearDebtResult.economics.equityIrr}.`
   );
   assert.ok(
     Math.abs(twentyOneYearDebtResult.economics.equityIrr - leanTwentyOneYearEquityIrr) <= 1e-9,
@@ -511,16 +514,16 @@ test('30-year financed equity IRR stays on the upper branch until no real root r
     ].join(' ')
   );
   assert.ok(
-    Math.abs(ninePointFivePercent.equityIrr - 31.000077689350793) <= 1e-6,
-    `Expected the 9.5% debt-interest regression case to stay near a 31.000078% equity IRR, got ${ninePointFivePercent.equityIrr}.`
+    Math.abs(ninePointFivePercent.equityIrr - 25.70564776839418) <= 1e-6,
+    `Expected the 9.5% debt-interest regression case to stay near a 25.705648% equity IRR, got ${ninePointFivePercent.equityIrr}.`
   );
   assert.ok(
-    Math.abs(ninePointSeventyFivePercent.equityIrr - 30.215313636780284) <= 1e-6,
-    `Expected the 9.75% debt-interest regression case to stay near a 30.215314% equity IRR, got ${ninePointSeventyFivePercent.equityIrr}.`
+    Math.abs(ninePointSeventyFivePercent.equityIrr - 24.736353310782555) <= 1e-6,
+    `Expected the 9.75% debt-interest regression case to stay near a 24.736353% equity IRR, got ${ninePointSeventyFivePercent.equityIrr}.`
   );
   assert.ok(
-    Math.abs(tenPointFivePercent.equityIrr - 27.668819939303756) <= 1e-6,
-    `Expected the 10.5% debt-interest regression case to stay near a 27.668820% equity IRR, got ${tenPointFivePercent.equityIrr}.`
+    Math.abs(tenPointFivePercent.equityIrr - 21.253163629886707) <= 1e-6,
+    `Expected the 10.5% debt-interest regression case to stay near a 21.253164% equity IRR, got ${tenPointFivePercent.equityIrr}.`
   );
   assert.ok(
     !Number.isFinite(twelvePointFivePercent.equityIrr),
@@ -1120,16 +1123,25 @@ test('default 0 to 0.5 MWh battery sweep does not reduce total capex', () => {
   );
 });
 
-test('no-battery process sizing follows the modeled direct-solar peak', () => {
+// The 100% no-storage size is the annual hourly solar peak (the smallest
+// constant capacity that clips nothing all year), not the average-day peak.
+test('no-battery process sizing follows the annual hourly solar peak', () => {
   const result = runScenario({ systemSizeMW: 100, batteryCapacityMWh: 0 });
-  const modeledDirectSolarPeakKW = Math.max(...result.chemicalSupply.hourlyKW, 0);
+  const annualSolarPeakKW = Math.max(...result.annualSolar.hourlyKW, 0);
+  const averageDayPeakKW = Math.max(...result.chemicalSupply.hourlyKW, 0);
 
   assert.ok(
-    Math.abs(result.chemicalSupply.processPowerKW - modeledDirectSolarPeakKW) <= 1e-6,
+    Math.abs(result.chemicalSupply.processPowerKW - annualSolarPeakKW) <= 1e-6,
     [
-      'Expected the no-battery process cap to match the modeled direct-solar peak.',
-      `Observed ${result.chemicalSupply.processPowerKW.toFixed(3)} kW vs ${modeledDirectSolarPeakKW.toFixed(3)} kW.`,
+      'Expected the no-battery process cap to match the annual hourly solar peak.',
+      `Observed ${result.chemicalSupply.processPowerKW.toFixed(3)} kW vs ${annualSolarPeakKW.toFixed(3)} kW.`,
     ].join(' ')
+  );
+  assert.ok(annualSolarPeakKW > averageDayPeakKW, 'The seasonal peak hour must exceed the average-day peak.');
+  assert.ok(result.chemicalSupply.clippedDailyKWh <= 1e-9, 'Full capture must clip nothing.');
+  assert.ok(
+    Math.abs((result.chemicalSupply.dailyAvailableKWh * 365) - result.annualSolar.totalKWh) <= 1e-6 * result.annualSolar.totalKWh,
+    'Without storage or clipping, delivered chemical energy equals the annual solar energy.'
   );
 });
 
@@ -1313,7 +1325,7 @@ test('annual chemical day slices show winter no-clipping against a fixed undersi
     batteryCapacityMWh: 0,
     chemicalSizingPercent: 72,
   });
-  const displayDispatch = result.annualChemicalDisplayDispatch;
+  const displayDispatch = result.annualDispatch;
 
   assert.ok(displayDispatch, 'Expected a day-slice chemistry dispatch series for specific-day visualization.');
   assert.equal(
@@ -1512,8 +1524,10 @@ test('off-earth ai dispatch follows local cycles instead of Earth days', () => {
   assert.match(moon.annualSolar.dayLabels[0], /^Cycle 1/, 'Expected lunar cycle labels to start with generic cycle labels.');
 });
 
+// Sun-pointing panels (the PEL reference mounting) see the illumination
+// pattern itself; low-tilt racks add a strong azimuth swing on top.
 test('lunar polar proxy stays mostly on with short shadow outages', () => {
-  const moon = runScenario({ body: 'moon' });
+  const moon = runScenario({ body: 'moon', latitude: -89.5, longitude: 0, mountingType: 'dual' });
   const profile = moon.annualSolar.averageDayKW;
   const peak = Math.max(...profile, 0);
   const litThreshold = peak * 0.02;
@@ -1839,7 +1853,7 @@ test('exploratory modules expose peak-day throughput for diagram cards', () => {
   });
 
   const lime = result.exploratoryModules.find(module => module.id === 'lime');
-  const peakChemicalDailyKWh = Math.max(...(result.ai.dispatch?.dailyChemicalKWh || []), 0);
+  const peakChemicalDailyKWh = Math.max(...(result.annualDispatch?.dailyChemicalKWh || []), 0);
   const expectedPeakScale = result.chemicalSupply.dailyAvailableKWh > 0
     ? Math.max(1, peakChemicalDailyKWh / result.chemicalSupply.dailyAvailableKWh)
     : 1;
@@ -1871,14 +1885,15 @@ test('exploratory capex uses annual peak throughput rather than average-day sizi
 
   const lime = result.exploratoryModules.find(module => module.id === 'lime');
   const route = Calc.getExploratoryRouteConfig('lime', 'resistive-calciner');
-  const peakSizingKW = Math.max(result.chemicalSupply.processPowerKW, result.ai.dispatch?.chemicalPeakKW || 0);
+  const peakSizingKW = Math.max(result.chemicalSupply.processPowerKW, result.annualDispatch?.chemicalPeakKW || 0);
   const expectedPeakOutputUnitsPerHour = peakSizingKW / route.electricityKwhPerUnit;
   const expectedPeakSizedCapex = expectedPeakOutputUnitsPerHour *
     result.solar.cycleHours *
     result.solar.cyclesPerYear *
     lime.capexBasis *
     route.cyclingPenalty;
-  const averageDaySizedCapex = (result.chemicalSupply.processPowerKW / route.electricityKwhPerUnit) *
+  const averageDayPeakKW = Math.max(...(result.annualSolar.averageDayKW || []), 0);
+  const averageDaySizedCapex = (averageDayPeakKW / route.electricityKwhPerUnit) *
     result.solar.cycleHours *
     result.solar.cyclesPerYear *
     lime.capexBasis *
@@ -1917,7 +1932,7 @@ test('sabatier feed buffer keeps output while sizing from peak-day average gas f
   };
   const unbuffered = runScenario(baseOverrides);
   const buffered = runScenario({ ...baseOverrides, sabatierBufferEnabled: true });
-  const peakChemicalDailyKWh = Math.max(...(buffered.ai.dispatch?.dailyChemicalKWh || []), 0);
+  const peakChemicalDailyKWh = Math.max(...(buffered.annualDispatch?.dailyChemicalKWh || []), 0);
   const peakDayScale = buffered.chemicalSupply.dailyAvailableKWh > 0
     ? Math.max(1, peakChemicalDailyKWh / buffered.chemicalSupply.dailyAvailableKWh)
     : 1;
@@ -1959,7 +1974,7 @@ test('methanol feed buffer keeps output while sizing from peak-day average gas f
   };
   const unbuffered = runScenario(baseOverrides);
   const buffered = runScenario({ ...baseOverrides, methanolBufferEnabled: true });
-  const peakChemicalDailyKWh = Math.max(...(buffered.ai.dispatch?.dailyChemicalKWh || []), 0);
+  const peakChemicalDailyKWh = Math.max(...(buffered.annualDispatch?.dailyChemicalKWh || []), 0);
   const peakDayScale = buffered.chemicalSupply.dailyAvailableKWh > 0
     ? Math.max(1, peakChemicalDailyKWh / buffered.chemicalSupply.dailyAvailableKWh)
     : 1;
@@ -2006,7 +2021,7 @@ test('co2-to-co feed buffer keeps output while sizing from peak-day average co2 
   const coUnbuffered = unbuffered.exploratoryModules.find(module => module.id === 'carbonMonoxide');
   const coBuffered = buffered.exploratoryModules.find(module => module.id === 'carbonMonoxide');
   const route = Calc.getExploratoryRouteConfig('carbonMonoxide', 'plasma');
-  const peakChemicalDailyKWh = Math.max(...(buffered.ai.dispatch?.dailyChemicalKWh || []), 0);
+  const peakChemicalDailyKWh = Math.max(...(buffered.annualDispatch?.dailyChemicalKWh || []), 0);
   const peakDayScale = buffered.chemicalSupply.dailyAvailableKWh > 0
     ? Math.max(1, peakChemicalDailyKWh / buffered.chemicalSupply.dailyAvailableKWh)
     : 1;
@@ -2015,7 +2030,7 @@ test('co2-to-co feed buffer keeps output while sizing from peak-day average co2 
   const co2Share = allocationPlan.feedShares.co2.carbonMonoxide || 0;
   const peakSizingKW = Math.max(
     buffered.chemicalSupply.processPowerKW,
-    buffered.ai.dispatch?.chemicalPeakKW || 0
+    buffered.annualDispatch?.chemicalPeakKW || 0
   );
   const expectedBufferedPeakUnitsPerHour = Math.min(
     route.electricityKwhPerUnit > 0

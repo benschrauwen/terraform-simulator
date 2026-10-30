@@ -13,10 +13,10 @@ function describeAnnualDispatch(r, { useFullOrbitalMarsSeries, useRepresentative
     if (useRepresentativeCycleSeries) return 'Representative full-cycle delivered energy over the modeled Earth year. The current off-Earth solar model uses an average local cycle, so the chart repeats the modeled cycle-equivalent energy instead of implying seasonality.';
     return 'Cycle-by-cycle delivered energy over the modeled Earth year. The off-Earth seasonal shape reflects the modeled orbital geometry before AI claims first call on the power.';
   }
-  if (isEarth) return 'Daily seasonal solar energy over the modeled year. Enable AI Compute to see how the datacenter carves out a high-reliability constant load before chemistry absorbs the residual.';
-  if (useFullOrbitalMarsSeries) return 'Sol-by-sol solar energy over one modeled Mars year. Annual economics elsewhere remain normalized to an Earth year.';
-  if (useRepresentativeCycleSeries) return 'Representative full-cycle solar energy over the modeled Earth year. The current off-Earth solar model uses an average local cycle, so the chart repeats the modeled cycle-equivalent energy instead of implying seasonality.';
-  return 'Cycle-by-cycle solar energy over the modeled Earth year. The off-Earth seasonal shape reflects the modeled orbital geometry before any AI load is applied.';
+  if (isEarth) return 'Daily chemical energy delivered over the modeled year (after any battery shifting and clipping). Enable AI Compute to see how the datacenter carves out a high-reliability constant load before chemistry absorbs the residual.';
+  if (useFullOrbitalMarsSeries) return 'Sol-by-sol chemical energy delivered over one modeled Mars year. Annual economics elsewhere remain normalized to an Earth year.';
+  if (useRepresentativeCycleSeries) return 'Representative full-cycle chemical energy over the modeled Earth year. The current off-Earth solar model uses an average local cycle, so the chart repeats the modeled cycle-equivalent energy instead of implying seasonality.';
+  return 'Cycle-by-cycle chemical energy delivered over the modeled Earth year. The off-Earth seasonal shape reflects the modeled orbital geometry.';
 }
 
 /** Daily (or per-cycle) AI and chemical energy in MWh, with labels, ready to plot. */

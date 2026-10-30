@@ -86,6 +86,7 @@ export const CONTROL_SPECS = Object.freeze([
   { type: 'range', id: 'batteryCost', stateKey: 'batteryCostPerKWh', format: value => `$${intFixed(0)(value)}/kWh` },
   { type: 'range', id: 'batteryEfficiency', format: value => `${intFixed(0)(value)}%` },
   { type: 'range', id: 'batteryCycles', format: value => parseInt(value, 10).toLocaleString() },
+  { type: 'range', id: 'batteryDurationHours', format: value => `${fixed(1)(value)} h` },
 
   // Processes
   { type: 'range', id: 'chemicalSizingPercent', format: formatChemicalSizingPercent },

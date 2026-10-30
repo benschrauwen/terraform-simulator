@@ -53,7 +53,15 @@ export const uiStateMethods = {
         : `${body.label} uses an average local solar cycle; specific Earth calendar days are disabled.`;
     }
     if (irradianceLabel) {
-      irradianceLabel.textContent = body.label === 'Earth' ? 'GHI:' : 'Annual irradiation:';
+      const lunarPolar = this.state.body === 'moon' && this.state.solarProfileModel === 'lunar-pel';
+      irradianceLabel.textContent = body.label === 'Earth'
+        ? 'GHI:'
+        : (lunarPolar ? 'Annual irradiation (sun-facing):' : 'Annual irradiation (horizontal):');
+      irradianceLabel.dataset.tooltip = body.label === 'Earth'
+        ? 'Global horizontal irradiance: yearly sunlight energy hitting a flat surface.'
+        : (lunarPolar
+            ? 'Yearly sunlight on a surface facing the Sun. At the lunar pole the Sun grazes the horizon, so a flat surface receives almost none.'
+            : 'Yearly sunlight energy reaching a horizontal surface.');
     }
     if (sunHoursLabel) {
       sunHoursLabel.textContent = body.label === 'Earth' ? 'Avg Sun Hours:' : 'Illumination / cycle:';

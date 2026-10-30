@@ -25,7 +25,7 @@ export const dayViewMethods = {
 
   getDisplaySolarGeometry(r = this.lastResults) {
     if (r?.solar?.bodyKey === 'earth' && this.state.dayMode === 'specific') {
-      return SolarGeometry.dailyProfile(this.state.latitude, this.state.dayOfYear, this.state.mountingType);
+      return SolarGeometry.dailyProfile(this.state.latitude, this.state.dayOfYear, this.state.mountingType, r.solar.skyModel || {});
     }
     return r?.solar?.solarGeo || null;
   },
@@ -37,7 +37,7 @@ export const dayViewMethods = {
     const solarHourlyKW = this.sliceSelectedEarthDaySeries(r.annualSolar?.hourlyKW);
     if (solarHourlyKW.length !== HOURS_PER_DAY) return null;
 
-    const dispatch = r.ai.enabled ? r.ai.dispatch : r.annualChemicalDisplayDispatch;
+    const dispatch = r.annualDispatch;
     if (!dispatch) return null;
 
     const chemicalHourlyKW = this.sliceSelectedEarthDaySeries(dispatch.chemicalHourlyKW);

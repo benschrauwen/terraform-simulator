@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sites compared — Abundance Stack datacenter simulator</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="datacenter.css">
+</head>
+<body class="doc-page sites-page">
+  <!--
+    Every site optimized for the simulator's current settings (the share hash it was opened
+    with). Served as /sites.html on abundancestack.com (vercel.json) and as
+    /datacenter-sites.html on any host. The list is filled by js/ui/datacenter/sites-page.js.
+  -->
+  <header class="doc-header sites-header">
+    <a class="doc-back" id="sitesBackLink" href="datacenter.html">← Back to the datacenter simulator</a>
+    <h1>Every site, optimized</h1>
+    <p>
+      Your settings, moved to each of the simulator's sites. At every site the optimizer sizes the solar,
+      battery, gas or nuclear units and grid connection for a grid-connected, a hybrid and an islanded design,
+      each for the highest NPV that meets the uptime target, and keeps the best. Site-driven inputs (solar yield,
+      grid price and CO₂, carbon price, weather) follow the site; everything else is yours.
+    </p>
+    <p class="sites-settings">Settings: <span id="sitesSettings"></span></p>
+    <div class="sites-toolbar">
+      <label class="sites-sort-label" for="sitesSort">Sort by</label>
+      <select id="sitesSort" class="sites-sort"></select>
+      <button type="button" class="sites-rerun" id="sitesRerun">Run again</button>
+      <progress id="sitesProgress" class="sites-progress" max="1" value="0"></progress>
+      <span class="sites-status" id="sitesStatus" aria-live="polite"></span>
+    </div>
+  </header>
+
+  <main class="doc-main sites-main">
+    <div class="sites-list" id="sitesList"></div>
+  </main>
+
+  <footer class="app-footer">
+    <p>Abundance Stack — an independent educational tool for sizing datacenter power and cooling. Data from public sources; not investment advice.
+    View the source on <a href="https://github.com/benschrauwen/terraform-simulator" target="_blank" rel="noreferrer">GitHub</a>
+    · <a href="datacenter-sources.html">Sources</a>.
+    <span class="app-version" id="appVersion">Development build</span></p>
+  </footer>
+
+  <script src="node_modules/lz-string/libs/lz-string.min.js"></script>
+  <script type="module" src="js/datacenter-sites-main.js"></script>
+</body>
+</html>

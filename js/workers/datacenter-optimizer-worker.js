@@ -1,13 +1,14 @@
 /* Module worker: runs the datacenter design optimizer (model/datacenter/optimizer.js) off the main
-   thread. Messages: { requestId, type: 'optimizeDatacenterDesign' | 'compareDatacenterArchitectures',
-   state, options } -> { requestId, messageType: 'progress' | 'result' | 'error', ... }. The plant
+   thread. Messages: { requestId, type: 'optimizeDatacenterDesign' | 'compareDatacenterArchitectures'
+   | 'optimizeDatacenterSite', state, options } (optimizeDatacenterSite takes options.siteId) -> { requestId, messageType: 'progress' | 'result' | 'error', ... }. The plant
    builder's optimizer-worker.js is separate and unchanged. */
 
-import { compareArchitectures, optimizeDatacenterDesign } from '../model/datacenter/index.js';
+import { compareArchitectures, optimizeDatacenterDesign, optimizeForSite } from '../model/datacenter/index.js';
 
 const HANDLERS = {
   optimizeDatacenterDesign,
   compareDatacenterArchitectures: compareArchitectures,
+  optimizeDatacenterSite: (state, { siteId, ...options }) => optimizeForSite(state, siteId, options),
 };
 
 self.addEventListener('message', event => {

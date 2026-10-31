@@ -80,7 +80,10 @@ export const datacenterShareMethods = {
   syncShareStateUrl() {
     const nextHash = serializeDatacenterHash(this.state, window.LZString);
     const currentHash = window.location.hash || '';
-    if (currentHash === nextHash) return nextHash;
+    if (currentHash === nextHash) {
+      this.syncSitesPageLink(nextHash);
+      return nextHash;
+    }
     if (!nextHash && currentHash) {
       try {
         if (ShareStateCodec.parseHash(currentHash, { lzString: window.LZString }).ignored) return currentHash;
@@ -89,7 +92,14 @@ export const datacenterShareMethods = {
       }
     }
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`);
+    this.syncSitesPageLink(nextHash);
     return nextHash;
+  },
+
+  /** The "Compare all sites" link carries the current settings to the sites page. */
+  syncSitesPageLink(hash = serializeDatacenterHash(this.state, window.LZString)) {
+    const link = document.getElementById('sitesPageLink');
+    if (link) link.href = `datacenter-sites.html${hash}`;
   },
 
   resetState() {

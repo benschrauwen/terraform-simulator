@@ -36,6 +36,16 @@
       "src": "^/sources\\.html$",
       "has": [{ "type": "host", "value": "www.abundancestack.com" }],
       "dest": "/datacenter-sources.html"
+    },
+    {
+      "src": "^/sites\\.html$",
+      "has": [{ "type": "host", "value": "abundancestack.com" }],
+      "dest": "/datacenter-sites.html"
+    },
+    {
+      "src": "^/sites\\.html$",
+      "has": [{ "type": "host", "value": "www.abundancestack.com" }],
+      "dest": "/datacenter-sites.html"
     }
   ]
 }

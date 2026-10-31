@@ -7,7 +7,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
-const PAGES = ['index.html', 'sources.html', 'datacenter.html', 'datacenter-sources.html'];
+const PAGES = ['index.html', 'sources.html', 'datacenter.html', 'datacenter-sources.html', 'datacenter-sites.html'];
 
 // Every build goes to a fresh temp directory so tests never touch (or race) the real dist/.
 function build(t, env = {}) {
@@ -43,6 +43,7 @@ test('production build ships an allowlisted, versioned asset tree', t => {
     'sources.html',
     'datacenter.html',
     'datacenter-sources.html',
+    'datacenter-sites.html',
     'README.md',
     'LICENSE',
     `${ASSET_DIR}/style.css`,
@@ -105,6 +106,11 @@ test('production build ships an allowlisted, versioned asset tree', t => {
   const datacenterSourcesHtml = fs.readFileSync(path.join(dist, 'datacenter-sources.html'), 'utf8');
   assert.match(datacenterSourcesHtml, new RegExp(`href="${ASSET_DIR}/style\\.css"`));
   assert.match(datacenterSourcesHtml, /href="datacenter\.html"/);
+  assert.match(datacenterHtml, /href="datacenter-sites\.html"/);
+  const datacenterSitesHtml = fs.readFileSync(path.join(dist, 'datacenter-sites.html'), 'utf8');
+  assert.match(datacenterSitesHtml, new RegExp(`<script type="module" src="${ASSET_DIR}/js/datacenter-sites-main\\.js"></script>`));
+  assert.match(datacenterSitesHtml, /href="datacenter\.html"/);
+  assert.equal(exists(`${ASSET_DIR}/js/workers/datacenter-optimizer-worker.js`), true);
 
   // vercel.json routes abundancestack.com to these pages; every route target must ship.
   const vercelConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));

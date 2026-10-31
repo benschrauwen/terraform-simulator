@@ -14,12 +14,15 @@
      DATACENTER_DERIVED_KEYS, normalizeDatacenterState,
      applyDatacenterPresetDefaults, applyArchitectureDefaults, getDatacenterSite;
    - buildStartingDesign(state, architecture): the design applied when the
-     user switches architecture (./starting-design.js). */
+     user switches architecture (./starting-design.js);
+   - optimizeForSite(state, siteId, options): the best design for the user's
+     settings moved to another site (./site-survey.js). */
 
 export { calculateDatacenterScenario } from './scenario.js';
 export { calculateDatacenterBreakEven, getDatacenterFieldRange, runDatacenterTornado } from './tornado.js';
 export { compareArchitectures, getArchitectureStartState, optimizeDatacenterDesign } from './optimizer.js';
 export { FLOW_NODE_LABELS } from './impacts.js';
+export { optimizeForSite } from './site-survey.js';
 export { buildStartingDesign } from './starting-design.js';
 export { buildCashFlowCsv, buildCashFlowTable } from '../cash-flow-table.js';
 export {

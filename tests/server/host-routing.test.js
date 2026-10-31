@@ -55,6 +55,7 @@ test('vercel.json routes abundancestack.com by host before the filesystem', () =
     assert.deepEqual(destinations, [
       ['^/(?:index\\.html)?$', '/datacenter.html'],
       ['^/sources\\.html$', '/datacenter-sources.html'],
+      ['^/sites\\.html$', '/datacenter-sites.html'],
     ], host);
   });
   // Every rewrite target is a shipped page.
@@ -82,6 +83,9 @@ test('rewrites send abundancestack hosts to the datacenter pages and leave other
     ['www.abundancestack.com', '/sources.html', '/datacenter-sources.html'],
     ['abundancestack.localhost:4173', '/', '/datacenter.html'],
     ['abundancestack.localhost:4173', '/sources.html', '/datacenter-sources.html'],
+    ['abundancestack.com', '/sites.html', '/datacenter-sites.html'],
+    ['www.abundancestack.com', '/sites.html', '/datacenter-sites.html'],
+    ['terraform-simulator.com', '/sites.html', '/sites.html'],
     ['abundancestack.com', '/js/main.js', '/js/main.js'],
     ['abundancestack.com', '/datacenter.html', '/datacenter.html'],
     ['abundancestack.com', '/style.css', '/style.css'],

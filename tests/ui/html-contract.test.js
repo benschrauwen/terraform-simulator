@@ -266,7 +266,7 @@ test('datacenter.html loads one module entry plus the same classic vendor script
 });
 
 test('every page only references local assets that exist and declares no inline handlers', () => {
-  ['index.html', 'sources.html', 'datacenter.html', 'datacenter-sources.html'].forEach(page => {
+  ['index.html', 'sources.html', 'datacenter.html', 'datacenter-sources.html', 'datacenter-sites.html'].forEach(page => {
     const pageHtml = fs.readFileSync(path.join(ROOT, page), 'utf8');
     const urls = [...pageHtml.matchAll(/<(?:script|link)\b[^>]*\b(?:src|href)="([^"]+)"/gi)].map(match => match[1]);
     assert.ok(urls.length > 0, page);

@@ -856,3 +856,371 @@ body.datacenter-app [hidden] {
 .dc-opt-notes li {
   margin-bottom: 2px;
 }
+
+/* ============ SITES PAGE (datacenter-sites.html) ============ */
+
+body.sites-page .doc-header,
+body.sites-page .doc-main {
+  max-width: 1280px;
+}
+
+.sites-settings {
+  font-size: 13px;
+}
+
+.sites-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.sites-sort-label {
+  display: inline;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+select.sites-sort {
+  width: auto;
+  margin-top: 0;
+}
+
+.sites-sort,
+.sites-rerun {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 8px;
+  font: inherit;
+}
+
+.sites-rerun {
+  cursor: pointer;
+}
+
+.sites-rerun:hover {
+  border-color: var(--border-light);
+}
+
+.sites-progress {
+  width: 160px;
+  height: 8px;
+  accent-color: var(--electric);
+}
+
+.sites-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.site-card {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.site-card:not(.is-pending):hover {
+  border-color: var(--border-light);
+  background: var(--bg-card-hover);
+}
+
+.site-card.is-pending {
+  opacity: 0.6;
+}
+
+.site-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.site-rank {
+  min-width: 22px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.site-card-title {
+  margin: 0;
+  font-size: 17px;
+}
+
+.site-card-link {
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+/* The whole card opens the design; the link's box covers it. */
+.site-card-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-lg);
+}
+
+.site-card-link:focus-visible::after {
+  outline: 2px solid var(--electric);
+  outline-offset: 2px;
+}
+
+.site-card:hover .site-card-link {
+  text-decoration: underline;
+}
+
+.site-card-status {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.site-arch-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+}
+
+.site-arch-grid { border-color: var(--electric); color: var(--ai); }
+.site-arch-hybrid { border-color: var(--success); color: var(--success); }
+.site-arch-islanded { border-color: var(--fuel); color: var(--fuel); }
+
+.site-card-drivers {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.site-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 18px;
+  margin-top: 10px;
+}
+
+.site-card-col h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.site-card-col h3 + * {
+  margin-top: 0;
+}
+
+.site-card-sub {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.site-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 6px 12px;
+  margin: 0 0 12px;
+}
+
+.site-metric dt {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.site-metric dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.site-metric.is-good dd { color: var(--success); }
+.site-metric.is-bad dd { color: var(--danger); }
+
+.site-design {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.site-archs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+}
+
+.site-arch {
+  display: grid;
+  grid-template-columns: 64px 80px 1fr;
+  gap: 8px;
+  padding: 2px 6px;
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.site-arch.is-best {
+  background: rgba(126, 169, 109, 0.14);
+  color: var(--text-primary);
+}
+
+.site-arch.is-infeasible .site-arch-npv {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.site-arch-npv {
+  text-align: right;
+}
+
+.site-arch-detail {
+  color: var(--text-muted);
+}
+
+.site-dispatch-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: inherit;
+}
+
+.sd-axis {
+  font-size: 9px;
+  fill: var(--text-muted);
+}
+
+.sd-zero {
+  stroke: var(--border-light);
+  stroke-width: 0.8;
+}
+
+.sd-load {
+  fill: none;
+  stroke: #e2e8f0;
+  stroke-width: 1.4;
+}
+
+.site-dispatch-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.site-dispatch-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sd-swatch {
+  width: 10px;
+  height: 10px;
+}
+
+.site-card-note {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* The card plan is narrow: the connection is in the design line, so drop the grid-tie label. */
+.site-card .pl-gridtie .pl-grid {
+  display: none;
+}
+
+.site-footprint-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 1px 10px;
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.site-footprint-legend li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.site-footprint-legend .pl-swatch {
+  flex: none;
+}
+
+.sfl-num,
+.sfl-area {
+  color: var(--text-muted);
+}
+
+.sfl-area {
+  margin-left: auto;
+}
+
+.site-footprint-bar svg {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 6px;
+}
+
+.sfb-track { fill: var(--bg-surface); }
+.sfb-fill { fill: var(--solar); }
+
+@media (max-width: 900px) {
+  .site-card-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  body.sites-page .doc-header,
+  body.sites-page .doc-main {
+    padding: 0 16px;
+  }
+}
+
+/* Header link to the sites page */
+.header-text-link {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid rgba(95, 127, 184, 0.32);
+  border-radius: 999px;
+  background: rgba(95, 127, 184, 0.14);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.header-text-link:hover {
+  border-color: var(--electric);
+}

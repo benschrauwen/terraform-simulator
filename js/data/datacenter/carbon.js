@@ -52,8 +52,9 @@
      https://law.lis.virginia.gov/admincode/title9/agency5/chapter140/section7040/
      https://www.rggi.org/sites/default/files/Uploads/Auction-Materials/73/PR091126_Auction73.pdf
      https://www.rggi.org/sites/default/files/Uploads/Program-Review/12-19-2017/Model_Rule_2017_12_19.pdf
-   - Texas, Louisiana, Ohio, Arizona, Nevada, Iowa, Georgia, New Mexico: no
-     carbon price on stationary combustion: 0.
+   - Texas, Louisiana, Ohio, Arizona, Nevada, Iowa, Georgia, New Mexico,
+     Tennessee (and Mississippi, home of the Memphis site's Southaven gas
+     plant): no carbon price on stationary combustion: 0.
    Germany's national fuel emissions trading (BEHG, corridor EUR 55-65/t in
    2026, section 10(2)) covers fuels outside the EU ETS; a plant above the
    20 MW threshold is in the EU ETS instead, so it is not used here.

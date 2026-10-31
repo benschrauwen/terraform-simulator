@@ -31,6 +31,10 @@ export const ShareStateCodec = (function () {
     return typeof hash === 'string' ? hash.replace(/^#/, '') : '';
   }
 
+  /* The non-default part of `state`. `options.alwaysIncludeKeys` lists keys
+     that join any non-empty diff even when they equal the default: fields
+     whose default follows another field (the datacenter page's preset-derived
+     prices) would otherwise be re-derived from the new selection on decode. */
   function buildDiff(state = {}, defaults = {}, options = {}) {
     const excludedKeys = new Set(options.excludeKeys || EXCLUDED_STATE_KEYS);
     const diff = {};
@@ -42,6 +46,13 @@ export const ShareStateCodec = (function () {
       if (Object.is(value, defaults[key])) return;
       diff[key] = value;
     });
+
+    if (Object.keys(diff).length) {
+      (options.alwaysIncludeKeys || []).forEach(key => {
+        if (excludedKeys.has(key) || state[key] === undefined) return;
+        diff[key] = state[key];
+      });
+    }
 
     return diff;
   }

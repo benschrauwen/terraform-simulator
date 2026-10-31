@@ -329,7 +329,8 @@ function buildRevenueRows({ e }) {
   return rows;
 }
 
-function buildFinancingRows({ e }) {
+/** Debt rows (empty without financing); shared with the datacenter page. */
+export function buildFinancingRows({ e }) {
   const financing = e.financing;
   if (!financing.enabled) return [];
 

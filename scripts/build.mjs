@@ -14,10 +14,12 @@ const DIST = path.resolve(ROOT, process.env.DIST_DIR || 'dist');
 const ROOT_FILES = ['README.md', 'LICENSE'];
 // Top-level HTML pages: their local asset URLs are rewritten to the versioned
 // directory and their footer gets the release label; links between pages stay as-is.
-const PAGES = ['index.html', 'sources.html'];
+// datacenter*.html are the abundancestack.com pages (vercel.json routes that host to them).
+const PAGES = ['index.html', 'sources.html', 'datacenter.html', 'datacenter-sources.html', 'datacenter-sites.html', 'datacenter-solar-sweep.html'];
 const ASSETS = {
   // dist path (under ASSET_DIR) -> source path
   'style.css': 'style.css',
+  'datacenter.css': 'datacenter.css',
   'js': 'js',
   'vendor/chart.umd.js': 'node_modules/chart.js/dist/chart.umd.js',
   'vendor/leaflet/leaflet.js': 'node_modules/leaflet/dist/leaflet.js',

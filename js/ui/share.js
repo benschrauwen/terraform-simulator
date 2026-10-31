@@ -4,9 +4,9 @@ import { Calc } from '../model/index.js';
 import { SavedSitePresets } from '../state/saved-site-presets.js';
 import { DEFAULT_STATE } from '../state/schema.js';
 import { ShareStateCodec } from '../state/share-codec.js';
+import { setShareFeedback } from './share-feedback.js';
 
 const SHARE_STATE_COMPARE_KEYS = Object.keys(DEFAULT_STATE);
-const SHARE_FEEDBACK_DURATION_MS = 2200;
 const SHARE_URL_SYNC_DELAY_MS = 150;
 
 function mergeStateForShareExport(state, defaults) {
@@ -222,24 +222,5 @@ export const shareMethods = {
     this.setShareFeedback('Reset to defaults', 'success');
   },
 
-  setShareFeedback(message = '', tone = '') {
-    const status = document.getElementById('headerActionStatus');
-    if (!status) return;
-
-    clearTimeout(this.shareFeedbackTimer);
-    this.shareFeedbackTimer = null;
-
-    status.textContent = message;
-    status.dataset.state = tone;
-
-    if (!message) return;
-
-    this.shareFeedbackTimer = window.setTimeout(() => {
-      const currentStatus = document.getElementById('headerActionStatus');
-      if (!currentStatus || currentStatus.textContent !== message) return;
-      currentStatus.textContent = '';
-      currentStatus.dataset.state = '';
-      this.shareFeedbackTimer = null;
-    }, SHARE_FEEDBACK_DURATION_MS);
-  },
+  setShareFeedback,
 };

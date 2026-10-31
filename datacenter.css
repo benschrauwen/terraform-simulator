@@ -1,0 +1,1433 @@
+/* Abundance Stack datacenter page: styles on top of style.css (shared shell, panels, controls).
+   Everything here is scoped to classes the datacenter UI renders (js/ui/datacenter/). */
+
+body.datacenter-app [hidden] {
+  display: none !important;
+}
+
+/* ---- Left panel: generated controls and info blocks ---- */
+
+.dc-field + .dc-field {
+  margin-top: 2px;
+}
+
+.dc-block:empty {
+  display: none;
+}
+
+.dc-block {
+  margin: 4px 0 12px;
+}
+
+.dc-info-lead {
+  margin: 0 0 6px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.dc-tradeoff {
+  margin: 0 0 6px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--warning);
+  background: var(--bg-surface);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.45;
+}
+
+.dc-cod-badge {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 8px 10px;
+  border: 1px solid rgba(155, 127, 209, 0.55);
+  border-radius: var(--radius);
+  background: rgba(155, 127, 209, 0.12);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.dc-cod-badge strong {
+  font-size: 18px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-details {
+  margin: 6px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+}
+
+.dc-details > summary {
+  padding: 7px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.dc-details > summary:focus-visible {
+  outline: 1px solid var(--electric);
+}
+
+.dc-details-body,
+.dc-details > .dc-table-scroll,
+.dc-details > .dc-example-list {
+  padding: 4px 10px 8px;
+}
+
+.dc-arch-cards {
+  display: grid;
+  gap: 8px;
+}
+
+.dc-arch-card {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  cursor: pointer;
+  transition: border-color var(--transition), background-color var(--transition);
+}
+
+.dc-arch-card:hover {
+  border-color: var(--border-light);
+}
+
+.dc-arch-card.selected {
+  border-color: var(--electric);
+  background: rgba(95, 127, 184, 0.12);
+}
+
+.dc-arch-card:focus-within {
+  outline: 1px solid var(--electric);
+}
+
+.dc-arch-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.dc-arch-head input {
+  accent-color: var(--electric);
+}
+
+.dc-arch-desc {
+  font-size: 10.5px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* Note after an architecture switch (controls.js showArchitectureNote) */
+.dc-arch-applied {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--electric);
+  border-radius: var(--radius);
+  background: rgba(95, 127, 184, 0.12);
+}
+
+.dc-arch-applied-text {
+  flex: 1;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.dc-arch-applied-dismiss {
+  flex: none;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dc-arch-applied-dismiss:hover,
+.dc-arch-applied-dismiss:focus-visible {
+  color: var(--text-primary);
+}
+
+/* "Switch to Hybrid" in the notes where the architecture rules out a supply (firm-info.js) */
+.dc-switch-arch {
+  margin: 2px 0 6px;
+  padding: 4px 10px;
+  border: 1px solid rgba(95, 127, 184, 0.4);
+  border-radius: var(--radius);
+  background: rgba(95, 127, 184, 0.16);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dc-switch-arch:hover,
+.dc-switch-arch:focus-visible {
+  background: rgba(95, 127, 184, 0.3);
+  outline: none;
+}
+
+.dc-example-list {
+  margin: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.dc-example-list a {
+  color: var(--ai);
+  font-weight: 600;
+}
+
+.dc-example-date {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-table-scroll {
+  overflow-x: auto;
+}
+
+.dc-compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-compare-table th,
+.dc-compare-table td {
+  padding: 4px 4px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.dc-compare-table th[scope="row"],
+.dc-compare-table thead th:first-child {
+  text-align: left;
+  white-space: normal;
+  font-weight: 500;
+}
+
+.dc-compare-table .dc-selected-row {
+  color: var(--text-primary);
+  background: rgba(95, 127, 184, 0.14);
+}
+
+.dc-inline-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 6px;
+}
+
+.dc-inline-controls > label,
+.dc-inline-controls > .dc-field {
+  flex: 1 1 200px;
+  margin-bottom: 4px;
+}
+
+/* ---- Center: views ---- */
+
+#layoutView {
+  padding: 14px;
+  min-height: 0;
+}
+
+.dc-view-header h3 {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text-primary);
+}
+
+.dc-headline {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dc-empty {
+  padding: 30px 10px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.plant-layout-svg,
+.sankey-svg,
+.timeline-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: inherit;
+}
+
+.timeline-view {
+  overflow-x: auto;
+}
+
+.timeline-svg {
+  min-width: 560px;
+}
+
+/* Plant layout blocks */
+.pl-block rect {
+  stroke: rgba(255, 255, 255, 0.35);
+  stroke-width: 0.6;
+}
+
+.pl-building rect { fill: #3f5f8f; }
+.pl-coolingYard rect { fill: #3f8f9b; }
+.pl-substation rect { fill: #7f8a99; }
+.pl-solarField rect { fill: #8a6d2a; }
+.pl-battery rect { fill: #2f8a74; }
+.pl-gasPlant rect { fill: #9a5530; }
+.pl-backupDiesel rect { fill: #6e3a22; }
+.pl-nuclearPlant rect { fill: #6b569a; }
+.pl-utilitySwitchyard rect { fill: #a8b2c0; }
+
+/* Grid tie: transmission line, pylons, tap and tie (plant-layout.js) */
+.pl-line {
+  stroke: var(--ai);
+  stroke-width: 2;
+  fill: none;
+}
+
+.pl-gridtie-flexible .pl-transmission {
+  stroke-dasharray: 8 5;
+}
+
+.pl-tap,
+.pl-tie {
+  stroke-width: 1.5;
+}
+
+.pl-pylon {
+  fill: none;
+  stroke: var(--ai);
+  stroke-width: 1;
+}
+
+.pl-gridtie .pl-grid {
+  font-size: 10px;
+  fill: var(--ai);
+}
+
+.pl-islanded {
+  font-size: 10px;
+  fill: var(--warning);
+}
+
+.pl-name {
+  font-size: 12px;
+  font-weight: 600;
+  fill: #f8fafc;
+}
+
+.pl-detail {
+  font-size: 10px;
+  fill: #e2e8f0;
+}
+
+.pl-badge {
+  fill: var(--bg-primary);
+  stroke: #e2e8f0;
+  stroke-width: 1;
+}
+
+.pl-badge-text {
+  font-size: 9px;
+  font-weight: 700;
+  fill: #f8fafc;
+}
+
+.pl-scale line {
+  stroke: var(--text-secondary);
+  stroke-width: 1.5;
+}
+
+.pl-scale text {
+  font-size: 10px;
+  fill: var(--text-secondary);
+}
+
+.pl-scale .pl-grid {
+  fill: var(--ai);
+}
+
+.pl-legend {
+  list-style: none;
+  margin: 8px 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 4px 12px;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+
+.pl-legend-item {
+  display: grid;
+  grid-template-columns: 10px 14px auto 1fr;
+  align-items: baseline;
+  gap: 2px 6px;
+}
+
+.pl-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  align-self: center;
+}
+
+.pl-building .pl-swatch { background: #3f5f8f; }
+.pl-coolingYard .pl-swatch { background: #3f8f9b; }
+.pl-substation .pl-swatch { background: #7f8a99; }
+.pl-solarField .pl-swatch { background: #8a6d2a; }
+.pl-battery .pl-swatch { background: #2f8a74; }
+.pl-gasPlant .pl-swatch { background: #9a5530; }
+.pl-backupDiesel .pl-swatch { background: #6e3a22; }
+.pl-nuclearPlant .pl-swatch { background: #6b569a; }
+.pl-utilitySwitchyard .pl-swatch { background: #a8b2c0; }
+
+/* Plant layout card: Map | Diagram toggle and the satellite map (plant-map.js) */
+#layoutView .dc-view-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+#layoutView .dc-view-header .chart-tabs {
+  margin-bottom: 6px;
+}
+
+.plant-map-shell {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #0f1215;
+}
+
+.plant-map {
+  position: absolute;
+  inset: 0;
+}
+
+.plant-map.leaflet-container,
+.plant-map.plant-map-offline {
+  background: #1b2128;
+}
+
+.plant-map-panel .field-note {
+  margin-top: 6px;
+}
+
+.pl-map-block {
+  stroke: #f8fafc;
+}
+
+.pl-map-block.pl-building { fill: #3f5f8f; }
+.pl-map-block.pl-coolingYard { fill: #3f8f9b; }
+.pl-map-block.pl-substation { fill: #7f8a99; }
+.pl-map-block.pl-solarField { fill: #8a6d2a; }
+.pl-map-block.pl-battery { fill: #2f8a74; }
+.pl-map-block.pl-gasPlant { fill: #9a5530; }
+.pl-map-block.pl-backupDiesel { fill: #6e3a22; }
+.pl-map-block.pl-nuclearPlant { fill: #6b569a; }
+.pl-map-block.pl-utilitySwitchyard { fill: #a8b2c0; }
+
+.pl-map-line {
+  stroke: #9fd0ff;
+}
+
+.pl-map-pin {
+  stroke: #ffffff;
+  fill: #f43f5e;
+}
+
+.leaflet-tooltip.pl-map-tooltip {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  background: rgba(10, 14, 23, 0.92);
+  color: var(--text-primary);
+  font-size: 11px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.leaflet-tooltip.pl-map-tooltip::before {
+  display: none;
+}
+
+.pl-map-tip strong,
+.pl-map-tip span {
+  display: block;
+}
+
+.pl-map-tip span {
+  color: var(--text-secondary);
+}
+
+.pl-legend-num {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pl-legend-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pl-legend-detail {
+  color: var(--text-muted);
+}
+
+.pl-legend-area {
+  grid-column: 3 / -1;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sankey */
+.flow-view {
+  min-height: 120px;
+}
+
+.sk-band {
+  fill-opacity: 0.42;
+  stroke: none;
+}
+
+.sk-band:hover {
+  fill-opacity: 0.7;
+}
+
+.sk-node rect {
+  fill: #94a3b8;
+}
+
+.sk-label,
+.sk-value {
+  paint-order: stroke;
+  stroke: var(--bg-card);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.sk-label {
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--text-primary);
+}
+
+.sk-value {
+  font-size: 10px;
+  fill: var(--text-secondary);
+}
+
+.sk-band.sk-solar, .sk-solar rect { fill: #e0a83e; }
+.sk-band.sk-nuclear, .sk-nuclear rect { fill: #9b7fd1; }
+.sk-band.sk-grid, .sk-grid rect { fill: #5f7fb8; }
+.sk-band.sk-gas, .sk-gas rect, .sk-gasPlant rect { fill: #c56f3c; }
+.sk-band.sk-backupDiesel, .sk-backupDiesel rect { fill: #8f4a2a; }
+.sk-band.sk-battery, .sk-battery rect { fill: #4fb39b; }
+.sk-band.sk-facility, .sk-facility rect { fill: #78a6d8; }
+.sk-it rect { fill: #a5b4fc; }
+.sk-cooling rect, .sk-band.sk-cooling { fill: #5ec4d6; }
+.sk-band.sk-it { fill: #a5b4fc; }
+.sk-band.sk-electricalLosses, .sk-electricalLosses rect { fill: #94a3b8; }
+.sk-curtailed rect, .sk-export rect, .sk-batteryLosses rect { fill: #6b7280; }
+.sk-band.sk-heatRejection, .sk-heatRejection rect { fill: #e07a5f; }
+.sk-air rect { fill: #cbd5e1; }
+.sk-vapour rect, .sk-evaporated rect { fill: #7dd3fc; }
+.sk-band.sk-waterSupply, .sk-waterSupply rect { fill: #38bdf8; }
+.sk-band.sk-coolingPlant, .sk-coolingPlant rect { fill: #5ec4d6; }
+.sk-band.sk-nuclearPlant, .sk-nuclearPlant rect { fill: #9b7fd1; }
+.sk-discharged rect { fill: #64748b; }
+.sk-atmosphere rect { fill: #9ca3af; }
+
+/* Timeline */
+.tl-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.tl-tick {
+  font-size: 10px;
+  fill: var(--text-muted);
+}
+
+.tl-label {
+  font-size: 10.5px;
+  fill: var(--text-secondary);
+}
+
+.tl-critical .tl-label {
+  fill: var(--text-primary);
+  font-weight: 700;
+}
+
+.tl-outline {
+  fill: none;
+  stroke: transparent;
+}
+
+.tl-critical .tl-outline {
+  stroke: #f87171;
+  stroke-width: 2;
+}
+
+.tl-optional .tl-seg {
+  fill-opacity: 0.45;
+}
+
+.tl-permit, .tl-swatch.tl-permit { fill: #8c84b4; background: #8c84b4; }
+.tl-procure, .tl-swatch.tl-procure { fill: #c79a48; background: #c79a48; }
+.tl-build, .tl-swatch.tl-build { fill: #5f9f7f; background: #5f9f7f; }
+.tl-wait, .tl-swatch.tl-wait { fill: #4b5563; background: repeating-linear-gradient(45deg, #4b5563 0 3px, #374151 3px 6px); }
+
+.tl-slack,
+.tl-cod {
+  font-size: 9.5px;
+  fill: var(--text-muted);
+}
+
+.tl-critical .tl-slack {
+  fill: #fca5a5;
+  font-weight: 600;
+}
+
+.tl-cod {
+  fill: #c4b5fd;
+  font-weight: 600;
+}
+
+.tl-energization line {
+  stroke: #34d399;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+.tl-energization text {
+  font-size: 10px;
+  font-weight: 600;
+  fill: #34d399;
+}
+
+.tl-legend {
+  list-style: none;
+  margin: 6px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.tl-legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.tl-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.tl-swatch-critical {
+  border: 2px solid #f87171;
+}
+
+/* ---- Right column ---- */
+
+/* Key metrics whose label must keep its case (CO₂e, not CO₂E; results.js) */
+.dc-metric-keepcase .econ-metric-label {
+  text-transform: none;
+}
+
+.dc-warnings {
+  margin-bottom: 10px;
+  padding: 9px 10px;
+  border: 1px solid rgba(199, 154, 72, 0.6);
+  border-radius: var(--radius);
+  background: rgba(199, 154, 72, 0.12);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+
+.dc-warnings-title {
+  margin-bottom: 4px;
+  font-weight: 700;
+  color: var(--warning);
+}
+
+.dc-warnings ul {
+  margin: 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 4px;
+}
+
+.econ-row.sub .econ-label {
+  padding-left: 12px;
+  color: var(--text-muted);
+}
+
+.metric.dc-metric-good .metric-value {
+  color: var(--success);
+}
+
+.metric.dc-metric-bad .metric-value {
+  color: var(--danger);
+}
+
+#sensitivityResults {
+  display: grid;
+  gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .pl-legend {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Right: design optimizer ---- */
+
+.dc-opt-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0 10px;
+  margin: 6px 0 4px;
+}
+
+.dc-opt-options .toggle-label {
+  margin-bottom: 6px;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+}
+
+.dc-opt-hint {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.dc-opt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 8px;
+}
+
+.dc-opt-actions button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.dc-opt-actions progress {
+  flex: 1 1 80px;
+  height: 6px;
+  accent-color: var(--electric);
+}
+
+.dc-opt-status {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-opt-headline {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dc-opt-table {
+  font-size: 9.5px;
+}
+
+.dc-opt-table th,
+.dc-opt-table td {
+  padding: 3px 2px;
+}
+
+.dc-opt-table td.positive {
+  color: var(--success);
+}
+
+.dc-opt-table td.negative {
+  color: var(--danger);
+}
+
+.dc-opt-table .dc-opt-best {
+  background: rgba(95, 127, 184, 0.14);
+  color: var(--text-primary);
+}
+
+.dc-opt-table thead th {
+  text-align: right;
+  vertical-align: bottom;
+  white-space: normal;
+}
+
+.dc-opt-tag {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(126, 169, 109, 0.2);
+  color: var(--success);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.dc-opt-tag-warn {
+  background: rgba(199, 115, 121, 0.2);
+  color: var(--danger);
+}
+
+.dc-opt-tag-muted {
+  background: rgba(127, 127, 127, 0.18);
+  color: var(--text-muted);
+}
+
+.dc-opt-apply {
+  padding: 2px 8px;
+  border: 1px solid rgba(95, 127, 184, 0.4);
+  border-radius: var(--radius);
+  background: rgba(95, 127, 184, 0.16);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dc-opt-apply:hover,
+.dc-opt-apply:focus-visible {
+  background: rgba(95, 127, 184, 0.3);
+  outline: none;
+}
+
+.dc-opt-apply:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.dc-opt-notes {
+  margin: 6px 0 4px;
+  padding-left: 16px;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+
+.dc-opt-notes li {
+  margin-bottom: 2px;
+}
+
+/* ============ SITES PAGE (datacenter-sites.html) ============ */
+
+body.sites-page .doc-header,
+body.sites-page .doc-main {
+  max-width: 1280px;
+}
+
+.sites-settings {
+  font-size: 13px;
+}
+
+.sites-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.sites-sort-label {
+  display: inline;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+select.sites-sort {
+  width: auto;
+  margin-top: 0;
+}
+
+.sites-sort,
+.sites-rerun {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 8px;
+  font: inherit;
+}
+
+.sites-rerun {
+  cursor: pointer;
+}
+
+.sites-rerun:hover {
+  border-color: var(--border-light);
+}
+
+.sites-progress {
+  width: 160px;
+  height: 8px;
+  accent-color: var(--electric);
+}
+
+.sites-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.site-card {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.site-card:not(.is-pending):hover {
+  border-color: var(--border-light);
+  background: var(--bg-card-hover);
+}
+
+.site-card.is-pending {
+  opacity: 0.6;
+}
+
+.site-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.site-rank {
+  min-width: 22px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.site-card-title {
+  margin: 0;
+  font-size: 17px;
+}
+
+.site-card-link {
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+/* The whole card opens the design; the link's box covers it. */
+.site-card-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-lg);
+}
+
+.site-card-link:focus-visible::after {
+  outline: 2px solid var(--electric);
+  outline-offset: 2px;
+}
+
+.site-card:hover .site-card-link {
+  text-decoration: underline;
+}
+
+.site-card-status {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.site-arch-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+}
+
+.site-arch-grid { border-color: var(--electric); color: var(--ai); }
+.site-arch-hybrid { border-color: var(--success); color: var(--success); }
+.site-arch-islanded { border-color: var(--fuel); color: var(--fuel); }
+
+.site-card-drivers {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.site-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 18px;
+  margin-top: 10px;
+}
+
+.site-card-col h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.site-card-col h3 + * {
+  margin-top: 0;
+}
+
+.site-card-sub {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.site-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 6px 12px;
+  margin: 0 0 12px;
+}
+
+.site-metric dt {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.site-metric dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.site-metric.is-good dd { color: var(--success); }
+.site-metric.is-bad dd { color: var(--danger); }
+
+.site-design {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.site-archs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+}
+
+.site-arch {
+  display: grid;
+  grid-template-columns: 64px 80px 1fr;
+  gap: 8px;
+  padding: 2px 6px;
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.site-arch.is-best {
+  background: rgba(126, 169, 109, 0.14);
+  color: var(--text-primary);
+}
+
+.site-arch.is-infeasible .site-arch-npv {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.site-arch-npv {
+  text-align: right;
+}
+
+.site-arch-detail {
+  color: var(--text-muted);
+}
+
+.site-dispatch-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: inherit;
+}
+
+.sd-axis {
+  font-size: 9px;
+  fill: var(--text-muted);
+}
+
+.sd-zero {
+  stroke: var(--border-light);
+  stroke-width: 0.8;
+}
+
+.sd-load {
+  fill: none;
+  stroke: #e2e8f0;
+  stroke-width: 1.4;
+}
+
+.site-dispatch-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.site-dispatch-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sd-swatch {
+  width: 10px;
+  height: 10px;
+}
+
+.site-card-note {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* The card plan is narrow: the connection is in the design line, so drop the grid-tie label. */
+.site-card .pl-gridtie .pl-grid {
+  display: none;
+}
+
+.site-footprint-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 1px 10px;
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.site-footprint-legend li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.site-footprint-legend .pl-swatch {
+  flex: none;
+}
+
+.sfl-num,
+.sfl-area {
+  color: var(--text-muted);
+}
+
+.sfl-area {
+  margin-left: auto;
+}
+
+.site-footprint-bar svg {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 6px;
+}
+
+.sfb-track { fill: var(--bg-surface); }
+.sfb-fill { fill: var(--solar); }
+
+@media (max-width: 900px) {
+  .site-card-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  body.sites-page .doc-header,
+  body.sites-page .doc-main {
+    padding: 0 16px;
+  }
+}
+
+/* Header link to the sites page */
+.header-text-link {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid rgba(95, 127, 184, 0.32);
+  border-radius: 999px;
+  background: rgba(95, 127, 184, 0.14);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.header-text-link:hover {
+  border-color: var(--electric);
+}
+
+/* Where the capex goes (capex-split.js) */
+.capex-split-bar {
+  display: block;
+  width: 100%;
+  height: 14px;
+  margin: 8px 0 10px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.capex-split-scroll {
+  overflow-x: auto;
+}
+
+.capex-split-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.capex-split-table th,
+.capex-split-table td {
+  padding: 3px 8px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.capex-split-table th:first-child {
+  text-align: left;
+  white-space: normal;
+}
+
+.capex-split-table thead th {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.capex-split-table .cs-group th,
+.capex-split-table .cs-group td,
+.capex-split-table tfoot th,
+.capex-split-table tfoot td {
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.capex-split-table .cs-item th {
+  font-weight: 400;
+  padding-left: 18px;
+  color: var(--text-secondary);
+}
+
+.capex-split-table .cs-item td {
+  color: var(--text-secondary);
+}
+
+.capex-split-table .cs-paid {
+  color: var(--text-muted);
+}
+
+.capex-split-table tfoot th,
+.capex-split-table tfoot td {
+  border-bottom: 0;
+}
+
+.cs-swatch {
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+
+/* Real project info (project-info.js): name and summary, details collapsed */
+.dc-project-summary {
+  margin: 4px 0 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.dc-project-details {
+  margin: 4px 0;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.dc-project-details summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.dc-project-meta {
+  margin: 6px 0 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.dc-project-facts {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+}
+
+.dc-project-facts li {
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.dc-project-fact-label {
+  color: var(--text-muted);
+}
+
+.dc-project-fact-value {
+  color: var(--text-secondary);
+}
+
+.dc-project-source {
+  color: var(--electric);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.dc-project-basis {
+  color: var(--text-muted);
+  font-size: 10.5px;
+}
+
+.dc-project-assumptions {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+/* Hidden solar price sweep page (datacenter-solar-sweep.html) */
+.sweep-chart-card {
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.sweep-section-title {
+  margin: 28px 0 0;
+  padding: 0;
+  border: 0;
+  font-size: 18px;
+}
+
+.sweep-chart-card h2 {
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+  font-size: 15px;
+}
+
+.sweep-chart {
+  position: relative;
+  height: 460px;
+}
+
+@media (max-width: 700px) {
+  .sweep-chart {
+    height: 520px;
+  }
+}
+
+/* 2D price grid heatmaps (sweep-heatmap.js) */
+.sweep-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.sweep-heatmap-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: inherit;
+}
+
+.hm-pending {
+  fill: var(--bg-surface);
+  stroke: var(--border);
+}
+
+.hm-value {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.hm-axis {
+  font-size: 10px;
+  fill: var(--text-muted);
+}
+
+.hm-title {
+  font-size: 11px;
+  fill: var(--text-secondary);
+}

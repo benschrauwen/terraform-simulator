@@ -1,0 +1,199 @@
+/* Gas sized for the uptime target (model/datacenter/firm-sizing.js). Independent truths:
+   - the definition: the auto fleet meets the target and one base unit fewer (manual count, so the
+     spares are out of the picture) does not, checked against full dispatch runs;
+   - the arithmetic of allowed unserved hours from the uptime definition (hours fully served / 8760);
+   - monotonicity: more battery or a lower target never needs more units; more outage hours never
+     needs fewer;
+   - with a battery that rides through every outage, no unit is needed (and no spares come with it);
+   - the optimizer's minimum-units bisection lands on the same count. */
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import { GAS_GENSET_TYPES } from '../../js/data/datacenter/power.js';
+import { allowedUnservedHours } from '../../js/model/datacenter/firm-sizing.js';
+import {
+  applyDatacenterPresetDefaults,
+  buildStartingDesign,
+  calculateDatacenterScenario,
+  DATACENTER_DEFAULT_STATE,
+  normalizeDatacenterState,
+} from '../../js/model/datacenter/index.js';
+import { buildOutageCounts } from '../../js/model/datacenter/supply.js';
+import { findMinimumUnits, optimizeDatacenterDesign } from '../../js/model/datacenter/optimizer.js';
+
+const BASE = { ...DATACENTER_DEFAULT_STATE };
+// Reciprocating gas engines ($4/MMBtu: cheaper than the default grid price).
+const RECIP = applyDatacenterPresetDefaults({ ...BASE, architecture: 'hybrid', gasType: 'recip' }, 'gasType');
+const run = state => calculateDatacenterScenario(state, { fastMode: true });
+const manual = (state, units) => run({ ...state, firmFamily: units > 0 ? 'gas' : 'none', firmSizingMode: 'manual', firmUnits: units });
+
+test('allowed unserved hours follow from uptime = fully served hours / 8760', () => {
+  // 99.982% x 8760 = 8758.42 h must be served -> 8759 h -> 1 h may go unserved.
+  assert.equal(allowedUnservedHours(99.982), 1);
+  // 99.9%: 8751.24 -> 8752 served, 8 unserved. 99%: 8672.4 -> 8673 served, 87 unserved.
+  assert.equal(allowedUnservedHours(99.9), 8);
+  assert.equal(allowedUnservedHours(99), 87);
+  // 99.995%: 8759.56 -> every hour.
+  assert.equal(allowedUnservedHours(99.995), 0);
+  // Exactly representable boundary: 8759 / 8760 = 99.98858...% allows 1 h.
+  assert.equal(allowedUnservedHours((8759 / 8760) * 100), 1);
+});
+
+/* The auto fleet meets the target; with one base unit fewer the target is missed. (A battery
+   standing in for spares keeps a reserve floor the base units are sized without: checked in
+   datacenter-battery-reserve.test.js; off here so manual counts compare like for like.) */
+function assertMinimal(rawState, label) {
+  const state = { ...rawState, batteryReplacesSpares: false };
+  const auto = run({ ...state, firmFamily: 'gas', firmSizingMode: 'auto' });
+  const basis = auto.firm.sizingBasis;
+  assert.ok(basis, `${label}: sizing basis reported`);
+  assert.ok(auto.reliability.meetsTarget, `${label}: auto fleet ${auto.firm.units} units meets the target (${auto.reliability.uptimePercent})`);
+  const base = basis.minUnits;
+  assert.equal(auto.firm.units, base > 0 ? base + state.firmSpareUnits : 0, `${label}: spares only on top of a plant`);
+  assert.ok(manual(state, base).reliability.meetsTarget, `${label}: ${base} base units meet the target`);
+  if (base > 0) {
+    const fewer = manual(state, base - 1);
+    assert.equal(fewer.reliability.meetsTarget, false, `${label}: ${base - 1} units miss the target`);
+  }
+  return auto;
+}
+
+test('auto sizing is the fewest units meeting the target (starting designs, several sites)', () => {
+  for (const siteId of ['abilene-tx', 'richland-la', 'phoenix-az']) {
+    for (const architecture of ['grid', 'hybrid', 'islanded']) {
+      const { state } = buildStartingDesign({ ...BASE, siteId }, architecture);
+      assertMinimal(state, `${siteId} ${architecture}`);
+    }
+  }
+});
+
+test('auto sizing is exact on the non-separable designs too (reserve battery after or charged by gas)', () => {
+  // Islanded gas + reserve battery (topped up from spare gas): bisection on full runs.
+  const islanded = assertMinimal({ ...BASE, architecture: 'islanded', batteryCapacityMWh: 200 }, 'islanded reserve battery');
+  assert.equal(islanded.firm.sizingBasis.method, 'bisection');
+  // Hybrid, gas cheaper than the grid (firm-first), reserve battery.
+  const hybrid = assertMinimal({ ...RECIP, architecture: 'hybrid', gridConnection: 'flexible', batteryCapacityMWh: 100 }, 'hybrid firm-first reserve');
+  assert.equal(hybrid.dispatch.order, 'firm-first');
+  assert.equal(hybrid.firm.sizingBasis.method, 'bisection');
+  // A grid-first reserve battery is exact from one zero-gas run.
+  const grid = assertMinimal({ ...BASE, batteryCapacityMWh: 150 }, 'grid reserve battery');
+  assert.equal(grid.firm.sizingBasis.method, 'residual');
+  // Flexible connection, more curtailment, different target.
+  assertMinimal({ ...BASE, architecture: 'hybrid', gridConnection: 'flexible', gridUnavailableHoursPerYear: 200, uptimeTargetPercent: 99.9 }, 'flexible 200 h');
+});
+
+test('auto units fall with more battery and a lower target, and rise with more outage hours', () => {
+  const units = overrides => run({ ...BASE, ...overrides }).firm.sizingBasis.minUnits;
+  let previous = Infinity;
+  for (let battery = 0; battery <= 600; battery += 50) {
+    const n = units({ batteryCapacityMWh: battery });
+    assert.ok(n <= previous, `battery ${battery} MWh: ${n} > ${previous}`);
+    previous = n;
+  }
+  previous = Infinity;
+  for (const target of [99.9999, 99.995, 99.982, 99.95, 99.9, 99.5, 99]) {
+    const n = units({ uptimeTargetPercent: target });
+    assert.ok(n <= previous, `target ${target}: ${n} > ${previous}`);
+    previous = n;
+  }
+  previous = -Infinity;
+  for (let hours = 0; hours <= 24; hours += 1) {
+    const n = units({ firmGridOutageHoursPerYear: hours, architecture: 'hybrid', gridConnection: 'flexible', gridUnavailableHoursPerYear: 0 });
+    assert.ok(n >= previous, `outage ${hours} h: ${n} < ${previous}`);
+    previous = n;
+  }
+  // The same holds on a flexible connection's curtailment hours.
+  previous = -Infinity;
+  for (const hours of [0, 20, 50, 100, 200, 400]) {
+    const n = units({ architecture: 'hybrid', gridConnection: 'flexible', gridUnavailableHoursPerYear: hours });
+    assert.ok(n >= previous, `curtailment ${hours} h: ${n} < ${previous}`);
+    previous = n;
+  }
+});
+
+test('a battery that rides through every outage needs no firm units and gets no spares', () => {
+  // Default grid site: 3 h of utility outage at ~93 MW of load; a 400 MWh / 100 MW (4 h) battery
+  // carries it, so no gas is needed at all.
+  const r = run({ ...BASE, batteryCapacityMWh: 400 });
+  assert.equal(r.firm.sizingBasis.minUnits, 0);
+  assert.equal(r.firm.units, 0);
+  assert.equal(r.firm.capacityMW, 0);
+  assert.equal(r.firm.requiredMW, 0);
+  assert.ok(r.reliability.meetsTarget);
+  assert.equal(r.dispatch.annual.gasMWh, 0);
+  // No gas plant on the schedule or in the footprint.
+  assert.ok(!r.schedule.paths.some(path => path.id.startsWith('gas-') || path.id.startsWith('diesel')));
+  assert.equal(r.footprint.areasM2.gasPlant, 0);
+  // A target loose enough to absorb the 3 outage hours needs none either.
+  assert.equal(run({ ...BASE, uptimeTargetPercent: 99.9 }).firm.units, 0);
+});
+
+test('required MW is the (H+1)-th largest hourly shortfall and covers the target', () => {
+  // Firm grid, no battery: the residual shortfall is the load in each utility-outage hour.
+  const r = calculateDatacenterScenario(BASE);
+  const basis = r.firm.sizingBasis;
+  assert.equal(basis.hoursShortWithoutFirm, r.grid.outageHours);
+  const outageLoads = [];
+  r.grid.events.filter(event => event.kind === 'outage').forEach(event => {
+    for (let k = 0; k < event.hours; k++) outageLoads.push(r.dispatch.hourly.loadMW[event.startHour + k]);
+  });
+  outageLoads.sort((a, b) => b - a);
+  const H = basis.allowedUnservedHours;
+  assert.ok(Math.abs(basis.requiredMW - (outageLoads[H] - 1e-9 * outageLoads[H])) < 1e-6);
+  assert.ok(Math.abs(basis.maxShortfallMW - outageLoads[0]) < 1e-6);
+  assert.ok(basis.minUnits * r.firm.unitSizeMW >= basis.requiredMW);
+  assert.equal(basis.hoursCoveredByFirm + basis.unservedHoursWithFirm, basis.hoursShortWithoutFirm);
+});
+
+test('the minimum-units bisection equals the auto count before spares; the optimizer keeps the spares', () => {
+  const designs = [
+    { ...BASE },
+    { ...BASE, batteryCapacityMWh: 100 },
+    buildStartingDesign(BASE, 'hybrid').state,
+    buildStartingDesign(BASE, 'islanded').state,
+    { ...BASE, architecture: 'islanded', batteryCapacityMWh: 200 },
+  ];
+  designs.forEach((rawState, index) => {
+    // (No battery standing in for spares here: manual counts have no reserve floor.)
+    const state = { ...rawState, batteryReplacesSpares: false };
+    const auto = run({ ...state, firmFamily: 'gas', firmSizingMode: 'auto' });
+    const bisected = findMinimumUnits(units => manual(state, units).reliability.meetsTarget, 60);
+    assert.equal(bisected, auto.firm.sizingBasis.minUnits, `design ${index}`);
+    // The optimizer's design at the same solar and battery is the auto design with its spares
+    // (battery-as-reserve as the state sets it), plus any extra units that pay.
+    const result = optimizeDatacenterDesign(rawState, { sizeSolar: false, sizeBattery: false, budget: 60 });
+    const autoRaw = run({ ...rawState, firmFamily: 'gas', firmSizingMode: 'auto', firmExtraUnits: 0 });
+    assert.equal(result.best.units, autoRaw.firm.units + result.best.extraUnits, `design ${index}: optimizer`);
+  });
+});
+
+test('every gas type can be sized for the largest IT load (20 GW), quickly', () => {
+  // Fuel cells are 0.325 MW units: ~58,000 of them carry 20 GW of IT (the unit cap was once 2,000,
+  // i.e. 650 MW). Outage counts are built in O(units + 8760) and the count found by galloping.
+  Object.keys(GAS_GENSET_TYPES).forEach(gasType => {
+    const state = applyDatacenterPresetDefaults({ ...BASE, architecture: 'islanded', gasType, itCapacityMW: 20000, firmSpareUnits: 2 }, 'gasType');
+    const started = Date.now();
+    const r = run(state);
+    const elapsed = Date.now() - started;
+    assert.ok(r.firm.sizingBasis.reachable, gasType);
+    assert.ok(r.reliability.meetsTarget, `${gasType}: ${r.reliability.uptimePercent}`);
+    assert.equal(r.firm.units, r.firm.sizingBasis.minUnits + 2, gasType);
+    assert.ok(r.firm.units * r.firm.unitSizeMW >= r.load.meanFacilityMW, gasType);
+    assert.ok(elapsed < 2000, `${gasType}: ${elapsed} ms`);
+  });
+  // A manual count of that size is a legal state.
+  assert.equal(normalizeDatacenterState({ firmUnits: 100000 }).firmUnits, 100000);
+});
+
+test('maintenance outage counts: blocks one after another, wrapping the year', () => {
+  // 3 units x 4000 h from hour 8000: unit 0 covers 8000-8759 and 0-3239, unit 1 3240-7239,
+  // unit 2 7240-8759 and 0-2479.
+  const counts = buildOutageCounts(3, 4000, 8000);
+  assert.equal(counts.reduce((sum, value) => sum + value, 0), 12000);
+  assert.equal(counts[100], 2);
+  assert.equal(counts[3000], 1);
+  assert.equal(counts[7239], 1);
+  assert.equal(counts[7240], 1);
+  assert.equal(counts[8500], 2);
+  assert.equal(buildOutageCounts(0, 100, 0).reduce((sum, value) => sum + value, 0), 0);
+});

@@ -32,28 +32,77 @@ const BASE_HEADERS = {
 
 const VERCEL_CONFIG_PATH = path.join(__dirname, '..', 'vercel.json');
 
-/**
- * Turn vercel.json `headers` entries into { pattern, headers } rules so the dev server
- * sends the production CSP and security headers and violations show up locally.
- * Only literal paths with `(.*)` wildcards (e.g. `/(.*)`, `/assets/(.*)`) are supported.
+/*
+ * vercel.json uses legacy `routes` rather than `headers` + `rewrites`: Vercel checks
+ * the filesystem before applying `rewrites`, so a host rewrite of `/` or `/sources.html`
+ * (both real files) would never fire. Routes run before the filesystem, in order.
+ *
+ * The dev server mirrors the two route shapes the config uses:
+ *   { src, headers, continue: true }        adds headers when src matches the path;
+ *   { src, dest, has?: [{ type: 'host' }] }  rewrites the path (first match wins).
+ * Anything else is rejected so dev never silently diverges from production.
+ *
+ * Dev host aliases: browsers resolve every `*.localhost` name to loopback, so a
+ * request for `<name>.localhost` matches a `has` host rule for `<name>.com`. For
+ * example http://abundancestack.localhost:4173/ gets the abundancestack.com routes,
+ * while http://localhost:4173/ (or 127.0.0.1) gets none, like terraform-simulator.com.
  */
-export function parseHeaderRules(config) {
-  return (config?.headers || []).map(({ source, headers }) => {
-    if (typeof source !== 'string' || !/^\/(?:[\w./-]|\(\.\*\))*$/.test(source)) {
-      throw new Error(`Unsupported vercel.json header source pattern: ${source}`);
-    }
-    const regex = source.split('(.*)')
-      .map(literal => literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-      .join('.*');
-    return {
-      pattern: new RegExp(`^${regex}$`),
-      headers: Object.fromEntries((headers || []).map(({ key, value }) => [key, value])),
-    };
-  });
+const ROUTE_KEYS = new Set(['src', 'headers', 'continue', 'dest', 'has']);
+const DEST_PATTERN = /^\/[\w./-]*$/;
+const HOST_VALUE_PATTERN = /^[a-z0-9-]+(?:\.[a-z0-9-]+)*$/i;
+
+function compileRouteSource(src) {
+  if (typeof src !== 'string' || !src.startsWith('^/') || !src.endsWith('$')) {
+    throw new Error(`Unsupported vercel.json route src (must be an anchored path regex): ${src}`);
+  }
+  return new RegExp(src);
 }
 
-export function loadHeaderRules(configPath = VERCEL_CONFIG_PATH) {
-  return parseHeaderRules(JSON.parse(readFileSync(configPath, 'utf8')));
+/**
+ * Turn vercel.json `routes` into { headerRules, rewriteRules } so the dev server sends
+ * the production CSP and security headers (violations show up locally) and applies the
+ * same host-based page routing.
+ */
+export function parseRouteRules(config) {
+  const unsupportedKeys = ['headers', 'rewrites', 'redirects', 'cleanUrls', 'trailingSlash']
+    .filter(key => config?.[key] !== undefined);
+  if (unsupportedKeys.length > 0) {
+    throw new Error(`vercel.json must express ${unsupportedKeys.join(', ')} as routes (Vercel rejects mixing them with routes).`);
+  }
+  const headerRules = [];
+  const rewriteRules = [];
+  (config?.routes || []).forEach(route => {
+    const unknown = Object.keys(route || {}).filter(key => !ROUTE_KEYS.has(key));
+    if (unknown.length > 0) throw new Error(`Unsupported vercel.json route keys: ${unknown.join(', ')}`);
+    const pattern = compileRouteSource(route.src);
+
+    if (route.headers !== undefined) {
+      if (rewriteRules.length > 0) {
+        throw new Error(`vercel.json header route ${route.src} follows a rewrite route; Vercel stops at the rewrite.`);
+      }
+      if (route.continue !== true || route.dest !== undefined || route.has !== undefined) {
+        throw new Error(`Unsupported vercel.json header route (needs continue: true, no dest/has): ${route.src}`);
+      }
+      headerRules.push({ pattern, headers: { ...route.headers } });
+      return;
+    }
+
+    if (typeof route.dest !== 'string' || !DEST_PATTERN.test(route.dest) || route.continue !== undefined) {
+      throw new Error(`Unsupported vercel.json rewrite route: ${route.src} -> ${route.dest}`);
+    }
+    const hosts = (route.has || []).map(condition => {
+      if (condition?.type !== 'host' || !HOST_VALUE_PATTERN.test(condition.value || '')) {
+        throw new Error(`Unsupported vercel.json route condition: ${JSON.stringify(condition)}`);
+      }
+      return condition.value.toLowerCase();
+    });
+    rewriteRules.push({ pattern, hosts, destination: route.dest });
+  });
+  return { headerRules, rewriteRules };
+}
+
+export function loadRouteRules(configPath = VERCEL_CONFIG_PATH) {
+  return parseRouteRules(JSON.parse(readFileSync(configPath, 'utf8')));
 }
 
 /** Headers for a request path: every matching rule in order, then BASE_HEADERS. */
@@ -65,15 +114,36 @@ export function headersForPath(pathname, headerRules = []) {
   return { ...headers, ...BASE_HEADERS };
 }
 
-let defaultHeaderRules = null;
-function getDefaultHeaderRules() {
-  defaultHeaderRules ??= loadHeaderRules();
-  return defaultHeaderRules;
+/** The hostname a Host header's routes are matched against: lowercased, no port, `*.localhost` -> `*.com`. */
+export function routingHostname(hostHeader) {
+  if (typeof hostHeader !== 'string' || hostHeader === '') return '';
+  let hostname;
+  try {
+    hostname = new URL(`http://${hostHeader}`).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+  return hostname.endsWith('.localhost') ? `${hostname.slice(0, -'.localhost'.length)}.com` : hostname;
 }
 
-export function createStaticServer(root, { headerRules = getDefaultHeaderRules() } = {}) {
+/** The path to serve: the first rewrite rule whose path and host conditions match, else the path itself. */
+export function rewritePath(pathname, hostHeader, rewriteRules = []) {
+  const hostname = routingHostname(hostHeader);
+  const rule = rewriteRules.find(candidate => (
+    candidate.pattern.test(pathname) && candidate.hosts.every(host => host === hostname)
+  ));
+  return rule ? rule.destination : pathname;
+}
+
+let defaultRouteRules = null;
+function getDefaultRouteRules() {
+  defaultRouteRules ??= loadRouteRules();
+  return defaultRouteRules;
+}
+
+export function createStaticServer(root, { routeRules = getDefaultRouteRules() } = {}) {
   return http.createServer((request, response) => {
-    serveStaticRequest(request, response, root, headerRules).catch(() => {
+    serveStaticRequest(request, response, root, routeRules).catch(() => {
       if (!response.headersSent) {
         writeTextResponse(response, 400, 'Bad request');
       } else {
@@ -110,7 +180,7 @@ export async function startStaticServer({
   return { server, root, host, port: actualPort };
 }
 
-export async function serveStaticRequest(request, response, root, headerRules = getDefaultHeaderRules()) {
+export async function serveStaticRequest(request, response, root, routeRules = getDefaultRouteRules()) {
   const host = request.headers?.host;
   if (host !== undefined && !isValidHostHeader(host)) {
     writeTextResponse(response, 400, 'Bad request');
@@ -127,8 +197,11 @@ export async function serveStaticRequest(request, response, root, headerRules = 
     return;
   }
 
-  const headers = headersForPath(requestUrl.pathname, headerRules);
-  const resolvedPath = resolveStaticPath(root, requestUrl.pathname);
+  // Header routes precede the rewrite routes in vercel.json, so they match the requested
+  // path; the rewritten path still goes through every check below.
+  const headers = headersForPath(requestUrl.pathname, routeRules.headerRules);
+  const servedPath = rewritePath(requestUrl.pathname, host, routeRules.rewriteRules);
+  const resolvedPath = resolveStaticPath(root, servedPath);
 
   if (resolvedPath.status === 400) {
     writeTextResponse(response, 400, 'Bad request', headers);
@@ -252,6 +325,12 @@ if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
     const { root, host, port } = await startStaticServer({ rootArgument });
     const displayHost = host.includes(':') ? `[${host}]` : host;
     console.log(`Serving ${root} at http://${displayHost}:${port}`);
+    const routedHosts = new Set(getDefaultRouteRules().rewriteRules.flatMap(rule => rule.hosts));
+    routedHosts.forEach(hostname => {
+      if (hostname.endsWith('.com') && !hostname.startsWith('www.')) {
+        console.log(`  ${hostname} pages: http://${hostname.slice(0, -'.com'.length)}.localhost:${port}/`);
+      }
+    });
   } catch (error) {
     const rootArgument = process.argv[2] || '.';
     const root = path.resolve(__dirname, '..', rootArgument);

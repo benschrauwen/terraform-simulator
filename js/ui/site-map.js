@@ -2,6 +2,7 @@
 
 import { Diagram } from './diagram.js';
 import { FormatNumbers } from './format-numbers.js';
+import { getRectBounds, offsetLatLon, SATELLITE_TILE_OPTIONS, SATELLITE_TILE_URL } from './map-geo.js';
 
 export const siteMapMethods = {
   applySiteLocationFromMap(lat, lng) {
@@ -43,13 +44,7 @@ export const siteMapMethods = {
 
     L.control.zoom({ position: 'bottomright' }).addTo(this.siteMap);
 
-    this.siteMapTileLayer = L.tileLayer(
-      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      {
-        attribution: 'Tiles &copy; Esri',
-        maxZoom: 19,
-      }
-    );
+    this.siteMapTileLayer = L.tileLayer(SATELLITE_TILE_URL, { ...SATELLITE_TILE_OPTIONS });
     if (this.siteMapTileLayer.on) {
       this.siteMapTileLayer.on('tileerror', () => {
         this.showSiteMapMessage(
@@ -131,17 +126,7 @@ export const siteMapMethods = {
   },
 
   getRectBounds(lat, lon, widthMeters, heightMeters, minWidthMeters = 20, minHeightMeters = minWidthMeters) {
-    const halfWidth = Math.max(widthMeters, minWidthMeters) / 2;
-    const halfHeight = Math.max(heightMeters, minHeightMeters) / 2;
-    const metersPerDegLat = 111320;
-    const metersPerDegLon = Math.max(111320 * Math.cos((lat * Math.PI) / 180), 1000);
-    const deltaLat = halfHeight / metersPerDegLat;
-    const deltaLon = halfWidth / metersPerDegLon;
-
-    return [
-      [lat - deltaLat, lon - deltaLon],
-      [lat + deltaLat, lon + deltaLon],
-    ];
+    return getRectBounds(lat, lon, widthMeters, heightMeters, minWidthMeters, minHeightMeters);
   },
 
   getSquareBounds(lat, lon, sideMeters, minSideMeters = 20) {
@@ -267,12 +252,7 @@ export const siteMapMethods = {
   },
 
   offsetLatLon(lat, lon, offsetXMeters, offsetYMeters) {
-    const metersPerDegLat = 111320;
-    const metersPerDegLon = Math.max(111320 * Math.cos((lat * Math.PI) / 180), 1000);
-    return {
-      lat: lat + (offsetYMeters / metersPerDegLat),
-      lon: lon + (offsetXMeters / metersPerDegLon),
-    };
+    return offsetLatLon(lat, lon, offsetXMeters, offsetYMeters);
   },
 
   clearSiteMapModuleSquares() {

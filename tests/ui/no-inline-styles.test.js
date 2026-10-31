@@ -22,14 +22,14 @@ function listJsFiles(directory) {
 
 test('the CSP forbids inline styles', () => {
   const config = JSON.parse(fs.readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
-  const csp = config.headers.flatMap(rule => rule.headers)
-    .find(header => header.key === 'Content-Security-Policy').value;
+  const csp = config.routes.map(route => route.headers?.['Content-Security-Policy']).find(Boolean);
   const styleSrc = csp.split(';').map(part => part.trim()).find(part => part.startsWith('style-src '));
   assert.equal(styleSrc, "style-src 'self'");
 });
 
 test('no markup in the HTML pages or js/ carries a style attribute or <style> element', () => {
-  const files = [path.join(ROOT, 'index.html'), path.join(ROOT, 'sources.html'), ...listJsFiles(path.join(ROOT, 'js'))];
+  const pages = ['index.html', 'sources.html', 'datacenter.html', 'datacenter-sources.html'];
+  const files = [...pages.map(page => path.join(ROOT, page)), ...listJsFiles(path.join(ROOT, 'js'))];
   const offenders = files.flatMap(file => fs.readFileSync(file, 'utf8')
     .split('\n')
     .map((line, index) => ({ line, number: index + 1 }))

@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Abundance Stack — Datacenter power &amp; cooling</title>
+  <link rel="stylesheet" href="node_modules/leaflet/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="datacenter.css">
+  <script src="node_modules/chart.js/dist/chart.umd.js"></script>
+</head>
+<body class="datacenter-app">
+  <!--
+    Abundance Stack datacenter simulator. Served as / on abundancestack.com (vercel.json
+    routes that host here; locally http://abundancestack.localhost:4173/) and as
+    /datacenter.html on any host. The section bodies below are filled by js/ui/datacenter/.
+  -->
+  <header class="app-header">
+    <div class="header-left">
+      <h1>Abundance Stack</h1>
+      <span class="subtitle">Datacenter power &amp; cooling</span>
+      <div class="header-actions">
+        <button
+          type="button"
+          class="header-icon-button"
+          id="resetStateButton"
+          aria-label="Reset all settings"
+          title="Reset all settings"
+        ><span aria-hidden="true">&#8635;</span></button>
+        <a class="header-text-link" id="sitesPageLink" href="datacenter-sites.html" title="Optimize these settings at every site and compare">Compare all sites</a>
+        <span class="header-action-status" id="headerActionStatus" aria-live="polite"></span>
+      </div>
+    </div>
+    <div class="header-metrics" id="headerMetrics">
+      <!-- Filled by JS -->
+    </div>
+  </header>
+
+  <div class="mobile-pane-bar" id="mobilePaneBar">
+    <div class="mobile-pane-tabs" role="toolbar" aria-label="Panel navigation">
+      <button type="button" class="mobile-pane-toggle" data-panel-target="configPanel" aria-controls="configPanel" aria-expanded="false">
+        Inputs
+      </button>
+      <button type="button" class="mobile-pane-toggle active" data-panel-target="diagramArea" aria-controls="diagramArea" aria-expanded="true">
+        Overview
+      </button>
+      <button type="button" class="mobile-pane-toggle" data-panel-target="resultsPanel" aria-controls="resultsPanel" aria-expanded="false">
+        Results
+      </button>
+    </div>
+  </div>
+
+  <main class="app-main">
+    <!-- LEFT: Configuration Panel -->
+    <aside class="panel config-panel" id="configPanel">
+      <section class="config-section open" data-section="project">
+        <h2 class="section-header" data-toggle="project">
+          <span class="icon">🏗️</span> Real projects
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="projectControls"></div>
+      </section>
+
+      <section class="config-section open" data-section="site">
+        <h2 class="section-header" data-toggle="site">
+          <span class="icon">📍</span> Site
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="siteControls"></div>
+      </section>
+
+      <section class="config-section open" data-section="datacenter">
+        <h2 class="section-header" data-toggle="datacenter">
+          <span class="icon">🏢</span> Datacenter
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="datacenterControls"></div>
+      </section>
+
+      <section class="config-section open" data-section="cooling">
+        <h2 class="section-header" data-toggle="cooling">
+          <span class="icon">❄️</span> Cooling
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="coolingControls"></div>
+      </section>
+
+      <section class="config-section open" data-section="architecture">
+        <h2 class="section-header" data-toggle="architecture">
+          <span class="icon">🔌</span> Power Architecture
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="architectureControls"></div>
+      </section>
+
+      <section class="config-section" data-section="grid">
+        <h2 class="section-header" data-toggle="grid">
+          <span class="icon">⚡</span> Grid
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="gridControls"></div>
+      </section>
+
+      <section class="config-section" data-section="solar">
+        <h2 class="section-header" data-toggle="solar">
+          <span class="icon">☀️</span> Solar
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="solarControls"></div>
+      </section>
+
+      <section class="config-section" data-section="battery">
+        <h2 class="section-header" data-toggle="battery">
+          <span class="icon">🔋</span> Battery
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="batteryControls"></div>
+      </section>
+
+      <section class="config-section open" data-section="gas">
+        <h2 class="section-header" data-toggle="gas">
+          <span class="icon">🔥</span> Firm Generation: Diesel / Gas / Nuclear
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="gasControls"></div>
+      </section>
+
+      <section class="config-section" data-section="revenue">
+        <h2 class="section-header" data-toggle="revenue">
+          <span class="icon">💰</span> Revenue
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="revenueControls"></div>
+      </section>
+
+      <section class="config-section" data-section="finance">
+        <h2 class="section-header" data-toggle="finance">
+          <span class="icon">🏦</span> Finance &amp; Valuation
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="financeControls"></div>
+      </section>
+    </aside>
+
+    <!-- CENTER: Visualizations -->
+    <section class="diagram-area mobile-open" id="diagramArea">
+      <div class="chart-section" id="layoutView" role="region" aria-label="Plant layout">
+        <div class="dc-view-header">
+          <h3>Plant layout <span class="chart-title-meta" id="layoutMeta">— area to scale</span></h3>
+          <div class="chart-tabs" id="layoutTabs" role="tablist" aria-label="Plant layout view">
+            <button type="button" class="chart-tab" id="layoutTabMap" data-layout-view="map" role="tab" aria-selected="false" aria-controls="layoutMapPanel" tabindex="-1">Map</button>
+            <button type="button" class="chart-tab active" id="layoutTabDiagram" data-layout-view="diagram" role="tab" aria-selected="true" aria-controls="layoutDiagram" tabindex="0">Diagram</button>
+          </div>
+        </div>
+        <div id="layoutNotes"></div>
+        <!-- Scaled plant layout (datacenter, cooling, solar, battery, gas, substation, grid tie), rendered by JS -->
+        <div class="plant-layout-canvas" id="layoutDiagram" role="tabpanel" aria-labelledby="layoutTabDiagram"></div>
+        <div class="plant-map-panel" id="layoutMapPanel" role="tabpanel" aria-labelledby="layoutTabMap" hidden>
+          <div class="plant-map-shell">
+            <div class="plant-map" id="plantMap" aria-label="Plant footprint on a satellite map"></div>
+          </div>
+          <div class="field-note compact-note" id="plantMapNote"></div>
+        </div>
+        <div id="layoutLegend"></div>
+      </div>
+
+      <div class="chart-section" id="flowCard">
+        <h3>Flows <span id="flowMeta" class="chart-title-meta"></span></h3>
+        <div class="chart-tabs" id="flowTabs" role="tablist" aria-label="Flow type">
+          <button type="button" class="chart-tab active" id="flowTabElectricity" data-flow="electricity" role="tab" aria-selected="true" aria-controls="flowView" tabindex="0">Electricity</button>
+          <button type="button" class="chart-tab" id="flowTabHeat" data-flow="heat" role="tab" aria-selected="false" aria-controls="flowView" tabindex="-1">Heat</button>
+          <button type="button" class="chart-tab" id="flowTabWater" data-flow="water" role="tab" aria-selected="false" aria-controls="flowView" tabindex="-1">Water</button>
+          <button type="button" class="chart-tab" id="flowTabCo2" data-flow="co2" role="tab" aria-selected="false" aria-controls="flowView" tabindex="-1">CO₂</button>
+        </div>
+        <div class="field-note compact-note" id="flowNote"></div>
+        <div class="flow-view" id="flowView" role="tabpanel" aria-labelledby="flowTabElectricity">
+          <!-- Sankey-style SVG, rendered by JS -->
+        </div>
+      </div>
+
+      <div class="chart-section" id="timelineCard">
+        <h3>Project Timeline <span class="chart-title-meta">— time to first power</span></h3>
+        <p class="dc-headline" id="timelineHeadline"></p>
+        <div class="dc-inline-controls" id="timelineControls"></div>
+        <div class="field-note compact-note" id="timelineNote"></div>
+        <div class="timeline-view" id="timelineView" role="region" aria-label="Project timeline" tabindex="0"></div>
+        <div id="timelineLegend"></div>
+      </div>
+
+      <div class="chart-section" id="dispatchCard">
+        <h3>Power Dispatch <span id="dispatchMeta" class="chart-title-meta"></span></h3>
+        <div class="dc-inline-controls">
+          <label>View
+            <select id="dispatchMode">
+              <option value="day">Typical day (MW by hour)</option>
+              <option value="year">Whole year (MWh per day)</option>
+            </select>
+          </label>
+          <label>Month
+            <select id="dispatchMonth">
+              <option value="avg">Annual average</option>
+              <option value="0">January</option>
+              <option value="1">February</option>
+              <option value="2">March</option>
+              <option value="3">April</option>
+              <option value="4">May</option>
+              <option value="5">June</option>
+              <option value="6">July</option>
+              <option value="7">August</option>
+              <option value="8">September</option>
+              <option value="9">October</option>
+              <option value="10">November</option>
+              <option value="11">December</option>
+            </select>
+          </label>
+        </div>
+        <div class="field-note compact-note" id="dispatchNote"></div>
+        <div class="chart-wrapper chart-wrapper-lg">
+          <canvas id="dispatchChart"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-section" id="capexSplitCard">
+        <h3>Where the Capex Goes <span id="capexSplitMeta" class="chart-title-meta"></span></h3>
+        <div class="field-note compact-note">Initial capital cost by item, when it is paid (years after notice-to-proceed) and what replacing it costs over the analysis horizon. Hover the bar for each item.</div>
+        <div id="capexSplit"></div>
+      </div>
+
+      <div class="chart-section" id="economicsTimelineCard">
+        <h3>Economics Over Time <span id="economicsTimelineMode" class="chart-title-meta"></span></h3>
+        <div class="field-note compact-note" id="economicsTimelineNote"></div>
+        <div class="chart-wrapper chart-wrapper-timeline">
+          <canvas id="economicsTimelineChart"></canvas>
+        </div>
+        <details class="cash-flow-details" id="cashFlowDetails">
+          <summary>Yearly cash flows <span id="cashFlowSummary" class="chart-title-meta"></span></summary>
+          <div class="cash-flow-body">
+            <div class="cash-flow-toolbar">
+              <div class="field-note compact-note" id="cashFlowNote"></div>
+              <button type="button" id="cashFlowCsvButton" class="cash-flow-csv-btn">Download CSV</button>
+            </div>
+            <div class="cash-flow-table-scroll" id="cashFlowTableScroll" role="region" aria-label="Yearly cash flows" tabindex="0"></div>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <!-- RIGHT: Results Panel -->
+    <aside class="panel results-panel" id="resultsPanel">
+      <section class="results-section open" data-section="keyMetrics">
+        <h2 class="section-header" data-toggle="keyMetrics">
+          <span class="icon">📊</span> Key Metrics
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="keyMetrics"></div>
+      </section>
+
+      <section class="results-section open" data-section="optimizer">
+        <h2 class="section-header" data-toggle="optimizer">
+          <span class="icon">🎯</span> Optimize Design
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="optimizerPanel">
+          <p class="field-note compact-note">Finds the design with the highest NPV that still meets the uptime target. It sizes what you tick below and keeps every other input (site, cooling, prices, gas or nuclear type; battery duration and unit size unless the wider search is on) as you set it, within what the architecture allows (grid-connected: no solar, firm service, standby generators only); comparing architectures starts each from that architecture's starting design.</p>
+          <div class="dc-opt-options" role="group" aria-label="What the optimizer may size">
+            <label class="toggle-label"><input type="checkbox" id="optimizerSizeSolar" checked> Solar size</label>
+            <label class="toggle-label"><input type="checkbox" id="optimizerSizeBattery" checked> Battery size</label>
+            <label class="toggle-label"><input type="checkbox" id="optimizerSizeFirm" checked> Firm generation units</label>
+            <label class="toggle-label"><input type="checkbox" id="optimizerSizeGrid"> Firm vs flexible grid</label>
+            <label class="toggle-label"><input type="checkbox" id="optimizerCompare" checked> Compare all architectures</label>
+            <label class="toggle-label" title="Searches up to 8x the design peak in solar and 48 h of storage instead of 4x and 24 h, on a denser grid from more starting points, and also tries battery durations of 1, 2, 4 and 8 h and the generator type's unit sizes."><input type="checkbox" id="optimizerWide"> Wider search range <span class="dc-opt-hint">(slower: ~10–15 s, more thorough)</span></label>
+          </div>
+          <div class="dc-opt-actions">
+            <button type="button" id="optimizerRunButton" class="cash-flow-csv-btn">Run optimizer</button>
+            <progress id="optimizerProgress" max="100" value="0" hidden></progress>
+            <span class="dc-opt-status" id="optimizerStatus" aria-live="polite"></span>
+          </div>
+          <p class="field-note warning-note" id="optimizerStale" hidden>Inputs changed since this run; run it again for the current design.</p>
+          <div id="optimizerResults"></div>
+        </div>
+      </section>
+
+      <section class="results-section open" data-section="economics">
+        <h2 class="section-header" data-toggle="economics">
+          <span class="icon">💵</span> Economics
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body">
+          <div class="econ-breakdown" id="econBreakdown">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+      </section>
+
+      <section class="results-section open" data-section="sensitivity">
+        <h2 class="section-header" data-toggle="sensitivity">
+          <span class="icon">📈</span> Sensitivity
+          <span class="chevron">▾</span>
+        </h2>
+        <div class="section-body" id="sensitivityResults">
+          <div class="sensitivity-card" id="breakEvenCard">
+            <div class="sensitivity-card-title">Break-even price (NPV = 0)</div>
+            <div id="breakEvenRows"></div>
+          </div>
+          <div class="sensitivity-card tornado-card" id="tornadoCard" hidden>
+            <div class="sensitivity-card-title">What drives NPV</div>
+            <div class="tornado-swing" id="tornadoControls"></div>
+            <div class="field-note tornado-note">
+              Each row moves one input down and up by the chosen percentage of its current value while every other input stays put; bars run from the current NPV (white line) to the NPV at each end, and no input passes its allowed limits. Red dashes mark NPV = 0. "Schedule" stretches or shortens every lead time. Hover a bar for the input values.
+            </div>
+            <div class="chart-wrapper chart-wrapper-tornado">
+              <canvas id="tornadoChart" role="img" aria-label="NPV tornado chart"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="app-footer">
+    <p>Abundance Stack — an independent educational tool for sizing datacenter power and cooling. Data from public sources; not investment advice.
+    View the source on <a href="https://github.com/benschrauwen/terraform-simulator" target="_blank" rel="noreferrer">GitHub</a>
+    · <a href="datacenter-sources.html">Sources</a>.
+    <span class="app-version" id="appVersion">Development build</span></p>
+  </footer>
+
+  <script src="node_modules/lz-string/libs/lz-string.min.js"></script>
+  <script src="node_modules/leaflet/dist/leaflet.js"></script>
+  <script type="module" src="js/datacenter-main.js"></script>
+</body>
+</html>

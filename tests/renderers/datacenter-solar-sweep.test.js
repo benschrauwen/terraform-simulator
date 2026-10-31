@@ -91,3 +91,31 @@ test('the heatmap draws one cell per price pair, coloured on the scale, pending 
   assert.doesNotMatch(html, /NaN|undefined|\sstyle=/);
   assert.equal(scaleColor(0).text, '#eef2f6');
 });
+
+test('a grid cell rebuilds the simulator state: site, both prices and the optimized design', async () => {
+  const { sweepPointState, batteryPricePerKWh: batteryPrice, solarPricePerW: solarPrice } = await import('../../js/model/datacenter/site-survey.js');
+  const { calculateDatacenterScenario } = await import('../../js/model/datacenter/index.js');
+  const point = { kind: 'site', id: 'phoenix-az', solarPricePerW: 0.3, batteryPricePerKWh: 125 };
+  const result = priceSweepPoint(DATACENTER_DEFAULT_STATE, point, { budget: 300 });
+  const state = sweepPointState(DATACENTER_DEFAULT_STATE, { ...point, patch: result.patch });
+  assert.equal(state.siteId, 'phoenix-az');
+  assert.ok(Math.abs(solarPrice(state) - 0.3) < 1e-9 && Math.abs(batteryPrice(state) - 125) < 1e-9);
+  assert.equal(state.architecture, result.architecture);
+  assert.equal(state.solarSizeMWdc, result.solarMWdc);
+  // The rebuilt state is the point's design: same NPV.
+  assert.ok(Math.abs(calculateDatacenterScenario(state, { fastMode: true }).economics.npv - result.npv) < 1);
+  const { renderHeatmapSvg } = await import('../../js/ui/datacenter/sweep-heatmap.js');
+  const html = renderHeatmapSvg({ xs: [0.3], ys: [125], cell: () => result, value: r => r.npv, format: String, xLabel: String, yLabel: String, xTitle: '', yTitle: '', link: () => 'datacenter.html#s=abc' });
+  assert.match(html, /<g class="hm-cell hm-link"[^>]* data-href="datacenter\.html#s=abc" role="link" tabindex="0"/);
+  // The page navigates on click and on Enter, through the cell's data-href.
+  const { bindHeatmapLinks } = await import('../../js/ui/datacenter/sweep-heatmap.js');
+  const listeners = {};
+  const cellEl = { getAttribute: () => 'datacenter.html#s=abc' };
+  const container = { addEventListener: (type, fn) => { listeners[type] = fn; }, contains: () => true };
+  const visited = [];
+  bindHeatmapLinks(container, href => visited.push(href));
+  listeners.click({ type: 'click', target: { closest: () => cellEl }, preventDefault() {} });
+  listeners.keydown({ type: 'keydown', key: 'Tab', target: { closest: () => cellEl }, preventDefault() {} });
+  listeners.keydown({ type: 'keydown', key: 'Enter', target: { closest: () => cellEl }, preventDefault() {} });
+  assert.deepEqual(visited, ['datacenter.html#s=abc', 'datacenter.html#s=abc']);
+});

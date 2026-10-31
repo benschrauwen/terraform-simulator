@@ -91,7 +91,7 @@ export function withBatteryPrice(state, perKWh) {
  * keeps its site, IT size, GPUs, cooling, grid cap and backup diesel).
  * Returns { kind, id, solarPricePerW, batteryPricePerKWh, architecture, npv,
  * irr, co2eT, curtailedMWh, exportMWh, solarMWdc, batteryMWh, firmLabel,
- * units, feasible }.
+ * units, feasible, patch (the design against the priced start) }.
  */
 export function priceSweepPoint(baseState, { kind, id, solarPricePerW: solarPrice = null, batteryPricePerKWh: batteryPrice = null }, options = {}) {
   const start = kind === 'project'
@@ -122,5 +122,19 @@ export function priceSweepPoint(baseState, { kind, id, solarPricePerW: solarPric
     firmLabel: r.firm.units > 0 ? r.firm.label : null,
     units: r.firm.units,
     feasible: r.reliability.meetsTargetWithoutBackup,
+    // The winning design as a patch on the priced start (sweepPointState rebuilds the full state).
+    patch: bestRow ? bestRow.result.best.patch : {},
   };
+}
+
+/**
+ * The full state of a sweep point (the simulator link of a cell): the
+ * settings at the point's site (or project) and prices, with the point's
+ * design patch applied.
+ */
+export function sweepPointState(baseState, { kind, id, solarPricePerW: solarPrice, batteryPricePerKWh: batteryPrice, patch = {} }) {
+  const start = kind === 'project'
+    ? applyDatacenterProject(baseState, id)
+    : applyDatacenterPresetDefaults({ ...normalizeDatacenterState(baseState), siteId: id, projectId: 'none' }, 'siteId');
+  return normalizeDatacenterState({ ...withBatteryPrice(withSolarPrice(start, solarPrice), batteryPrice), ...patch });
 }

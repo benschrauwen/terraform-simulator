@@ -1431,3 +1431,14 @@ select.sites-sort {
   font-size: 11px;
   fill: var(--text-secondary);
 }
+
+.hm-link {
+  cursor: pointer;
+  outline: none;
+}
+
+.hm-link:hover rect,
+.hm-link:focus-visible rect {
+  stroke: #eef2f6;
+  stroke-width: 2;
+}

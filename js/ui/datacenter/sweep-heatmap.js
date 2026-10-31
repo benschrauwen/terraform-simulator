@@ -1,7 +1,9 @@
 /* 2D price grid heatmap for the hidden sweep page (self-written SVG, attributes only for the strict
    CSP): solar price across the columns, battery price up the rows (cheapest at the bottom left),
    each cell coloured on a sequential scale and labelled with its value; a cell's <title> gives
-   the design behind it. Pure; no DOM. */
+   the design behind it, and with `link` a cell carries its target in data-href and is a
+   keyboard-focusable link (role="link"); the page navigates on click or Enter
+   (bindHeatmapLinks), because SVG <a> elements do not navigate reliably. */
 
 import { escapeAttribute as attr, escapeHtml as esc } from '../renderers/markup.js';
 
@@ -27,7 +29,7 @@ export function scaleColor(t) {
  * run); value(result) -> number; format(number) -> label; xLabel / yLabel(value) -> tick text;
  * better: 'high' | 'low'; describe(result) -> tooltip text; title: the accessible name.
  */
-export function renderHeatmapSvg({ xs, ys, cell, value, format, xLabel, yLabel, xTitle, yTitle, better = 'high', describe = () => '', title = '', size = HEATMAP_SIZE }) {
+export function renderHeatmapSvg({ xs, ys, cell, value, format, xLabel, yLabel, xTitle, yTitle, better = 'high', describe = () => '', link = null, title = '', size = HEATMAP_SIZE }) {
   const { width, cellHeight, padLeft, padBottom, padTop, padRight } = { ...HEATMAP_SIZE, ...size };
   const cellWidth = (width - padLeft - padRight) / xs.length;
   const height = padTop + ys.length * cellHeight + padBottom;
@@ -53,8 +55,10 @@ export function renderHeatmapSvg({ xs, ys, cell, value, format, xLabel, yLabel, 
       const v = value(result);
       const t = max > min ? (v - min) / (max - min) : 0.5;
       const { fill, text } = scaleColor(better === 'high' ? t : 1 - t);
-      const tip = `${xLabel(x)}, ${yLabel(y)}: ${format(v)} · ${describe(result)}`;
-      cells.push(`<g class="hm-cell" data-x="${attr(x)}" data-y="${attr(y)}"><rect x="${r1(left + 1)}" y="${r1(top + 1)}" width="${r1(cellWidth - 2)}" height="${cellHeight - 2}" rx="3" fill="${attr(fill)}"><title>${esc(tip)}</title></rect><text class="hm-value" x="${r1(left + cellWidth / 2)}" y="${r1(top + cellHeight / 2 + 4)}" text-anchor="middle" fill="${attr(text)}">${esc(format(v))}</text></g>`);
+      const href = link ? link(result, x, y) : '';
+      const tip = `${xLabel(x)}, ${yLabel(y)}: ${format(v)} · ${describe(result)}${href ? ' · click to open in the simulator' : ''}`;
+      const linkAttrs = href ? ` data-href="${attr(href)}" role="link" tabindex="0" aria-label="${attr(tip)}"` : '';
+      cells.push(`<g class="hm-cell${href ? ' hm-link' : ''}" data-x="${attr(x)}" data-y="${attr(y)}"${linkAttrs}><rect x="${r1(left + 1)}" y="${r1(top + 1)}" width="${r1(cellWidth - 2)}" height="${cellHeight - 2}" rx="3" fill="${attr(fill)}"><title>${esc(tip)}</title></rect><text class="hm-value" x="${r1(left + cellWidth / 2)}" y="${r1(top + cellHeight / 2 + 4)}" text-anchor="middle" fill="${attr(text)}">${esc(format(v))}</text></g>`);
     });
   });
   const xTicks = xs.map((x, col) => `<text class="hm-axis" x="${r1(padLeft + (col + 0.5) * cellWidth)}" y="${padTop + ys.length * cellHeight + 14}" text-anchor="middle">${esc(xLabel(x))}</text>`).join('');
@@ -62,4 +66,17 @@ export function renderHeatmapSvg({ xs, ys, cell, value, format, xLabel, yLabel, 
   const titles = `<text class="hm-title" x="${r1(padLeft + (width - padLeft - padRight) / 2)}" y="${height - 6}" text-anchor="middle">${esc(xTitle)}</text>
     <text class="hm-title" x="12" y="${r1(padTop + (ys.length * cellHeight) / 2)}" text-anchor="middle" transform="rotate(-90 12 ${r1(padTop + (ys.length * cellHeight) / 2)})">${esc(yTitle)}</text>`;
   return `<svg class="sweep-heatmap-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${attr(title)}">${cells.join('')}${xTicks}${yTicks}${titles}</svg>`;
+}
+
+/** Navigate when a linked cell inside `container` is clicked or activated with Enter / Space. */
+export function bindHeatmapLinks(container, navigate = href => window.location.assign(href)) {
+  const go = event => {
+    const cell = event.target.closest?.('[data-href]');
+    if (!cell || !container.contains(cell)) return;
+    if (event.type === 'keydown' && event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    navigate(cell.getAttribute('data-href'));
+  };
+  container.addEventListener('click', go);
+  container.addEventListener('keydown', go);
 }

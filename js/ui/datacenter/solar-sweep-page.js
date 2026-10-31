@@ -11,19 +11,20 @@
    common, and kept in sessionStorage per settings hash; changing a held price only runs the
    missing points. The settings come from the share hash, as on the sites page.
    A third section searches the full 2D grid (every solar price x every battery price) for one
-   selected site and shows CO2e, NPV and excess electricity as heatmaps (sweep-heatmap.js). */
+   selected site and shows CO2e, NPV and excess electricity as heatmaps (sweep-heatmap.js); a
+   cell links to the simulator with that site, those prices and the cell's optimized design. */
 
 import { DATACENTER_SITES } from '../../data/datacenter/sites.js';
 import { BATTERY_SWEEP_PRICES_PER_KWH, priceSweepPoint, SOLAR_SWEEP_PRICES_PER_W } from '../../model/datacenter/index.js';
-import { batteryPricePerKWh, solarPricePerW } from '../../model/datacenter/site-survey.js';
+import { batteryPricePerKWh, solarPricePerW, sweepPointState } from '../../model/datacenter/site-survey.js';
 import { axisGrid, axisTicks, axisTitle, legendLabels } from '../charts/chart-utils.js';
 import { fixed, formatMW, formatStorageMWh } from './format.js';
 import { parseDatacenterHash, serializeDatacenterHash } from './share.js';
-import { renderHeatmapSvg } from './sweep-heatmap.js';
+import { bindHeatmapLinks, renderHeatmapSvg } from './sweep-heatmap.js';
 import { settingsSummary } from './sites-page.js';
 
 // Bump the version when model or data changes alter results, so stale sessions rerun.
-const CACHE_PREFIX = 'abundance-price-sweep:v2:';
+const CACHE_PREFIX = 'abundance-price-sweep:v3:';
 const MAX_WORKERS = 4;
 
 const roundSolar = value => Math.round(value * 1000) / 1000;
@@ -143,6 +144,10 @@ export class SolarSweepPage {
     this.bindHeldSelect('battery', 'sweepBatteryHeld', this.current.solar);
     this.gridSite = this.baseState.siteId;
     this.bindGridSiteSelect();
+    ['sweepGridCo2', 'sweepGridNpv', 'sweepGridExcess'].forEach(id => {
+      const container = document.getElementById(id);
+      if (container) bindHeatmapLinks(container);
+    });
     document.getElementById('sweepRerun')?.addEventListener('click', () => this.rerun());
     this.render();
     this.ensureRunning();
@@ -187,6 +192,7 @@ export class SolarSweepPage {
     this.workers = null;
     this.inFlight.clear();
     this.results = {};
+    this.cellHrefs = new Map();
     writeCache(this.baseHash, this.results);
     this.render();
     this.ensureRunning();
@@ -299,6 +305,17 @@ export class SolarSweepPage {
     this.renderGrid('sweepGridExcess', excessGWh, value => fixed(value, value < 10 ? 1 : 0), 'low', 'Excess electricity (GWh/yr)');
   }
 
+  /** The simulator link of a grid cell: the site, both prices and the cell's design (cached per point). */
+  cellHref(result, solar, battery) {
+    const key = pointKey({ id: this.gridSite, solarPricePerW: solar, batteryPricePerKWh: battery });
+    this.cellHrefs ||= new Map();
+    if (!this.cellHrefs.has(key)) {
+      const state = sweepPointState(this.baseState, { kind: 'site', id: this.gridSite, solarPricePerW: solar, batteryPricePerKWh: battery, patch: result.patch });
+      this.cellHrefs.set(key, `datacenter.html${serializeDatacenterHash(state, window.LZString)}`);
+    }
+    return this.cellHrefs.get(key);
+  }
+
   /** One heatmap of the selected site's grid; cells not run yet are left grey. */
   renderGrid(id, value, format, better, title) {
     const target = document.getElementById(id);
@@ -316,6 +333,7 @@ export class SolarSweepPage {
       yTitle: 'Battery, 4-hour ($/kWh)',
       better,
       describe: describePoint,
+      link: (result, solar, battery) => this.cellHref(result, solar, battery),
       title: `${title} at ${site?.name || this.gridSite} by solar and battery price`,
     });
   }

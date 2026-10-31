@@ -58,10 +58,22 @@ test('operations and revenue start at energization; capex at notice-to-proceed (
   assert.equal(r.schedule.energizationMonth, 54);
   assert.deepEqual(e.yearlyCashFlows.slice(0, 6).map(entry => entry.operatingFraction), [0, 0, 0, 0, 0.5, 1]);
   e.yearlyCashFlows.slice(0, 4).forEach(entry => {
-    assert.equal(entry.totalRevenue, 0);
-    assert.equal(entry.operatingCashFlow, 0);
+    assert.equal(entry.earnedOperatingCost, 0);
+    assert.equal(Object.values(entry.earnedRevenue).reduce((a, b) => a + b, 0), 0);
   });
-  assert.ok(close(e.yearlyCashFlows[4].totalRevenue, 0.5 * e.totalAnnualRevenue));
+  assert.ok(close(Object.values(e.yearlyCashFlows[4].earnedRevenue).reduce((a, b) => a + b, 0), 0.5 * e.totalAnnualRevenue));
+  // Booked like a payment spread over its operating time: year 5's half year
+  // [4.5, 5] is booked 1/4 at the end of year 4 and 3/4 at the end of year 5;
+  // a full year half at its start and half at its end. Years 1-3 book nothing.
+  e.yearlyCashFlows.slice(0, 3).forEach(entry => assert.equal(entry.totalRevenue, 0));
+  const R = e.totalAnnualRevenue;
+  assert.ok(close(e.yearlyCashFlows[3].totalRevenue, 0.25 * 0.5 * R));
+  assert.ok(close(e.yearlyCashFlows[4].totalRevenue, 0.75 * 0.5 * R + 0.5 * R));
+  assert.ok(close(e.yearlyCashFlows[6].totalRevenue, R));
+  // Booking moves money between years, never creates it.
+  const sum = select => e.yearlyCashFlows.reduce((total, entry) => total + select(entry), 0);
+  assert.ok(close(sum(entry => entry.totalRevenue), sum(entry => Object.values(entry.earnedRevenue).reduce((a, b) => a + b, 0))));
+  assert.ok(close(sum(entry => entry.operatingCost), sum(entry => entry.earnedOperatingCost)));
   // IT hardware bought for first power at 4.5 yr: booked half at the end of
   // year 4, half at the end of year 5 (mean booking time = 4.5 yr; it used
   // to be paid wholly in year floor(t0), a step when t0 crossed a year).

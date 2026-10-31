@@ -302,3 +302,22 @@ test('islanded solar + battery: cloudy days now cost uptime (Abilene, 1 GWdc / 4
   const bigger = calculateDatacenterScenario({ architecture: 'islanded', firmFamily: 'none', solarSizeMWdc: 1000, batteryCapacityMWh: 8000 }, { fastMode: true });
   assert.ok(bigger.reliability.uptimePercent >= r.reliability.uptimePercent);
 });
+
+test('surplus charging plus a reserve top-up never charge faster than the battery power', async () => {
+  // 1 MW / 10 MWh battery with an 8 MWh floor, solar 1.5 MW from 10:00 to 14:00 and 0.9 MW gas for a
+  // 1 MW load: nights draw the floor down, then the first solar hour charges from surplus and tops up.
+  const { dispatchYear } = await import('../../js/model/datacenter/dispatch.js');
+  const N = 8760;
+  const solarKW = new Float64Array(N);
+  for (let h = 0; h < N; h++) solarKW[h] = h % 24 >= 10 && h % 24 < 14 ? 1500 : 0;
+  const firm = { family: 'gas', mustTake: false, availableKW: new Float64Array(N).fill(900), unitSizeMW: 0.9, heatRate: 8, partLoad: null, ambient: null, typeData: {} };
+  const r = dispatchYear({
+    loadKW: new Float64Array(N).fill(1000), solarKW, solar: { enabled: true }, firm, grid: { connected: false, capKW: 0 },
+    batteryState: { batteryCapacityMWh: 10, batteryDurationHours: 10, batteryEfficiency: 81, batteryStorageEnabled: true },
+    order: 'firm-first', exportAllowed: false, reserveFloorKWh: 8000,
+  }, { capture: true });
+  const charge = r.series.batteryChargeKW;
+  assert.ok(Math.max(...charge) <= 1000 + 1e-6, `max charge ${Math.max(...charge)}`);
+  // The top-up does happen (the cap binds rather than switching charging off).
+  assert.ok(charge.some(kw => kw > 999));
+});

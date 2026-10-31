@@ -48,14 +48,21 @@
      0.1-0.3 L/kWh; water-cooled chillers / towers have the highest WUE.
      https://eta-publications.lbl.gov/sites/default/files/2024-12/lbnl-2024-united-states-data-center-energy-usage-report_1.pdf
    - Google fleet TTM PUE 1.09 every quarter 2025 Q1 - 2026 Q2; campus TTM:
-     Eemshaven NL 1.07, Hamina FI 1.09, Midlothian TX 1.11; Mesa AZ (dry,
-     "air-cooled" campus, < 12 months data) quarterly 1.22 (Q1) / 1.28 (Q2 2026).
+     Eemshaven NL 1.07, Hamina FI 1.09, Midlothian TX 1.11; Mesa AZ (< 12
+     months of data, no TTM) quarterly 1.22 (Q1) / 1.28 (Q2 2026).
      https://www.datacenters.google/efficiency
+     Mesa is the air-cooled campus Google announced in Sep 2023 (no water for
+     cooling; search index of the announcement coverage).
+     https://www.latitudemedia.com/news/in-lieu-of-water-cooling-google-locks-down-renewables-for-mesa-data-center/
    - Google 2025 Environmental Report (2024 data): data centers withdrew 9,866
      and consumed 7,787 million US gal (79% consumed, 21% discharged) on
      30,825,600 MWh -> 0.96 L consumed per facility kWh, ~1.04 per IT kWh at
      PUE 1.09; withdrawal ~1.32 L per IT kWh.
      https://www.gstatic.com/gumdrop/sustainability/google-2025-environmental-report.pdf
+     Google's 2026 Environmental Report (2025 data) is out; secondary reports
+     disagree on its consumption total (10.5-10.9 billion gal, search index),
+     so the 2024 figures above are kept until it can be read directly.
+     https://sustainability.google/google-2026-environmental-report/
    - Microsoft FY2024 fleet WUE 0.30 L/kWh; new closed-loop chip-level designs
      use no water for cooling (~125 million L/yr saved per datacenter) at a
      "nominal" PUE increase.

@@ -62,8 +62,8 @@ export const DATACENTER_MODEL_ASSUMPTIONS = Object.freeze({
   // after another from 1 March; each nuclear unit's refuelling/maintenance
   // outage of (1 - capacity factor) x 8760 h runs from 1 April, units
   // staggered back to back. Forced outages are not drawn at random.
-  gasOutageStartDayOfYear: 60,
-  nuclearOutageStartDayOfYear: 91,
+  gasOutageStartDayOfYear: 59, // 0-based: 1 March
+  nuclearOutageStartDayOfYear: 90, // 1 April
 
   // Battery yard footprint, m2 per MWh. judgment: a ~4 MWh container on
   // ~15 m2 plus ~3x for spacing, fire separation, inverters and roads.

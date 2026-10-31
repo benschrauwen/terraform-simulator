@@ -43,17 +43,20 @@ export const EGRID_CO2_KG_PER_MWH = {
   NWPP: { label: 'WECC Northwest', kgPerMWh: Math.round(631.7 * KG_PER_LB * 10) / 10 }, // 286.5
 };
 
-/* European grids: Ember yearly electricity data, 2025 generation carbon
-   intensity, gCO2/kWh = kg/MWh, via Our World in Data's Ember-sourced series.
-   Ember applies lifecycle emission factors, so these run higher than eGRID's
-   combustion-only rates (Ember puts the US at 384 vs eGRID's 348).
+/* European grids: Ember yearly electricity data, 2025 "CO2 intensity" of
+   national generation, gCO2e/kWh = kg/MWh -- the same Ember values as the
+   sites' gridCo2KgPerMWh (sites.js), rounded to 0.1. (Our World in Data's
+   Ember-sourced series differs slightly, e.g. IE 256.5, SE 35.3.) EU-27 from
+   OWID. Ember applies lifecycle emission factors, so these run higher than
+   eGRID's combustion-only rates (Ember puts the US at 384 vs eGRID's 348).
+   https://ember-energy.org/data/yearly-electricity-data/ (retrieved 2026-10-30)
    https://ourworldindata.org/grapher/carbon-intensity-electricity (retrieved 2026-10)
    https://ember-energy.org/latest-insights/european-electricity-review-2026 */
 export const EU_GRID_CO2_KG_PER_MWH = {
-  IE: { label: 'Ireland', kgPerMWh: 256.5 },
+  IE: { label: 'Ireland', kgPerMWh: 255.9 },
   NL: { label: 'Netherlands', kgPerMWh: 253.6 },
   DE: { label: 'Germany', kgPerMWh: 329.7 },
-  SE: { label: 'Sweden', kgPerMWh: 35.3 },
+  SE: { label: 'Sweden', kgPerMWh: 35.4 },
   EU27: { label: 'EU-27', kgPerMWh: 209.9 },
 };
 
@@ -91,25 +94,45 @@ export const GRID_DEFAULTS = {
   //   demand $2.310/kW (transmission voltage) + distribution demand
   //   $1.203-1.575/kW = ~$12.1-12.5/kW-month.
   //   https://www2.dominionenergy.com/-/media/pdfs/virginia/business-rates/schedule-gs4.pdf
+  //   Riders add to it: Rider T1 (transmission) GS-4 transmission-voltage
+  //   demand $4.673/kW (usage from 2026-09-01) and Rider GEN $0.967/kW (from
+  //   2026-04-01), both from the tariff sheets, so ~$17.7-18.1/kW-month
+  //   all-in before smaller riders (e.g. Rider OSW, search index).
+  //   https://www.dominionenergy.com/-/media/content/rates-and-tariffs/pdfs/virginia/shared/rider-t1.pdf
+  //   https://www.dominionenergy.com/-/media/content/rates-and-tariffs/pdfs/virginia/shared/rider-gen.pdf
+  //   The SCC's 2025-11-25 final order creates class GS-5 from 2027-01-01 for
+  //   customers of 25 MW+ (and a 75% load factor): 14-year contracts whose
+  //   minimum demand charges cover at least 85% of transmission and
+  //   distribution and 60% of generation costs, plus upfront collateral.
+  //   https://insideclimatenews.org/news/07012026/virginia-regulators-approve-new-dominion-rates/
   // - Entergy Louisiana Schedule LIPS-L (>=69 kV, effective 2024-08-30, closed
   //   to new business): $13.48/kW next 22,000 kW, $11.89/kW above.
   //   https://www.entergylouisiana.com/wp-content/uploads/ell_elec_lips-l.pdf
-  // Both retrieved 2026-10. Range: judgment (ERCOT 4CP-based transmission
-  // charges can be largely avoided by curtailing in the four summer peaks).
+  // All retrieved 2026-10. Default: the base-tariff demand charges (riders
+  // excluded; judgment). Range: judgment (ERCOT 4CP-based transmission
+  // charges can be largely avoided by curtailing in the four summer peaks;
+  // high: Dominion GS-4 with riders, ~$18, plus GS-5 minimum-demand terms).
   demandChargePerKWMonth: 12,
-  demandChargeRangePerKWMonth: { low: 5, high: 20 },
+  demandChargeRangePerKWMonth: { low: 5, high: 25 },
 
   co2KgPerMWh: EGRID_CO2_KG_PER_MWH.US.kgPerMWh,
 
   // Utility-side delivery for a new 230 kV data center substation (Dominion,
   // PJM TEAC 2026-02-03): Mudd Tavern 300 MW $26M (~$87/kW), Emy 212 MW $26M
-  // (~$123/kW), Cosner 300 MW $28M (~$93/kW); each $6M line + $20M ring-bus
-  // substation. Excludes network upgrades and the customer's own HV/MV
-  // transformers (see ONSITE_SUBSTATION).
+  // (~$123/kW), Cosner 300 MW $28M total (~$93/kW); each itemises a $6M line
+  // + $20M ring-bus substation (Cosner's total is $2M above its items).
+  // Requested / projected in service: Mudd Tavern 2029-08 / 2029-03, Emy
+  // 2027-07 / 2030-05, Cosner 2027-12 / 2030-09. Excludes network upgrades
+  // and the customer's own HV/MV transformers (see ONSITE_SUBSTATION).
   // https://www.pjm.com/-/media/DotCom/committees-groups/committees/teac/2026/20260203/20260203-item-12---dom-supplemental-projects.pdf (retrieved 2026-10)
-  // Default/range: judgment (adds a share of network upgrades; Texas SB 6
-  // rules also propose a $50,000/MW non-refundable study fee, search index:
-  // https://www.gtlaw.com/ar/insights/2026/3/texas-senate-bill-6-update-what-data-centers-large-load-customers-should-know-about-proposed-interconnection-standards).
+  // Default/range: judgment (adds a share of network upgrades). Texas SB 6:
+  // the PUCT's March 2026 proposal had a $50,000/MW non-refundable
+  // interconnection fee (search index:
+  // https://www.gtlaw.com/ar/insights/2026/3/texas-senate-bill-6-update-what-data-centers-large-load-customers-should-know-about-proposed-interconnection-standards);
+  // the final rule (adopted 2026-09-18) dropped it for a flat $100,000 study
+  // fee plus milestone-backed financial security, applied to amounts owed
+  // and otherwise returned, so it is not a sunk $/kW cost.
+  // https://www.utilitydive.com/news/texas-puc-adopts-data-center-interconnection-rules/830899/
   interconnectionCapexPerKW: 150,
   interconnectionCapexRangePerKW: { low: 50, high: 400 },
   // Plan area of the utility's switching station (the ring-bus substation
@@ -320,7 +343,7 @@ export const METHANE_SLIP = {
 
    2026 price context: EIA AEO2026 (2025$; Sargent & Lundy basis) is the
    cost floor; Lazard LCOE+ v19 (Jul 2026) captures 2026 quotes. Wood
-   Mackenzie (2026-04-01): turbine prices "projected to rise to $600/kW by the
+   Mackenzie (Utility Dive, 2026-04-09): turbine prices "projected to rise to $600/kW by the
    end of 2027, a 195% increase since 2019"; EPRI: a small turbine takes
    18-36 months, a large one "about five years" to deliver.
    https://www.eia.gov/outlooks/aeo/assumptions/pdf/EMM_Assumptions.pdf
@@ -432,9 +455,11 @@ export const GAS_GENSET_TYPES = {
     capexPerKW: { default: 1400, low: 1100, high: 1650 },
     fixedOmPerKWYear: 12, // judgment: between AEO2026 $7.18 and Lazard $10-17
     variableOmPerMWh: 4.5, // judgment: AEO2026 $4.17, Lazard $3.50-5.00
-    // GE 7HA: "10-21 minutes full gas turbine load". Industrial-unit start
-    // times not published (judgment: similar).
-    startMinutes: 15,
+    // Siemens SGT-800 brochure: 10-minute start (search index; the product
+    // page says only "quick starts"); GE 7HA: "10-21 minutes full gas turbine
+    // load". Default: the industrial unit's 10 minutes.
+    // https://assets.new.siemens.com/siemens/assets/api/uuid:daeb2935-2ea5-4400-a5dc-653de64ca7d3/gas-turbine-sgt-800.pdf
+    startMinutes: 10,
     // 7HA.03: 75 MW/min on 430 MW (~17%/min); 7HA.02: 60 MW/min on 384 MW.
     rampPercentPerMinute: 15,
     availabilityPercent: 95, // judgment
@@ -503,10 +528,14 @@ export const GAS_GENSET_TYPES = {
     // 6,469 Btu/kWh.
     heatRateMMBtuPerMWh: { default: 6.47, low: 5.81, high: 7.13 },
     partLoad: { heatRatePenaltyAt50Percent: 0, minStableLoadPercent: 30 }, // judgment
-    // No published Bloom price. EIA AEO2026 generic fuel cell (10 MW, 2025$):
-    // $8,287/kW, fixed O&M $37.77, variable O&M $0.72 - used as the high end.
-    // Unverified secondary analyst estimates put Bloom near $2,500-3,000/kW.
-    // Default: judgment.
+    // AEP (SEC filing, Jan 2026) bought "a substantial portion" of its 900 MW
+    // Bloom option for ~$2.65B, i.e. at least ~$2,950/kW of equipment if it
+    // were all 900 MW; AEP's 702 MW Bloom plant for Google in Wyoming is
+    // reported at $4B (~$5,700/kW, incl. carbon capture; POWER 2026-10-15).
+    // https://www.powermag.com/aep-plans-4-billion-fuel-cell-power-plant-for-google-signs-up-to-1-6-gw-mainspring-generator-deal/
+    // EIA AEO2026 generic fuel cell (10 MW, 2025$): $8,287/kW, fixed O&M
+    // $37.77, variable O&M $0.72 - used as the high end. Default: judgment
+    // between the AEP equipment price and the Wyoming plant.
     capexPerKW: { default: 4000, low: 2500, high: 8287 },
     fixedOmPerKWYear: 37.77,
     variableOmPerMWh: 0.72,
@@ -568,8 +597,10 @@ export const GAS_GENSET_TYPES = {
     // Datacenter standby units are 2.5-3.25 MW: Cat 3516C 2,500 ekW standby
     // (60 Hz datasheet LEHE1377-04); Cat 3516E 3,000 ekW standby (cat.com);
     // MTU 20V4000 DS3000 3,000 kWe standby (60 Hz); Cummins QSK95 C3500D5e
-    // 2,800 kWe standby (50 Hz, AWS Frankfurt permit appendix), C3000D6e listed
-    // at 3,250 kW standby (60 Hz). Default judgment: the 3 MW class of 2025-26 builds.
+    // 2,800 kWe standby (50 Hz, AWS Frankfurt permit appendix), C3250D6e
+    // 3,250 kW standby (60 Hz; C3000D6e is the 3,000 kW model).
+    // https://www.cummins.com/en-eu/generators/products/c3250d6e (search index)
+    // Default judgment: the 3 MW class of 2025-26 builds.
     // https://www.hanovercounty.gov/DocumentCenter/View/5983/CAT-3516C-2500KW-Cut
     // https://www.cat.com/en_US/products/new/power-systems/electric-power/diesel-generator-sets/1000033111.html
     // https://www.globalpwr.com/wp-content/uploads/cut-sheets/gps-mtu-3000-kw-spec-sheet.pdf
@@ -584,11 +615,12 @@ export const GAS_GENSET_TYPES = {
     // engines wet-stack, so the plant commits fewer units instead.
     partLoad: { heatRatePenaltyAt50Percent: 0.1, minStableLoadPercent: 30 },
     // Installed (genset, enclosure, belly tank, switchgear share, install):
-    // NREL ~$1,000/kW (June 2025, via Latitude Media, 2026-03-09); Better Data
-    // Center Project (Mar 2026): gensets "commonly estimated at $350-$500/kW",
-    // enclosures, noise attenuation and fuel tanks "over $200/kW" more, NREL
-    // (2014) $800-1,100/kW all-in. High: judgment for 2026 shortage pricing
-    // and paralleling switchgear.
+    // Better Data Center Project (Mar 2026): diesel generators "typically
+    // have capital costs less than $1,000/kW all-in"; gensets "commonly
+    // estimated at $350-$500/kW", enclosures, noise attenuation and fuel
+    // tanks "over $200/kW" more, NREL (2014) $800-1,100/kW all-in. Latitude
+    // Media (2026-03-09) for the diesel build-out. High: judgment for 2026
+    // shortage pricing and paralleling switchgear.
     // https://www.latitudemedia.com/news/the-data-center-boom-is-a-diesel-generator-boom/
     // https://betterdatacenterproject.com/wp-content/uploads/2026/03/Diesel-Generators-at-Data-Centers-Status-Impacts-and-Protective-Practices.pdf
     capexPerKW: { default: 1000, low: 550, high: 1300 },
@@ -630,8 +662,10 @@ export const GAS_GENSET_TYPES = {
     // https://www.law.cornell.edu/cfr/text/40/60.4201 (all retrieved 2026-10)
     emergencyEngine: { maxHoursPerYear: 100, maxNonEmergencyHoursPerYear: 50, testingHoursPerYear: 20 },
     // On-site fuel: Uptime Institute requires at least 12 h for every Tier;
-    // operators store 24-96 h (e.g. QTS belly tanks: 48 h at 100% load).
-    // Not costed separately (in the installed $/kW).
+    // operators store 24-96 h (judgment), e.g. QTS Eagle Mountain, UT: 310
+    // gensets with 8,400-gal belly tanks, 48 h at 100% load per the Better
+    // Data Center Project's estimate (above). Not costed separately (in the
+    // installed $/kW).
     // https://journal.uptimeinstitute.com/fuel-system-design-reliability/
     fuelStorageHours: { minimum: 12, typical: 48 },
     emissionsNote: 'EPA Tier 2 (emergency); Tier 4 Final with SCR for any non-emergency use.',
@@ -705,7 +739,7 @@ export const STANDBY_GAS_GENSET_TYPES = Object.freeze(Object.keys(GAS_GENSET_TYP
    Default: the US 2026 basis, because the default site is in Texas and the
    US sources all sit well above the former $150/kWh (a global-market
    figure): NREL's 2024 split scaled to its 2026 mid case (x 308 / 334),
-   energy $222/kWh + power $343/kW = $308/kWh at 4 h, inside Lazard's
+   energy $222/kWh + power $343/kW = $308/kWh at 4 h (2024$), inside Lazard's
    $270-365. A behind-the-meter battery shares the site substation, so the
    power part is slightly conservative (judgment). Effective $/kWh = energy +
    power / duration: 1 h $565, 2 h $394, 4 h $308, 8 h $265. */
@@ -762,7 +796,8 @@ export const BATTERY_RESERVE = {
      https://www.eia.gov/outlooks/aeo/assumptions/pdf/EMM_Assumptions.pdf
    - EIA Table 6.07.B: US nuclear capacity factor 93.0% (2023), 90.8% (2024),
      91.1% (2025). https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_6_07_b
-   - EIA: reactors refuel every 18-24 months, outages ~35-38 days (search index).
+   - EIA: reactors refuel every 18-24 months (search index); outages of ~35-38
+     days: judgment (not in the EIA page).
      https://www.eia.gov/todayinenergy/detail.php?id=60942
    - NEI "Nuclear Costs in Context" (Aug 2026), 2025 fleet, 2025$/MWh: fuel
      5.95, capital 9.69, operating 20.82, total 36.46.
@@ -779,8 +814,11 @@ export const BATTERY_RESERVE = {
      planning zones for SMRs and non-LWRs, possibly at the site boundary
      (search index). Large LWRs keep the standard ~10-mile plume EPZ
      (judgment). https://www.federalregister.gov/documents/2023/11/16/2023-25163/emergency-preparedness-for-small-modular-reactors-and-other-new-technologies
-   - HALEU: DOE option price to Centrus $17M per MTU (~$17,000/kgU; search
-     index). https://www.sec.gov/Archives/edgar/data/1065059/000106505924000089/leu-20240930.htm
+   - HALEU: DOE-Centrus contract signed 2026-06-30 ($900M base award to
+     deploy Piketon enrichment and deliver 1 MTU by Mar 2032): two DOE options
+     of 5 MTU each at a firm-fixed $17M per MTU (~$17,000/kgU; POWER
+     2026-07-02). https://www.powermag.com/centrus-signs-900m-doe-contract-pivots-sole-u-s-haleu-cascade-to-commercial-operation/
+     Earlier: https://www.sec.gov/Archives/edgar/data/1065059/000106505924000089/leu-20240930.htm
    Decommissioning: judgment, a reserve of ~$500-700M per large unit (NRC
    10 CFR 50.75 minimum formula; not verified) - folded into fixed O&M here. */
 const NUCLEAR_TOWER_WATER = {
@@ -812,7 +850,9 @@ export const NUCLEAR_TYPES = {
     constructionYears: 7,
     water: NUCLEAR_TOWER_WATER,
     loadFollowing: 'Designed for daily load-follow; US units run baseload (judgment).',
-    status: 'Design certified; no new US combined licence pending. Westinghouse-US government framework (Oct 2025) for at least $80B of reactors; Santee Cooper/Brookfield studying completion of V.C. Summer 2 & 3 (search index).',
+    status: 'Design certified. Fermi America\'s combined licence application for 4 AP1000s at Amarillo, TX was docketed by the NRC on 2025-09-05 and joined an accelerated environmental-review pilot in Mar 2026 (first unit targeted 2033). Westinghouse-US government framework (Oct 2025) for at least $80B of reactors (search index); The Nuclear Company-Brookfield joint venture (May 2026) to manage a possible completion of V.C. Summer 2 & 3.',
+    // https://www.powermag.com/nrc-accepts-cola-for-fermi-americas-behemoth-four-unit-ap1000-nuclear-plant-in-texas/
+    // https://www.ans.org/news/2026-03-24/article-7875/
     // https://www.enr.com/articles/61771-feds-reach-deal-with-westinghouse-for-80b-in-nuclear-reactor-deployments
     // https://www.ans.org/news/2026-05-05/article-8003/joint-venture-formed-with-a-focus-on-finishing-summer2-and-3/
     leadTimeKey: 'nuclear-large-lwr',
@@ -832,8 +872,10 @@ export const NUCLEAR_TYPES = {
     fixedOmPerKWYear: 0,
     variableOmPerMWh: 0,
     fuelPerMWh: 0,
-    // Clinton-Meta deliveries from Jun 2027; Crane in service 2027-2028;
-    // Duane Arnold restart Q1 2029 (search index).
+    // Clinton-Meta deliveries from Jun 2027; Crane restart "as early as"
+    // 2027 (Constellation, ANS 2026-05-13); Duane Arnold restart Q1 2029
+    // (search index).
+    // https://www.ans.org/news/2026-05-13/article-8026/
     // https://neutronbytes.com/2025/06/06/meta-signs-20-year-power-deal-with-constellation/
     // https://www.powermag.com/constellation-races-to-revive-crane-nuclear-plant-amid-tight-timelines-market-shifts
     // https://www.ans.org/news/2025-10-28/article-7501/nextera-and-google-ink-a-deal-to-restart-duane-arnold/
@@ -841,9 +883,10 @@ export const NUCLEAR_TYPES = {
     constructionYears: 0,
     water: { consumptionLPerMWh: 0, withdrawalLPerMWh: 0 }, // off-site: not charged to the datacenter
     loadFollowing: 'Baseload, delivered through the grid (front-of-meter) or co-located.',
-    status: 'Talen-Amazon restructured from 960 MW co-location to a 1,920 MW front-of-meter PPA through 2042 (Jun 2025); Palisades restart slipped, no date as of Jul 2026 (search index). Only a handful of restart candidates exist.',
+    status: 'Talen-Amazon restructured from 960 MW co-location to a 1,920 MW front-of-meter PPA through 2042 (Jun 2025); Palisades began loading fuel on 2026-08-30 (paused 2026-09-25 after a fuel-assembly incident), Holtec aiming to restart ahead of its Mar 2027 supply contract; Crane restart as early as 2027. Only a handful of restart candidates exist.',
     // https://www.datacenterdynamics.com/en/news/aws-talen-sign-ppa-for-192gw-of-power-from-pennsylvania-nuclear-plant/
     // https://www.ans.org/news/2026-07-08/article-8187/palisades-restart-projects-holtec-ipo-lawsuit-dismissal-but-no-restart-date/
+    // https://www.ans.org/news/2026-08-31/article-8355/
     leadTimeKey: 'nuclear-contracted-existing',
     tradeOff: 'Fastest firm carbon-free power with no construction risk; a small, mostly contracted pool, premium prices, and co-location draws FERC/PJM scrutiny.',
   },
@@ -909,7 +952,8 @@ export const NUCLEAR_TYPES = {
     // judgment: ~40% thermal efficiency vs ~33% for LWRs -> ~20% less cooling water.
     water: { consumptionLPerMWh: Math.round(NUCLEAR_TOWER_WATER.consumptionLPerMWh * 0.8), withdrawalLPerMWh: Math.round(NUCLEAR_TOWER_WATER.withdrawalLPerMWh * 0.8) },
     loadFollowing: 'Good; high-temperature steam also serves process heat (judgment).',
-    status: 'Dow Long Mott construction permit application docketed May 2025, NRC environmental assessment/FONSI May 2026, permit expected late 2026-early 2027; Cascade in pre-application (search index).',
+    status: 'Dow Long Mott construction permit application docketed May 2025; NRC environmental assessment and FONSI announced 2026-05-18; final safety evaluation due Nov 2026. Energy Northwest Cascade (Amazon) still in pre-application, its construction permit application expected H1 2027 (search index).',
+    // https://www.powermag.com/nrc-clears-long-motts-environmental-review-on-a-faster-path-another-milestone-for-commercial-advanced-nuclear/
     // https://www.nasdaq.com/articles/x-energy-q1-earnings-call-highlights
     leadTimeKey: 'nuclear-xe-100',
     tradeOff: 'High-temperature steam suits co-located industrial loads; depends on HALEU/TRISO fuel supply and has no public cost estimate.',
@@ -927,8 +971,9 @@ export const NUCLEAR_TYPES = {
     constructionYears: 4, // judgment
     water: { consumptionLPerMWh: Math.round(NUCLEAR_TOWER_WATER.consumptionLPerMWh * 0.8), withdrawalLPerMWh: Math.round(NUCLEAR_TOWER_WATER.withdrawalLPerMWh * 0.8) }, // judgment
     loadFollowing: 'Low-pressure salt-cooled design (judgment: flexible, unproven).',
-    status: 'Google: up to 500 MW from 6-7 reactors by 2035 (Oct 2024); TVA PPA for up to 50 MW from Hermes 2 serving Google (Aug 2025) (search index).',
+    status: 'Google: up to 500 MW from 6-7 reactors by 2035 (Oct 2024); TVA PPA for up to 50 MW from Hermes 2 serving Google (Aug 2025) (search index); Hermes 2 broke ground in Oak Ridge in Apr 2026, operation targeted by 2030 (search index).',
     // https://www.ans.org/news/2025-08-19/article-7291/a-new-collaboration-among-kairos-tva-and-google/
+    // https://www.ans.org/news/2026-04-21/article-7964/kairos-power-breaks-ground-on-first-powerproducing-reactor-in-oak-ridge/
     leadTimeKey: 'nuclear-kairos',
     tradeOff: 'Low-pressure design with a hyperscaler offtake; very small units and an unproven fuel and salt supply chain.',
   },
@@ -950,7 +995,8 @@ export const NUCLEAR_TYPES = {
     constructionYears: 5, // judgment
     water: { consumptionLPerMWh: Math.round(NUCLEAR_TOWER_WATER.consumptionLPerMWh * 0.8), withdrawalLPerMWh: Math.round(NUCLEAR_TOWER_WATER.withdrawalLPerMWh * 0.8) }, // judgment
     loadFollowing: 'Built-in molten-salt storage swings output 345 -> 500 MWe for daily peaks.',
-    status: 'NRC construction permit for Kemmerer Unit 1 on 2026-03-04, the first for a commercial non-LWR. HALEU supply delayed the project by at least two years (2022).',
+    status: 'NRC construction permit for Kemmerer Unit 1 in early March 2026 (WNN 2026-03-05), the first for a commercial non-LWR; completion expected 2030. HALEU supply delayed the project by at least two years (2022).',
+    // https://world-nuclear-news.org/articles/nrc-issues-construction-permit-for-first-natrium-plant
     // https://www.energy.gov/ne/articles/nrc-issues-construction-permit-terrapowers-natrium-advanced-reactor
     leadTimeKey: 'nuclear-natrium',
     tradeOff: 'Storage gives firm baseload plus peaking, the best fit for datacenter load shaping; first-of-a-kind sodium technology on scarce HALEU.',
@@ -971,7 +1017,8 @@ export const NUCLEAR_TYPES = {
     constructionYears: 2, // judgment
     water: { consumptionLPerMWh: 0, withdrawalLPerMWh: 0 }, // judgment: air-cooled designs assumed
     loadFollowing: 'Designed for small loads; fast-reactor dynamics (judgment).',
-    status: 'Oklo Aurora-INL Nuclear Safety Design Agreement approved by DOE 2025-11-11; the 2020 NRC licence application was denied in 2022; Meta 1.2 GW campus agreement in Ohio (Jan 2026).',
+    status: 'Oklo Aurora-INL under DOE authorization: Nuclear Safety Design Agreement approved 2025-11-11, Preliminary Documented Safety Analysis approved 2026-06-11 (search index), startup still targeted 2028; the 2020 NRC licence application was denied in 2022; Meta 1.2 GW campus agreement in Ohio (Jan 2026).',
+    // https://secure.businesswire.com/news/home/20260611005638/en/U.S.-Department-of-Energy-Approves-Preliminary-Documented-Safety-Analysis-for-Aurora-Powerhouse-at-Idaho-National-Laboratory
     // https://oklo.com/newsroom/news-details/2026/Oklo-Announces-U-S--Department-of-Energy-Approval-for-Nuclear-Safety-Design-Agreement-of-Aurora-Powerhouse-at-Idaho-National-Laboratory/default.aspx
     // https://world-nuclear-news.org/articles/meta-announces-landmark-agreements-for-new-nuclear
     leadTimeKey: 'nuclear-microreactor',
@@ -1161,10 +1208,14 @@ export const POWER_LEAD_TIMES = {
     label: 'Grid connection (firm service)',
     // Large-load study, facilities agreement and transmission planning
     // (Dominion example: PJM need meeting 2025-10-08 -> solutions meeting
-    // 2026-02-03); low/high judgment. ERCOT moved large loads to a batch
-    // study ("Batch Zero") in 2026 and paused data center energizations
-    // >=75 MW for an audit after the Governor's 2026-08-03 letter (search index).
-    // https://www.ercot.com/services/comm/mkt_notices/M-A080326-01
+    // 2026-02-03); low/high judgment. ERCOT moved large loads of 75 MW+ to a
+    // batch study ("Batch Zero") in 2026; after the Governor's 2026-08-03
+    // directive new data center interconnections are on hold pending an
+    // audit (filing targeted 2026-12-10): Batch Zero cannot proceed and 17
+    // large loads (~6.6 GW) that passed every other gate await final
+    // energization approval (Utility Dive, 2026-08-21).
+    // https://www.utilitydive.com/news/ercot-texas-puc-data-center-audit/828472/
+    // https://www.ercot.com/services/comm/mkt_notices/M-A080326-01 (search index)
     permittingMonths: { low: 6, typical: 12, high: 24 },
     // Utility HV equipment: Wood Mackenzie (Sep 2025) power transformers 128
     // weeks (~30 months) average in Q2 2025, GSUs 143 weeks; "between 2 - 3 years".
@@ -1173,7 +1224,8 @@ export const POWER_LEAD_TIMES = {
     // judgment: substation + short line build.
     constructionMonths: { low: 6, typical: 12, high: 24 },
     // Check: totals 30 / 54 / 84 months vs Camus "3 to 7 years" and the
-    // Dominion projects above (requested 2027-2028, projected 2030-2031).
+    // Dominion projects above (Emy and Cosner requested 2027, projected 2030;
+    // Mudd Tavern requested 2029-08, projected 2029-03).
   },
   'grid-flexible': {
     label: 'Grid connection (flexible / conditional firm)',
@@ -1241,12 +1293,12 @@ export const POWER_LEAD_TIMES = {
     // permit; a large fleet can need a full air permit (high case).
     permittingMonths: { low: 2, typical: 4, high: 9 },
     // Global Power Supply (2026-05-11): 1,250-3,250 kW standby diesel
-    // generators 52-70 weeks; Caterpillar (Q2 2026 call, search summary):
-    // diesel genset lead times "extended into 2028", a little shorter than
-    // gas prime power. Order-to-delivery 12 / 16 / 24 months less the
-    // permitting overlap.
+    // generators 52-70 weeks; Caterpillar (Q2 2026 earnings call, Aug 2026):
+    // "we're taking orders out into 2028, well into 2028 on diesel gensets",
+    // "a little less" than gas prime. Order-to-delivery 12 / 16 / 27 months
+    // less the permitting overlap (2 / 4 / 9) = 10 / 12 / 18.
     // https://globalpwr.com/blog/generator-lead-times-in-2026
-    // https://gurufocus.com/news/9002976/ (retrieved 2026-10)
+    // https://s25.q4cdn.com/358376879/files/doc_financials/2026/q2/2Q-2026-Earnings-Call-Transcript.pdf (retrieved 2026-10)
     procurementMonths: { low: 10, typical: 12, high: 18 },
     constructionMonths: { low: 2, typical: 3, high: 6 }, // judgment: set on pads, fuel, cabling, commissioning
   },
@@ -1396,16 +1448,16 @@ export const DATACENTER_POWER_CONTEXT = [
   },
   {
     id: 'ercot-queue',
-    text: 'ERCOT had ~474 GW of large loads seeking interconnection in mid-2026 (~90% data centers). After the Governor\'s 2026-08-03 letter it paused energizing new data centers of 75 MW+ pending an audit.',
-    source: 'ERCOT board and Senate updates, Jul-Sep 2026',
-    url: 'https://www.ercot.com/services/comm/mkt_notices/M-A080326-01',
-    checked: 'search-index',
+    text: 'ERCOT had ~474 GW of large loads seeking interconnection in mid-2026 (~90% data centers). After the Governor\'s 2026-08-03 directive, new data center interconnections are on hold pending an audit: the Batch Zero study of ~300 data centers of 75 MW+ cannot proceed, and 17 large loads (~6.6 GW) await final energization approval.',
+    source: 'Utility Dive (2026-08-21); ERCOT board and Senate updates, Jul-Sep 2026',
+    url: 'https://www.utilitydive.com/news/ercot-texas-puc-data-center-audit/828472/',
+    checked: 'search-index', // the audit details opened; the 474 GW figure from a search index
   },
   {
     id: 'interconnection-wait',
-    text: 'Power plants built in 2024 took a median 55 months from interconnection request to operation (36 in 2015, 22 in 2008).',
-    source: 'LBNL, Queued Up: 2025 Edition (Dec 2025)',
-    url: 'https://emp.lbl.gov/sites/default/files/2025-12/Queued%20Up%202025%20Edition%20-%2012.15.2025.pdf',
+    text: 'Power plants built in 2025 took a median 61 months from interconnection request to operation (36 in 2015, 22 in 2008).',
+    source: 'LBNL, Queued Up: 2026 Edition (Jun 2026)',
+    url: 'https://eta-publications.lbl.gov/sites/default/files/2026-06/queued_up_2026_edition.pdf',
     checked: 'opened',
   },
   {
@@ -1418,7 +1470,7 @@ export const DATACENTER_POWER_CONTEXT = [
   {
     id: 'turbine-prices',
     text: 'Gas turbine prices are projected to reach $600/kW by end-2027 (+195% since 2019). A large turbine ordered now takes ~5 years to deliver, a small one 18-36 months.',
-    source: 'Utility Dive on Wood Mackenzie (2026-04-01) and EPRI',
+    source: 'Utility Dive on Wood Mackenzie (2026-04-09) and EPRI',
     url: 'https://www.utilitydive.com/news/gas-turbine-supply-crunch-set-to-raise-prices-195-by-2027-woodmac/816904/',
     checked: 'opened',
   },

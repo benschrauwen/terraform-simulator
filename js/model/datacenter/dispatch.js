@@ -187,7 +187,8 @@ function runPass(inputs, startSocKWh, capture) {
     // A shifting battery below its reserve floor is topped up to the floor the same way.
     const topUpToKWh = role === 'reserve' ? battery.capacityKWh : floorKWh;
     if (topUpToKWh > 0 && dischargeKW === 0 && battery.socKWh < topUpToKWh - 1e-9) {
-      const wantedInput = (topUpToKWh - battery.socKWh) / battery.chargeEff;
+      // Within the hour's charge power left after any surplus charging.
+      const wantedInput = Math.min((topUpToKWh - battery.socKWh) / battery.chargeEff, Math.max(0, battery.maxChargeInputKWh - surplusChargeKW));
       if (gridOk) {
         gridToBatteryKW = chargeBattery(battery, Math.min(wantedInput, Math.max(0, gridCap - gridKW))) / battery.chargeEff;
         gridKW += gridToBatteryKW;

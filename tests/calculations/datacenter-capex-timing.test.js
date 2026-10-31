@@ -43,9 +43,8 @@ test('spread vs ntp: same undiscounted capex, all of it paid by first power, a h
   assert.equal(t0, 4.5);
   s.capexItems.filter(item => item.key !== 'land').forEach(item => assert.ok(item.paidToYear <= t0 + 1e-9, `${item.key} paid by ${item.paidToYear}`));
   assert.ok(s.deferredCapex.byYear.every(entry => entry.year <= 5));
-  // NPV: later payment is worth more (the default loses money with ntp, earns with spread).
-  assert.ok(s.npv >= n.npv);
-  assert.ok(n.npv < 0 && s.npv > 0, `${n.npv} / ${s.npv}`);
+  // NPV: later payment is worth more.
+  assert.ok(s.npv > n.npv, `${n.npv} / ${s.npv}`);
 });
 
 test('spread capex follows each component\'s schedule path (hand-derived at the default)', () => {
@@ -154,4 +153,16 @@ test('the optimizer and architecture comparison still run with spread capex', ()
     const applied = calculateDatacenterScenario({ ...DATACENTER_DEFAULT_STATE, ...row.best.patch }, { fastMode: true });
     assert.equal(applied.economics.npv, row.best.npv);
   });
+});
+
+test('IRR is rated from the first non-zero flow, so nothing paid at close still has an IRR', () => {
+  const base = calculateDatacenterScenario({}, { fastMode: true }).economics;
+  const noLand = calculateDatacenterScenario({ landCapexPerKWIT: 0 }, { fastMode: true }).economics;
+  assert.equal(noLand.capexAtClose, 0);
+  assert.ok(Number.isFinite(noLand.projectIrr), `${noLand.projectIrrAnalysis.status}`);
+  assert.equal(noLand.noNetInvestment, false);
+  // Without the land NPV rises a little and IRR with it.
+  assert.ok(noLand.npv > base.npv && noLand.projectIrr > base.projectIrr);
+  // ROI is measured against the whole capex, not the land paid at close.
+  assert.ok(close(base.roi, (base.finalCumulativeNetCash / base.totalCapex) * 100));
 });

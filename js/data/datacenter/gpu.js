@@ -21,12 +21,16 @@
    Rental price (rentalPricePerGpuHour) defaults to the SemiAnalysis AI Cloud
    TCO model "Retail" rate per chip-hour shown on each InferenceX chip page,
    the one source that covers every platform consistently, including
-   GB200/GB300 NVL72. Market indexes run higher in 2026 (marketIndex: Silicon
-   Data's neocloud rental indexes; on-demand list prices for NVL72), but a
-   large fleet rents mostly on term contracts below spot and on-demand
-   (Silicon Data's own B200 12-month forward rate is 12% below spot), so the
-   retail TCO rate is the conservative default. ownerTcoPerGpuHour is
-   SemiAnalysis's "Owning at Large Hyperscaler Volume" cost, for context.
+   GB200/GB300 NVL72. "Retail" is the TOP of SemiAnalysis's price tiers, so
+   read the default as a mid-market, uncontracted rate, not a conservative
+   one. Market indexes run higher in 2026 (marketIndex: Silicon Data's
+   neocloud rental indexes; median on-demand list prices for NVL72), while
+   large term contracts run lower: Silicon Data's B200 term-implied 12-month
+   forward rate (the market's price today for a B200-hour a year out, which
+   Silicon Data says is "not a forecast") sits 12% below spot, and a
+   hyperscaler take-or-pay deal such as IREN-Microsoft lands near ~$2.2 per
+   GB300-hour (gb300-nvl72 below). ownerTcoPerGpuHour is SemiAnalysis's
+   "Owning at Large Hyperscaler Volume" cost, for context.
    https://inferencex.semianalysis.com/chips/h100
    https://inferencex.semianalysis.com/chips/h200
    https://inferencex.semianalysis.com/chips/b200
@@ -80,9 +84,12 @@ export const GPU_RENTAL_DEFAULTS = {
   occupancyPercent: 85,
 
   // Average IT draw as a share of rated power. LBNL 2025 update (facility.js
-  // itUtilization): AI training servers run at ~80% of rated power, and an
-  // idle AI server draws ~20% (20-30%) of rated. A rented GPU is taken to
-  // run like a training server; an unrented one idles.
+  // itUtilization; not opened, escholarship blocks automated access): AI
+  // training servers at ~80% of rated power, an idle AI server ~20% (20-30%).
+  // Cross-checks: Epoch AI's 71% utilization for a 1 GW AI build and LBNL's
+  // 2024 projection of GPU servers averaging 60-80% of nameplate (via Uptime
+  // Institute, search index) (facility.js). A rented GPU is taken to run
+  // like a training server; an unrented one idles.
   // https://escholarship.org/uc/item/33m6w3x0
   rentedLoadFraction: 0.8,
   idleLoadFraction: 0.2,
@@ -96,9 +103,12 @@ export const GPU_RENTAL_DEFAULTS = {
   //   $6.26 (Jul-Dec 2025): ~-10%/yr; neocloud median $2.99 (Jun-Dec 2024)
   //   -> $2.63 (Silicon Data index, 2026-09-07): ~-6%/yr; "early rental
   //   prices routinely exceeded $7-$10 per GPU-hour" (2023) -> $2.63 (2026):
-  //   ~-30%/yr across tiers.
+  //   ~-30%/yr across tiers. (The series is from h100-rental-price-over-time;
+  //   the $2.63 reading of 2026-09-07 from Silicon Data's B200 August 2026
+  //   post: "H100 at 2.63".)
   //   https://www.silicondata.com/blog/h100-rental-price-over-time
-  // - B200 on 2026-09-07: spot $5.69, 12-month forward $5.03 (-12% in a year).
+  // - B200 on 2026-09-07: spot $5.69, term-implied 12-month forward $5.03
+  //   (12% lower; a term-contract price, not a forecast).
   //   https://www.silicondata.com/blog/b200-rental-price-august-2026-update
   // Default: judgment between the within-tier (6-12%) and cross-tier (~30%)
   // declines, for a GPU that ages while newer generations arrive.
@@ -129,7 +139,8 @@ export const GPU_PLATFORMS = {
     capexPerGpu: 52000,
     rentalPricePerGpuHour: 2.0, // InferenceX/SemiAnalysis retail
     ownerTcoPerGpuHour: 1.17,
-    marketIndex: { pricePerGpuHour: 2.63, date: '2026-09-07', source: 'Silicon Data H100 neocloud rental index' },
+    // Silicon Data B200 August 2026 post: "H100 at 2.63" on 2026-09-07.
+    marketIndex: { pricePerGpuHour: 2.63, date: '2026-09-07', source: 'Silicon Data H100 neocloud rental index (via its B200 Aug 2026 post)' },
   },
   h200: {
     label: 'NVIDIA H200 SXM (HGX, 8 GPUs)',
@@ -159,14 +170,15 @@ export const GPU_PLATFORMS = {
     capexPerGpu: 47000,
     rentalPricePerGpuHour: 3.7, // InferenceX/SemiAnalysis retail
     ownerTcoPerGpuHour: 1.73,
-    marketIndex: { pricePerGpuHour: 5.69, date: '2026-09-07', source: 'Silicon Data B200 neocloud rental index (12-month forward 5.03)' },
+    marketIndex: { pricePerGpuHour: 5.69, date: '2026-09-07', source: 'Silicon Data B200 neocloud rental index (term-implied 12-month forward 5.03)' },
   },
   'gb200-nvl72': {
     label: 'NVIDIA GB200 NVL72 (rack, 72 GPUs)',
     gpusPerSystem: 72,
     tdpW: 1200, // InferenceX GB200 NVL72 page
-    // SemiAnalysis: ~123.6 kW per NVL72 including AC-DC conversion losses
-    // (search index); vendors quote 120-135 kW.
+    // Power basis: SemiAnalysis's ~123.6 kW TOTAL draw per NVL72 including
+    // AC-DC conversion losses (search index); vendors quote 120-135 kW. (GB300
+    // below uses the 132 kW nominal rack rating instead.)
     // https://semianalysis.substack.com/p/gb200-hardware-architecture-and-component
     systemKW: 123.6,
     itKWPerGpu: withNetwork(123.6 / 72), // 1.89
@@ -185,8 +197,8 @@ export const GPU_PLATFORMS = {
     label: 'NVIDIA GB300 NVL72 (rack, 72 GPUs)',
     gpusPerSystem: 72,
     tdpW: 1400, // InferenceX GB300 NVL72 page
-    // HPE: rack TDP 132 kW nominal, ~155 kW peak; Supermicro: 8 x 33 kW
-    // power shelves = 132 kW (search index).
+    // Power basis: the 132 kW NOMINAL rack TDP (HPE; ~155 kW peak is not
+    // used); Supermicro: 8 x 33 kW power shelves = 132 kW (search index).
     // https://www.hpe.com/us/en/collaterals/collateral.a50009244enw.html
     systemKW: 132,
     itKWPerGpu: withNetwork(132 / 72), // 2.02
@@ -194,12 +206,22 @@ export const GPU_PLATFORMS = {
     // Wing VC (Aug 2026): recent GB300 NVL72 purchase orders "just under
     // $5.0M" per rack (~$69K per GPU slot) plus "several hundred thousand
     // dollars of network attach"; judgment ~$0.4M -> $5.4M / 72 = $75k.
+    // Context: Wing VC's deployed total is "closer to $5.7 million" per rack
+    // (~$79k per GPU), incl. CDU and other deployment items; the default
+    // keeps $75k (the network attach share is a judgment either way).
     capexPerGpu: 75000,
-    rentalPricePerGpuHour: 5.0, // InferenceX/SemiAnalysis retail
+    // InferenceX/SemiAnalysis "Retail" (its top tier): a mid-market,
+    // uncontracted rate. Brackets: Silicon Data B300 rental index $7.56 on
+    // 2026-10-30 (above); IREN-Microsoft ($9.7B over 5 years for GB300s on
+    // 200 MW of IT, Nov 2025) ~$2.2 per GPU-hour take-or-pay if 200 MW holds
+    // ~100k GPUs at ~2 kW each (derived; GPU count not disclosed) (below).
+    // https://www.silicondata.com/products/silicon-index/b300
+    // https://iren.gcs-web.com/news-releases/news-release-details/iren-secures-97bn-ai-cloud-contract-microsoft (search index)
+    rentalPricePerGpuHour: 5.0,
     ownerTcoPerGpuHour: 2.31,
-    // AmCompute, Oct 2026: GB300 on-demand from $6.50, median $11.59 across
-    // 3 providers (search index).
+    // AmCompute (updated 2026-10-25): GB300 on-demand $6.50-20.00, median
+    // $11.59 across 3 providers. The median, as for GB200.
     // https://www.amcompute.com/gpu-cloud-prices/gb300
-    marketIndex: { pricePerGpuHour: 6.5, date: '2026-10', source: 'Lowest on-demand list price across 3 providers (AmCompute)' },
+    marketIndex: { pricePerGpuHour: 11.59, date: '2026-10-25', source: 'On-demand list median across 3 providers (AmCompute)' },
   },
 };

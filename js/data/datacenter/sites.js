@@ -18,7 +18,8 @@
    - why, whySources: why this is a datacenter siting reference, with URLs.
    - gridRegion: ISO / balancing area / utility label. egridSubregion: EPA
      eGRID subregion acronym (US) or null.
-   - electricityPriceUsdPerMWh ($/MWh): default grid energy price.
+   - electricityPriceUsdPerMWh ($/MWh): the LATEST-period price, shown for
+     reference (the model does not use it by default).
        US: EIA Electric Power Monthly Table 5.6.A, average price to ultimate
        customers, INDUSTRIAL sector, by state, August 2026 (latest month;
        released 2026-10-23), cents/kWh x 10.
@@ -27,9 +28,11 @@
        taxes and levies, 2026-S1 (latest semester; DE provisional), EUR/kWh x
        1000 x 1.167 USD/EUR (ECB reference rate, mean of Jan-Jun 2026 monthly
        averages, 1.16697).
-     electricityPriceAltUsdPerMWh: a steadier alternative -- US: Table 5.6.B
-     year-to-date Jan-Aug 2026; EU: 2025-S2 x 1.166 USD/EUR (ECB mean Jul-Dec
-     2025, 1.16566). *Basis strings state the exact inputs.
+     electricityPriceAltUsdPerMWh: the DEFAULT grid energy price (the
+     datacenter state's gridEnergyPricePerMWh derives from it,
+     js/state/datacenter-schema.js), a steadier, all-in figure -- US: Table
+     5.6.B year-to-date Jan-Aug 2026; EU: 2025-S2 x 1.166 USD/EUR (ECB mean
+     Jul-Dec 2025, 1.16566). *Basis strings state the exact inputs.
    - gridCo2KgPerMWh (kg CO2/MWh):
        US: EPA eGRID2023 (summary tables rev2, 2025-03-27), subregion TOTAL
        output emission rate, CO2 (direct combustion, not CO2e), lb/MWh x
@@ -210,6 +213,9 @@ export const DATACENTER_SITES = [
     whySources: [
       'https://openai.com/index/announcing-the-stargate-project/',
       'https://www.datacenterdynamics.com/en/news/crusoes-abilene-data-center-officially-live-serving-oracle-and-openais-stargate/',
+      'https://gov.texas.gov/news/post/governor-abbott-directs-tceq-to-halt-data-center-permits',
+      'https://www.tpr.org/news/2026-09-21/gov-abbott-orders-tceq-to-pause-environmental-permits-for-data-centers-until-audit-is-complete',
+      'https://www.utilitydive.com/news/ercot-texas-puc-data-center-audit/828472/',
     ],
     gridRegion: 'ERCOT',
     egridSubregion: 'ERCT',
@@ -236,6 +242,7 @@ export const DATACENTER_SITES = [
     coolingDesignDryBulb04C: 40.2,
     coolingDesignWetBulb04C: 24.4,
     meanSurfacePressureKPa: 95.1,
+    note: 'Texas permitting pause: on 2026-09-21 Gov. Abbott directed TCEQ to halt all permits sought by data centers (TCEQ: all air and water permits and authorizations for infrastructure directly supporting them, which reaches on-site power plants) until the ERCOT / TWDB audit is complete (ERCOT targets a 2026-12-10 filing); new large-load grid interconnections have been on hold since his 2026-08-03 directive.',
     // Typical-day profiles, local standard time: [month 0-11][hour 0-23], degC.
     dryBulbC: [
       [9.1, 8.4, 7.9, 7.5, 7.1, 6.8, 6.5, 6.2, 6.1, 7.5, 9.7, 11.6, 13.3, 14.4, 15.4, 15.8, 15.9, 15.3, 13.7, 12.1, 11.1, 10.3, 9.6, 9.1],
@@ -295,6 +302,9 @@ export const DATACENTER_SITES = [
     whySources: [
       'https://www.intersect.com/portfolio/quantum',
       'https://www.datacenters.google/google-commits-to-increasing-energy-abundance-and-reliability-for-texans/',
+      'https://gov.texas.gov/news/post/governor-abbott-directs-tceq-to-halt-data-center-permits',
+      'https://www.tpr.org/news/2026-09-21/gov-abbott-orders-tceq-to-pause-environmental-permits-for-data-centers-until-audit-is-complete',
+      'https://www.utilitydive.com/news/ercot-texas-puc-data-center-audit/828472/',
     ],
     gridRegion: 'ERCOT',
     egridSubregion: 'ERCT',
@@ -321,6 +331,7 @@ export const DATACENTER_SITES = [
     coolingDesignDryBulb04C: 40.5,
     coolingDesignWetBulb04C: 24.7,
     meanSurfacePressureKPa: 96.2,
+    note: 'Texas permitting pause: on 2026-09-21 Gov. Abbott directed TCEQ to halt all permits sought by data centers (TCEQ: all air and water permits and authorizations for infrastructure directly supporting them, which reaches on-site power plants) until the ERCOT / TWDB audit is complete (ERCOT targets a 2026-12-10 filing); new large-load grid interconnections have been on hold since his 2026-08-03 directive.',
     // Typical-day profiles, local standard time: [month 0-11][hour 0-23], degC.
     dryBulbC: [
       [9, 8.1, 7.5, 7, 6.6, 6.2, 5.8, 5.6, 5.5, 7, 9.3, 11.4, 13.2, 14.5, 15.5, 16.1, 16.3, 15.8, 14.1, 12.5, 11.5, 10.7, 10.1, 9.6],
@@ -960,8 +971,11 @@ export const DATACENTER_SITES = [
     ],
   },
   {
+    // id kept as 'kern-ca' (share links use it), but the point (35.05,
+    // -117.60) is near Kramer Junction in San Bernardino County, just east
+    // of the Kern County line (Boron).
     id: 'kern-ca',
-    name: 'Mojave, Kern County, CA',
+    name: 'Mojave Desert (Kramer Junction), CA',
     country: 'US',
     state: 'CA',
     lat: 35.05,
@@ -969,7 +983,7 @@ export const DATACENTER_SITES = [
     elevationM: 812,
     utcOffsetHours: -8,
     region: 'desert',
-    why: 'Best-in-class desert solar resource (same point as the Terraform "Mojave Desert, CA" preset) with GW-scale solar + storage; data center proposals in eastern Kern County (e.g. 99 MW Inyokern, 2026).',
+    why: 'Best-in-class desert solar resource (same point as the Terraform "Mojave Desert, CA" preset) with GW-scale solar + storage; data center proposals in neighbouring eastern Kern County (e.g. 99 MW Inyokern, 2026).',
     whySources: [
       'https://www.datacenterdynamics.com/en/news/99mw-data-center-proposed-in-kern-county-california/',
     ],
@@ -1142,6 +1156,8 @@ export const DATACENTER_SITES = [
     why: 'Major European hyperscale hub; data centres used 22% of Ireland\'s metered electricity in 2024, prompting grid-connection constraints around Dublin.',
     whySources: [
       'https://www.cso.ie/en/releasesandpublications/ep/p-dcmec/datacentresmeteredelectricityconsumption2024/keyfindings/',
+      'https://www.arthurcox.com/knowledge/new-connection-policy-for-data-centres-in-ireland/',
+      'https://cms.eirgrid.ie/sites/default/files/publications/Data-Centre-Connection-Offer-Process-and-Policy-V3-May-2026.pdf',
     ],
     gridRegion: 'EirGrid (Ireland SEM)',
     egridSubregion: null,
@@ -1160,7 +1176,9 @@ export const DATACENTER_SITES = [
     diffuseFraction: 0.57,
     radiationDb: 'PVGIS-SARAH3',
     annualMeanDryBulbC: 9.8,
-    annualMeanWetBulbC: 7.7,
+    // 7.7 from the raw TMY; +0.3 after the December wet-bulb substitution
+    // (see wetBulbC below; day-weighted mean of the 12 monthly rows).
+    annualMeanWetBulbC: 8,
     minDryBulbC: -7.1,
     maxDryBulbC: 27.4,
     maxWetBulbC: 19.1,
@@ -1168,7 +1186,7 @@ export const DATACENTER_SITES = [
     coolingDesignDryBulb04C: 21.7,
     coolingDesignWetBulb04C: 17.6,
     meanSurfacePressureKPa: 101.4,
-    note: 'New Dublin-area grid connections for data centres are constrained (CRU/EirGrid policy); on-site generation is often required.',
+    note: 'CRU\'s Large Energy Users connection decision (CRU/2025236, 2025-12-12; implemented in EirGrid\'s connection policy v3, 2026-05-20) requires new data centres of 10 MVA or more to provide dispatchable on-site or proximate generation and/or storage sized to their maximum import capacity, participating in the SEM (1-10 MVA: an autoproducer unit). Dublin-area grid capacity remains constrained.',
     // Typical-day profiles, local standard time: [month 0-11][hour 0-23], degC.
     dryBulbC: [
       [5.5, 5.5, 5.5, 5.4, 5.4, 5.3, 5.2, 5.3, 5.2, 5.2, 5.6, 6.2, 6.8, 7.2, 7.4, 7.3, 7, 6.5, 6.2, 6, 5.9, 5.9, 5.7, 5.7],
@@ -1196,7 +1214,12 @@ export const DATACENTER_SITES = [
       [10.1, 10, 10, 9.9, 9.9, 9.9, 9.9, 10.2, 10.9, 11.3, 11.6, 11.7, 11.9, 11.9, 11.9, 11.8, 11.8, 11.6, 11.3, 11, 10.7, 10.6, 10.3, 10.2],
       [9.5, 9.5, 9.4, 9.4, 9.5, 9.5, 9.5, 9.5, 9.8, 10.4, 10.9, 11.1, 11.2, 11.2, 11.2, 11.1, 10.9, 10.8, 10.5, 10.2, 10, 9.8, 9.7, 9.5],
       [7, 6.9, 7, 7, 7.1, 7.3, 7.4, 7.5, 7.7, 8.1, 8.6, 9.1, 9.4, 9.4, 9.3, 8.9, 8.4, 7.9, 7.6, 7.3, 7.1, 7, 7, 6.9],
-      [-0.6, -0.7, -0.8, -0.9, -0.9, -1, -1.1, -1.1, -1, -1, -0.5, -0.1, 0.2, 0.4, 0.4, 0.4, 0.1, -0.1, -0.2, -0.4, -0.5, -0.5, -0.6, -0.7],
+      // December substituted: the PVGIS TMY picked Dec 2008, whose ERA5 RH
+      // averages 35% (every other TMY month 76-89%), an obvious humidity
+      // defect for Dublin. This row = Stull wet-bulb of the December dry-bulb
+      // row above at RH 87% (climatological December mean, judgment), computed
+      // from the hourly means rather than hour by hour.
+      [3, 2.9, 2.7, 2.7, 2.6, 2.4, 2.3, 2.3, 2.4, 2.5, 3.1, 3.8, 4.3, 4.7, 4.8, 4.7, 4.3, 4, 3.8, 3.6, 3.5, 3.4, 3.2, 3.1],
     ],
     // Daily solar factor, local standard days 1-365: [month][day], TMY daily GHI / mean daily GHI of its month.
     dailySolarFactor: [
@@ -1226,6 +1249,8 @@ export const DATACENTER_SITES = [
     why: 'FLAP-D market and home of AMS-IX, one of the largest internet exchanges; growth limited by municipal hyperscale restrictions and grid congestion.',
     whySources: [
       'https://www.ams-ix.net/ams',
+      'https://www.gtlaw.com/en/insights/2024/3/challenges-in-the-dutch-data-center-market',
+      'https://www.noord-holland.nl/bestanden/pdf/Economie_Werk/Datacenterstrategie%20NH%202025-2027.pdf',
     ],
     gridRegion: 'TenneT / Liander (NL)',
     egridSubregion: null,
@@ -1252,6 +1277,7 @@ export const DATACENTER_SITES = [
     coolingDesignDryBulb04C: 25.9,
     coolingDesignWetBulb04C: 19.5,
     meanSurfacePressureKPa: 101.4,
+    note: 'Since 2024-01-01 national rules (Besluit kwaliteit leefomgeving) bar new hyperscale data centers (>70 MW connected load and >10 ha) outside Het Hogeland (Eemshaven) and Hollands Kroon (Middenmeer / Agriport A7), and North Holland\'s 2025-2027 strategy admits no new hyperscale initiatives in the province at all. Amsterdam (2024 revision of its 2020-2030 siting policy) allocates only half its data-center zones through 2030 unless a project serves a demonstrable Amsterdam interest, and Haarlemmermeer\'s zoned capacity is fully taken. A 100 MW+ AI campus cannot be sited in Amsterdam; read this site as a NW-Europe climate and price reference.',
     // Typical-day profiles, local standard time: [month 0-11][hour 0-23], degC.
     dryBulbC: [
       [2.7, 2.6, 2.6, 2.7, 2.7, 2.7, 2.5, 2.5, 2.5, 2.6, 3.1, 3.8, 4.5, 4.9, 5, 4.9, 4.6, 4, 3.5, 3.2, 3.1, 2.9, 2.7, 2.7],
@@ -1286,7 +1312,10 @@ export const DATACENTER_SITES = [
       [1.19, 0.97, 0.64, 0.59, 0.38, 0.69, 0.64, 1.22, 1.23, 0.72, 0.43, 1.11, 1.09, 1.33, 0.38, 0.5, 0.99, 0.71, 0.48, 0.94, 1.34, 1.88, 1.25, 1.6, 1.84, 1.22, 0.71, 0.42, 1.07, 1.19, 2.23],
       [0.22, 0.52, 0.8, 0.27, 0.24, 0.2, 1.01, 0.26, 1.11, 0.34, 1.03, 0.97, 0.62, 1.35, 1.43, 1.32, 1.38, 1.42, 0.9, 1.39, 0.72, 0.61, 1.65, 1.65, 1.79, 1.81, 1.88, 1.12],
       [0.55, 0.54, 0.87, 0.67, 0.93, 1, 1.11, 0.29, 0.47, 0.46, 0.66, 1.5, 1.66, 1.05, 1.66, 0.4, 0.6, 0.69, 0.55, 0.86, 1.42, 1.33, 1.97, 0.71, 1.05, 1.44, 0.7, 1.56, 1.6, 1.22, 1.5],
-      [1.08, 1.24, 1.23, 0.37, 1.11, 0.91, 0.47, 0.45, 0.53, 1.18, 1.05, 0.85, 1.29, 1.27, 1.39, 0.95, 0.81, 0, 0, 1.39, 1.53, 1.55, 1.26, 1.6, 1.34, 0.58, 1.09, 0.55, 1.31, 1.61],
+      // April 18-19: PVGIS G(h) is exactly 0 on both days (a SARAH3 satellite
+      // data gap, not weather); set to 0.4 each (an overcast day, judgment)
+      // and the month renormalised to mean 1.
+      [1.05, 1.21, 1.2, 0.36, 1.08, 0.89, 0.46, 0.44, 0.52, 1.15, 1.02, 0.83, 1.26, 1.24, 1.35, 0.93, 0.79, 0.39, 0.39, 1.35, 1.49, 1.5, 1.23, 1.55, 1.31, 0.57, 1.06, 0.54, 1.28, 1.56],
       [0.95, 0.4, 1.16, 1, 1.36, 0.73, 0.88, 0.4, 0.81, 0.45, 0.38, 0.8, 1.19, 0.98, 1.52, 1.6, 1.6, 1.54, 1.59, 1.28, 0.7, 1.41, 1.13, 1, 1.45, 0.52, 0.41, 0.26, 0.41, 1.54, 1.55],
       [0.58, 1.2, 0.51, 0.65, 0.44, 1.24, 1.11, 1.45, 1.48, 0.79, 1.08, 0.53, 0.75, 1.03, 1.26, 0.85, 1.47, 0.99, 0.68, 1.01, 0.86, 1.05, 0.76, 1.44, 1.13, 1.34, 1.33, 0.6, 1.02, 1.38],
       [1.07, 1.19, 0.8, 1.39, 1.02, 0.99, 0.59, 1.35, 0.9, 0.84, 0.88, 1.01, 1.24, 1.18, 1.01, 1.36, 1.37, 1.35, 1.38, 0.98, 0.24, 0.66, 1.24, 1.35, 0.57, 0.62, 0.78, 1.1, 1.17, 1.01, 0.33],
@@ -1309,6 +1338,8 @@ export const DATACENTER_SITES = [
     why: 'Largest German and continental-European data center market (FLAP-D), anchored by the DE-CIX Frankfurt internet exchange.',
     whySources: [
       'https://www.de-cix.net/en/locations/frankfurt',
+      'https://www.gesetze-im-internet.de/enefg/__11.html',
+      'https://cms.law/en/deu/legal-updates/enefg-novelle-bringt-entlastung-fuer-rechenzentren',
     ],
     gridRegion: 'Amprion / TenneT DE (DE-LU zone)',
     egridSubregion: null,
@@ -1335,6 +1366,7 @@ export const DATACENTER_SITES = [
     coolingDesignDryBulb04C: 28.1,
     coolingDesignWetBulb04C: 21.4,
     meanSurfacePressureKPa: 99.8,
+    note: 'German Energy Efficiency Act (EnEfG section 11, as in force): data centers starting operation from 2026-07-01 must reach an annual PUE <= 1.2 within two years and reuse >= 10% of their energy as waste heat (15% / 20% for starts from 2027-07 / 2028-07); all covered data centers must buy 100% renewable electricity on balance from 2027-01-01 (50% since 2024). A cabinet amendment (2026-06-24, still in the Bundestag in Oct 2026) keeps PUE 1.2 but allows four years, moves the 100% renewable date to 2030 and softens the waste-heat duty.',
     // Typical-day profiles, local standard time: [month 0-11][hour 0-23], degC.
     dryBulbC: [
       [0.9, 0.8, 0.7, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.8, 1.5, 2.1, 2.7, 3.2, 3.4, 3.4, 3.1, 2.5, 2.1, 1.8, 1.4, 1.2, 1, 0.8],
@@ -1410,7 +1442,9 @@ export const DATACENTER_SITES = [
     diffuseFraction: 0.396,
     radiationDb: 'PVGIS-ERA5',
     annualMeanDryBulbC: 3,
-    annualMeanWetBulbC: 1.2,
+    // 1.2 from the raw TMY; +0.1 after the December wet-bulb substitution
+    // (see wetBulbC below; day-weighted mean of the 12 monthly rows).
+    annualMeanWetBulbC: 1.3,
     minDryBulbC: -21.8,
     maxDryBulbC: 22,
     maxWetBulbC: 19.1,
@@ -1446,7 +1480,11 @@ export const DATACENTER_SITES = [
       [10, 9.8, 9.8, 9.6, 9.6, 9.6, 9.6, 9.9, 10.1, 10.2, 10.4, 10.5, 10.5, 10.5, 10.5, 10.6, 10.6, 10.5, 10.4, 10.3, 10.1, 10, 9.9, 9.8],
       [3.3, 3.2, 3.2, 3.2, 3.2, 3.2, 3.1, 3.2, 3.2, 3.5, 3.6, 3.8, 3.8, 3.8, 3.8, 3.7, 3.5, 3.4, 3.3, 3.2, 3.2, 3.2, 3.2, 3.2],
       [0.7, 0.7, 0.7, 0.6, 0.6, 0.7, 0.6, 0.7, 0.7, 0.8, 0.9, 1, 1.1, 1, 1.1, 1, 1, 1.1, 1, 1, 0.9, 0.8, 0.6, 0.5],
-      [-9.7, -9.7, -9.7, -9.6, -9.6, -9.6, -9.5, -9.5, -9.4, -9.3, -9.2, -9.4, -9.4, -9.4, -9.5, -9.5, -9.5, -9.5, -9.5, -9.5, -9.5, -9.5, -9.4, -9.6],
+      // December substituted: the PVGIS TMY picked Dec 2012, whose ERA5 RH
+      // averages 41% (every other TMY month 68-86%), a humidity defect. This
+      // row = Stull wet-bulb of the December dry-bulb row above at RH 87%
+      // (climatological December mean, judgment), from the hourly means.
+      [-8.7, -8.7, -8.6, -8.6, -8.5, -8.5, -8.4, -8.4, -8.2, -8.1, -8.1, -8.2, -8.2, -8.3, -8.3, -8.4, -8.4, -8.4, -8.4, -8.4, -8.4, -8.3, -8.3, -8.5],
     ],
     // Daily solar factor, local standard days 1-365: [month][day], TMY daily GHI / mean daily GHI of its month.
     dailySolarFactor: [

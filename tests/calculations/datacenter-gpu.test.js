@@ -61,15 +61,15 @@ test('rental revenue: GPUs x occupancy x price x integral of (1 - decline)^age o
   // Energization at 54 months (t0 = 4.5 yr). Year 5 runs from 4.5 to 5: ages
   // 0 to 0.5; year 6 ages 0.5 to 1.5; year 9 ages 3.5 to 4.5.
   const y = n => e.yearlyCashFlows[n - 1];
-  assert.equal(y(4).totalRevenue, 0);
-  assert.ok(close(y(5).revenue.gpuRental, fullYear * priceIntegral(0, 0.5)));
-  assert.ok(close(y(6).revenue.gpuRental, fullYear * priceIntegral(0.5, 1.5)));
-  assert.ok(close(y(9).revenue.gpuRental, fullYear * priceIntegral(3.5, 4.5)));
+  assert.equal(Object.values(y(4).earnedRevenue).reduce((a, b) => a + b, 0), 0);
+  assert.ok(close(y(5).earnedRevenue.gpuRental, fullYear * priceIntegral(0, 0.5)));
+  assert.ok(close(y(6).earnedRevenue.gpuRental, fullYear * priceIntegral(0.5, 1.5)));
+  assert.ok(close(y(9).earnedRevenue.gpuRental, fullYear * priceIntegral(3.5, 4.5)));
   // The first fleet is replaced at exactly 4.5 + 5 = 9.5 yr by the
   // then-current generation: year 10 is the old fleet at ages 4.5-5 for half
   // a year, then the new one at ages 0-0.5 (price reset).
-  assert.ok(close(y(10).revenue.gpuRental, fullYear * (priceIntegral(4.5, 5) + priceIntegral(0, 0.5))));
-  assert.ok(close(y(11).revenue.gpuRental, fullYear * priceIntegral(0.5, 1.5)));
+  assert.ok(close(y(10).earnedRevenue.gpuRental, fullYear * (priceIntegral(4.5, 5) + priceIntegral(0, 0.5))));
+  assert.ok(close(y(11).earnedRevenue.gpuRental, fullYear * priceIntegral(0.5, 1.5)));
   // The replacement at 9.5 yr is booked half at the end of year 9, half at
   // the end of year 10 (mean booking time 9.5 yr).
   const itIn = n => y(n).replacementItems.filter(item => item.key === 'it').reduce((s, item) => s + item.cost, 0);
@@ -88,12 +88,12 @@ test('rental revenue golden values for first power at 40.5 months (t0 = 3.375 yr
   const y = n => e.yearlyCashFlows[n - 1];
   // Year 4 = (3, 4]: operating from 3.375, 0.625 yr at ages 0-0.625.
   assert.ok(close(y(4).operatingFraction, 0.625));
-  assert.ok(close(y(4).revenue.gpuRental, fullYear * priceIntegral(0, 0.625)));
+  assert.ok(close(y(4).earnedRevenue.gpuRental, fullYear * priceIntegral(0, 0.625)));
   // Every other line runs for the same 0.625 yr: opex and fixed O&M pro rata.
-  assert.ok(close(y(4).operatingCost, 0.625 * e.annualOM));
+  assert.ok(close(y(4).earnedOperatingCost, 0.625 * e.annualOM));
   // Year 9 = (8, 9]: first fleet at ages 4.625-5 until the replacement at
   // 8.375, then the new fleet at ages 0-0.625.
-  assert.ok(close(y(9).revenue.gpuRental, fullYear * (priceIntegral(4.625, 5) + priceIntegral(0, 0.625))));
+  assert.ok(close(y(9).earnedRevenue.gpuRental, fullYear * (priceIntegral(4.625, 5) + priceIntegral(0, 0.625))));
   // GPUs bought at 3.375 yr: 62.5% booked at the end of year 3, 37.5% at year 4 (the rest of
   // the year's deferred capex is construction spread over the build).
   const initialIt = entry => entry.replacementItems.filter(item => item.key === 'it' && item.initial).reduce((sum, item) => sum + item.cost, 0);
@@ -124,13 +124,13 @@ test('GPUs bought at notice-to-proceed age while the site is built', () => {
   const e = calculateDatacenterScenario({ itCapexTiming: 'ntp' }).economics;
   const fullYear = (100000 / 2.02) * 8760 * 0.85 * 5.0;
   // Year 6 = (5, 6]: GPUs bought at close are 5 to 6 years old.
-  assert.ok(close(e.yearlyCashFlows[5].revenue.gpuRental, fullYear * priceIntegral(5, 6)));
+  assert.ok(close(e.yearlyCashFlows[5].earnedRevenue.gpuRental, fullYear * priceIntegral(5, 6)));
 });
 
 test('without decline every full year earns the same; unserved hours earn nothing', () => {
   const flat = calculateDatacenterScenario({ gpuPriceDeclinePercentPerYear: 0 }).economics;
   flat.yearlyCashFlows.filter(entry => entry.operatingFraction === 1)
-    .forEach(entry => assert.ok(close(entry.revenue.gpuRental, flat.revenue.gpuRental)));
+    .forEach(entry => assert.ok(close(entry.earnedRevenue.gpuRental, flat.revenue.gpuRental)));
   // 5 x 10 MW engines islanded: revenue scales with the served share of IT energy.
   const short = calculateDatacenterScenario({ architecture: 'islanded', firmSizingMode: 'manual', firmUnits: 5 }, { fastMode: true });
   const share = short.energy.itServedMWh / short.energy.itDemandMWh;

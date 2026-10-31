@@ -12,23 +12,44 @@
    Applicability (simplification: the price is applied to all on-site
    combustion, whatever the plant size):
    - EU ETS: "combustion of fuels in installations with a total rated
-     thermal input exceeding 20 MW" (units under 3 MW not counted), i.e.
-     ~8 MWe of engines; a datacenter plant of any size that matters here.
+     thermal input exceeding 20 MW", summed over all the installation's
+     combustion units, "units with a rated thermal input under 3 MW" not
+     counted (Annex I point 3), i.e. ~8 MWe of engines; a datacenter plant
+     of any size that matters here. A 3 MWe standby diesel is ~7-8 MWth, so
+     three of them reach the threshold: the standby fleet alone puts most
+     hyperscale sites in (judgment: arithmetic; emergency use not exempted
+     in the Annex text).
      Directive 2003/87/EC Annex I as amended by Directive (EU) 2023/959.
      https://lawplayer.com/eu/article/32023L0959/anx_1
      https://www.epa.ie/our-services/licensing/climate-change/eu-emissions-trading-system-/emissions-trading-system---stationary-installations/does-our-activity-need-a-ghg-permit/
    - California cap-and-invest: facilities emitting >= 25,000 t CO2e a
      year (17 CCR 95812(c)), ~7 MW of gas engines running all year
      (8,760 MWh x 7.8 MMBtu/MWh x 52.91 kg/MMBtu = ~3,600 t per MW).
+     Below that, the natural gas supplier carries the obligation for the gas
+     it delivers to end users that are not covered entities (17 CCR
+     95852(c)), so the price reaches a plant of any size through its gas
+     price (diesel likewise via fuel suppliers; judgment).
      https://www.law.cornell.edu/regulations/california/17-CCR-95812
+     https://www.law.cornell.edu/regulations/california/17-CCR-95852
    - Washington Climate Commitment Act: >= 25,000 t CO2e a year (RCW
-     70A.65.080(1)). https://app.leg.wa.gov/rcw/default.aspx?cite=70A.65.080
-   - RGGI (Virginia resumed participation on 2026-07-01; auction 73 on
-     2026-09-09 cleared at $37.65 per short ton): the Model Rule covers
-     units serving a generator of >= 25 MWe nameplate (section XX-1.4(a)).
-     Datacenter engines (2.5-19 MW) and standby diesel (3 MW) are below
-     that per unit, so Virginia's default is 0; set ~$41.50/t (the auction
-     price per metric ton) for a plant of large turbines.
+     70A.65.080(1)); natural gas suppliers above that threshold are covered
+     for the gas they deliver to end users that are not themselves covered
+     (RCW 70A.65.080(1)(e)), so again any plant size pays via the gas price
+     (unless it buys directly off an interstate pipeline and stays below
+     25,000 t). https://app.leg.wa.gov/rcw/default.aspx?cite=70A.65.080
+   - RGGI (Virginia resumed participation on 2026-07-01 by reinstating its
+     2020 CO2 Budget Trading Program regulation, effective 2026-04-24;
+     auction 73 on 2026-09-09 cleared at $37.65 per short ton): fossil
+     units serving a generator of >= 25 MWe nameplate (9VAC5-140-7040 A;
+     Model Rule XX-1.4(a)). Datacenter engines (2.5-19 MW) and standby
+     diesel (3 MW) are below that per unit, so Virginia's default is 0; set
+     ~$41.50/t (the auction price per metric ton) for a plant of turbines of
+     25 MWe+ (aeroderivative, industrial, CCGT). The rule's exemption for
+     sources sending <= 10% of annual net generation to the grid
+     (9VAC5-140-7040 B, formerly 6040 B) applies only to sources
+     interconnected with a manufacturing facility that met the test since
+     2020, so not to a new behind-the-meter datacenter plant.
+     https://law.lis.virginia.gov/admincode/title9/agency5/chapter140/section7040/
      https://www.rggi.org/sites/default/files/Uploads/Auction-Materials/73/PR091126_Auction73.pdf
      https://www.rggi.org/sites/default/files/Uploads/Program-Review/12-19-2017/Model_Rule_2017_12_19.pdf
    - Texas, Louisiana, Ohio, Arizona, Nevada, Iowa, Georgia, New Mexico: no

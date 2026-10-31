@@ -49,7 +49,10 @@
    paybackAfterFirstPowerYears = that minus t0. gpuPaybackYears = years
    after one GPU enters service until its cumulative rental margin repays
    its own capex (gpuPayback below).
-     cf_y = f_y x (revenue - opex) + (R_y - f_y) x GPU rental - replacements_y - deferred capex_y + [y = N] salvage
+     cf_y = booked operations_y - replacements_y - deferred capex_y + [y = N] salvage
+     booked operations_y = sum over operating years k of s_ky x (f_k x (revenue - opex) + (R_k - f_k) x GPU rental),
+       s_ky = splitSpreadAcrossYears(k - f_k, k): year k's operating time booked
+       like a spread payment, so operations and capex share one timing basis
      NPV  = -capex_close + sum_y cf_y / (1 + r)^y
 
    Opex lines (full year): fixed O&M (facility, cooling, IT, solar, battery,
@@ -72,7 +75,7 @@ import { summarizeReturns } from '../economics.js';
 import { getGpuFleet, getRentalRevenueFactor } from './gpu.js';
 import { onSiteNuclearMWh } from './impacts.js';
 import { pricedCo2eKgPerMMBtu } from './supply.js';
-import { buildReplacementSchedule, crf } from '../finance.js';
+import { analyzeIRR, buildReplacementSchedule, crf } from '../finance.js';
 import { buildDatacenterFinancing } from './financing.js';
 
 /* Installed assets: { key, label, capex, lifeYears, group ('facility' |
@@ -396,24 +399,55 @@ export function calculateDatacenterEconomics(state, ctx) {
     termExceedsHorizon: debt.enabled && debt.balloonPayment > 1e-9,
   };
 
+  // Operating cash is booked like capex: the operating time of year y,
+  // [y - f_y, y], is a payment spread over that window (splitSpreadAcrossYears),
+  // so its mean booking time is exact and revenue, opex and capex are all
+  // discounted on the same basis (a year-end booking would discount a full
+  // year's operations half a year late while capex is on time). Bookings
+  // before year 1 (first power within the first year) fall in year 1.
+  const annualGpuHoursSold = getGpuHoursSold(state, ctx.energy);
+  const revenueKeys = Object.keys(revenue);
+  const booked = Array.from({ length: horizonYears + 1 }, () => ({
+    revenue: Object.fromEntries(revenueKeys.map(key => [key, 0])), opex: 0, gpuHours: 0, operatingYears: 0, rentalYears: 0,
+  }));
+  // What each year's own operating time earns and costs, before booking.
+  const earned = Array.from({ length: horizonYears + 1 }, () => ({ revenue: Object.fromEntries(revenueKeys.map(key => [key, 0])), opex: 0 }));
+  for (let year = 1; year <= horizonYears; year++) {
+    const f = operatingFraction(year);
+    if (!(f > 0)) continue;
+    // Operating time weighted by the rental-price factor of the fleet in
+    // service (= f outside gpu-rental mode).
+    const rentalFactor = getRentalRevenueFactor(state, year, t0);
+    revenueKeys.forEach(key => { earned[year].revenue[key] = revenue[key] * (key === 'gpuRental' ? rentalFactor : f); });
+    earned[year].opex = annualOM * f;
+    splitSpreadAcrossYears(year - f, year).forEach(({ year: bookedYear, share }) => {
+      const row = booked[Math.min(horizonYears, Math.max(1, bookedYear))];
+      revenueKeys.forEach(key => { row.revenue[key] += earned[year].revenue[key] * share; });
+      row.opex += earned[year].opex * share;
+      row.gpuHours += annualGpuHoursSold * f * share;
+      row.operatingYears += f * share;
+      row.rentalYears += rentalFactor * share;
+    });
+  }
+
   const yearlyCashFlows = [];
   let npv = -capexAtClose;
   let equityNpv = -equityUpfront;
   let pvOperatingYears = 0;
   let pvRentalYears = 0;
   let pvOpex = 0;
-  const annualGpuHoursSold = getGpuHoursSold(state, ctx.energy);
   for (let year = 1; year <= horizonYears; year++) {
+    // f and the price factor describe the year's own operating time; the
+    // money columns are the booked amounts.
     const f = operatingFraction(year);
-    pvOperatingYears += f * discount(year);
-    // Operating time of the year weighted by the rental-price factor of the
-    // fleet in service (= f outside gpu-rental mode).
-    const rentalFactor = getRentalRevenueFactor(state, year, t0);
-    const priceFactor = f > 0 ? rentalFactor / f : 1;
-    pvRentalYears += rentalFactor * discount(year);
-    const yearlyRevenue = Object.fromEntries(Object.entries(revenue).map(([key, value]) => [key, value * (key === 'gpuRental' ? rentalFactor : f)]));
+    const priceFactor = f > 0 ? getRentalRevenueFactor(state, year, t0) / f : 1;
+    const row = booked[year];
+    pvOperatingYears += row.operatingYears * discount(year);
+    pvRentalYears += row.rentalYears * discount(year);
+    const yearlyRevenue = { ...row.revenue };
     const totalRevenue = Object.values(yearlyRevenue).reduce((sum, value) => sum + value, 0);
-    const operatingCost = annualOM * f;
+    const operatingCost = row.opex;
+    const earnedOperatingCash = Object.values(earned[year].revenue).reduce((sum, value) => sum + value, 0) - earned[year].opex;
     pvOpex += operatingCost * discount(year);
     const operatingCashFlow = totalRevenue - operatingCost;
     const replacementEvent = replacementSchedule.byYear[year];
@@ -429,7 +463,10 @@ export function calculateDatacenterEconomics(state, ctx) {
       year,
       operatingFraction: f,
       rentalPriceFactor: priceFactor,
-      gpuHoursSold: annualGpuHoursSold * f,
+      gpuHoursSold: row.gpuHours,
+      // The year's own operations before booking (for reading the year's revenue and opex).
+      earnedRevenue: earned[year].revenue,
+      earnedOperatingCost: earned[year].opex,
       degradationFactor: 1,
       policyDurationFactor: 0,
       revenue: yearlyRevenue,
@@ -465,9 +502,11 @@ export function calculateDatacenterEconomics(state, ctx) {
       debtService: debtEntry.service,
       scheduledDebtService,
       balloonPayment: debtEntry.balloon,
-      cashAvailableForDebtService: operatingCashFlow,
+      // Coverage on the year's own operations (not the booked amounts, which put
+      // half of the horizon's last year into the year before it).
+      cashAvailableForDebtService: earnedOperatingCash,
       // From first power: debt service never starts before it (financing.js).
-      dscr: debt.enabled && scheduledDebtService > 1e-9 ? operatingCashFlow / scheduledDebtService : null,
+      dscr: debt.enabled && scheduledDebtService > 1e-9 ? earnedOperatingCash / scheduledDebtService : null,
       sponsorSupportNeeded: debt.enabled && year > t0 ? Math.max(0, -equityCashFlow) : 0,
       equityCashFlow,
       cumulativeEquityCash: (previous ? previous.cumulativeEquityCash : -equityUpfront) + equityCashFlow,
@@ -495,6 +534,25 @@ export function calculateDatacenterEconomics(state, ctx) {
   const returns = summarizeReturns({
     rate, horizonCrf, netCapexAtClose: capexAtClose, financing, yearlyCashFlows, totalAnnualRevenue, annualCost, totalCapex: capexAtClose, policy,
   });
+  // With spread capex little or nothing is paid at close (only the land), so
+  // the shared "no net investment" test (year-0 flow >= 0) would call a $5B
+  // build un-investable. IRR does not change when every flow moves by the same
+  // time, so rate the series from its first non-zero flow (MIRR, which
+  // compounds to the horizon, is fine as it is), and measure ROI against the
+  // whole capex.
+  const fromFirstFlow = series => series.slice(Math.max(0, series.findIndex(value => Math.abs(value) > 1e-6)));
+  const projectSeries = fromFirstFlow([-capexAtClose, ...yearlyCashFlows.map(entry => entry.netCashFlow)]);
+  const equitySeries = fromFirstFlow([-equityUpfront, ...yearlyCashFlows.map(entry => entry.equityCashFlow)]);
+  returns.projectIrrAnalysis = analyzeIRR(projectSeries);
+  returns.equityIrrAnalysis = financing.enabled ? analyzeIRR(equitySeries) : returns.projectIrrAnalysis;
+  returns.projectIrr = returns.projectIrrAnalysis.irr;
+  returns.equityIrr = returns.equityIrrAnalysis.irr;
+  returns.irr = (financing.enabled ? returns.equityIrrAnalysis : returns.projectIrrAnalysis).irr;
+  returns.irrStatus = (financing.enabled ? returns.equityIrrAnalysis : returns.projectIrrAnalysis).status;
+  returns.noNetInvestment = !(totalCapex > 0);
+  returns.equityPaybackYears = paybackFromClose(equityUpfront, yearlyCashFlows.map(entry => entry.equityCashFlow - entry.salvageValue));
+  returns.sustainedEquityPaybackYears = paybackFromClose(equityUpfront, yearlyCashFlows.map(entry => entry.equityCashFlow - entry.salvageValue), { sustained: true });
+  returns.roi = totalCapex > 0 ? (returns.finalCumulativeNetCash / totalCapex) * 100 : NaN;
   // The timeline also shows the loan draws (the shared builder has no column for them).
   returns.cashFlowTimeline.debtDraws = [atClose.draw, ...yearlyCashFlows.map(entry => entry.debtDraw)];
   returns.cashFlowTimeline.hasDebtDraws = debt.enabled && debt.drawn > 1e-9;

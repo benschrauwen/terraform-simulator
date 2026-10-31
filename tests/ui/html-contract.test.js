@@ -187,7 +187,7 @@ test('datacenter.html exposes the section and output anchors the datacenter UI f
   const missing = [
     'resetStateButton', 'headerActionStatus', 'headerMetrics', 'mobilePaneBar',
     'configPanel', 'diagramArea', 'resultsPanel',
-    'siteControls', 'datacenterControls', 'coolingControls', 'architectureControls', 'gridControls',
+    'projectControls', 'siteControls', 'datacenterControls', 'coolingControls', 'architectureControls', 'gridControls',
     'solarControls', 'batteryControls', 'gasControls', 'revenueControls', 'financeControls',
     'layoutView', 'flowTabs', 'flowView', 'flowNote', 'dispatchChart', 'dispatchNote',
     'economicsTimelineChart', 'economicsTimelineMode', 'economicsTimelineNote',

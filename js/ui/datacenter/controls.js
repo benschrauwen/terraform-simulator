@@ -11,8 +11,9 @@ import { getDatacenterSections, withPresetHandlers } from './control-spec.js';
 import { FIRM_BLOCK_RENDERERS, renderArchitectureCards } from './firm-info.js';
 import { fixed, formatMW, formatStorageMWh } from './format.js';
 import { INFO_BLOCK_RENDERERS } from './info-panels.js';
+import { PROJECT_BLOCK_RENDERERS } from './project-info.js';
 
-const BLOCK_RENDERERS = { ...INFO_BLOCK_RENDERERS, ...FIRM_BLOCK_RENDERERS };
+const BLOCK_RENDERERS = { ...INFO_BLOCK_RENDERERS, ...FIRM_BLOCK_RENDERERS, ...PROJECT_BLOCK_RENDERERS };
 
 const lowerFirst = text => (text ? text[0].toLowerCase() + text.slice(1) : '');
 

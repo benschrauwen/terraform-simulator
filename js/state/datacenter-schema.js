@@ -57,6 +57,7 @@ import {
 } from '../data/datacenter/power.js';
 import { DATACENTER_SITES, DEFAULT_DATACENTER_SITE_ID } from '../data/datacenter/sites.js';
 import { CARBON_PRICE_SCHEMES, getSiteCarbonScheme } from '../data/datacenter/carbon.js';
+import { DATACENTER_PROJECTS } from '../data/datacenter/projects.js';
 import { clampNumber } from '../util.js';
 import { normalizeCoreStateFields } from './normalize.js';
 import { DEFAULT_STATE } from './schema.js';
@@ -82,6 +83,9 @@ const solarCost = state => getSolarCostPresetValues(DATACENTER_SOLAR_COST_PRESET
 export const DATACENTER_STATE_FIELDS = [
   /* ---------- Site ---------- */
   { key: 'siteId', type: 'enum', getOptions: () => DATACENTER_SITES.map(site => site.id), defaultValue: DEFAULT_DATACENTER_SITE_ID },
+  // The real project the design was prefilled from ('none': a custom design);
+  // a label only, the design fields carry the values (datacenter-projects.js).
+  { key: 'projectId', type: 'enum', getOptions: () => ['none', ...DATACENTER_PROJECTS.map(project => project.id)], defaultValue: 'none' },
   // PVGIS fixed-optimal-tilt yield of the site (MWh/MWdc-yr), the base the
   // mounting multiplier applies to (as in the plant builder).
   { key: 'siteYieldMwhPerMwdcYear', type: 'number', min: 0, max: 3000, derive: state => getDatacenterSite(state.siteId).baseYield },

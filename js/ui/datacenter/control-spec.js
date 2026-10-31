@@ -28,8 +28,10 @@
 import { COOLING_TECHNOLOGIES } from '../../data/datacenter/cooling.js';
 import { FACILITY_DEFAULTS } from '../../data/datacenter/facility.js';
 import { ARCHITECTURES, GAS_GENSET_TYPES, NUCLEAR_TYPES } from '../../data/datacenter/power.js';
+import { DATACENTER_PROJECTS, getDatacenterProject } from '../../data/datacenter/projects.js';
 import { DATACENTER_SITES } from '../../data/datacenter/sites.js';
 import { MOUNTING_TYPES } from '../../data/reference-data.js';
+import { applyDatacenterProject } from '../../state/datacenter-projects.js';
 import { DATACENTER_DEFAULT_STATE, DATACENTER_STATE_FIELDS } from '../../state/datacenter-schema.js';
 import { getGpuPlatformOptions } from './gpu-platforms.js';
 import { fixed, formatMW, formatStorageMWh } from './format.js';
@@ -83,10 +85,33 @@ function unitSizeRange({ min, max }) {
 }
 
 export const DATACENTER_SECTIONS = {
+  projectControls: [
+    {
+      type: 'select', id: 'projectId', label: 'Real project',
+      tooltip: 'Prefill the site, IT size, GPUs, cooling and power plant of a real AI datacenter project from public sources.',
+      options: () => [
+        { value: 'none', label: 'None (custom design)' },
+        ...DATACENTER_PROJECTS.map(project => ({ value: project.id, label: `${project.name} (${project.status})` })),
+      ],
+      onChange: (app, value) => {
+        app.state = applyDatacenterProject(app.state, value);
+        app.syncStateToControls();
+      },
+    },
+    { block: 'projectInfo' },
+  ],
+
   siteControls: [
     {
       type: 'select', id: 'siteId', label: 'Site', preset: 'siteId',
       options: () => DATACENTER_SITES.map(site => ({ value: site.id, label: site.name })),
+      // A project belongs to its site: another site makes it a custom design.
+      onChange: app => {
+        if (app.state.projectId !== 'none' && getDatacenterProject(app.state.projectId)?.siteId !== app.state.siteId) {
+          app.state = { ...app.state, projectId: 'none' };
+          app.syncStateToControls();
+        }
+      },
     },
     { block: 'siteInfo' },
     {

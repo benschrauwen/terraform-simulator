@@ -1427,3 +1427,40 @@ select.sites-sort {
   stroke: #eef2f6;
   stroke-width: 2;
 }
+
+/* Learning-curve year paths over the price grid */
+.hm-path {
+  pointer-events: none;
+}
+
+.hm-path-line {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.hm-path-fast .hm-path-line {
+  stroke-dasharray: 5 4;
+}
+
+.hm-path-dot {
+  fill: #ffffff;
+  stroke: #111316;
+  stroke-width: 1.5;
+}
+
+.hm-path-label {
+  font-size: 10px;
+  font-weight: 700;
+  fill: #ffffff;
+  stroke: #111316;
+  stroke-width: 3px;
+  paint-order: stroke;
+}
+
+.sweep-learning {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}

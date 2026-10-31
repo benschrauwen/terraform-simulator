@@ -95,3 +95,53 @@ test('a grid cell rebuilds the simulator state: site, both prices and the optimi
   listeners.keydown({ type: 'keydown', key: 'Enter', target: { closest: () => cellEl }, preventDefault() {} });
   assert.deepEqual(visited, ['datacenter.html#s=abc', 'datacenter.html#s=abc']);
 });
+
+test('learning paths start at the settings\' prices and fall with each part\'s own rate', async () => {
+  const { learningFactor, learningPricePath } = await import('../../js/model/datacenter/site-survey.js');
+  const { PRICE_LEARNING } = await import('../../js/data/datacenter/learning.js');
+  // Wright's law: one doubling at 20% leaves 80%.
+  assert.ok(Math.abs(learningFactor(2, 0.2) - 0.8) < 1e-12);
+  const base = DATACENTER_DEFAULT_STATE;
+  const central = learningPricePath(base, 'central');
+  const fast = learningPricePath(base, 'fast');
+  assert.deepEqual(central.map(point => point.year), [...PRICE_LEARNING.years]);
+  assert.ok(Math.abs(central[0].solarPricePerW - (base.panelCostPerW + base.bosCostPerW)) < 1e-12);
+  assert.ok(Math.abs(central[0].batteryPricePerKWh - batteryPricePerKWh(base)) < 1e-9);
+  for (let i = 1; i < central.length; i++) {
+    assert.ok(central[i].solarPricePerW < central[i - 1].solarPricePerW && central[i].batteryPricePerKWh < central[i - 1].batteryPricePerKWh);
+    // Fast learns every part at the headline rate, so it is never above central.
+    assert.ok(fast[i].solarPricePerW < central[i].solarPricePerW && fast[i].batteryPricePerKWh < central[i].batteryPricePerKWh);
+  }
+  // Hand check, 2030 central: solar cumulative 2.9 TW + 647 GW x (1.04 + ... + 1.04^4) -> x1.98;
+  // $0.29 x 1.98^log2(0.74) + $0.40 x 1.98^log2(0.89) = ~$0.572/W.
+  const solarRatio = (2900 + [1, 2, 3, 4].reduce((sum, k) => sum + 647 * 1.04 ** k, 0)) / 2900;
+  const expected = base.panelCostPerW * learningFactor(solarRatio, 0.26) + base.bosCostPerW * learningFactor(solarRatio, 0.11);
+  assert.ok(Math.abs(central[2].solarPricePerW - expected) < 1e-12);
+  assert.ok(Math.abs(central[2].solarPricePerW - 0.572) < 0.002 && Math.abs(central[2].batteryPricePerKWh - 194) < 1);
+});
+
+test('the heatmap draws the year paths between cell centres and drops points beyond the axes', async () => {
+  const { axisIndex, renderHeatmapSvg } = await import('../../js/ui/datacenter/sweep-heatmap.js');
+  const { learningNote, learningPaths } = await import('../../js/ui/datacenter/solar-sweep-page.js');
+  assert.ok(Math.abs(axisIndex([0.2, 0.4, 1.0], 0.3) - 0.5) < 1e-12);
+  assert.ok(Math.abs(axisIndex([0.2, 0.4, 1.0], 0.7) - 1.5) < 1e-12);
+  assert.equal(axisIndex([0.2, 0.4, 1.0], 1.2), null);
+  const xs = [0.2, 0.4];
+  const ys = [100, 200];
+  const html = renderHeatmapSvg({
+    xs, ys, cell: () => ({ v: 1 }), value: r => r.v, format: String, xLabel: String, yLabel: String, xTitle: '', yTitle: '',
+    size: { width: 278, padLeft: 78, padRight: 0, padTop: 0, cellHeight: 40 },
+    paths: [{ key: 'central', label: 'Central', points: [{ x: 0.2, y: 200, label: '2026' }, { x: 0.3, y: 150, label: '2030' }, { x: 0.1, y: 150, label: 'off' }] }],
+  });
+  // Cells 100 px wide from x = 78, rows 40 px: (0.2, 200) is the top-left centre, (0.3, 150) the middle.
+  assert.match(html, /<g class="hm-path hm-path-central"[^>]*><polyline class="hm-path-line" points="128,20 178,40"\/>/);
+  assert.equal((html.match(/class="hm-path-dot"/g) || []).length, 2);
+  assert.doesNotMatch(html, />off</);
+  assert.doesNotMatch(html, /\sstyle=/);
+  // The page's paths: central labelled by year, fast unlabelled; the note names the rates.
+  const paths = learningPaths(DATACENTER_DEFAULT_STATE);
+  assert.deepEqual(paths.map(path => path.key), ['central', 'fast']);
+  assert.equal(paths[0].points[0].label, '2026');
+  assert.ok(paths[1].points.every(point => point.label === ''));
+  assert.match(learningNote(DATACENTER_DEFAULT_STATE), /modules 26%, solar BOS 11%, battery cells 18%.*2030 \$0\.57\/W and \$194\/kWh/);
+});

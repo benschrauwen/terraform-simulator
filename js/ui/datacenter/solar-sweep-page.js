@@ -5,12 +5,15 @@
    optimizer's wider (thorough) search, since with cheap solar and batteries the best designs sit
    on a flat ridge; points run in a pool of module workers (main thread as a fallback). CO2e, NPV
    and excess electricity are drawn as heatmaps (sweep-heatmap.js); a cell links to the simulator
-   with that site, those prices and the cell's design. Points are kept in sessionStorage per
-   settings hash; the settings come from the share hash, as on the sites page. */
+   with that site, those prices and the cell's design. Lines over the heatmaps show where the
+   settings' own prices go in later years on learning curves (site-survey.js learningPricePath,
+   central solid, fast dashed). Points are kept in sessionStorage per settings hash; the settings
+   come from the share hash, as on the sites page. */
 
+import { PRICE_LEARNING } from '../../data/datacenter/learning.js';
 import { DATACENTER_SITES } from '../../data/datacenter/sites.js';
 import { BATTERY_SWEEP_PRICES_PER_KWH, priceSweepPoint, SOLAR_SWEEP_PRICES_PER_W } from '../../model/datacenter/index.js';
-import { batteryPricePerKWh, solarPricePerW, sweepPointState } from '../../model/datacenter/site-survey.js';
+import { batteryPricePerKWh, learningPricePath, solarPricePerW, sweepPointState } from '../../model/datacenter/site-survey.js';
 import { fixed, formatMW, formatStorageMWh } from './format.js';
 import { parseDatacenterHash, serializeDatacenterHash } from './share.js';
 import { settingsSummary } from './sites-page.js';
@@ -39,6 +42,35 @@ export const GRID_OPTIONS = Object.freeze({ thorough: true });
 
 /** Excess electricity of a point in GWh/yr: curtailed + exported. */
 export const excessGWh = result => ((result.curtailedMWh || 0) + (result.exportMWh || 0)) / 1000;
+
+const percent = rate => `${fixed(rate * 100, 0)}%`;
+
+/**
+ * The heatmap paths of the learning curves from a state's prices: central (solid, each year
+ * labelled) and fast (dashed); each dot's tooltip gives the year's prices.
+ */
+export function learningPaths(state) {
+  return Object.entries(PRICE_LEARNING.paths).map(([key, path]) => ({
+    key,
+    label: `${path.label} learning path`,
+    points: learningPricePath(state, key).map(point => ({
+      x: point.solarPricePerW,
+      y: point.batteryPricePerKWh,
+      label: key === 'central' ? String(point.year) : '',
+      tip: `${point.year} (${path.label.toLowerCase()} learning): solar ${solarLabel(point.solarPricePerW)}, battery ${batteryLabel(point.batteryPricePerKWh)}`,
+    })),
+  }));
+}
+
+/** The note under the toolbar: the learning rates and where the central path ends up. */
+export function learningNote(state) {
+  const { central, fast } = PRICE_LEARNING.paths;
+  const ends = learningPricePath(state, 'central').filter(point => point.year > PRICE_LEARNING.baseYear)
+    .map(point => `${point.year} ${solarLabel(point.solarPricePerW)} and ${batteryLabel(point.batteryPricePerKWh)}`).join('; ');
+  return `Lines: where your prices go on learning curves (cost falls by a fixed share per doubling of cumulative solar or battery deployment). `
+    + `Solid, central: modules ${percent(central.module)}, solar BOS ${percent(central.bos)}, battery cells ${percent(central.batteryEnergy)}, battery power equipment ${percent(central.batteryPower)}: ${ends}. `
+    + `Dashed, fast: the whole installed price at ${percent(fast.module)} (solar) and ${percent(fast.batteryEnergy)} (battery). Trend lines, not forecasts; points beyond the grid are not drawn.`;
+}
 
 /** Tooltip line: the design behind a point. */
 export function describePoint(result) {
@@ -78,6 +110,9 @@ export class SolarSweepPage {
     if (settings) settings.textContent = settingsSummary(this.baseState);
     const prices = document.getElementById('sweepCurrentPrices');
     if (prices) prices.textContent = `solar at ${solarLabel(solarPricePerW(this.baseState))} and the battery at ${batteryLabel(batteryPricePerKWh(this.baseState))}`;
+    this.paths = learningPaths(this.baseState);
+    const learning = document.getElementById('sweepLearning');
+    if (learning) learning.textContent = learningNote(this.baseState);
     this.gridSite = this.baseState.siteId;
     this.bindGridSiteSelect();
     HEATMAPS.forEach(id => {
@@ -241,6 +276,7 @@ export class SolarSweepPage {
       better,
       describe: describePoint,
       link: (result, solar, battery) => this.cellHref(result, solar, battery),
+      paths: this.paths,
       title: `${title} at ${site?.name || this.gridSite} by solar and battery price`,
     });
   }

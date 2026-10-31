@@ -10,6 +10,7 @@
    simulator with it. Everything else (IT size, GPUs, cooling, prices, finance)
    stays the user's. Pure. */
 
+import { PRICE_LEARNING } from '../../data/datacenter/learning.js';
 import { applyDatacenterProject } from '../../state/datacenter-projects.js';
 import { applyDatacenterPresetDefaults, normalizeDatacenterState } from '../../state/datacenter-schema.js';
 import { compareArchitectures, isBetterCandidate } from './optimizer.js';
@@ -80,6 +81,43 @@ export function withBatteryPrice(state, perKWh) {
   if (!(current > 0)) return normalizeDatacenterState({ ...normalized, batteryCostPerKWh: perKWh, batteryPowerCostPerKW: 0 });
   const factor = perKWh / current;
   return normalizeDatacenterState({ ...normalized, batteryCostPerKWh: normalized.batteryCostPerKWh * factor, batteryPowerCostPerKW: normalized.batteryPowerCostPerKW * factor });
+}
+
+/** Cumulative deployment at the start of `year` (the end of the year before), from the base year. */
+function cumulativeAt({ cumulative, additions, additionsGrowth, additionsGrowthAfter2030 }, baseYear, year) {
+  let total = cumulative;
+  let added = additions;
+  for (let y = baseYear; y < year; y++) {
+    added *= 1 + (y <= 2030 ? additionsGrowth : additionsGrowthAfter2030);
+    total += added;
+  }
+  return total;
+}
+
+/** Wright's law: the cost factor after cumulative deployment grows by `ratio` at learning rate `rate`. */
+export const learningFactor = (ratio, rate) => ratio ** Math.log2(1 - rate);
+
+/**
+ * Expected solar and battery prices by year (data/datacenter/learning.js): the state's own panel, BOS, battery energy
+ * and battery power prices in the base year, each part falling at its path's
+ * learning rate on its technology's cumulative deployment. Returns
+ * [{ year, solarPricePerW, batteryPricePerKWh }] for the data's years.
+ */
+export function learningPricePath(state, pathKey = 'central', data = PRICE_LEARNING) {
+  const rates = data.paths[pathKey];
+  const s = normalizeDatacenterState(state);
+  const solar = { cumulative: data.solar.cumulativeGW, additions: data.solar.additionsGW, additionsGrowth: data.solar.additionsGrowth, additionsGrowthAfter2030: data.solar.additionsGrowthAfter2030 };
+  const battery = { cumulative: data.battery.cumulativeGWh, additions: data.battery.additionsGWh, additionsGrowth: data.battery.additionsGrowth, additionsGrowthAfter2030: data.battery.additionsGrowthAfter2030 };
+  return data.years.map(year => {
+    const solarRatio = cumulativeAt(solar, data.baseYear, year) / solar.cumulative;
+    const batteryRatio = cumulativeAt(battery, data.baseYear, year) / battery.cumulative;
+    return {
+      year,
+      solarPricePerW: s.panelCostPerW * learningFactor(solarRatio, rates.module) + s.bosCostPerW * learningFactor(solarRatio, rates.bos),
+      batteryPricePerKWh: s.batteryCostPerKWh * learningFactor(batteryRatio, rates.batteryEnergy)
+        + (s.batteryPowerCostPerKW * learningFactor(batteryRatio, rates.batteryPower)) / BATTERY_SWEEP_HOURS,
+    };
+  });
 }
 
 /**

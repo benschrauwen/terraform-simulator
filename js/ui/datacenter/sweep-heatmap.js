@@ -3,7 +3,9 @@
    each cell coloured on a sequential scale and labelled with its value; a cell's <title> gives
    the design behind it, and with `link` a cell carries its target in data-href and is a
    keyboard-focusable link (role="link"); the page navigates on click or Enter
-   (bindHeatmapLinks), because SVG <a> elements do not navigate reliably. */
+   (bindHeatmapLinks), because SVG <a> elements do not navigate reliably. `paths` draws lines
+   through (x, y) points on top, placed by linear interpolation between the cell centres (the axes
+   are not evenly spaced); points outside the axes are left out. */
 
 import { escapeAttribute as attr, escapeHtml as esc } from '../renderers/markup.js';
 
@@ -24,12 +26,23 @@ export function scaleColor(t) {
   return { fill: `rgb(${rgb.join(', ')})`, text: luminance > 0.55 ? '#111316' : '#eef2f6' };
 }
 
+/** Fractional index of `value` along ascending axis values (0 = first centre), or null outside them. */
+export function axisIndex(values, value) {
+  if (!Number.isFinite(value) || value < values[0] - 1e-9 || value > values[values.length - 1] + 1e-9) return null;
+  for (let i = 0; i < values.length - 1; i++) {
+    if (value <= values[i + 1]) return i + (value - values[i]) / (values[i + 1] - values[i]);
+  }
+  return values.length - 1;
+}
+
 /**
  * SVG of a heatmap. xs, ys: the axis values (ys bottom-up); cell(x, y) -> result or null (not yet
  * run); value(result) -> number; format(number) -> label; xLabel / yLabel(value) -> tick text;
  * better: 'high' | 'low'; describe(result) -> tooltip text; title: the accessible name.
+ * paths: [{ key, label, points: [{ x, y, label, tip }] }], drawn as lines with a dot and label per
+ * point (class hm-path-<key>; they ignore the pointer, so the cells below stay clickable).
  */
-export function renderHeatmapSvg({ xs, ys, cell, value, format, xLabel, yLabel, xTitle, yTitle, better = 'high', describe = () => '', link = null, title = '', size = HEATMAP_SIZE }) {
+export function renderHeatmapSvg({ xs, ys, cell, value, format, xLabel, yLabel, xTitle, yTitle, better = 'high', describe = () => '', link = null, title = '', paths = [], size = HEATMAP_SIZE }) {
   const { width, cellHeight, padLeft, padBottom, padTop, padRight } = { ...HEATMAP_SIZE, ...size };
   const cellWidth = (width - padLeft - padRight) / xs.length;
   const height = padTop + ys.length * cellHeight + padBottom;
@@ -65,7 +78,19 @@ export function renderHeatmapSvg({ xs, ys, cell, value, format, xLabel, yLabel, 
   const yTicks = ys.map((y, row) => `<text class="hm-axis" x="${padLeft - 6}" y="${r1(padTop + (ys.length - 1 - row) * cellHeight + cellHeight / 2 + 4)}" text-anchor="end">${esc(yLabel(y))}</text>`).join('');
   const titles = `<text class="hm-title" x="${r1(padLeft + (width - padLeft - padRight) / 2)}" y="${height - 6}" text-anchor="middle">${esc(xTitle)}</text>
     <text class="hm-title" x="12" y="${r1(padTop + (ys.length * cellHeight) / 2)}" text-anchor="middle" transform="rotate(-90 12 ${r1(padTop + (ys.length * cellHeight) / 2)})">${esc(yTitle)}</text>`;
-  return `<svg class="sweep-heatmap-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${attr(title)}">${cells.join('')}${xTicks}${yTicks}${titles}</svg>`;
+  const overlay = paths.map(path => {
+    const placed = path.points.map(point => {
+      const col = axisIndex(xs, point.x);
+      const row = axisIndex(ys, point.y);
+      if (col === null || row === null) return null;
+      return { ...point, px: r1(padLeft + (col + 0.5) * cellWidth), py: r1(padTop + (ys.length - 1 - row + 0.5) * cellHeight) };
+    }).filter(Boolean);
+    if (!placed.length) return '';
+    const line = placed.length > 1 ? `<polyline class="hm-path-line" points="${placed.map(p => `${p.px},${p.py}`).join(' ')}"/>` : '';
+    const marks = placed.map(p => `<circle class="hm-path-dot" cx="${p.px}" cy="${p.py}" r="3.5"><title>${esc(p.tip || p.label || '')}</title></circle>${p.label ? `<text class="hm-path-label" x="${r1(p.px + 6)}" y="${r1(p.py + 13)}">${esc(p.label)}</text>` : ''}`).join('');
+    return `<g class="hm-path hm-path-${attr(path.key)}" aria-label="${attr(path.label || '')}">${line}${marks}</g>`;
+  }).join('');
+  return `<svg class="sweep-heatmap-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${attr(title)}">${cells.join('')}${xTicks}${yTicks}${titles}${overlay}</svg>`;
 }
 
 /** Navigate when a linked cell inside `container` is clicked or activated with Enter / Space. */

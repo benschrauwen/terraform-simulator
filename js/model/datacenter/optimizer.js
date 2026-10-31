@@ -33,10 +33,14 @@
    neighbouring candidate's answer, then walked the same way. Over (solar, battery):
    a coarse grid (0 plus halvings down from each upper bound; the battery
    axis also 0.25-2 h of the design peak, where a small battery replacing
-   firm units forms its own basin), then a compass/pattern search from up to
-   three coarse cells (the best and the next best that are not its grid
-   neighbours and come within 2% of its capex in NPV), halving the step
-   until it is below the resolution. Candidates are ranked feasible first, then by
+   firm units forms its own basin), then a compass/pattern search (axis and
+   diagonal steps) from up to three coarse cells (the best and the next best
+   that are not its grid neighbours and come within 2% of its capex in NPV),
+   halving the step until it is below the resolution, and one global CMA-ES
+   run (cmaes.js) from the centre of the bounds with a short pattern polish:
+   with cheap solar and batteries a solar + battery basin can beat every
+   coarse cell near the best one, and the local search alone never visits
+   it (CMAES_GLOBAL_RUNS for the benchmark). Candidates are ranked feasible first, then by
    NPV; infeasible ones by uptime, so the search walks towards feasibility.
    The budget caps scenario evaluations per architecture (cache hits are
    free). It is a local search on one TMY year: see README "Design
@@ -54,6 +58,7 @@
 
 import { ARCHITECTURES, GAS_GENSET_TYPES } from '../../data/datacenter/power.js';
 import { DATACENTER_DEFAULT_STATE, fitsArchitecture, normalizeDatacenterState } from '../../state/datacenter-schema.js';
+import { createRng, minimizeCmaes } from './cmaes.js';
 import { calculateDatacenterScenario } from './scenario.js';
 import { buildStartingDesign } from './starting-design.js';
 
@@ -101,6 +106,22 @@ export const THOROUGH_SEARCH = Object.freeze({
 // two-basin case at the default site differed by ~0.1%); further from the
 // best than this, a start is not worth its runs.
 const START_NPV_WINDOW = 0.02;
+// The global run: from the centre of the bounds with a step of a third of
+// them and a larger population (IPOP-style: more samples for a rugged
+// landscape), capped at CMAES_GLOBAL_RUNS scenario runs. Benchmark (Oct
+// 2026, 5 sites x 5 solar / battery price pairs, hybrid, against a 41 x 51
+// brute-force grid): the pattern search alone missed the solar + battery
+// basin at Richland Parish by $17-27M (2 of 25 cases > $1M short, 370 runs,
+// 1.0 s); with the global run no case is > $0.2M short and the mean is $0.7M
+// better than the brute-force grid (489 runs, 1.3 s at a 100-run cap; a
+// 60-run cap missed one basin again, 120 keeps a margin).
+const CMAES_GLOBAL_SIGMA0 = 0.3;
+const CMAES_GLOBAL_LAMBDA = 12;
+const CMAES_GLOBAL_RUNS = 120;
+// Stop a run after this many generations without a better point.
+const CMAES_STALL_GENERATIONS = 8;
+// The polish after CMA-ES starts at this many resolution steps.
+const POLISH_RESOLUTION_STEPS = 4;
 
 /**
  * The starting design of an architecture (starting-design.js: the schema's
@@ -242,6 +263,10 @@ function optimizeFrom(startState, referenceState, options = {}) {
     bounds = {},
     boundsScale = 1,
     thorough = false,
+    // 'global' (default): the pattern search from the best coarse cells plus
+    // one global CMA-ES run; 'pattern': the pattern search alone (the former
+    // default, kept for comparison).
+    refine = 'global',
     onProgress = null,
   } = options;
   const start = normalizeDatacenterState(startState);
@@ -419,9 +444,12 @@ function optimizeFrom(startState, referenceState, options = {}) {
       starts.push(entry);
     }
     if (!sizeSolar && !sizeBattery && durations.length * unitSizes.length === 1) starts.length = Math.min(starts.length, 1);
+    // One global CMA-ES run on top of the local starts (a basin no good coarse cell points to).
+    if (refine === 'global' && starts.length && (sizeSolar || sizeBattery)) starts.push({ ...starts[0], global: true });
     starts.forEach((entry, startIndex) => {
       const startShare = evaluations + Math.floor((share - evaluations) / (starts.length - startIndex));
-      let localBest = entry.cell.summary;
+      // A global run adopts only what beats the best so far.
+      let localBest = entry.global ? best : entry.cell.summary;
       let point = pointOf(localBest.design.solar, localBest.design.battery);
       let hint = { minUnits: entry.cell.minUnits, units: localBest.design.units };
       const tryPoint = trial => {
@@ -438,10 +466,12 @@ function optimizeFrom(startState, referenceState, options = {}) {
       // Compass search: continuous steps on solar and battery, then the four
       // diagonals, halved when no move improves; with `discrete`, also the next shorter / longer
       // duration and unit size whenever no continuous move improved.
-      const compass = discrete => {
+      const compass = (discrete, polish = false) => {
         const axes = [];
-        if (sizeSolar) axes.push({ key: 'solar', max: solarMax, res: solarRes, step: Math.max(point.solar / 2, solarLevels[1] / 2 || solarRes) });
-        if (sizeBattery) axes.push({ key: 'battery', max: batteryMax, res: batteryRes, step: Math.max(point.battery / 2, batteryLevels[1] / 2 || batteryRes) });
+        // A polish (after CMA-ES) starts from a few resolution steps instead of half the value.
+        const firstStep = (value, level, res) => (polish ? POLISH_RESOLUTION_STEPS * res : Math.max(value / 2, level / 2 || res));
+        if (sizeSolar) axes.push({ key: 'solar', max: solarMax, res: solarRes, step: firstStep(point.solar, solarLevels[1], solarRes) });
+        if (sizeBattery) axes.push({ key: 'battery', max: batteryMax, res: batteryRes, step: firstStep(point.battery, batteryLevels[1], batteryRes) });
         while (axes.some(axis => axis.step >= axis.res) && evaluations + reserve <= startShare) {
           let improved = false;
           for (const axis of axes) {
@@ -480,16 +510,58 @@ function optimizeFrom(startState, referenceState, options = {}) {
           if (!improved) axes.forEach(axis => { axis.step /= 2; });
         }
       };
-      // First at the start's own duration and unit size (as without the
-      // thorough search, so it can only add), then every duration x unit size
-      // at the refined point, then the search again with discrete steps.
-      compass(false);
-      if (steps.length) {
-        const here = point;
-        durations.forEach(duration => unitSizes.forEach(unitSize => {
-          if (evaluations + reserve <= startShare) tryPoint(pointOf(here.solar, here.battery, duration, unitSize));
-        }));
-        compass(true);
+      // CMA-ES (cmaes.js) over (solar, battery) in the unit box of the search
+      // bounds, at the point's duration and unit size. Each sample is the best
+      // candidate at that point (bestForPoint: auto units and the extra-unit
+      // walk); the score ranks feasible designs by NPV ahead of infeasible
+      // ones by uptime, as isBetterCandidate does. Deterministic: seeded per
+      // connection and start.
+      const cmaes = (sigma0, seed, { x0: x0Override = null, lambda = null, maxRuns = Infinity } = {}) => {
+        const axes = [];
+        if (sizeSolar) axes.push({ key: 'solar', max: solarMax, res: solarRes });
+        if (sizeBattery) axes.push({ key: 'battery', max: batteryMax, res: batteryRes });
+        if (!axes.length) return;
+        const fixedAt = { ...point };
+        const toPoint = x => {
+          const q = { ...fixedAt };
+          axes.forEach((axis, i) => { q[axis.key] = Math.min(axis.max, Math.max(0, roundTo(x[i] * axis.max, axis.res))); });
+          return pointOf(q.solar, q.battery, q.duration, q.unitSize);
+        };
+        const score = candidate => (candidate.feasible ? -candidate.npv : 1e15 + (100 - candidate.uptimePercent) * 1e12);
+        const runLimit = Math.min(startShare, evaluations + maxRuns);
+        const f = x => {
+          if (evaluations + reserve > runLimit) return Infinity;
+          const trial = toPoint(x);
+          const { best: candidate, minUnits } = bestForPoint(trial, connection, hint);
+          if (isBetterCandidate(candidate, localBest)) {
+            localBest = candidate;
+            point = trial;
+            hint = { minUnits, units: candidate.design.units };
+          }
+          return score(candidate);
+        };
+        const x0 = x0Override ? axes.map(() => x0Override) : axes.map(axis => (axis.max > 0 ? point[axis.key] / axis.max : 0));
+        const tolX = Math.min(...axes.map(axis => (axis.max > 0 ? axis.res / axis.max : 1)));
+        // Each sample costs a few scenario runs (the unit walk); the budget check in f stops the rest.
+        minimizeCmaes({ f, x0, sigma0, lambda, maxEvals: Math.max(12, Math.floor((runLimit - evaluations) / 2)), rng: createRng(seed), tolX: 2 * tolX, stallGenerations: CMAES_STALL_GENERATIONS });
+      };
+      const seed = 1 + 97 * index + 13 * startIndex;
+      if (refine === 'global' && entry.global) {
+        // The global run: CMA-ES from the box centre, then a short polish.
+        cmaes(CMAES_GLOBAL_SIGMA0, seed, { x0: 0.5, lambda: CMAES_GLOBAL_LAMBDA, maxRuns: CMAES_GLOBAL_RUNS });
+        compass(false, true);
+      } else {
+        // First at the start's own duration and unit size (as without the
+        // thorough search, so it can only add), then every duration x unit size
+        // at the refined point, then the search again with discrete steps.
+        compass(false);
+        if (steps.length) {
+          const here = point;
+          durations.forEach(duration => unitSizes.forEach(unitSize => {
+            if (evaluations + reserve <= startShare) tryPoint(pointOf(here.solar, here.battery, duration, unitSize));
+          }));
+          compass(true);
+        }
       }
       if (isBetterCandidate(localBest, best)) best = localBest;
     });

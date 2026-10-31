@@ -25,7 +25,7 @@ import { bindHeatmapLinks, renderHeatmapSvg } from './sweep-heatmap.js';
 import { settingsSummary } from './sites-page.js';
 
 // Bump the version when model or data changes alter results, so stale sessions rerun.
-const CACHE_PREFIX = 'abundance-price-sweep:v3:';
+const CACHE_PREFIX = 'abundance-price-sweep:v4:';
 const MAX_WORKERS = 4;
 
 const roundSolar = value => Math.round(value * 1000) / 1000;

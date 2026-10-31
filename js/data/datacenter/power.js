@@ -809,18 +809,24 @@ export const STANDBY_GAS_GENSET_TYPES = Object.freeze(Object.keys(GAS_GENSET_TYP
      https://about.bnef.com/insights/clean-energy/battery-storage-costs-hit-record-lows
      https://www.energy-storage.news/behind-the-numbers-bnef-finds-40-year-on-year-drop-in-bess-costs/
      (all retrieved 2026-10)
-   Default: the US 2026 basis, because the default site is in Texas and the
-   US sources all sit well above the former $150/kWh (a global-market
-   figure): NREL's 2024 split scaled to its 2026 mid case (x 308 / 334),
-   energy $222/kWh + power $343/kW = $308/kWh at 4 h (2024$), inside Lazard's
-   $270-365. A behind-the-meter battery shares the site substation, so the
-   power part is slightly conservative (judgment). Effective $/kWh = energy +
-   power / duration: 1 h $565, 2 h $394, 4 h $308, 8 h $265. */
+   Default: a US battery bought today (judgment, Oct 2026), $250/kWh at 4 h
+   all-in: BNEF's 2025 US turnkey average ($219/kWh) plus ~$30/kWh for the
+   grid connection and owner's costs a turnkey price leaves out; just below
+   NREL's 2026 low case ($255) and Lazard's US low end ($270). NREL's mid case
+   ($308) and Lazard's range rest on 2024-2025 costs and lag the 31% fall in
+   turnkey prices during 2025 (BNEF). The split keeps NREL's 2024 energy /
+   power ratio (x ~250 / 334): energy $180/kWh + power $280/kW. The US basis
+   applies at every site, also outside the US (where the global basis below
+   would be lower). A behind-the-meter battery shares the site substation, so
+   the power part is slightly conservative (judgment). Effective $/kWh =
+   energy + power / duration: 1 h $460, 2 h $320, 4 h $250, 8 h $215. */
 export const BATTERY_COSTS = {
-  energyPerKWh: 222,
-  powerPerKW: 343,
+  energyPerKWh: 180,
+  powerPerKW: 280,
   nrel2024: { energyPerKWh: 241, powerPerKW: 372, fourHourPerKWh: 334 },
   nrel2026MidFourHourPerKWh: 308,
+  nrel2026LowFourHourPerKWh: 255,
+  bnef2025UsTurnkeyPerKWh: 219,
   lazard2026FourHourPerKWh: { low: 270, high: 365 },
   pnnl2023FourHourPerKWh: 372.72,
   // Global (ex-US/China) basis: Ember's ~$125/kWh at 4 h with a ~20% power

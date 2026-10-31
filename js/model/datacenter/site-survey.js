@@ -49,10 +49,10 @@ export function optimizeForSite(baseState, siteId, options = {}) {
 /* ---------- Price sweeps (the hidden datacenter-solar-sweep.html page) ---------- */
 
 // Installed solar prices swept ($/W DC, panel + BOS); the default east-west build is ~$0.69/W.
-export const SOLAR_SWEEP_PRICES_PER_W = Object.freeze([0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0, 1.2]);
+export const SOLAR_SWEEP_PRICES_PER_W = Object.freeze([0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0]);
 // Installed battery prices swept ($/kWh of a 4-hour battery: energy part + power part / 4);
-// the US 2026 default is ~$308/kWh (power.js BATTERY_COSTS).
-export const BATTERY_SWEEP_PRICES_PER_KWH = Object.freeze([75, 100, 125, 150, 200, 250, 300, 400]);
+// the US default is $250/kWh (power.js BATTERY_COSTS).
+export const BATTERY_SWEEP_PRICES_PER_KWH = Object.freeze([75, 100, 125, 150, 175, 200, 250, 300]);
 export const BATTERY_SWEEP_HOURS = 4;
 
 /** Installed solar ($/W, panel + BOS) of a state. */

@@ -204,7 +204,7 @@ export const DATACENTER_STATE_FIELDS = [
   { key: 'batteryCapacityMWh', type: 'number', min: 0, max: 1e7, defaultValue: 0 },
   { key: 'batteryDurationHours', type: 'number', min: 0.25, max: 24, defaultValue: DEFAULT_STATE.batteryDurationHours },
   // Battery capex = MWh x energy $/kWh + MW x power $/kW (power.js
-  // BATTERY_COSTS: NREL 2026 mid case split, $308/kWh at 4 h). The plant
+  // BATTERY_COSTS: US today, $250/kWh at 4 h in NREL's split). The plant
   // builder's single $/kWh (150) is a global-market all-in figure.
   { key: 'batteryCostPerKWh', type: 'number', min: 0, max: 5000, defaultValue: BATTERY_COSTS.energyPerKWh },
   { key: 'batteryPowerCostPerKW', type: 'number', min: 0, max: 5000, defaultValue: BATTERY_COSTS.powerPerKW },

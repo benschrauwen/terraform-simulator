@@ -11,6 +11,7 @@
    reruns the model, so it refreshes debounced. */
 
 import { economicsTimelineChartMethods } from '../charts/economics-timeline-chart.js';
+import { capexSplitMethods } from './capex-split.js';
 import { calculateDatacenterScenario, DATACENTER_DEFAULT_STATE } from '../../model/datacenter/index.js';
 import { controlBindingMethods } from '../control-binding.js';
 import { layoutMethods } from '../layout.js';
@@ -132,6 +133,7 @@ export class DatacenterApp {
     this.updateFlows(r);
     this.updateTimeline(r);
     this.updateDispatchChart(r);
+    this.updateCapexSplit(r);
     this.updateEconomicsTimelineChart(r);
     this.updateCashFlowTable(r);
     // The sensitivity panel reruns the model: debounced while a slider moves, and deferred
@@ -152,6 +154,7 @@ Object.assign(
   sliderMarkerMethods,
   cashFlowTableMethods,
   economicsTimelineChartMethods,
+  capexSplitMethods,
   datacenterSensitivityMethods,
   dispatchChartMethods,
   datacenterOptimizerClientMethods,

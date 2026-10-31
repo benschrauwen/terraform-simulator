@@ -1224,3 +1224,77 @@ select.sites-sort {
 .header-text-link:hover {
   border-color: var(--electric);
 }
+
+/* Where the capex goes (capex-split.js) */
+.capex-split-bar {
+  display: block;
+  width: 100%;
+  height: 14px;
+  margin: 8px 0 10px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.capex-split-scroll {
+  overflow-x: auto;
+}
+
+.capex-split-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.capex-split-table th,
+.capex-split-table td {
+  padding: 3px 8px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.capex-split-table th:first-child {
+  text-align: left;
+  white-space: normal;
+}
+
+.capex-split-table thead th {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.capex-split-table .cs-group th,
+.capex-split-table .cs-group td,
+.capex-split-table tfoot th,
+.capex-split-table tfoot td {
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.capex-split-table .cs-item th {
+  font-weight: 400;
+  padding-left: 18px;
+  color: var(--text-secondary);
+}
+
+.capex-split-table .cs-item td {
+  color: var(--text-secondary);
+}
+
+.capex-split-table .cs-paid {
+  color: var(--text-muted);
+}
+
+.capex-split-table tfoot th,
+.capex-split-table tfoot td {
+  border-bottom: 0;
+}
+
+.cs-swatch {
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  vertical-align: -1px;
+}

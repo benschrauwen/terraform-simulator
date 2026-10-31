@@ -34,7 +34,9 @@
    first N that passes is the minimum.
 
    Fallback ('bisection'). A reserve battery that is charged from spare gas
-   (islanded) or used after gas (hybrid firm-first) makes the battery state
+   (islanded) or used after gas (hybrid firm-first), or any battery charged
+   from spare grid ahead of known curtailments while gas runs before the
+   grid (gas frees grid capacity for the charge), makes the battery state
    depend on the gas fleet, so the residual is not fixed. Then the count is
    bisected on full dispatch runs between 0 and the residual count computed
    without the battery (an upper bound: in those orders the battery only
@@ -147,7 +149,11 @@ export function sizeGasForUptime(state, context) {
   const inputs = { loadKW, solarKW: solar.hourlyKW, solar, grid, batteryState: state, order, exportAllowed };
   const zero = withUnits(firm, 0);
   const role = getBatteryRole(state, solar, zero);
-  const separable = role !== 'reserve' || (grid.connected && order === 'grid-first');
+  // A battery charged ahead of known curtailments from spare grid (dispatch.js
+  // header, 5) depends on the gas fleet when gas runs before the grid: gas
+  // that serves the load frees grid capacity for the charge.
+  const prechargedByGrid = role !== 'none' && order !== 'grid-first' && Boolean(grid.curtailment?.some(Boolean)) && A.flexibleEventPrechargeHours > 0;
+  const separable = !prechargedByGrid && (role !== 'reserve' || (grid.connected && order === 'grid-first'));
 
   let result;
   if (separable) {

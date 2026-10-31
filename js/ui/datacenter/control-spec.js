@@ -162,7 +162,7 @@ export const DATACENTER_SECTIONS = {
     {
       type: 'range', id: 'gridUnavailableHoursPerYear', label: 'Grid unavailable', min: 0, max: 500, step: 2, format: value => `${fixed(value, 0)} h/yr`,
       visible: state => state.gridConnection === 'flexible',
-      tooltip: 'Hours a year the utility may cut a flexible connection, placed as 4-hour events on the hottest afternoons. On-site generation or storage must cover them.',
+      tooltip: 'Hours a year the utility may cut a flexible connection, placed as 4-hour events in the evening (6-10 pm summer time, the grid\'s net-load peak after solar fades) on the hottest days; a battery is charged from the grid ahead of each one. On-site generation or storage must cover them.',
     },
     {
       type: 'range', id: 'firmGridOutageHoursPerYear', label: 'Utility outages', min: 0, max: 24, step: 1, format: value => `${fixed(value, 0)} h/yr`,

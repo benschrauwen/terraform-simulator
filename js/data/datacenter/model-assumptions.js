@@ -38,11 +38,30 @@ export const DATACENTER_MODEL_ASSUMPTIONS = Object.freeze({
   millionTokensPerMWhIT: Math.round((AI_COMPUTE_DEFAULTS.millionTokensPerMWh * 1.14) / 10) * 10,
 
   // Flexible grid connection: the unavailable hours come as contiguous
-  // events of this length on the days of highest facility load (hot
-  // afternoons, when grids are most stressed). Camus et al. (power.js
-  // GRID_DEFAULTS) report curtailment events of 4-16 h; 4 h = lower end,
-  // judgment.
+  // events of this length on the days of highest facility load (the
+  // hottest days). Camus et al. (power.js GRID_DEFAULTS) report curtailment
+  // events of 4-16 h; 4 h = lower end, judgment.
   flexibleEventHours: 4,
+  // Each event starts at this local standard-time hour: 17:00-21:00 LST is
+  // 18:00-22:00 summer clock time, the evening net-load peak when solar
+  // falls faster than load. PJM: on 2025-04-29 load peaked at 5-6 p.m. and
+  // net load at 9 p.m., and "the net load peak in the summer will exceed the
+  // net load at the traditional load peak by increasingly higher amounts"
+  // (Understanding Net Load, PJM concept paper, 2025-09-17,
+  // https://www.pjm.com/-/media/DotCom/committees-groups/task-forces/rcstf/2025/20250917/20250917-informational-item---understanding-net-load---pjm-concept-paper.pdf);
+  // ERCOT: critical risk periods "between 8-9pm, when solar generation
+  // falls" (Argus, 2023-06-08,
+  // https://www.argusmedia.com/de/news-and-insights/latest-market-news/2457758-peak-demand-to-shift-later-in-the-evening-ercot).
+  // Retrieved 2026-10-31. The window used to follow the site's own highest
+  // load (mid-afternoon), when on-site solar still covers much of it.
+  flexibleEventStartHour: 17,
+  // Hours before a flexible-connection curtailment in which the battery is
+  // charged to full from the grid. Curtailments follow forecast transmission
+  // limits and extreme weather, so the operator knows them in advance (the
+  // Camus study's batteries carry the curtailments, which presumes a full
+  // battery at the start); unplanned utility outages are not anticipated.
+  // Judgment: day-ahead notice, 12 h of charging.
+  flexibleEventPrechargeHours: 12,
 
   // Utility outages (any grid connection, power.js GRID_DEFAULTS
   // .outageHoursPerYear): events of up to 3 h (Electricity Canada

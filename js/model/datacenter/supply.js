@@ -110,10 +110,12 @@ export function buildSolarSupply(state, site) {
 
 /*
  * Hours a flexible connection is unavailable: contiguous events of E hours
- * (E = max(flexibleEventHours, ceil(N / 365))) on the days whose best E-hour
- * window carries the most facility load, highest first (ties: earlier day
- * and hour), until N hours are taken. With typical-day climate these are
- * the hottest afternoons of the hottest month: a heat-wave curtailment.
+ * (E = max(flexibleEventHours, ceil(N / 365))) starting at
+ * flexibleEventStartHour local standard time (earlier when E would run past
+ * midnight), on the days whose window carries the most facility load,
+ * highest first (ties: earlier day), until N hours are taken. With
+ * typical-day climate these are the evenings of the hottest month: the
+ * grid's evening net-load peak in a heat wave, after solar has faded.
  * Days with an hour in `excluded` (the utility outages) are skipped, so
  * curtailments add to outages instead of overlapping them; only if every
  * other day is taken do the remaining hours fill the first free hours.
@@ -126,19 +128,12 @@ export function selectFlexibleOutageHours(loadKW, hours, excluded = null) {
   if (!target) return { unavailable, events };
   const eventHours = Math.min(24, Math.max(A.flexibleEventHours, Math.ceil(target / 365)));
   const days = [];
+  const start = Math.max(0, Math.min(A.flexibleEventStartHour, 24 - eventHours));
   for (let day = 0; day < 365; day++) {
     if (excluded && excluded.subarray(day * 24, day * 24 + 24).some(Boolean)) continue;
-    let best = -Infinity;
-    let bestStart = 0;
-    for (let start = 0; start + eventHours <= 24; start++) {
-      let sum = 0;
-      for (let k = 0; k < eventHours; k++) sum += loadKW[day * 24 + start + k];
-      if (sum > best + 1e-9) {
-        best = sum;
-        bestStart = start;
-      }
-    }
-    days.push({ day, start: bestStart, sum: best });
+    let sum = 0;
+    for (let k = 0; k < eventHours; k++) sum += loadKW[day * 24 + start + k];
+    days.push({ day, start, sum });
   }
   days.sort((a, b) => (b.sum - a.sum) || (a.day - b.day));
   let remaining = target;
@@ -202,7 +197,7 @@ export function selectGridOutageHours(hours) {
 export function buildGridSupply(state, loadKW, designPeakKW) {
   const connected = state.architecture !== 'islanded';
   if (!connected) {
-    return { connected: false, connection: null, capKW: 0, available: null, outage: null, unavailableHours: HOURS_PER_YEAR, outageHours: 0, curtailmentHours: 0, events: [] };
+    return { connected: false, connection: null, capKW: 0, available: null, outage: null, curtailment: null, unavailableHours: HOURS_PER_YEAR, outageHours: 0, curtailmentHours: 0, events: [] };
   }
   const capKW = state.gridImportCapMW > 0 ? state.gridImportCapMW * 1000 : designPeakKW;
   const outages = selectGridOutageHours(state.firmGridOutageHoursPerYear);
@@ -219,7 +214,7 @@ export function buildGridSupply(state, loadKW, designPeakKW) {
   }
   const events = [...outages.events, ...curtailments.events].sort((a, b) => a.startHour - b.startHour);
   return {
-    connected, connection: state.gridConnection, capKW, available, outage: outages.unavailable,
+    connected, connection: state.gridConnection, capKW, available, outage: outages.unavailable, curtailment: curtailments.unavailable,
     unavailableHours: outageHours + curtailmentHours, outageHours, curtailmentHours, events,
   };
 }

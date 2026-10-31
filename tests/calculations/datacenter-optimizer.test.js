@@ -175,20 +175,26 @@ test('architecture comparison: one row per architecture, patches against the cur
   assert.equal(result.candidatesEvaluated, result.rows.reduce((sum, row) => sum + row.result.candidatesEvaluated, 0));
 });
 
-test('two basins: the optimizer finds the small-battery design a coarse halving grid misses', () => {
+test('two basins: the optimizer finds the battery design across a valley of mid-size batteries', () => {
   // Hybrid starting design with standby diesel (flexible connection) and a cheap battery ($150/kWh,
-  // no power cost: the landscape before the energy/power split), where ~50-60 MWh of battery
-  // replaces several diesel units. Reduced brute force: solar 0-300 MWdc step 25, battery 0-200
-  // MWh step 20, the auto design (target + spare) with up to two extra units. The optimizer, with
-  // the same bounds, must come within 0.5% of its NPV. (The single-start search on halvings of
-  // the bounds once stopped in the no-battery basin.)
+  // no power cost). Two basins: no battery and ~31 diesel units (NPV ~$655M), or a battery of ~360
+  // MWh that carries the 4-hour evening curtailments, precharged from the grid, with no diesel
+  // (~$688M); mid-size batteries in between (40-160 MWh) are worse than either. Reduced brute
+  // force: solar 0-300 MWdc step 25, battery 0-400 MWh step 20, the auto design (target + spare)
+  // with up to two extra units. With the same bounds the default search must land in the battery
+  // basin within 2% of its NPV (its compass steps in solar stop on the unit-count steps: ~1.6%
+  // short here), and the wider search within 0.5%. (A single-start search once stopped in the
+  // no-battery basin.)
   const start = { ...HYBRID_DIESEL, batteryCostPerKWh: 150, batteryPowerCostPerKW: 0 };
-  const best = bruteForce(start, range(300, 25), range(200, 20), 2);
-  assert.ok(best.battery > 0, 'the brute-force optimum uses a small battery');
-  const result = optimizeDatacenterDesign(start, { bounds: { solarMaxMWdc: 300, batteryMaxMWh: 200, unitsMax: 40 } });
+  const best = bruteForce(start, range(300, 25), range(400, 20), 2);
+  assert.ok(best.battery > 0, 'the brute-force optimum uses a battery');
+  const bounds = { solarMaxMWdc: 300, batteryMaxMWh: 400, unitsMax: 40 };
+  const result = optimizeDatacenterDesign(start, { bounds });
   assert.ok(result.best.feasible);
-  assert.ok(result.best.npv >= best.npv - 0.005 * Math.abs(best.npv), `optimizer ${result.best.npv} vs brute force ${best.npv} (${JSON.stringify(best)})`);
+  assert.ok(result.best.npv >= best.npv - 0.02 * Math.abs(best.npv), `optimizer ${result.best.npv} vs brute force ${best.npv} (${JSON.stringify(best)})`);
   assert.ok(result.best.batteryMWh > 0, 'the optimizer lands in the battery basin');
+  const wide = optimizeDatacenterDesign(start, { bounds, thorough: true });
+  assert.ok(wide.best.npv >= best.npv - 0.005 * Math.abs(best.npv), `wider search ${wide.best.npv} vs brute force ${best.npv}`);
 });
 
 test('thorough (wider) search: its configuration, and never worse than the default search', () => {

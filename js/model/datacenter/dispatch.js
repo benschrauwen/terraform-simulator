@@ -33,6 +33,10 @@
       unserved load). Below the floor it is topped up from spare grid or
       (islanded) spare gas in an hour it did not discharge. A reserve
       battery already discharges only to avoid unserved load.
+   5. Known curtailments. In the flexibleEventPrechargeHours before a
+      flexible-connection curtailment (announced ahead; utility outages are
+      not), any battery is topped up to full from spare grid in an hour it
+      did not discharge.
 
    Hourly energy balance (asserted in tests):
      solar + nuclear + grid + gas + battery discharge + unserved
@@ -93,6 +97,14 @@ function runPass(inputs, startSocKWh, capture) {
   const mustTakeKW = firm.mustTake ? firm.availableKW : null;
   const gasKWAvailable = firm.family === 'gas' ? firm.availableKW : null;
   const gridAvailable = grid.connected ? grid.available : null;
+  // Hours with a curtailment starting within the precharge window (header, 5).
+  const precharge = new Uint8Array(HOURS_PER_YEAR);
+  if (grid.curtailment && A.flexibleEventPrechargeHours > 0) {
+    for (let h = 0; h < HOURS_PER_YEAR; h++) {
+      if (!grid.curtailment[h] || (h > 0 && grid.curtailment[h - 1])) continue;
+      for (let k = Math.max(0, h - A.flexibleEventPrechargeHours); k < h; k++) precharge[k] = 1;
+    }
+  }
   const series = capture ? Object.fromEntries(SERIES_KEYS.map(key => [key, new Float64Array(HOURS_PER_YEAR)])) : null;
   const unservedKW = new Float64Array(HOURS_PER_YEAR);
   const t = {
@@ -185,7 +197,7 @@ function runPass(inputs, startSocKWh, capture) {
     let gridToBatteryKW = 0;
     let gasToBatteryKW = 0;
     // A shifting battery below its reserve floor is topped up to the floor the same way.
-    const topUpToKWh = role === 'reserve' ? battery.capacityKWh : floorKWh;
+    const topUpToKWh = role === 'reserve' || precharge[h] ? battery.capacityKWh : floorKWh;
     if (topUpToKWh > 0 && dischargeKW === 0 && battery.socKWh < topUpToKWh - 1e-9) {
       // Within the hour's charge power left after any surplus charging.
       const wantedInput = Math.min((topUpToKWh - battery.socKWh) / battery.chargeEff, Math.max(0, battery.maxChargeInputKWh - surplusChargeKW));

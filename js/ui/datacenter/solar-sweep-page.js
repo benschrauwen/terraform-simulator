@@ -1,28 +1,67 @@
-/* Hidden solar price sweep page (datacenter-solar-sweep.html, linked from nowhere): for each
-   installed solar price (panel + BOS, SOLAR_SWEEP_PRICES_PER_W) the best design across grid,
-   hybrid and islanded is optimized for every site (site-survey.js solarSweepPoint), in a pool of
-   module workers (main thread as a fallback). Two Chart.js line charts fill in as points finish:
-   CO2e and NPV per site against the solar price.
-   The user's settings come from the share hash, as on the sites page; finished points are kept in
-   sessionStorage per settings hash. */
+/* Hidden price sweep page (datacenter-solar-sweep.html, linked from nowhere). Two sweeps, each
+   with a CO2e and an NPV chart (one line per site, matching colours across all four charts):
+   - solar: installed solar price (panel + BOS, SOLAR_SWEEP_PRICES_PER_W) on x, the battery held
+     at a selectable price;
+   - battery: installed battery price ($/kWh of a 4-hour battery, energy + power,
+     BATTERY_SWEEP_PRICES_PER_KWH) on x, solar held at a selectable price.
+   Each point is the best design across grid, hybrid and islanded for a site at those two prices
+   (site-survey.js priceSweepPoint), optimized in a pool of module workers (main thread as a
+   fallback). Points are keyed by site and both prices, so the sweeps share any point they have in
+   common, and kept in sessionStorage per settings hash; changing a held price only runs the
+   missing points. The settings come from the share hash, as on the sites page. */
 
 import { DATACENTER_SITES } from '../../data/datacenter/sites.js';
-import { SOLAR_SWEEP_PRICES_PER_W, solarSweepPoint } from '../../model/datacenter/index.js';
+import { BATTERY_SWEEP_PRICES_PER_KWH, priceSweepPoint, SOLAR_SWEEP_PRICES_PER_W } from '../../model/datacenter/index.js';
+import { batteryPricePerKWh, solarPricePerW } from '../../model/datacenter/site-survey.js';
 import { axisGrid, axisTicks, axisTitle, legendLabels } from '../charts/chart-utils.js';
 import { fixed, formatMW, formatStorageMWh } from './format.js';
 import { parseDatacenterHash, serializeDatacenterHash } from './share.js';
 import { settingsSummary } from './sites-page.js';
 
 // Bump the version when model or data changes alter results, so stale sessions rerun.
-const CACHE_PREFIX = 'abundance-solar-sweep:v2:';
+const CACHE_PREFIX = 'abundance-price-sweep:v1:';
 const MAX_WORKERS = 4;
 
-/** Every sweep point: each site at each price (cheapest first). */
-export function listSweepPoints(prices = SOLAR_SWEEP_PRICES_PER_W) {
-  return prices.flatMap(pricePerW => DATACENTER_SITES.map(site => ({ kind: 'site', id: site.id, pricePerW })));
+const roundSolar = value => Math.round(value * 1000) / 1000;
+const roundBattery = value => Math.round(value * 100) / 100;
+const solarLabel = value => `$${fixed(value, 2)}/W`;
+const batteryLabel = value => `$${fixed(value, 0)}/kWh`;
+
+/** Cache key of a point: the site and both prices (rounded so equal prices match). */
+export const pointKey = ({ id, solarPricePerW: solar, batteryPricePerKWh: battery }) => `${id}|${roundSolar(solar)}|${roundBattery(battery)}`;
+
+/** The two sweeps: which price runs along x and which one is held. */
+export const SWEEPS = Object.freeze({
+  solar: {
+    xs: SOLAR_SWEEP_PRICES_PER_W,
+    xTitle: 'Installed solar price, panel + BOS ($/W DC)',
+    xLabel: solarLabel,
+    heldOptions: BATTERY_SWEEP_PRICES_PER_KWH,
+    heldLabel: batteryLabel,
+    point: (id, x, held) => ({ kind: 'site', id, solarPricePerW: x, batteryPricePerKWh: held }),
+  },
+  battery: {
+    xs: BATTERY_SWEEP_PRICES_PER_KWH,
+    xTitle: 'Installed battery price, 4-hour, energy + power ($/kWh)',
+    xLabel: batteryLabel,
+    heldOptions: SOLAR_SWEEP_PRICES_PER_W,
+    heldLabel: solarLabel,
+    point: (id, x, held) => ({ kind: 'site', id, solarPricePerW: held, batteryPricePerKWh: x }),
+  },
+});
+
+/** Every point of one sweep at a held price: each site at each x (cheapest first). */
+export function listSweepPoints(sweepKey, held) {
+  const sweep = SWEEPS[sweepKey];
+  return sweep.xs.flatMap(x => DATACENTER_SITES.map(site => sweep.point(site.id, x, held)));
 }
 
-export const pointKey = point => `${point.kind}|${point.id}|${point.pricePerW}`;
+/** The held-price options: the settings' own price first, then the sweep list. */
+export function heldPriceOptions(sweepKey, current) {
+  const sweep = SWEEPS[sweepKey];
+  const values = [...new Set([current, ...sweep.heldOptions])];
+  return values.map((value, index) => ({ value, label: index === 0 ? `${sweep.heldLabel(value)} (your setting)` : sweep.heldLabel(value) }));
+}
 
 /** Distinct, readable line colours on the dark theme (hue spread, two lightness bands). */
 export function seriesColor(index, count) {
@@ -30,24 +69,24 @@ export function seriesColor(index, count) {
   return `hsl(${hue}, 65%, ${index % 2 ? 62 : 52}%)`;
 }
 
-/** Chart.js datasets: one line per site (same colour in both charts), points sorted by price. */
-export function buildSweepDatasets(results, value) {
-  const entries = DATACENTER_SITES.map(site => ({ id: site.id, label: site.name }));
-  return entries.map(({ id, label }, index) => ({
-    label,
-    data: results
-      .filter(result => result.kind === 'site' && result.id === id)
-      .sort((a, b) => a.pricePerW - b.pricePerW)
-      .map(result => ({ x: result.pricePerW, y: value(result), result })),
-    borderColor: seriesColor(index, entries.length),
-    backgroundColor: seriesColor(index, entries.length),
+/** Chart.js datasets of one sweep: one line per site (same colour in every chart), sorted by x. */
+export function buildSweepDatasets(results, sweepKey, held, value) {
+  const sweep = SWEEPS[sweepKey];
+  return DATACENTER_SITES.map((site, index) => ({
+    label: site.name,
+    data: sweep.xs
+      .map(x => ({ x, result: results[pointKey(sweep.point(site.id, x, held))] }))
+      .filter(entry => entry.result)
+      .map(({ x, result }) => ({ x, y: value(result), result })),
+    borderColor: seriesColor(index, DATACENTER_SITES.length),
+    backgroundColor: seriesColor(index, DATACENTER_SITES.length),
     borderWidth: 1.5,
     pointRadius: 2.5,
     tension: 0.15,
   }));
 }
 
-/** Tooltip line: the value plus the design behind it. */
+/** Tooltip line: the design behind a point. */
 export function describePoint(result) {
   const parts = [
     result.architecture,
@@ -79,58 +118,89 @@ export class SolarSweepPage {
     this.baseState = parseDatacenterHash(window.location.hash, window.LZString).state;
     this.baseHash = serializeDatacenterHash(this.baseState, window.LZString);
     this.results = readCache(this.baseHash);
-    this.points = listSweepPoints();
+    this.inFlight = new Set();
+    this.charts = {};
+    // The held price of each sweep: the settings' own, until the user picks another.
+    this.current = { solar: roundSolar(solarPricePerW(this.baseState)), battery: roundBattery(batteryPricePerKWh(this.baseState)) };
+    this.held = { solar: this.current.battery, battery: this.current.solar };
     const settings = document.getElementById('sweepSettings');
     if (settings) settings.textContent = settingsSummary(this.baseState);
-    const current = document.getElementById('sweepCurrentPrice');
-    if (current) current.textContent = `$${fixed(this.baseState.panelCostPerW + this.baseState.bosCostPerW, 2)}/W`;
+    const prices = document.getElementById('sweepCurrentPrices');
+    if (prices) prices.textContent = `solar at ${solarLabel(this.current.solar)} and the battery at ${batteryLabel(this.current.battery)}`;
+    this.bindHeldSelect('solar', 'sweepSolarHeld', this.current.battery);
+    this.bindHeldSelect('battery', 'sweepBatteryHeld', this.current.solar);
     document.getElementById('sweepRerun')?.addEventListener('click', () => this.rerun());
-    this.charts = {};
     this.render();
-    this.run();
+    this.ensureRunning();
+  }
+
+  bindHeldSelect(sweepKey, id, current) {
+    const select = document.getElementById(id);
+    if (!select) return;
+    select.replaceChildren(...heldPriceOptions(sweepKey, current).map(option => new Option(option.label, String(option.value))));
+    select.value = String(this.held[sweepKey]);
+    select.addEventListener('change', () => {
+      this.held[sweepKey] = Number(select.value);
+      this.render();
+      this.ensureRunning();
+    });
+  }
+
+  /** Points the charts need now that are neither done nor running. */
+  missingPoints() {
+    return [...listSweepPoints('solar', this.held.solar), ...listSweepPoints('battery', this.held.battery)]
+      .filter(point => !this.results[pointKey(point)] && !this.inFlight.has(pointKey(point)));
   }
 
   rerun() {
     (this.workers || []).forEach(worker => worker.terminate());
+    this.workers = null;
+    this.inFlight.clear();
     this.results = {};
     writeCache(this.baseHash, this.results);
     this.render();
-    this.run();
+    this.ensureRunning();
   }
 
-  addResult(result) {
-    this.results[pointKey(result)] = result;
+  addResult(key, result) {
+    this.results[key] = result;
     writeCache(this.baseHash, this.results);
     window.clearTimeout(this.renderTimer);
     this.renderTimer = window.setTimeout(() => this.render(), 150);
   }
 
-  async run() {
-    const queue = this.points.filter(point => !this.results[pointKey(point)]);
-    if (!queue.length) return;
+  /** Start the worker pool if it is idle; runners pick the next missing point each time. */
+  async ensureRunning() {
+    if (this.workers || !this.missingPoints().length) return;
     this.startedAt = Date.now();
     const poolSize = typeof Worker === 'function' ? Math.max(1, Math.min(MAX_WORKERS, (navigator.hardwareConcurrency || 2) - 1)) : 0;
+    const workers = Array.from({ length: poolSize }, () => new Worker(new URL('../../workers/datacenter-optimizer-worker.js', import.meta.url), { type: 'module' }));
+    this.workers = workers;
     const runner = async worker => {
-      while (queue.length) {
-        const point = queue.shift();
+      for (let point = this.missingPoints()[0]; point && this.workers === workers; point = this.missingPoints()[0]) {
+        const key = pointKey(point);
+        this.inFlight.add(key);
         try {
-          this.addResult(worker ? await this.runInWorker(worker, point) : await this.runOnMainThread(point));
+          this.addResult(key, worker ? await this.runInWorker(worker, point) : await this.runOnMainThread(point));
         } catch (error) {
+          this.inFlight.delete(key);
           if (worker) {
             console.warn('Sweep worker failed, continuing on the main thread.', error);
-            queue.unshift(point);
             return runner(null);
           }
           console.warn('Sweep point failed', point, error);
+          return undefined;
         }
+        this.inFlight.delete(key);
       }
       return undefined;
     };
-    this.workers = Array.from({ length: poolSize }, () => new Worker(new URL('../../workers/datacenter-optimizer-worker.js', import.meta.url), { type: 'module' }));
-    await Promise.all(poolSize ? this.workers.map(worker => runner(worker)) : [runner(null)]);
-    this.workers.forEach(worker => worker.terminate());
-    this.workers = [];
+    await Promise.all(poolSize ? workers.map(worker => runner(worker)) : [runner(null)]);
+    workers.forEach(worker => worker.terminate());
+    if (this.workers === workers) this.workers = null;
     this.render();
+    // A held price may have changed while the last points ran.
+    if (this.missingPoints().length) this.ensureRunning();
   }
 
   runInWorker(worker, point) {
@@ -153,7 +223,7 @@ export class SolarSweepPage {
       };
       worker.addEventListener('message', onMessage);
       worker.addEventListener('error', onError);
-      worker.postMessage({ requestId, type: 'solarSweepPoint', state: { ...this.baseState }, options: { point } });
+      worker.postMessage({ requestId, type: 'priceSweepPoint', state: { ...this.baseState }, options: { point } });
     });
   }
 
@@ -161,7 +231,7 @@ export class SolarSweepPage {
     return new Promise((resolve, reject) => {
       window.setTimeout(() => {
         try {
-          resolve(solarSweepPoint(this.baseState, point));
+          resolve(priceSweepPoint(this.baseState, point));
         } catch (error) {
           reject(error);
         }
@@ -170,28 +240,35 @@ export class SolarSweepPage {
   }
 
   render() {
-    const results = Object.values(this.results).filter(result => result.kind === 'site');
-    const total = this.points.length;
+    const needed = [...listSweepPoints('solar', this.held.solar), ...listSweepPoints('battery', this.held.battery)];
+    const keys = [...new Set(needed.map(pointKey))];
+    const done = keys.filter(key => this.results[key]).length;
     const progress = document.getElementById('sweepProgress');
     if (progress) {
-      progress.max = total;
-      progress.value = results.length;
-      progress.hidden = results.length >= total;
+      progress.max = keys.length;
+      progress.value = done;
+      progress.hidden = done >= keys.length;
     }
     const status = document.getElementById('sweepStatus');
     if (status) {
-      const elapsed = this.startedAt ? ` · ${fixed((Date.now() - this.startedAt) / 1000, 0)} s` : '';
-      status.textContent = results.length < total
-        ? `Optimized ${results.length} of ${total} points${elapsed}…`
-        : `All ${total} points optimized.`;
+      const elapsed = this.startedAt && this.workers ? ` · ${fixed((Date.now() - this.startedAt) / 1000, 0)} s` : '';
+      status.textContent = done < keys.length ? `Optimized ${done} of ${keys.length} points${elapsed}…` : `All ${keys.length} points optimized.`;
     }
-    this.renderChart('co2', 'sweepCo2Chart', buildSweepDatasets(results, result => result.co2eT / 1000), 'CO₂e (kt/yr)', value => `${fixed(value, 0)} kt/yr`);
-    this.renderChart('npv', 'sweepNpvChart', buildSweepDatasets(results, result => result.npv / 1e6), 'NPV ($M)', value => `$${fixed(value, 0)}M`);
+    const co2 = result => result.co2eT / 1000;
+    const npv = result => result.npv / 1e6;
+    const co2Format = value => `${fixed(value, 0)} kt/yr`;
+    const npvFormat = value => `$${fixed(value, 0)}M`;
+    this.renderChart('solarCo2', 'sweepSolarCo2Chart', 'solar', co2, 'CO₂e (kt/yr)', co2Format);
+    this.renderChart('solarNpv', 'sweepSolarNpvChart', 'solar', npv, 'NPV ($M)', npvFormat);
+    this.renderChart('batteryCo2', 'sweepBatteryCo2Chart', 'battery', co2, 'CO₂e (kt/yr)', co2Format);
+    this.renderChart('batteryNpv', 'sweepBatteryNpvChart', 'battery', npv, 'NPV ($M)', npvFormat);
   }
 
-  renderChart(key, canvasId, datasets, yTitle, formatValue) {
+  renderChart(key, canvasId, sweepKey, value, yTitle, formatValue) {
     const canvas = document.getElementById(canvasId);
     if (!canvas || typeof window.Chart !== 'function') return;
+    const sweep = SWEEPS[sweepKey];
+    const datasets = buildSweepDatasets(this.results, sweepKey, this.held[sweepKey], value);
     if (this.charts[key]) {
       this.charts[key].data.datasets = datasets;
       this.charts[key].update('none');
@@ -207,14 +284,14 @@ export class SolarSweepPage {
         parsing: false,
         interaction: { mode: 'nearest', intersect: false },
         scales: {
-          x: { type: 'linear', min: 0.2, max: 1.2, title: axisTitle('Installed solar price, panel + BOS ($/W DC)'), ticks: axisTicks({ callback: value => `$${fixed(value, 2)}` }), grid: axisGrid() },
+          x: { type: 'linear', min: sweep.xs[0], max: sweep.xs[sweep.xs.length - 1], title: axisTitle(sweep.xTitle), ticks: axisTicks({ callback: x => sweep.xLabel(x) }), grid: axisGrid() },
           y: { title: axisTitle(yTitle), ticks: axisTicks(), grid: axisGrid() },
         },
         plugins: {
           legend: { position: 'right', labels: legendLabels({ boxWidth: 10 }) },
           tooltip: {
             callbacks: {
-              title: items => (items.length ? `Solar at $${fixed(items[0].parsed.x, 2)}/W` : ''),
+              title: items => (items.length ? `At ${sweep.xLabel(items[0].parsed.x)}` : ''),
               label: item => `${item.dataset.label}: ${formatValue(item.parsed.y)}`,
               afterLabel: item => describePoint(item.raw.result),
             },

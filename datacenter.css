@@ -1372,6 +1372,13 @@ select.sites-sort {
   border-radius: var(--radius-lg);
 }
 
+.sweep-section-title {
+  margin: 28px 0 0;
+  padding: 0;
+  border: 0;
+  font-size: 18px;
+}
+
 .sweep-chart-card h2 {
   margin: 0 0 8px;
   padding: 0;

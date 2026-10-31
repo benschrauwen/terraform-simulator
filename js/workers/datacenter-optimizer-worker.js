@@ -1,16 +1,16 @@
 /* Module worker: runs the datacenter design optimizer (model/datacenter/optimizer.js) off the main
    thread. Messages: { requestId, type: 'optimizeDatacenterDesign' | 'compareDatacenterArchitectures'
-   | 'optimizeDatacenterSite' | 'solarSweepPoint', state, options } (optimizeDatacenterSite takes
-   options.siteId, solarSweepPoint options.point { kind, id, pricePerW }) -> { requestId, messageType: 'progress' | 'result' | 'error', ... }. The plant
+   | 'optimizeDatacenterSite' | 'priceSweepPoint', state, options } (optimizeDatacenterSite takes
+   options.siteId, priceSweepPoint options.point { kind, id, solarPricePerW, batteryPricePerKWh }) -> { requestId, messageType: 'progress' | 'result' | 'error', ... }. The plant
    builder's optimizer-worker.js is separate and unchanged. */
 
-import { compareArchitectures, optimizeDatacenterDesign, optimizeForSite, solarSweepPoint } from '../model/datacenter/index.js';
+import { compareArchitectures, optimizeDatacenterDesign, optimizeForSite, priceSweepPoint } from '../model/datacenter/index.js';
 
 const HANDLERS = {
   optimizeDatacenterDesign,
   compareDatacenterArchitectures: compareArchitectures,
   optimizeDatacenterSite: (state, { siteId, ...options }) => optimizeForSite(state, siteId, options),
-  solarSweepPoint: (state, { point, ...options }) => solarSweepPoint(state, point, options),
+  priceSweepPoint: (state, { point, ...options }) => priceSweepPoint(state, point, options),
 };
 
 self.addEventListener('message', event => {

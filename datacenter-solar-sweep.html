@@ -4,25 +4,27 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex, nofollow">
-  <title>Solar price sweep — Abundance Stack datacenter simulator</title>
+  <title>Price sweeps — Abundance Stack datacenter simulator</title>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="datacenter.css">
   <script src="node_modules/chart.js/dist/chart.umd.js"></script>
 </head>
 <body class="doc-page sites-page">
   <!--
-    Hidden analysis page (linked from nowhere): how the optimal designs respond to the price of
-    installed solar. Open it with a simulator share hash to use those settings. Filled by
+    Hidden analysis page (linked from nowhere): how the optimal designs respond to the prices of
+    installed solar and batteries. Open it with a simulator share hash to use those settings. Filled by
     js/ui/datacenter/solar-sweep-page.js.
   -->
   <header class="doc-header sites-header">
     <a class="doc-back" href="datacenter.html">← Back to the datacenter simulator</a>
-    <h1>Solar price sweep</h1>
+    <h1>Solar and battery price sweeps</h1>
     <p>
-      At each installed solar price (panel + BOS, the panel / BOS split kept) the best design across a
-      grid-connected, a hybrid and an islanded architecture is optimized for every site, as on the sites
-      page: the highest NPV that meets the uptime target without the backup diesel. Both charts show the
-      same designs, one line per site. Your settings now put solar at <span id="sweepCurrentPrice"></span>.
+      At each price the best design across a grid-connected, a hybrid and an islanded architecture is
+      optimized for every site, as on the sites page: the highest NPV that meets the uptime target
+      without the backup diesel. The solar sweep moves installed solar (panel + BOS, their split kept)
+      with the battery held at a price you choose; the battery sweep moves the installed battery
+      ($/kWh of a 4-hour battery: energy + power, their split kept) with solar held. Every chart has
+      one line per site, in the same colours. Your settings put <span id="sweepCurrentPrices"></span>.
     </p>
     <p class="sites-settings">Settings: <span id="sweepSettings"></span></p>
     <div class="sites-toolbar">
@@ -33,13 +35,32 @@
   </header>
 
   <main class="doc-main sites-main">
+    <h2 class="sweep-section-title">Solar price sweep</h2>
+    <div class="sites-toolbar">
+      <label class="sites-sort-label" for="sweepSolarHeld">Battery held at</label>
+      <select id="sweepSolarHeld" class="sites-sort"></select>
+    </div>
     <section class="sweep-chart-card">
       <h2>CO₂e per site</h2>
-      <div class="sweep-chart"><canvas id="sweepCo2Chart" role="img" aria-label="CO2e per site against the solar price"></canvas></div>
+      <div class="sweep-chart"><canvas id="sweepSolarCo2Chart" role="img" aria-label="CO2e per site against the solar price"></canvas></div>
     </section>
     <section class="sweep-chart-card">
       <h2>NPV per site</h2>
-      <div class="sweep-chart"><canvas id="sweepNpvChart" role="img" aria-label="NPV per site against the solar price"></canvas></div>
+      <div class="sweep-chart"><canvas id="sweepSolarNpvChart" role="img" aria-label="NPV per site against the solar price"></canvas></div>
+    </section>
+
+    <h2 class="sweep-section-title">Battery price sweep</h2>
+    <div class="sites-toolbar">
+      <label class="sites-sort-label" for="sweepBatteryHeld">Solar held at</label>
+      <select id="sweepBatteryHeld" class="sites-sort"></select>
+    </div>
+    <section class="sweep-chart-card">
+      <h2>CO₂e per site</h2>
+      <div class="sweep-chart"><canvas id="sweepBatteryCo2Chart" role="img" aria-label="CO2e per site against the battery price"></canvas></div>
+    </section>
+    <section class="sweep-chart-card">
+      <h2>NPV per site</h2>
+      <div class="sweep-chart"><canvas id="sweepBatteryNpvChart" role="img" aria-label="NPV per site against the battery price"></canvas></div>
     </section>
   </main>
 

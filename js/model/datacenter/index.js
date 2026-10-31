@@ -22,7 +22,7 @@ export { calculateDatacenterScenario } from './scenario.js';
 export { calculateDatacenterBreakEven, getDatacenterFieldRange, runDatacenterTornado } from './tornado.js';
 export { compareArchitectures, getArchitectureStartState, optimizeDatacenterDesign } from './optimizer.js';
 export { FLOW_NODE_LABELS } from './impacts.js';
-export { optimizeForSite, SOLAR_SWEEP_PRICES_PER_W, solarSweepPoint } from './site-survey.js';
+export { BATTERY_SWEEP_PRICES_PER_KWH, optimizeForSite, priceSweepPoint, SOLAR_SWEEP_PRICES_PER_W } from './site-survey.js';
 export { buildStartingDesign } from './starting-design.js';
 export { buildCashFlowCsv, buildCashFlowTable } from '../cash-flow-table.js';
 export {

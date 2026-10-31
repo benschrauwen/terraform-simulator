@@ -1,14 +1,14 @@
 /*
- * Hidden price sweeps: solar is priced as panel + BOS and the battery as a 4-hour $/kWh (energy +
+ * Hidden price grid: solar is priced as panel + BOS and the battery as a 4-hour $/kWh (energy +
  * power), each with its split kept; each point is the best design across architectures at both
- * prices; both sweeps chart one matching line per site, and share points they have in common.
+ * prices; the grid covers every price pair for one site, drawn as heatmaps whose cells link back.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DATACENTER_SITES } from '../../js/data/datacenter/sites.js';
 import { BATTERY_SWEEP_PRICES_PER_KWH, DATACENTER_DEFAULT_STATE, priceSweepPoint, SOLAR_SWEEP_PRICES_PER_W } from '../../js/model/datacenter/index.js';
 import { batteryPricePerKWh, withBatteryPrice, withSolarPrice } from '../../js/model/datacenter/site-survey.js';
-import { buildSweepDatasets, describePoint, excessGWh, heldPriceOptions, listSweepPoints, pointKey } from '../../js/ui/datacenter/solar-sweep-page.js';
+import { describePoint, excessGWh, GRID_OPTIONS, listGridPoints, pointKey } from '../../js/ui/datacenter/solar-sweep-page.js';
 
 test('solar and battery prices are set as totals, keeping their splits', () => {
   const base = DATACENTER_DEFAULT_STATE;
@@ -42,40 +42,12 @@ test('cheaper solar or batteries never lower the best NPV; the point reports its
   assert.match(describePoint(cheapSolar), /solar/);
 });
 
-test('both sweeps cover every site at every price, with matching lines, and share common points', () => {
-  const solar = listSweepPoints('solar', 308);
-  const battery = listSweepPoints('battery', 0.69);
-  assert.equal(solar.length, DATACENTER_SITES.length * SOLAR_SWEEP_PRICES_PER_W.length);
-  assert.equal(battery.length, DATACENTER_SITES.length * BATTERY_SWEEP_PRICES_PER_KWH.length);
-  assert.equal(new Set(solar.map(pointKey)).size, solar.length);
-  // A solar point at $0.30/W with the battery at $300/kWh is the battery point at $300 with solar at $0.30.
-  const shared = listSweepPoints('battery', 0.3).map(pointKey);
-  assert.ok(listSweepPoints('solar', 300).map(pointKey).some(key => shared.includes(key)));
-  const results = Object.fromEntries([...solar, ...battery].map(point => [pointKey(point), { ...point, npv: 1, co2eT: 2 }]));
-  const solarSets = buildSweepDatasets(results, 'solar', 308, result => result.npv);
-  const batterySets = buildSweepDatasets(results, 'battery', 0.69, result => result.co2eT);
-  assert.equal(solarSets.length, DATACENTER_SITES.length);
-  assert.deepEqual(solarSets.map(set => set.borderColor), batterySets.map(set => set.borderColor));
-  solarSets.forEach(set => assert.deepEqual(set.data.map(point => point.x), [...SOLAR_SWEEP_PRICES_PER_W]));
-  batterySets.forEach(set => assert.deepEqual(set.data.map(point => point.x), [...BATTERY_SWEEP_PRICES_PER_KWH]));
-  // The held-price options start with the settings' own price.
-  const options = heldPriceOptions('solar', 307.75);
-  assert.equal(options[0].value, 307.75);
-  assert.match(options[0].label, /your setting/);
-});
-
-test('the 2D grid covers every solar x battery price for one site with the thorough search', async () => {
-  const { listGridPoints } = await import('../../js/ui/datacenter/solar-sweep-page.js');
+test('the grid covers every solar x battery price for one site, with the thorough search', () => {
   const grid = listGridPoints('phoenix-az');
   assert.equal(grid.length, SOLAR_SWEEP_PRICES_PER_W.length * BATTERY_SWEEP_PRICES_PER_KWH.length);
-  assert.ok(grid.every(point => point.id === 'phoenix-az' && point.search === 'thorough'));
-  // Grid points use the thorough search, so they are cached apart from the sweeps' default-search points.
-  const row = new Set(listSweepPoints('solar', 150).filter(point => point.id === 'phoenix-az').map(pointKey));
-  assert.equal(grid.filter(point => row.has(pointKey(point))).length, 0);
+  assert.ok(grid.every(point => point.id === 'phoenix-az' && point.kind === 'site'));
   assert.equal(new Set(grid.map(pointKey)).size, grid.length);
-  const { pointOptions } = await import('../../js/ui/datacenter/solar-sweep-page.js');
-  assert.deepEqual(pointOptions(grid[0]), { thorough: true });
-  assert.deepEqual(pointOptions(listSweepPoints('solar', 150)[0]), {});
+  assert.deepEqual(GRID_OPTIONS, { thorough: true });
 });
 
 test('the heatmap draws one cell per price pair, coloured on the scale, pending cells grey', async () => {

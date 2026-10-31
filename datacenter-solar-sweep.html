@@ -4,32 +4,32 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex, nofollow">
-  <title>Price sweeps — Abundance Stack datacenter simulator</title>
+  <title>Price grid — Abundance Stack datacenter simulator</title>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="datacenter.css">
-  <script src="node_modules/chart.js/dist/chart.umd.js"></script>
 </head>
 <body class="doc-page sites-page">
   <!--
-    Hidden analysis page (linked from nowhere): how the optimal designs respond to the prices of
-    installed solar and batteries. Open it with a simulator share hash to use those settings. Filled by
+    Hidden analysis page (linked from nowhere): how the optimal design of one site responds to the
+    prices of installed solar and batteries. Open it with a simulator share hash to use those settings. Filled by
     js/ui/datacenter/solar-sweep-page.js.
   -->
   <header class="doc-header sites-header">
     <a class="doc-back" href="datacenter.html">← Back to the datacenter simulator</a>
-    <h1>Solar and battery price sweeps</h1>
+    <h1>Solar × battery price grid</h1>
     <p>
-      At each price the best design across a grid-connected, a hybrid and an islanded architecture is
-      optimized for every site, as on the sites page: the highest NPV that meets the uptime target
-      without the backup diesel. The solar sweep moves installed solar (panel + BOS, their split kept)
-      with the battery held at a price you choose; the battery sweep moves the installed battery
-      ($/kWh of a 4-hour battery: energy + power, their split kept) with solar held. Each sweep shows
-      CO₂e, NPV and excess electricity: on-site generation the site can neither use nor store,
-      curtailed or (when export is on) sold to the grid. Every chart has one line per site, in the
-      same colours. Your settings put <span id="sweepCurrentPrices"></span>.
+      For one site, every installed solar price (panel + BOS, their split kept) against every installed
+      battery price ($/kWh of a 4-hour battery: energy + power, their split kept). Each cell is the best
+      design across a grid-connected, a hybrid and an islanded architecture: the highest NPV that meets the
+      uptime target without the backup diesel, found with the optimizer's wider search (with cheap solar
+      and batteries the best designs sit on a flat ridge). Excess electricity is on-site generation the
+      site can neither use nor store, curtailed or (when export is on) sold. Your settings put
+      <span id="sweepCurrentPrices"></span>.
     </p>
     <p class="sites-settings">Settings: <span id="sweepSettings"></span></p>
     <div class="sites-toolbar">
+      <label class="sites-sort-label" for="sweepGridSite">Site</label>
+      <select id="sweepGridSite" class="sites-sort"></select>
       <button type="button" class="sites-rerun" id="sweepRerun">Run again</button>
       <progress id="sweepProgress" class="sites-progress" max="1" value="0"></progress>
       <span class="sites-status" id="sweepStatus" aria-live="polite"></span>
@@ -37,48 +37,7 @@
   </header>
 
   <main class="doc-main sites-main">
-    <h2 class="sweep-section-title">Solar price sweep</h2>
-    <div class="sites-toolbar">
-      <label class="sites-sort-label" for="sweepSolarHeld">Battery held at</label>
-      <select id="sweepSolarHeld" class="sites-sort"></select>
-    </div>
-    <section class="sweep-chart-card">
-      <h2>CO₂e per site</h2>
-      <div class="sweep-chart"><canvas id="sweepSolarCo2Chart" role="img" aria-label="CO2e per site against the solar price"></canvas></div>
-    </section>
-    <section class="sweep-chart-card">
-      <h2>NPV per site</h2>
-      <div class="sweep-chart"><canvas id="sweepSolarNpvChart" role="img" aria-label="NPV per site against the solar price"></canvas></div>
-    </section>
-    <section class="sweep-chart-card">
-      <h2>Excess electricity per site <span class="chart-title-meta">curtailed + exported</span></h2>
-      <div class="sweep-chart"><canvas id="sweepSolarExcessChart" role="img" aria-label="Excess electricity per site against the solar price"></canvas></div>
-    </section>
-
-    <h2 class="sweep-section-title">Battery price sweep</h2>
-    <div class="sites-toolbar">
-      <label class="sites-sort-label" for="sweepBatteryHeld">Solar held at</label>
-      <select id="sweepBatteryHeld" class="sites-sort"></select>
-    </div>
-    <section class="sweep-chart-card">
-      <h2>CO₂e per site</h2>
-      <div class="sweep-chart"><canvas id="sweepBatteryCo2Chart" role="img" aria-label="CO2e per site against the battery price"></canvas></div>
-    </section>
-    <section class="sweep-chart-card">
-      <h2>NPV per site</h2>
-      <div class="sweep-chart"><canvas id="sweepBatteryNpvChart" role="img" aria-label="NPV per site against the battery price"></canvas></div>
-    </section>
-    <section class="sweep-chart-card">
-      <h2>Excess electricity per site <span class="chart-title-meta">curtailed + exported</span></h2>
-      <div class="sweep-chart"><canvas id="sweepBatteryExcessChart" role="img" aria-label="Excess electricity per site against the battery price"></canvas></div>
-    </section>
-
-    <h2 class="sweep-section-title">Solar × battery grid for one site</h2>
-    <div class="sites-toolbar">
-      <label class="sites-sort-label" for="sweepGridSite">Site</label>
-      <select id="sweepGridSite" class="sites-sort"></select>
-    </div>
-    <p class="sweep-note">Every solar price against every battery price (72 optimizations with the optimizer's wider search, ~10 s each, ~3 min per site: with cheap solar and batteries the best designs sit on a flat ridge where the default search can stall). Cheapest solar is on the left, cheapest battery at the bottom; brighter is better (lower CO₂e and excess, higher NPV). Hover a cell for its design; click it to open that site, those prices and that design in the simulator.</p>
+    <p class="sweep-note">72 optimizations per site (~10 s each, ~3 min with four workers). Cheapest solar is on the left, cheapest battery at the bottom; brighter is better (lower CO₂e and excess, higher NPV). Hover a cell for its design; click it to open that site, those prices and that design in the simulator.</p>
     <section class="sweep-chart-card">
       <h2>CO₂e (kt/yr)</h2>
       <div class="sweep-heatmap" id="sweepGridCo2"></div>

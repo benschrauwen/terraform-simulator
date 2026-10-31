@@ -30,6 +30,7 @@ const BLOCKS = [
   { key: 'nuclearPlant', name: 'Reactor plant', aspect: 1.3 },
   { key: 'building', name: 'Datacenter', aspect: 2 },
   { key: 'gasPlant', name: 'Gas plant', aspect: 1.5 },
+  { key: 'backupDiesel', name: 'Backup diesel', aspect: 2.5 },
   { key: 'coolingYard', name: 'Cooling yard', aspect: 2.5 },
   { key: 'battery', name: 'Battery yard', aspect: 2 },
   { key: 'substation', name: 'Substation', aspect: 1.2 },
@@ -51,6 +52,7 @@ function blockDetail(key, r) {
     case 'battery': return `${formatStorageMWh(r.dispatch.battery.capacityMWh)} / ${formatMW(r.dispatch.battery.powerMW)}`;
     case 'gasPlant':
     case 'nuclearPlant': return `${fixed(r.firm.units, 0)} × ${formatMW(r.firm.unitSizeMW)}`;
+    case 'backupDiesel': return r.backup ? `${fixed(r.backup.units, 0)} × ${formatMW(r.backup.unitSizeMW)}` : '';
     case 'utilitySwitchyard': return `${formatMW(r.grid.importCapMW)} ${r.grid.connection === 'flexible' ? 'flexible' : 'firm'} grid tie`;
     default: return '';
   }

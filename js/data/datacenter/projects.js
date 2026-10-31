@@ -11,7 +11,8 @@
      design: state fields the project fixes (itCapacityMW, gpuPlatform,
        coolingTechnology, architecture, gridConnection, gridImportCapMW,
        solarSizeMWdc, batteryCapacityMWh, batteryDurationHours, firmFamily,
-       gasType, firmSizingMode, firmUnits, gasUnitSizeMW); a field left out
+       gasType, firmSizingMode, firmUnits, gasUnitSizeMW, backupDieselMode,
+       backupDieselUnits); a field left out
        keeps the architecture's starting design (state/datacenter-
        projects.js applyDatacenterProject),
      facts: [{ label, value, source, date, basis? }] — every public number
@@ -20,8 +21,9 @@
        permit based estimates, 'inferred' when derived here (no source),
      assumptions: what the design fills in that the sources do not say }.
 
-   The simulator models one IT size, one gas type and one grid connection
-   for the whole horizon, so a project that mixes turbine models, or runs on
+   The simulator models one IT size, one prime generator type (plus a
+   standby diesel fleet) and one grid connection for the whole horizon, so
+   a project that mixes turbine models, or runs on
    bridge power until the utility arrives, is approximated; the assumptions
    say how. Sources gathered 2026-10-31; several pages (DCD, Business Wire,
    Oracle newsroom, Virginia DEQ) refused automated access and are marked
@@ -43,6 +45,7 @@ export const DATACENTER_PROJECTS = Object.freeze([
       itCapacityMW: 824, gpuPlatform: 'gb200-nvl72', coolingTechnology: 'dlc-dry-cooler',
       architecture: 'hybrid', gridConnection: 'firm', solarSizeMWdc: 0, batteryCapacityMWh: 0,
       firmFamily: 'gas', gasType: 'aero', gasUnitSizeMW: 36, firmSizingMode: 'manual', firmUnits: 10,
+      backupDieselMode: 'manual', backupDieselUnits: 62,
     },
     facts: [
       { label: 'Campus', value: '1.2 GW, 8 buildings, ~4 million sq ft (the 1.2 GW is the grid interconnection, not IT)', source: 'https://www.crusoe.ai/resources/newsroom/crusoe-expands-ai-data-center-campus-in-abilene-to-1-2-gigawatts', date: '2025-03-18' },
@@ -59,7 +62,7 @@ export const DATACENTER_PROJECTS = Object.freeze([
       'All 8 buildings at Epoch\'s ~103 MW IT each (824 MW); the simulator models the campus as one phase.',
       'The 360 MW gas plant as 10 aeroderivative turbines of 36 MW (LM2500XPRESS class); the simulator runs them whenever gas is cheaper than grid power, while Oracle says they are backup.',
       'Firm ERCOT service (not public whether the connection is flexible); the planned behind-the-meter solar and batteries have no public size and are left out.',
-      'The 62 backup diesel generators are not added (one generator type per design), so the turbines alone cover utility outages and the uptime falls short of a Tier III target.',
+      'The 62 backup diesel generators as 62 standby units of 3 MW (186 MW; the unit size is not public), running only when grid and turbines fall short. Turbines and diesels together (~546 MW) cover part of the ~950 MW peak: the permits so far are for part of the campus (41 more turbines and 18 generators are pending), so utility outages still leave hours short.',
     ],
   },
   {
@@ -281,6 +284,7 @@ export const DATACENTER_PROJECTS = Object.freeze([
       itCapacityMW: 96, coolingTechnology: 'air-chiller',
       architecture: 'islanded', solarSizeMWdc: 0, batteryCapacityMWh: 0,
       firmFamily: 'gas', gasType: 'bridge', gasUnitSizeMW: 16.5, firmSizingMode: 'manual', firmUnits: 8,
+      backupDieselMode: 'manual', backupDieselUnits: 40,
     },
     facts: [
       { label: 'Campus', value: '96 MW critical across 3 buildings', source: 'https://www.datacentermap.com/usa/virginia/sterling/vantage-va2-campus/specs', date: '2026', basis: 'search index' },
@@ -288,7 +292,7 @@ export const DATACENTER_PROJECTS = Object.freeze([
       { label: 'Permit', value: 'DEQ air permit 2023-09-15; turbines operating from Apr 2024', source: 'https://cleanview.co/reports/behind-the-meter-data-centers/full-report/vantage-va2', date: '2026', basis: 'search index' },
     ],
     assumptions: [
-      'Islanded on the 8 mobile turbines for the whole horizon (Vantage plans to move to the grid when it can).',
+      'Islanded on the 8 mobile turbines for the whole horizon (Vantage plans to move to the grid when it can); the 40 emergency diesel sets as 40 standby units of 3 MW (size not public).',
       'Not an AI campus: GPU rental revenue is your setting; switch the revenue to colocation to compare. Cooling not public (air assumed).',
     ],
   },

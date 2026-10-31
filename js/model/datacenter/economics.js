@@ -83,7 +83,7 @@ import { buildDatacenterFinancing } from './financing.js';
    paySegment ('build': procurement + construction; 'construction') of the
    schedule path a 'build' asset is paid over, annualFixedOm,
    replacementCost?, perpetual?, salvageAtCost?, parts? }. */
-export function buildDatacenterAssets(state, { solar, battery, firm, gridCapKW, substationKW, gridConnected }) {
+export function buildDatacenterAssets(state, { solar, battery, firm, backup = null, gridCapKW, substationKW, gridConnected }) {
   const itKW = state.itCapacityMW * 1000;
   const tech = COOLING_TECHNOLOGIES[state.coolingTechnology];
   const tierMultiplier = FACILITY_DEFAULTS.tierCapexMultiplier[state.facilityTier] ?? 1;
@@ -142,11 +142,21 @@ export function buildDatacenterAssets(state, { solar, battery, firm, gridCapKW, 
   if (firm.family === 'nuclear') {
     assets.push({ key: 'nuclear', label: firm.label, group: 'power', capex: state.nuclearCapexPerKW * firmKW, lifeYears: A.assetLifeYears.nuclear, annualFixedOm: state.nuclearFixedOmPerKWYear * firmKW, ...build(firm.typeData?.leadTimeKey) });
   }
+  // Backup diesel next to the prime supply (backup.js), at the diesel type's own costs.
+  if (backup && backup.units > 0) {
+    const dieselKW = backup.firm.capacityMW * 1000;
+    const diesel = backup.dieselState;
+    assets.push({
+      key: 'backupDiesel', label: `Backup diesel (${backup.units} × ${backup.firm.unitSizeMW} MW)`, group: 'power',
+      capex: diesel.gasCapexPerKW * dieselKW, lifeYears: A.assetLifeYears.gas, annualFixedOm: diesel.gasFixedOmPerKWYear * dieselKW,
+      ...build(`backup-${backup.firm.typeData?.leadTimeKey}`),
+    });
+  }
   return assets.map(asset => ({ timing: 'close', ...asset }));
 }
 
 /* Energy, water and generation opex per full year of operation. */
-export function buildOpexLines(state, { totals, monthlyPeakGridKW, water, firm }) {
+export function buildOpexLines(state, { totals, monthlyPeakGridKW, water, firm, backup = null }) {
   const gasMWh = totals.gasKWh / 1000;
   const contracted = firm.family === 'nuclear' && !firm.onSite;
   // Contract: take-or-pay on all available output. Own reactor: fuel and
@@ -165,6 +175,16 @@ export function buildOpexLines(state, { totals, monthlyPeakGridKW, water, firm }
     { key: 'carbonPrice', label: 'Carbon price', energy: true, annual: firm.family === 'gas' ? totals.fuelMMBtu * pricedCo2eKgPerMMBtu(state, firm.typeData) / 1000 * state.carbonPricePerTonne : 0 },
     { key: 'water', label: 'Water', energy: false, annual: water.withdrawnM3 * state.waterPricePerM3 },
   ];
+  // Backup diesel: its fuel, variable O&M and carbon price at the diesel type's values.
+  if (backup && backup.units > 0) {
+    const diesel = backup.dieselState;
+    const fuelMMBtu = totals.backupFuelMMBtu || 0;
+    lines.push(
+      { key: 'backupDieselFuel', label: 'Backup diesel fuel', energy: true, annual: fuelMMBtu * diesel.gasFuelPricePerMMBtu },
+      { key: 'backupDieselVariableOm', label: 'Backup diesel variable O&M', energy: true, annual: (totals.backupKWh || 0) / 1000 * diesel.gasVariableOmPerMWh },
+      { key: 'backupDieselCarbon', label: 'Carbon price (backup diesel)', energy: true, annual: fuelMMBtu * pricedCo2eKgPerMMBtu(state, backup.firm.typeData) / 1000 * state.carbonPricePerTonne },
+    );
+  }
   return lines;
 }
 

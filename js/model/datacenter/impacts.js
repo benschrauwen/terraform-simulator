@@ -31,7 +31,7 @@ import { LATENT_HEAT_KWH_PER_LITRE } from '../../data/datacenter/cooling.js';
 import { FACILITY_DEFAULTS } from '../../data/datacenter/facility.js';
 import { DATACENTER_MODEL_ASSUMPTIONS as A } from '../../data/datacenter/model-assumptions.js';
 import { METHANE_GWP } from '../../data/datacenter/carbon.js';
-import { getGensetFuel, GRID_DEFAULTS, ONSITE_SUBSTATION } from '../../data/datacenter/power.js';
+import { GAS_GENSET_TYPES, getGensetFuel, GRID_DEFAULTS, ONSITE_SUBSTATION } from '../../data/datacenter/power.js';
 import { HOURS_PER_YEAR } from './climate.js';
 
 export const FLOW_NODE_LABELS = Object.freeze({
@@ -39,6 +39,7 @@ export const FLOW_NODE_LABELS = Object.freeze({
   nuclear: 'Nuclear',
   grid: 'Grid',
   gas: 'Gas generation',
+  backupDiesel: 'Backup diesel',
   battery: 'Battery',
   facility: 'Facility',
   it: 'IT equipment',
@@ -87,19 +88,24 @@ export function splitFacilityEnergy({ itKW, cooling, tech, loadKW, unservedKW })
  * kgCo2ePerMWhServed, gridCo2KgPerMWh, gasCo2KgPerMMBtu (the fuel's
  * factor), fuel (label) }. `firm` gives the fuel (default natural gas).
  */
-export function calculateEmissions(state, totals, facilityServedKWh, firm = null) {
+export function calculateEmissions(state, totals, facilityServedKWh, firm = null, backup = null) {
   const gas = firm?.family === 'gas';
   const fuel = getGensetFuel(gas ? firm.typeData : null);
   const gridT = (totals.gridKWh / 1000) * state.gridCo2KgPerMWh / 1000;
   const gasT = totals.fuelMMBtu * fuel.co2KgPerMMBtu / 1000;
-  const totalT = gridT + gasT;
-  const methaneT = gas ? totals.fuelMMBtu * (firm.typeData?.methaneSlipKgPerMMBtu || 0) / 1000 : 0;
+  // Backup diesel (backup.js): its own fuel's CO2 and slip.
+  const backupFuelMMBtu = backup ? totals.backupFuelMMBtu || 0 : 0;
+  const backupT = backupFuelMMBtu * getGensetFuel(BACKUP_TYPE).co2KgPerMMBtu / 1000;
+  const totalT = gridT + gasT + backupT;
+  const methaneT = (gas ? totals.fuelMMBtu * (firm.typeData?.methaneSlipKgPerMMBtu || 0) / 1000 : 0)
+    + backupFuelMMBtu * (BACKUP_TYPE.methaneSlipKgPerMMBtu || 0) / 1000;
   const methaneGwp = METHANE_GWP[state.methaneGwpHorizon] ?? METHANE_GWP[100];
   const methaneCo2eT = methaneT * methaneGwp;
   const perServedMWh = tonnes => (facilityServedKWh > 0 ? (tonnes * 1000) / (facilityServedKWh / 1000) : 0);
   return {
     gridT,
     gasT,
+    backupT,
     totalT,
     methaneT,
     methaneGwp,
@@ -154,6 +160,7 @@ export function calculateHeat({ tech, energy, water, totals, firm, batteryLosses
   const facilityMWh = energy.facilityServedKWh / 1000;
   const latentMWh = Math.min(facilityMWh, water.cooling.evaporatedM3 * 1000 * LATENT_HEAT_KWH_PER_LITRE / 1000);
   const gasWasteMWh = Math.max(0, totals.fuelMMBtu * A.kWhPerMMBtu / 1000 - totals.gasKWh / 1000);
+  const backupWasteMWh = Math.max(0, (totals.backupFuelMMBtu || 0) * A.kWhPerMMBtu / 1000 - (totals.backupKWh || 0) / 1000);
   const efficiency = firm.family === 'nuclear' ? (A.nuclearThermalEfficiency[firm.type] || 0.33) : 1;
   const nuclearWasteMWh = firm.family === 'nuclear' && firm.onSite ? onSiteNuclearMWh(totals) * (1 / efficiency - 1) : 0;
   const nuclearLatentMWh = Math.min(nuclearWasteMWh, water.nuclear.evaporatedM3 * 1000 * LATENT_HEAT_KWH_PER_LITRE / 1000);
@@ -165,6 +172,7 @@ export function calculateHeat({ tech, energy, water, totals, firm, batteryLosses
     latentMWh,
     sensibleMWh: facilityMWh - latentMWh,
     gasWasteMWh,
+    backupWasteMWh,
     nuclearWasteMWh,
     nuclearLatentMWh,
     batteryLossesMWh: Math.max(0, batteryLossesKWh / 1000),
@@ -177,6 +185,9 @@ export function calculateHeat({ tech, energy, water, totals, firm, batteryLosses
 function flow(from, to, value, unit) {
   return { from, to, value, unit };
 }
+
+// The backup diesel fleet's type data (model/datacenter/backup.js).
+const BACKUP_TYPE = GAS_GENSET_TYPES['standby-diesel'];
 
 const positive = list => list.filter(entry => entry.value > 1e-9);
 
@@ -207,6 +218,7 @@ export function buildFlows({ totals, energy, water, heat, emissions, batteryLoss
       flow('grid', 'battery', mwh(totals.gridToBatteryKWh), MWh),
       flow('gas', 'facility', mwh(totals.gasKWh - totals.gasToBatteryKWh), MWh),
       flow('gas', 'battery', mwh(totals.gasToBatteryKWh), MWh),
+      flow('backupDiesel', 'facility', mwh(totals.backupKWh || 0), MWh),
       flow('battery', 'facility', mwh(totals.batteryDischargeKWh), MWh),
       flow('battery', 'batteryLosses', mwh(batteryLossesKWh), MWh),
       flow('facility', 'it', mwh(energy.itServedKWh), MWh),
@@ -220,6 +232,7 @@ export function buildFlows({ totals, energy, water, heat, emissions, batteryLoss
       flow('heatRejection', 'air', heat.sensibleMWh, MWh),
       flow('heatRejection', 'vapour', heat.latentMWh, MWh),
       flow('gas', 'air', heat.gasWasteMWh, MWh),
+      flow('backupDiesel', 'air', heat.backupWasteMWh || 0, MWh),
       flow('nuclear', 'air', heat.nuclearWasteMWh - heat.nuclearLatentMWh, MWh),
       flow('nuclear', 'vapour', heat.nuclearLatentMWh, MWh),
       flow('battery', 'air', heat.batteryLossesMWh, MWh),
@@ -238,6 +251,7 @@ export function buildFlows({ totals, energy, water, heat, emissions, batteryLoss
     co2: positive([
       flow('grid', 'atmosphere', emissions.gridT, 't/yr'),
       flow('gas', 'atmosphere', emissions.gasT, 't/yr'),
+      flow('backupDiesel', 'atmosphere', emissions.backupT || 0, 't/yr'),
       // Unburned methane as CO2e (GWP of the state's horizon).
       flow('methaneSlip', 'atmosphere', emissions.methaneCo2eT, 't/yr'),
     ]),
@@ -251,7 +265,7 @@ export function getSubstationKW(designPeakKW, totals) {
 }
 
 /** Plan areas in m2 (+ acres) of each block, and context notes. gridCapKW: 0 when islanded. */
-export function calculateFootprint(state, { tech, solar, firm, substationKW, gridCapKW = 0 }) {
+export function calculateFootprint(state, { tech, solar, firm, backup = null, substationKW, gridCapKW = 0 }) {
   const itMW = state.itCapacityMW;
   let firmM2 = 0;
   if (firm.family === 'gas') firmM2 = firm.typeData.footprintM2PerMW * firm.capacityMW;
@@ -263,6 +277,7 @@ export function calculateFootprint(state, { tech, solar, firm, substationKW, gri
     battery: state.batteryCapacityMWh * A.batteryFootprintM2PerMWh,
     gasPlant: firm.family === 'gas' ? firmM2 : 0,
     nuclearPlant: firm.family === 'nuclear' ? firmM2 : 0,
+    backupDiesel: backup ? BACKUP_TYPE.footprintM2PerMW * backup.firm.capacityMW : 0,
     substation: ONSITE_SUBSTATION.footprintM2PerMW * substationKW / 1000,
     utilitySwitchyard: GRID_DEFAULTS.switchyardFootprintM2PerMW * gridCapKW / 1000,
   };

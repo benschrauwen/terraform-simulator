@@ -93,7 +93,7 @@ export function renderDispatchLegend(dispatch) {
 /** "Gas 62% · Grid 30% · Solar 8%" from the year's shares of served load. */
 export function servedSharesText(r) {
   const shares = r.dispatch?.annual?.sharesOfServed || {};
-  const names = { solar: 'Solar', nuclear: 'Nuclear', grid: 'Grid', gas: r.firm?.fuel === 'Diesel' ? 'Diesel' : 'Gas', battery: 'Battery' };
+  const names = { solar: 'Solar', nuclear: 'Nuclear', grid: 'Grid', gas: r.firm?.fuel === 'Diesel' ? 'Diesel' : 'Gas', backup: 'Backup diesel', battery: 'Battery' };
   return Object.entries(shares)
     .filter(([, share]) => share > 0.0005)
     .sort((a, b) => b[1] - a[1])

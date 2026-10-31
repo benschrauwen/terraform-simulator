@@ -24,6 +24,7 @@ const ITEM_COLORS = {
   solarLand: '#8a6d2a',
   battery: '#2f8a74',
   gas: '#c56f3c',
+  backupDiesel: '#8f4a2a',
   nuclear: '#9b7fd1',
 };
 const FALLBACK_COLOR = '#8d99a8';

@@ -38,6 +38,11 @@ export function buildWarnings(result, { designPeakKW }) {
     || engine.nonEmergencyRunHours + engine.testingHoursPerYear > engine.maxHoursPerYear)) {
     add('standby-run-hours', `The standby diesel generators run ${fmt(engine.nonEmergencyRunHours)} h a year outside utility outages (${state.architecture === 'islanded' ? 'as the site\'s own supply' : 'grid curtailments or limits'}). EPA limits emergency engines to ${fmt(engine.maxHoursPerYear)} h/yr of testing (~${fmt(engine.testingHoursPerYear)} h assumed) and non-emergency use, at most ${fmt(engine.maxNonEmergencyHoursPerYear)} h of it non-emergency; beyond that they need Tier 4 non-emergency engines and a different air permit. Use gas generation, more battery or a firm connection instead.`);
   }
+  const backupEngine = result.backup?.emergencyEngine;
+  if (backupEngine && (backupEngine.nonEmergencyRunHours > backupEngine.maxNonEmergencyHoursPerYear
+    || backupEngine.nonEmergencyRunHours + backupEngine.testingHoursPerYear > backupEngine.maxHoursPerYear)) {
+    add('backup-run-hours', `The backup diesel runs ${fmt(backupEngine.nonEmergencyRunHours)} h a year outside utility outages, beyond the EPA emergency-engine limits (${fmt(backupEngine.maxNonEmergencyHoursPerYear)} h non-emergency, ${fmt(backupEngine.maxHoursPerYear)} h with ~${fmt(backupEngine.testingHoursPerYear)} h of testing). The prime supply is too small for the backup to stay a backup: add prime generation, battery or grid capacity.`);
+  }
   if (state.architecture === 'islanded' && dispatch.batteryRole === 'reserve' && firm.family !== 'gas') {
     add('battery-idle', 'With no solar, nuclear or gas on an islanded site, nothing can charge the battery.');
   }

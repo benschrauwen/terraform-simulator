@@ -186,9 +186,12 @@ function summarize(r, design = {}) {
     irr: e.irr,
     mirr: e.mirr,
     totalCapex: e.totalCapex,
-    uptimePercent: r.reliability.uptimePercent,
+    // Feasibility without the backup diesel (backup.js): it is resilience on
+    // top, not a way to meet the target with emergency engines.
+    uptimePercent: r.reliability.uptimeWithoutBackupPercent ?? r.reliability.uptimePercent,
+    uptimeWithBackupPercent: r.reliability.uptimePercent,
     targetPercent: r.reliability.targetPercent,
-    feasible: r.reliability.meetsTarget,
+    feasible: r.reliability.meetsTargetWithoutBackup ?? r.reliability.meetsTarget,
     firstPower: r.schedule.energizationDate,
     firstPowerMonths: r.schedule.energizationMonth,
     criticalPath: r.schedule.criticalPath?.label || '',

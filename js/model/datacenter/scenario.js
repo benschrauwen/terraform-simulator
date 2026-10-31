@@ -106,6 +106,7 @@ import { getGpuFleet, getItLoadFraction } from './gpu.js';
 import { buildSchedule } from './schedule.js';
 import { sizeGasForUptime } from './firm-sizing.js';
 import { buildFirmSupply, buildGridSupply, buildSolarSupply } from './supply.js';
+import { backupApplies, buildBackupSupply, getBackupDieselState, sizeBackupDiesel } from './backup.js';
 import { buildWarnings } from './warnings.js';
 
 const coolingCache = new Map();
@@ -221,6 +222,32 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
   } else {
     run = dispatchYear(dispatchInputs, { capture: true });
   }
+  // Backup diesel (backup.js): sized on the run without it, then dispatched
+  // last; the run without it is kept for meetsTargetWithoutBackup.
+  const runWithoutBackup = run;
+  let backup = null;
+  if (backupApplies(state)) {
+    const sizingBasis = state.backupDieselMode === 'auto'
+      ? sizeBackupDiesel(state, { unservedKW: run.unservedKW, loadKW, meanLoadKW, ambientC })
+      : null;
+    const units = sizingBasis ? sizingBasis.units : state.backupDieselUnits;
+    const backupFirm = buildBackupSupply(state, units, { meanLoadKW, ambientC });
+    if (units > 0) {
+      const backupInputs = { ...dispatchInputs, backup: { availableKW: backupFirm.availableKW, firm: backupFirm } };
+      if (fastMode) {
+        const key = JSON.stringify([...SUPPLY_KEYS.map(k => state[k]), firm.units, order, 'backup', units]);
+        run = dispatchCache.get(key);
+        if (!run) {
+          run = dispatchYear(backupInputs);
+          if (dispatchCache.size >= 16) dispatchCache.delete(dispatchCache.keys().next().value);
+          dispatchCache.set(key, run);
+        }
+      } else {
+        run = dispatchYear(backupInputs, { capture: true });
+      }
+    }
+    backup = { mode: state.backupDieselMode, units, firm: backupFirm, sizingBasis, dieselState: getBackupDieselState(state, units) };
+  }
   const { totals } = run;
 
   const capacityKWh = state.batteryCapacityMWh * 1000;
@@ -233,15 +260,15 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
   const batteryLossesKWh = totals.batteryChargeKWh - totals.batteryDischargeKWh - (run.battery.endSocKWh - run.battery.startSocKWh);
 
   const energy = splitFacilityEnergy({ itKW, cooling, tech, loadKW, unservedKW: run.unservedKW });
-  const emissions = calculateEmissions(state, totals, energy.facilityServedKWh, firm);
+  const emissions = calculateEmissions(state, totals, energy.facilityServedKWh, firm, backup);
   const water = calculateWater(state, { tech, energy, totals, firm });
   const heat = calculateHeat({ tech, energy, water, totals, firm, batteryLossesKWh });
   const flows = buildFlows({ totals, energy, water, heat, emissions, batteryLossesKWh, firm });
   const substationKW = getSubstationKW(designPeakKW, totals);
-  const footprint = calculateFootprint(state, { tech, solar, firm, substationKW, gridCapKW: grid.connected ? grid.capKW : 0 });
-  const schedule = buildSchedule(state, { firm, solarEnabled: solar.enabled });
+  const footprint = calculateFootprint(state, { tech, solar, firm, backup, substationKW, gridCapKW: grid.connected ? grid.capKW : 0 });
+  const schedule = buildSchedule(state, { firm, backup, solarEnabled: solar.enabled });
   const economics = calculateDatacenterEconomics(state, {
-    energy, totals, monthlyPeakGridKW: run.monthlyPeakGridKW, water, firm, solar,
+    energy, totals, monthlyPeakGridKW: run.monthlyPeakGridKW, water, firm, backup, solar,
     battery: batteryCost, gridCapKW: grid.capKW, substationKW, gridConnected: grid.connected, schedule,
   });
 
@@ -260,6 +287,10 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
       nuclearMWh: mwh(totals.nuclearKWh),
       gridMWh: mwh(totals.gridKWh),
       gasMWh: mwh(totals.gasKWh),
+      backupMWh: mwh(totals.backupKWh),
+      backupFuelMMBtu: totals.backupFuelMMBtu,
+      backupRunHours: totals.backupRunHours,
+      backupOutageRunHours: totals.backupOutageRunHours,
       batteryDischargeMWh: mwh(totals.batteryDischargeKWh),
       batteryChargeMWh: mwh(totals.batteryChargeKWh),
       exportMWh: mwh(totals.exportKWh),
@@ -284,6 +315,7 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
         nuclear: share(totals.nuclearToLoadKWh),
         grid: share(gridToLoadKWh),
         gas: share(gasToLoadKWh),
+        backup: share(totals.backupKWh),
         battery: share(totals.batteryDischargeKWh),
       },
     },
@@ -315,6 +347,7 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
       nuclearMW: toMW(s.nuclearKW),
       gridMW: toMW(s.gridKW),
       gasMW: toMW(s.gasKW),
+      backupMW: toMW(s.backupKW),
       batteryDischargeMW: toMW(s.batteryDischargeKW),
       batteryChargeMW: toMW(s.batteryChargeKW),
       exportMW: toMW(s.exportKW),
@@ -337,6 +370,9 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
     targetPercent: state.uptimeTargetPercent,
   };
   reliability.meetsTarget = reliability.uptimePercent >= state.uptimeTargetPercent - 1e-9;
+  // Without the backup diesel (the optimizer's feasibility, backup.js).
+  reliability.uptimeWithoutBackupPercent = (runWithoutBackup.totals.servedHours / HOURS_PER_YEAR) * 100;
+  reliability.meetsTargetWithoutBackup = reliability.uptimeWithoutBackupPercent >= state.uptimeTargetPercent - 1e-9;
 
   const result = {
     state,
@@ -418,6 +454,23 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
         extraUnits: autoGas ? state.firmExtraUnits : 0,
       } : null,
     },
+    backup: backup ? {
+      mode: backup.mode,
+      units: backup.units,
+      unitSizeMW: backup.firm.unitSizeMW,
+      capacityMW: backup.firm.capacityMW,
+      label: backup.firm.label,
+      sizingBasis: backup.sizingBasis,
+      energyMWh: mwh(totals.backupKWh),
+      fuelMMBtu: totals.backupFuelMMBtu,
+      runHours: totals.backupRunHours,
+      // EPA emergency engine: run hours in utility outages are emergency use (warnings.js).
+      emergencyEngine: backup.units > 0 ? {
+        ...backup.firm.typeData.emergencyEngine,
+        emergencyRunHours: totals.backupOutageRunHours,
+        nonEmergencyRunHours: totals.backupRunHours - totals.backupOutageRunHours,
+      } : null,
+    } : null,
     gpu: { ...getGpuFleet(state), gpuHoursSoldPerYear: economics.annualGpuHoursSold },
     dispatch,
     reliability,

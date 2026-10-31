@@ -196,4 +196,21 @@ const firmArchitectureNote = () => switchArchitectureNote(
   'hybrid', 'Switch to Hybrid to add on-site generation',
 );
 
-export const FIRM_BLOCK_RENDERERS = { gasInfo, nuclearInfo, firmSizing, firmCompare, solarArchitectureNote, firmArchitectureNote };
+/** Backup diesel next to the prime supply (model/datacenter/backup.js): size, use and EPA hours. */
+function backupInfo(state, r) {
+  const b = r?.backup;
+  if (!b) return '';
+  const basis = b.sizingBasis;
+  const rows = [
+    infoRow('Backup fleet', b.units > 0 ? `${fixed(b.units, 0)} × ${formatMW(b.unitSizeMW)} = ${formatMW(b.capacityMW)}` : 'None needed'),
+    basis ? infoRow('Covers', basis.hoursShort > 0 ? `${fixed(basis.hoursShort, 0)} h/yr short, up to ${formatMW(basis.requiredMW)}` : 'No hour is short without it') : '',
+    infoRow('Uptime without / with backup', `${fixed(r.reliability.uptimeWithoutBackupPercent, 3)}% / ${fixed(r.reliability.uptimePercent, 3)}%`),
+    b.units > 0 ? infoRow('Backup energy', `${formatMWh(b.energyMWh)}/yr over ${fixed(b.runHours, 0)} h`) : '',
+  ];
+  const engine = b.emergencyEngine;
+  if (engine) rows.push(infoRow('Run hours: outages / other', `${fixed(engine.emergencyRunHours, 0)} / ${fixed(engine.nonEmergencyRunHours, 0)} h (EPA: ${fixed(engine.maxNonEmergencyHoursPerYear, 0)} h non-emergency)`));
+  rows.push(note('Standby diesel at its own preset costs ($/kW, fuel, heat rate); it runs only for load the grid, prime generation and battery leave unserved, never charges the battery, and is not counted when the optimizer judges the uptime target.'));
+  return rows.join('');
+}
+
+export const FIRM_BLOCK_RENDERERS = { gasInfo, nuclearInfo, firmSizing, firmCompare, solarArchitectureNote, firmArchitectureNote, backupInfo };

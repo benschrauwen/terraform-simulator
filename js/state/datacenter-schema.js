@@ -247,6 +247,15 @@ export const DATACENTER_STATE_FIELDS = [
   // Gas 'auto': units on top of the target's and the spares, run when gas is
   // cheaper than the grid (the optimizer sets this; it keeps the spares).
   { key: 'firmExtraUnits', type: 'integer', min: 0, max: 200000, defaultValue: 0 },
+  // Backup diesel next to the prime supply (model/datacenter/backup.js):
+  // standby diesel units (power.js 'standby-diesel': unit size, costs, fuel,
+  // EPA limits) that run only for load the grid, prime generation and battery
+  // leave unserved. 'auto' = the fewest units covering every such hour, plus
+  // backupDieselSpareUnits; 'manual' = backupDieselUnits. Not offered when the
+  // prime generation is itself standby diesel.
+  { key: 'backupDieselMode', type: 'enum', options: ['none', 'auto', 'manual'], defaultValue: 'none' },
+  { key: 'backupDieselUnits', type: 'integer', min: 0, max: 200000, defaultValue: 0 },
+  { key: 'backupDieselSpareUnits', type: 'integer', min: 0, max: 20, defaultValue: 1 },
 
   { key: 'gasType', type: 'enum', getOptions: () => Object.keys(GAS_GENSET_TYPES), defaultValue: DEFAULT_GAS_GENSET_TYPE },
   { key: 'gasUnitSizeMW', type: 'number', min: 0.1, max: 1500, derive: state => gasType(state).unitSizeMW.default },

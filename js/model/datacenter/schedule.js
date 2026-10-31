@@ -40,7 +40,7 @@ function monthsUntilYear(ntp, year) {
 }
 
 /** The components the design includes: [{ id, label, leadTimes, required, earliestCodYear? }]. */
-export function listScheduleComponents(state, { firm, solarEnabled }) {
+export function listScheduleComponents(state, { firm, backup = null, solarEnabled }) {
   const tech = COOLING_TECHNOLOGIES[state.coolingTechnology];
   const islanded = state.architecture === 'islanded';
   const flexible = !islanded && state.gridConnection === 'flexible';
@@ -68,6 +68,12 @@ export function listScheduleComponents(state, { firm, solarEnabled }) {
       id: type.leadTimeKey, label: POWER_LEAD_TIMES[type.leadTimeKey].label, leadTimes: POWER_LEAD_TIMES[type.leadTimeKey],
       required: onSiteRequired, earliestCodYear: type.earliestCodYear,
     });
+  }
+  // Backup diesel (backup.js): built alongside, not on the required path
+  // (as standby generation is not for a firm connection).
+  if (backup && backup.units > 0) {
+    const key = backup.firm.typeData.leadTimeKey;
+    components.push({ id: `backup-${key}`, label: `Backup diesel (${POWER_LEAD_TIMES[key].label})`, leadTimes: POWER_LEAD_TIMES[key], required: false });
   }
   if (solarEnabled) components.push({ id: 'solar', label: POWER_LEAD_TIMES.solar.label, leadTimes: POWER_LEAD_TIMES.solar, required: islanded });
   if (state.batteryCapacityMWh > 0) components.push({ id: 'battery', label: POWER_LEAD_TIMES.battery.label, leadTimes: POWER_LEAD_TIMES.battery, required: onSiteRequired });

@@ -7,6 +7,7 @@ import { applyArchitectureDefaults, applyDatacenterPresetDefaults, DATACENTER_DE
 const DESIGN_FIELDS = [
   'itCapacityMW', 'gridConnection', 'solarSizeMWdc', 'batteryCapacityMWh', 'batteryDurationHours',
   'firmFamily', 'firmSizingMode', 'firmUnits', 'firmSpareUnits', 'firmExtraUnits', 'gasUnitSizeMW', 'gridImportCapMW',
+  'backupDieselMode', 'backupDieselUnits',
 ];
 // Selections whose preset values reset when the project changes them (in this order).
 const SELECTIONS = ['gpuPlatform', 'coolingTechnology'];

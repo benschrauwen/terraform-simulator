@@ -33,13 +33,18 @@
       unserved load). Below the floor it is topped up from spare grid or
       (islanded) spare gas in an hour it did not discharge. A reserve
       battery already discharges only to avoid unserved load.
-   5. Known curtailments. In the flexibleEventPrechargeHours before a
+   5. Backup diesel (inputs.backup, model/datacenter/backup.js): the very
+      last resource, for any deficit left after grid, gas and battery
+      (reserve floor included); it never charges the battery. Its fuel and
+      run hours are totalled apart (backupKWh, backupFuelMMBtu,
+      backupRunHours, backupOutageRunHours).
+   6. Known curtailments. In the flexibleEventPrechargeHours before a
       flexible-connection curtailment (announced ahead; utility outages are
       not), any battery is topped up to full from spare grid in an hour it
       did not discharge.
 
    Hourly energy balance (asserted in tests):
-     solar + nuclear + grid + gas + battery discharge + unserved
+     solar + nuclear + grid + gas + backup diesel + battery discharge + unserved
        = load + battery charge input + export + curtailed
    Battery primitives (power limit = capacity / duration, sqrt(round-trip)
    each way, 2%/month self-discharge, periodic start SoC) are the plant
@@ -56,7 +61,7 @@ import { HOURS_PER_YEAR, MONTH_OF_HOUR } from './climate.js';
 import { gasFuelMMBtu } from './supply.js';
 import { DATACENTER_MODEL_ASSUMPTIONS as A } from '../../data/datacenter/model-assumptions.js';
 
-const SERIES_KEYS = ['solarKW', 'nuclearKW', 'gridKW', 'gasKW', 'batteryDischargeKW', 'batteryChargeKW', 'exportKW', 'curtailedKW', 'socKWh'];
+const SERIES_KEYS = ['solarKW', 'nuclearKW', 'gridKW', 'gasKW', 'backupKW', 'batteryDischargeKW', 'batteryChargeKW', 'exportKW', 'curtailedKW', 'socKWh'];
 
 /** Deficit order for the architecture: 'grid-first' or 'firm-first'. */
 export function getDispatchOrder(state, firm) {
@@ -97,7 +102,8 @@ function runPass(inputs, startSocKWh, capture) {
   const mustTakeKW = firm.mustTake ? firm.availableKW : null;
   const gasKWAvailable = firm.family === 'gas' ? firm.availableKW : null;
   const gridAvailable = grid.connected ? grid.available : null;
-  // Hours with a curtailment starting within the precharge window (header, 5).
+  const backupKWAvailable = inputs.backup?.availableKW || null;
+  // Hours with a curtailment starting within the precharge window (header, 6).
   const precharge = new Uint8Array(HOURS_PER_YEAR);
   if (grid.curtailment && A.flexibleEventPrechargeHours > 0) {
     for (let h = 0; h < HOURS_PER_YEAR; h++) {
@@ -112,7 +118,7 @@ function runPass(inputs, startSocKWh, capture) {
     exportKWh: 0, curtailedKWh: 0, unservedKWh: 0, gridToBatteryKWh: 0, gasToBatteryKWh: 0,
     solarToLoadKWh: 0, solarToBatteryKWh: 0, solarExportKWh: 0, solarCurtailedKWh: 0,
     nuclearToLoadKWh: 0, nuclearToBatteryKWh: 0, nuclearExportKWh: 0, nuclearCurtailedKWh: 0,
-    fuelMMBtu: 0, gasRunHours: 0, gasOutageRunHours: 0, gridImportHours: 0, servedHours: 0, unservedHours: 0, maxUnservedKW: 0,
+    fuelMMBtu: 0, gasRunHours: 0, gasOutageRunHours: 0, backupKWh: 0, backupFuelMMBtu: 0, backupRunHours: 0, backupOutageRunHours: 0, gridImportHours: 0, servedHours: 0, unservedHours: 0, maxUnservedKW: 0,
     longestUnservedStreakHours: 0, peakGridKW: 0, peakExportKW: 0,
   };
   const monthlyPeakGridKW = new Array(12).fill(0);
@@ -134,6 +140,7 @@ function runPass(inputs, startSocKWh, capture) {
     let exportKW = 0;
     let curtailedKW = 0;
     let deficit = 0;
+    let backupKW = 0;
     const mustTake = solar + nuclear;
     const solarShare = mustTake > 0 ? solar / mustTake : 0;
 
@@ -184,11 +191,15 @@ function runPass(inputs, startSocKWh, capture) {
         takeReserve();
         takeGas();
       }
-      // Last resort: the reserve floor.
+      // Last resort: the reserve floor, then the backup diesel.
       if (floorKWh > 0 && deficit > 1e-9) {
         const delivered = dischargeAbove(battery, deficit, 0, dischargeKW);
         dischargeKW += delivered;
         deficit -= delivered;
+      }
+      if (backupKWAvailable && deficit > 1e-9) {
+        backupKW = Math.min(deficit, backupKWAvailable[h]);
+        deficit -= backupKW;
       }
       if (deficit < 1e-9) deficit = 0;
     }
@@ -229,6 +240,12 @@ function runPass(inputs, startSocKWh, capture) {
       t.gasRunHours += 1;
       if (grid.outage?.[h]) t.gasOutageRunHours += 1;
     }
+    if (backupKW > 0) {
+      t.backupKWh += backupKW;
+      t.backupFuelMMBtu += gasFuelMMBtu(backupKW, inputs.backup.firm, h);
+      t.backupRunHours += 1;
+      if (grid.outage?.[h]) t.backupOutageRunHours += 1;
+    }
     if (gridKW > 0) t.gridImportHours += 1;
     if (gridKW > monthlyPeakGridKW[MONTH_OF_HOUR[h]]) monthlyPeakGridKW[MONTH_OF_HOUR[h]] = gridKW;
     unservedKW[h] = deficit;
@@ -246,6 +263,7 @@ function runPass(inputs, startSocKWh, capture) {
       series.nuclearKW[h] = nuclear;
       series.gridKW[h] = gridKW;
       series.gasKW[h] = gasKW;
+      series.backupKW[h] = backupKW;
       series.batteryDischargeKW[h] = dischargeKW;
       series.batteryChargeKW[h] = chargeKW;
       series.exportKW[h] = exportKW;

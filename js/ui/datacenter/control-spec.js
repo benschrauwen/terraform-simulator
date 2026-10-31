@@ -36,6 +36,9 @@ import { DATACENTER_DEFAULT_STATE, DATACENTER_STATE_FIELDS } from '../../state/d
 import { getGpuPlatformOptions } from './gpu-platforms.js';
 import { fixed, formatMW, formatStorageMWh } from './format.js';
 
+// Backup diesel next to the prime supply, unless the prime is standby diesel itself (model/datacenter/backup.js).
+const backupDieselOffered = state => !(state.firmFamily === 'gas' && state.gasType === 'standby-diesel');
+
 const usd = (digits = 0) => value => `$${fixed(value, digits)}`;
 const per = (digits, unit) => value => `$${fixed(value, digits)}/${unit}`;
 const pct = (digits = 0, suffix = '%') => value => `${fixed(value, digits)}${suffix}`;
@@ -375,6 +378,32 @@ export const DATACENTER_SECTIONS = {
       ],
     },
     { block: 'firmCompare', visible: state => state.firmFamily !== 'none' },
+    {
+      type: 'select', id: 'backupDieselMode', label: 'Backup diesel (in parallel)', visible: backupDieselOffered,
+      options: () => [
+        { value: 'none', label: 'None' },
+        { value: 'auto', label: 'Auto (cover every hour still short + spare)' },
+        { value: 'manual', label: 'Manual unit count' },
+      ],
+      tooltip: 'Standby diesel generators next to the prime supply, as most real campuses have: they run only when the grid, prime generation and battery leave load unserved (EPA emergency engines). Auto sizes them for every such hour.',
+      // Switching to manual starts from the units auto sizing had chosen.
+      onChange: (app, value, previous) => {
+        const units = app.lastResults?.backup?.units;
+        if (value === 'manual' && previous === 'auto' && Number.isInteger(units)) {
+          app.state.backupDieselUnits = units;
+          app.syncStateToControls?.();
+        }
+      },
+    },
+    {
+      type: 'range', id: 'backupDieselUnits', label: 'Backup diesel units (3 MW)', min: 0, max: 400, step: 1, format: value => `${fixed(value, 0)} units`,
+      visible: state => backupDieselOffered(state) && state.backupDieselMode === 'manual',
+    },
+    {
+      type: 'range', id: 'backupDieselSpareUnits', label: 'Backup spare units (N+x)', min: 0, max: 6, step: 1, format: value => `N+${fixed(value, 0)}`,
+      visible: state => backupDieselOffered(state) && state.backupDieselMode === 'auto',
+    },
+    { block: 'backupInfo', visible: state => backupDieselOffered(state) && state.backupDieselMode !== 'none' },
   ],
 
   revenueControls: [

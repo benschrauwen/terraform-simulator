@@ -310,6 +310,7 @@ body.datacenter-app [hidden] {
 .pl-solarField rect { fill: #8a6d2a; }
 .pl-battery rect { fill: #2f8a74; }
 .pl-gasPlant rect { fill: #9a5530; }
+.pl-backupDiesel rect { fill: #6e3a22; }
 .pl-nuclearPlant rect { fill: #6b569a; }
 .pl-utilitySwitchyard rect { fill: #a8b2c0; }
 
@@ -412,6 +413,7 @@ body.datacenter-app [hidden] {
 .pl-solarField .pl-swatch { background: #8a6d2a; }
 .pl-battery .pl-swatch { background: #2f8a74; }
 .pl-gasPlant .pl-swatch { background: #9a5530; }
+.pl-backupDiesel .pl-swatch { background: #6e3a22; }
 .pl-nuclearPlant .pl-swatch { background: #6b569a; }
 .pl-utilitySwitchyard .pl-swatch { background: #a8b2c0; }
 
@@ -462,6 +464,7 @@ body.datacenter-app [hidden] {
 .pl-map-block.pl-solarField { fill: #8a6d2a; }
 .pl-map-block.pl-battery { fill: #2f8a74; }
 .pl-map-block.pl-gasPlant { fill: #9a5530; }
+.pl-map-block.pl-backupDiesel { fill: #6e3a22; }
 .pl-map-block.pl-nuclearPlant { fill: #6b569a; }
 .pl-map-block.pl-utilitySwitchyard { fill: #a8b2c0; }
 
@@ -557,6 +560,7 @@ body.datacenter-app [hidden] {
 .sk-band.sk-nuclear, .sk-nuclear rect { fill: #9b7fd1; }
 .sk-band.sk-grid, .sk-grid rect { fill: #5f7fb8; }
 .sk-band.sk-gas, .sk-gas rect, .sk-gasPlant rect { fill: #c56f3c; }
+.sk-band.sk-backupDiesel, .sk-backupDiesel rect { fill: #8f4a2a; }
 .sk-band.sk-battery, .sk-battery rect { fill: #4fb39b; }
 .sk-band.sk-facility, .sk-facility rect { fill: #78a6d8; }
 .sk-it rect { fill: #a5b4fc; }

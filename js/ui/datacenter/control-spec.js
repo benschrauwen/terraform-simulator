@@ -359,8 +359,8 @@ export const DATACENTER_SECTIONS = {
       details: 'Generator costs and performance',
       visible: state => state.firmFamily === 'gas',
       items: [
-        { type: 'range', id: 'gasCapexPerKW', label: 'Installed capex', min: 300, max: 9000, step: 25, format: per(0, 'kW') },
-        { type: 'range', id: 'gasHeatRateMMBtuPerMWh', label: 'Heat rate (HHV)', min: 5, max: 12.5, step: 0.05, format: value => `${fixed(value, 2)} MMBtu/MWh (${fixed(3.412 / value * 100, 0)}%)` },
+        { type: 'range', id: 'gasCapexPerKW', label: 'Installed capex (at the default unit size)', min: 300, max: 9000, step: 25, format: per(0, 'kW') },
+        { type: 'range', id: 'gasHeatRateMMBtuPerMWh', label: 'Heat rate, HHV (at the default unit size)', min: 5, max: 12.5, step: 0.05, format: value => `${fixed(value, 2)} MMBtu/MWh (${fixed(3.412 / value * 100, 0)}%)` },
         { type: 'range', id: 'gasFixedOmPerKWYear', label: 'Fixed O&M', min: 0, max: 100, step: 0.5, format: per(1, 'kW-yr') },
         { type: 'range', id: 'gasVariableOmPerMWh', label: 'Variable O&M', min: 0, max: 30, step: 0.1, format: per(1, 'MWh') },
         { type: 'range', id: 'gasAvailabilityPercent', label: 'Unit availability', min: 80, max: 100, step: 0.5, format: pct(1), tooltip: 'Each unit is out (1 - availability) x 8760 hours a year for maintenance, one after another.' },

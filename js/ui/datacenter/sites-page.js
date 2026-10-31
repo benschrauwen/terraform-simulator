@@ -15,7 +15,7 @@ import { parseDatacenterHash, serializeDatacenterHash } from './share.js';
 import { renderPendingSiteCard, renderSiteCard } from './site-card.js';
 
 // Bump the version when model or data changes alter results, so stale sessions rerun.
-const CACHE_PREFIX = 'abundance-sites:v2:';
+const CACHE_PREFIX = 'abundance-sites:v5:';
 const MAX_WORKERS = 4;
 
 export const SITE_SORTS = Object.freeze({

@@ -323,6 +323,11 @@ export const METHANE_SLIP = {
                            the grid (dispatch.js), EPA run-hour limits apply
                            (emergencyEngine)
      unitSizeMW            { min, default, max } per unit
+     sizeCurve             [{ unitSizeMW, heatRate, capex, fixedOm, variableOm }]:
+                           factors on the type's values (1 at the default
+                           size) for other unit sizes, interpolated in
+                           log(size) (supply.js gasSizeFactors): smaller units
+                           burn more fuel per MWh and cost more per kW
      heatRateMMBtuPerMWh   full-load HHV heat rate (default) and range
      partLoad              heat-rate penalty at 50% unit load (fraction) and
                            minimum stable load (% of unit rating)
@@ -392,6 +397,25 @@ export const GAS_GENSET_TYPES = {
     // https://www.wartsila.com/energy/learn-more/technology-comparison-engines-vs-aeros/derating-due-to-ambient-temperature
     ambientDerate: { referenceC: 25, outputPercentPerC: 0.18, heatRatePercentPerC: 0.18 },
     methaneSlipKgPerMMBtu: METHANE_SLIP.leanBurnEngineKgPerMMBtu,
+    // Unit size (supply.js gasSizeFactors; factors on the type's values, 1 at
+    // the 10 MW default): heat rate 8.30 / 7.8 / 7.65 MMBtu/MWh at 2.5 / 10 /
+    // 19 MW. OEM ISO ratios (Cat G3520H 45.3% LHV at 2.5 MW, search index;
+    // Jenbacher J620 45.8%, J624 47.0%, J920 48.7%; Wartsila 34SG 48.9%, 50SG
+    // 50.0%: 2.5 / 10 MW = 1.075, 19 / 10 MW = 0.975) trimmed toward plant data
+    // (EPA CHP catalog 3.3 vs 9.3 MW engines 1.03; AEO2020 5.6 MW-engine plant
+    // and NYISO 18 MW 18V50SG both ~8.29). Capex ~flat in the evidence (AEO2020
+    // $1,810/kW for 5.6 MW engines, NYISO $1,700/kW for 18 MW; EPA power-only
+    // costs confounded by engine speed): 2,100 / 2,000 / 1,900 (judgment).
+    // O&M x1.6 at 2.5 MW (EPA: high-speed 3.3 MW engine $16/MWh vs medium-speed
+    // 9.3 MW $8.5/MWh all-in), x0.9 at 19 MW (judgment). Retrieved 2026-10-31.
+    // https://www.epa.gov/sites/default/files/2015-07/documents/catalog_of_chp_technologies.pdf
+    // https://www.nyiso.com/documents/20142/40204141/2%202025-2029%20DCR%20-%20BMcD%20Presentation%2009262023%20ICAPWG.pdf/c82642e7-0705-d1dd-7316-f2406b539c3e
+    // https://www.jenbacher.com/en/gas-engines/type-6/j620
+    sizeCurve: [
+      { unitSizeMW: 2.5, heatRate: 8.30 / 7.8, capex: 2100 / 2000, fixedOm: 1.6, variableOm: 1.6 },
+      { unitSizeMW: 10, heatRate: 1, capex: 1, fixedOm: 1, variableOm: 1 },
+      { unitSizeMW: 19, heatRate: 7.65 / 7.8, capex: 1900 / 2000, fixedOm: 0.9, variableOm: 0.9 },
+    ],
     leadTimeKey: 'gas-recip',
     tradeOff: 'Highest simple-cycle efficiency at small unit size, 2-minute starts and flat part-load efficiency; modular N+1/N+2 is natural. More units to maintain and higher O&M per kW.',
   },
@@ -433,6 +457,18 @@ export const GAS_GENSET_TYPES = {
     // https://www.powermag.com/improving-warm-weather-performance-of-the-lm6000/
     ambientDerate: { referenceC: 15, outputPercentPerC: 0.86, heatRatePercentPerC: 0.2 },
     methaneSlipKgPerMMBtu: METHANE_SLIP.turbineKgPerMMBtu,
+    // Unit size (factors on the 50 MW default): heat rate 9.8 / 9.45 / 9.4 at
+    // 30 / 50 / 57 MW (NYISO SGT-A35 33 MW 9.51 vs LM6000PF+ 54 MW 9.23 HHV =
+    // 1.03; GE LM2500XPRESS 9.58-9.61 vs LM6000PF+ 9.23 = 1.04; 57 MW
+    // judgment); capex 2,530 / 2,275 / 2,215 (NYISO 33 MW $2,000 vs 54-72 MW
+    // $1,800/kW: $/kW ~ size^-0.21, extrapolated to 57 MW); O&M flat (no
+    // evidence within the range). Retrieved 2026-10-31.
+    // https://www.gevernova.com/gas-power/products/gas-turbines/lm6000
+    sizeCurve: [
+      { unitSizeMW: 30, heatRate: 9.8 / 9.45, capex: 2530 / 2275 },
+      { unitSizeMW: 50, heatRate: 1, capex: 1 },
+      { unitSizeMW: 57, heatRate: 9.4 / 9.45, capex: 2215 / 2275 },
+    ],
     leadTimeKey: 'gas-aero',
     tradeOff: 'Fast 5-minute starts and steep ramps for AI load swings, compact and lighter; moderate efficiency and a tight 2026 supply chain.',
   },
@@ -473,6 +509,20 @@ export const GAS_GENSET_TYPES = {
     // https://assets.new.siemens.com/siemens/assets/api/uuid:daeb2935-2ea5-4400-a5dc-653de64ca7d3/gas-turbine-sgt-800.pdf
     ambientDerate: { referenceC: 15, outputPercentPerC: 0.7, heatRatePercentPerC: 0.2 },
     methaneSlipKgPerMMBtu: METHANE_SLIP.turbineKgPerMMBtu,
+    // Unit size (factors on the 60 MW default): heat rate 10.75 / 9.5 / 8.8 at
+    // 16.5 / 60 / 430 MW (Solar Titan 130 10,160 kJ/kWh LHV, search index, vs
+    // SGT-800 = 1.13; GE 7HA.03 / NYISO 430-453 MW H/J class 8.61-8.77 HHV =
+    // 0.93; heat rate follows the turbine class more than size: E/F units of
+    // 90-260 MW run 9.8-11.2); capex 1,900 / 1,400 / 1,160 (EPA CHP turbines
+    // 10-45 MW: $/kW ~ size^-0.25; 430 MW = AEO2026 H-class $1,158, above);
+    // fixed O&M 13.2 / 12 / 7.18 and variable 5.0 / 4.5 / 4.17 (430 MW: AEO2026
+    // H-class; 16.5 MW x1.1, judgment). Retrieved 2026-10-31.
+    // https://www.gevernova.com/gas-power/products/gas-turbines/7ha
+    sizeCurve: [
+      { unitSizeMW: 16.5, heatRate: 10.75 / 9.5, capex: 1900 / 1400, fixedOm: 13.2 / 12, variableOm: 5.0 / 4.5 },
+      { unitSizeMW: 60, heatRate: 1, capex: 1, fixedOm: 1, variableOm: 1 },
+      { unitSizeMW: 430, heatRate: 8.8 / 9.5, capex: 1160 / 1400, fixedOm: 7.18 / 12, variableOm: 4.17 / 4.5 },
+    ],
     leadTimeKey: 'gas-industrial-sc',
     tradeOff: 'Lowest $/kW of the gas options and fine for backup that runs few hours; frame units are large and lumpy and wait ~5 years for delivery.',
   },
@@ -513,6 +563,20 @@ export const GAS_GENSET_TYPES = {
     // https://www.cpuc.ca.gov/-/media/cpuc-website/divisions/energy-division/documents/resource-adequacy-homepage/r21-10-002/4_ed-proposal-for-phase-3-derates.pdf
     ambientDerate: { referenceC: 15, outputPercentPerC: 0.5, heatRatePercentPerC: 0 },
     methaneSlipKgPerMMBtu: METHANE_SLIP.turbineKgPerMMBtu,
+    // Plant size (factors on the 627 MW 1x1 default): heat rate 6.85 / 6.3 /
+    // 6.3 at 250 / 627 / 1,227 MW (a 250 MW plant is an F-class 1x1 or 6F 2x1:
+    // GE 6F.03 2x1 6.59, 7F.04 1x1 6.33 vs 7HA.03 1x1 5.92 HHV, 1.07-1.11;
+    // 1x1 vs 2x1 about flat: GE -0.2%, AEO2025 +0.6%); capex 2,550 / 2,200 /
+    // 2,050 (2x1 vs 1x1: AEO2025 x0.94, AEO2020 x0.88; 250 MW x1.16 from
+    // slopes of -0.09 to -0.22, judgment); fixed O&M 20.3 / 16.23 / 13.0
+    // (AEO 2x1 vs 1x1 x0.78-0.87; 250 MW x1.25 judgment). Retrieved 2026-10-31.
+    // https://www.eia.gov/analysis/studies/powerplants/capitalcost/pdf/capital_cost_AEO2025.pdf
+    // https://gasturbineworld.com/?p=6191
+    sizeCurve: [
+      { unitSizeMW: 250, heatRate: 6.85 / 6.3, capex: 2550 / 2200, fixedOm: 20.3 / 16.23 },
+      { unitSizeMW: 627, heatRate: 1, capex: 1, fixedOm: 1 },
+      { unitSizeMW: 1227, heatRate: 1, capex: 2050 / 2200, fixedOm: 13.0 / 16.23 },
+    ],
     leadTimeKey: 'gas-ccgt',
     tradeOff: 'Best fuel efficiency and lowest running cost; slow starts, 600+ MW blocks, water-hungry with wet cooling, and the longest turbine wait.',
   },
@@ -586,6 +650,15 @@ export const GAS_GENSET_TYPES = {
     // https://www.globalpwr.com/wp-content/uploads/cut-sheets/gps-titan130-spec-sheet.pdf
     ambientDerate: { referenceC: 15, outputPercentPerC: 0.8, heatRatePercentPerC: 0.36 },
     methaneSlipKgPerMMBtu: METHANE_SLIP.turbineKgPerMMBtu,
+    // Unit size (factors on the 16.5 MW Titan 130 default): at 31 MW heat rate
+    // x0.93 (FT8 MOBILEPAC 30.9 MW 10.30 vs Titan 130 10.67 = 0.965; GE TM2500
+    // DLE 34.4 MW 9.48 = 0.89; their mean) and capex x0.88 (the aeroderivative
+    // slope -0.21; no bridge or rental prices found, judgment). Retrieved 2026-10-31.
+    // https://www.gevernova.com/gas-power/products/gas-turbines/lm2500
+    sizeCurve: [
+      { unitSizeMW: 16.5, heatRate: 1, capex: 1 },
+      { unitSizeMW: 31, heatRate: 0.93, capex: 0.88 },
+    ],
     leadTimeKey: 'gas-bridge',
     tradeOff: 'Fastest path to on-site power (months) and easy to remove later; least efficient, highest emissions per MWh, and contested air permits.',
   },

@@ -1372,12 +1372,6 @@ select.sites-sort {
   border-radius: var(--radius-lg);
 }
 
-.sweep-section-title {
-  margin: 28px 0 0;
-  padding: 0;
-  border: 0;
-  font-size: 18px;
-}
 
 .sweep-chart-card h2 {
   margin: 0 0 8px;
@@ -1386,16 +1380,7 @@ select.sites-sort {
   font-size: 15px;
 }
 
-.sweep-chart {
-  position: relative;
-  height: 460px;
-}
 
-@media (max-width: 700px) {
-  .sweep-chart {
-    height: 520px;
-  }
-}
 
 /* 2D price grid heatmaps (sweep-heatmap.js) */
 .sweep-note {
@@ -1430,4 +1415,15 @@ select.sites-sort {
 .hm-title {
   font-size: 11px;
   fill: var(--text-secondary);
+}
+
+.hm-link {
+  cursor: pointer;
+  outline: none;
+}
+
+.hm-link:hover rect,
+.hm-link:focus-visible rect {
+  stroke: #eef2f6;
+  stroke-width: 2;
 }

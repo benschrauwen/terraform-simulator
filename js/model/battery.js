@@ -98,22 +98,28 @@ export function chargeBattery(battery, surplusKWh) {
    must return `{ endSocKWh }`. With no storage, or no energy ever reaching
    the battery, the periodic state is empty: start there instead of
    discharging a phantom initial charge. */
-export function settleAnnualStartSoc(capacityKWh, runPreview, { hasInput = true } = {}) {
-  if (!(capacityKWh > 0) || !hasInput) return { startSocKWh: 0, settleIterations: 0 };
-  let startSocKWh = capacityKWh * MODEL_ASSUMPTIONS.batteryStartSocFraction;
+export function settleAnnualStartSoc(capacityKWh, runPreview, { hasInput = true, startSocKWh: hintKWh = null } = {}) {
+  if (!(capacityKWh > 0) || !hasInput) return { startSocKWh: 0, settleIterations: 0, settledPreview: null };
+  // Optional warm start (the datacenter optimizer passes a neighbouring
+  // design's settled state of charge); the default start otherwise.
+  let startSocKWh = Number.isFinite(hintKWh) ? Math.min(capacityKWh, Math.max(0, hintKWh)) : capacityKWh * MODEL_ASSUMPTIONS.batteryStartSocFraction;
   let settleIterations = 0;
   const settleTolKWh = Math.max(1e-3, capacityKWh * 1e-6);
+  // The last preview when it already started within tolerance of its end:
+  // a periodic year a caller may use instead of running it again.
+  let settledPreview = null;
 
   for (; settleIterations < 24; settleIterations++) {
     const preview = runPreview(startSocKWh);
     const settleDeltaKWh = Math.abs(preview.endSocKWh - startSocKWh);
+    if (settleDeltaKWh <= settleTolKWh) settledPreview = preview;
     startSocKWh = preview.endSocKWh;
     if (settleDeltaKWh <= settleTolKWh) {
       break;
     }
   }
 
-  return { startSocKWh, settleIterations: settleIterations + 1 };
+  return { startSocKWh, settleIterations: settleIterations + 1, settledPreview };
 }
 
 /* Equivalent full cycles per Earth year from a year-1 dispatch: energy

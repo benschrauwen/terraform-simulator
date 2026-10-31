@@ -302,6 +302,30 @@ const EMPTY_FIRM = Object.freeze({
  * onSite (false for an existing plant under contract), sizing, ambient
  * (gas: hourly output / heat-rate factors at ambientC, gasAmbientFactors, or null) }.
  */
+/**
+ * Unit-size factors of a gas type (power.js sizeCurve): { heatRate, capex,
+ * fixedOm, variableOm }, each relative to the type's default unit size
+ * (1 there), interpolated linearly in log(unit size) between the curve's
+ * points and held flat beyond them; all 1 for a type without a curve. The
+ * state's heat rate, $/kW and O&M are the values at the default size.
+ */
+export function gasSizeFactors(typeData, unitSizeMW) {
+  const curve = typeData?.sizeCurve;
+  const ones = { heatRate: 1, capex: 1, fixedOm: 1, variableOm: 1 };
+  if (!curve?.length || !(unitSizeMW > 0)) return ones;
+  const points = [...curve].sort((a, b) => a.unitSizeMW - b.unitSizeMW);
+  const factor = key => {
+    const value = point => point[key] ?? 1;
+    if (unitSizeMW <= points[0].unitSizeMW) return value(points[0]);
+    if (unitSizeMW >= points[points.length - 1].unitSizeMW) return value(points[points.length - 1]);
+    const i = points.findIndex(point => point.unitSizeMW >= unitSizeMW);
+    const [a, b] = [points[i - 1], points[i]];
+    const t = (Math.log(unitSizeMW) - Math.log(a.unitSizeMW)) / (Math.log(b.unitSizeMW) - Math.log(a.unitSizeMW));
+    return value(a) + (value(b) - value(a)) * t;
+  };
+  return { heatRate: factor('heatRate'), capex: factor('capex'), fixedOm: factor('fixedOm'), variableOm: factor('variableOm') };
+}
+
 export function buildFirmSupply(state, { meanLoadKW, autoBaseUnits = 0, replacedSpares = 0, ambientC = null }) {
   const family = state.firmFamily;
   if (family === 'gas') {
@@ -320,13 +344,17 @@ export function buildFirmSupply(state, { meanLoadKW, autoBaseUnits = 0, replaced
     const outageHoursPerUnit = (1 - availabilityFraction) * HOURS_PER_YEAR;
     const counts = buildOutageCounts(units, outageHoursPerUnit, A.gasOutageStartDayOfYear * 24);
     const ambient = gasAmbientFactors(typeData, ambientC);
+    // Smaller units of a type burn more fuel per MWh and cost more per kW (power.js sizeCurve).
+    const size = gasSizeFactors(typeData, unitSizeMW);
+    const heatRate = state.gasHeatRateMMBtuPerMWh * size.heatRate;
+    const variableOmPerMWh = state.gasVariableOmPerMWh * size.variableOm;
     const availableKW = new Float64Array(HOURS_PER_YEAR);
     for (let h = 0; h < HOURS_PER_YEAR; h++) availableKW[h] = Math.max(0, units - counts[h]) * unitSizeMW * 1000 * (ambient ? ambient.output[h] : 1);
     return {
       family, type: state.gasType, ambient, typeData, label: typeData.label, units, unitSizeMW, capacityMW: units * unitSizeMW,
       mustTake: false, availableKW, outageHoursPerUnit, availabilityFraction,
-      heatRate: state.gasHeatRateMMBtuPerMWh, partLoad: typeData.partLoad,
-      marginalCostPerMWh: state.gasHeatRateMMBtuPerMWh * (state.gasFuelPricePerMMBtu + carbonPerMMBtu) + state.gasVariableOmPerMWh,
+      heatRate, partLoad: typeData.partLoad, sizeFactors: size, variableOmPerMWh,
+      marginalCostPerMWh: heatRate * (state.gasFuelPricePerMMBtu + carbonPerMMBtu) + variableOmPerMWh,
       onSite: true, sizing: state.firmSizingMode, sparesReplacedByBattery,
     };
   }

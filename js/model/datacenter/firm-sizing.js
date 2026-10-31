@@ -55,6 +55,9 @@ export function allowedUnservedHours(targetPercent) {
   return Math.max(0, Math.min(HOURS_PER_YEAR, h));
 }
 
+// The last bisected count: the next sizing (a neighbouring design) starts there.
+let lastBisectionUnits = null;
+
 // Above this many units the count is reported unreachable (schema firmUnits
 // max): enough for the largest IT load (20 GW) on the smallest units (0.325
 // MW fuel cells, ~90,000 at a ~1.4 peak PUE).
@@ -143,7 +146,8 @@ const sizingCache = new Map();
  * unit available), maxShortfallMW, hoursCoveredByFirm, unservedHoursWithFirm }.
  */
 export function sizeGasForUptime(state, context) {
-  const { loadKW, solar, grid, firm, order, exportAllowed, key } = context;
+  // stats: false skips the bisection's display statistics (a fast-mode search).
+  const { loadKW, solar, grid, firm, order, exportAllowed, key, stats = true } = context;
   if (key && sizingCache.has(key)) return sizingCache.get(key);
   const H = allowedUnservedHours(state.uptimeTargetPercent);
   const inputs = { loadKW, solarKW: solar.hourlyKW, solar, grid, batteryState: state, order, exportAllowed };
@@ -161,43 +165,72 @@ export function sizeGasForUptime(state, context) {
     const sized = residualSizing(run, loadKW, firm, H);
     result = { method: 'residual', minUnits: sized.units, ...sized };
   } else {
-    // Upper bound: the residual count without the battery.
+    // Upper bound (when needed): the residual count without the battery.
     const noBattery = { ...state, batteryCapacityMWh: 0 };
-    const bound = residualSizing(dispatchYear({ ...inputs, batteryState: noBattery, firm: zero }, {}), loadKW, firm, H);
+    const upperBound = () => residualSizing(dispatchYear({ ...inputs, batteryState: noBattery, firm: zero }, {}), loadKW, firm, H).units;
     const runs = new Map();
+    // Each run warm-starts the battery from the nearest count already run (dispatch.js).
     const runWith = units => {
-      if (!runs.has(units)) runs.set(units, dispatchYear({ ...inputs, firm: withUnits(firm, units) }));
+      if (!runs.has(units)) {
+        let nearest = null;
+        runs.forEach((run, n) => { if (nearest === null || Math.abs(n - units) < Math.abs(nearest - units)) nearest = n; });
+        const startSocHintKWh = nearest === null ? null : runs.get(nearest).battery.startSocKWh;
+        runs.set(units, dispatchYear({ ...inputs, firm: withUnits(firm, units) }, { startSocHintKWh }));
+      }
       return runs.get(units);
     };
-    const zeroRun = runWith(0);
     const feasible = units => runWith(units).totals.unservedHours <= H;
+    // Bracket around the last answer first (neighbouring designs in an
+    // optimization need about the same count; usually two runs settle it),
+    // otherwise from zero and the no-battery bound; then bisect. The same
+    // minimum either way: feasibility does not fall when a unit is added.
     let lo = -1;
-    let hi = bound.units;
-    if (zeroRun.totals.unservedHours <= H) hi = 0;
-    else lo = 0;
+    let hi = null;
+    const guess = lastBisectionUnits;
+    if (guess !== null && guess >= 0) {
+      if (feasible(guess)) {
+        hi = guess;
+        if (guess === 0 || !feasible(guess - 1)) lo = guess - 1;
+      } else {
+        lo = guess;
+      }
+    }
+    if (lo < 0 && hi !== 0) {
+      if (feasible(0)) hi = 0;
+      else lo = Math.max(lo, 0);
+    }
+    if (hi === null) hi = upperBound();
     while (hi - lo > 1) {
       const mid = Math.floor((lo + hi) / 2);
       if (feasible(mid)) hi = mid;
       else lo = mid;
     }
+    lastBisectionUnits = hi;
+    // The shortfall without firm generation (display statistics; skipped in a search).
     const needs = [];
-    for (let h = 0; h < HOURS_PER_YEAR; h++) {
-      if (zeroRun.unservedKW[h] > A.servedTolerance * loadKW[h]) needs.push(zeroRun.unservedKW[h]);
+    if (stats) {
+      const zeroRun = runWith(0);
+      for (let h = 0; h < HOURS_PER_YEAR; h++) {
+        if (zeroRun.unservedKW[h] > A.servedTolerance * loadKW[h]) needs.push(zeroRun.unservedKW[h]);
+      }
+      needs.sort((a, b) => b - a);
     }
-    needs.sort((a, b) => b - a);
     const finalRun = runWith(hi);
     result = {
       method: 'bisection',
       minUnits: hi,
+      startSocKWh: finalRun.battery.startSocKWh,
       reachable: finalRun.totals.unservedHours <= H,
       requiredKW: hi * firm.unitSizeMW * 1000,
       maxShortfallKW: needs.length ? needs[0] : 0,
-      hoursShortWithoutFirm: needs.length,
+      hoursShortWithoutFirm: stats ? needs.length : null,
       unservedHoursWithFirm: finalRun.totals.unservedHours,
     };
   }
   const out = {
     method: result.method,
+    // The settled battery state at the found count (a warm start for the scenario's run).
+    startSocKWh: result.startSocKWh ?? null,
     minUnits: result.minUnits,
     reachable: result.reachable,
     allowedUnservedHours: H,
@@ -205,7 +238,7 @@ export function sizeGasForUptime(state, context) {
     requiredMW: result.requiredKW / 1000,
     maxShortfallMW: result.maxShortfallKW / 1000,
     unservedHoursWithFirm: result.unservedHoursWithFirm,
-    hoursCoveredByFirm: Math.max(0, result.hoursShortWithoutFirm - result.unservedHoursWithFirm),
+    hoursCoveredByFirm: result.hoursShortWithoutFirm === null ? null : Math.max(0, result.hoursShortWithoutFirm - result.unservedHoursWithFirm),
   };
   if (key) {
     if (sizingCache.size >= 32) sizingCache.delete(sizingCache.keys().next().value);

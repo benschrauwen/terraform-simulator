@@ -130,6 +130,8 @@ const SUPPLY_KEYS = [
   'batteryReplacesSpares', 'batteryReserveHours', 'firmSpareUnits',
 ];
 const dispatchCache = new Map();
+// Last settled battery start state per supply design (any unit count): warm starts.
+const socHints = new Map();
 
 const toMW = series => Float64Array.from(series, value => value / 1000);
 
@@ -202,26 +204,32 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
   const reserve = getBatteryReserve(state);
   let sizing = null;
   if (firm.family === 'gas' && (autoGas || !fastMode)) {
-    const key = JSON.stringify([...SUPPLY_KEYS.map(k => state[k]), order]);
-    sizing = sizeGasForUptime(reserve.sizingState, { loadKW, solar, grid, firm, order, exportAllowed, key });
+    const key = JSON.stringify([...SUPPLY_KEYS.map(k => state[k]), order, fastMode]);
+    sizing = sizeGasForUptime(reserve.sizingState, { loadKW, solar, grid, firm, order, exportAllowed, key, stats: !fastMode });
     if (autoGas) firm = buildFirmSupply(state, { meanLoadKW, autoBaseUnits: sizing.minUnits, replacedSpares: reserve.units, ambientC });
   }
   const reserveFloorKWh = firm.sparesReplacedByBattery > 0 ? reserve.floorKWh * firm.sparesReplacedByBattery / reserve.units : 0;
   const dispatchInputs = {
     loadKW, solarKW: solar.hourlyKW, solar, firm, grid, batteryState: state, order, exportAllowed, reserveFloorKWh,
   };
+  // Warm start for the battery's settle: the sizing's settled state, else the
+  // last run of this supply design at another unit count (dispatch.js).
+  const designKey = JSON.stringify([...SUPPLY_KEYS.map(k => state[k]), order]);
+  const startSocHintKWh = sizing?.startSocKWh ?? socHints.get(designKey) ?? null;
   let run;
   if (fastMode) {
     const key = JSON.stringify([...SUPPLY_KEYS.map(k => state[k]), firm.units, order]);
     run = dispatchCache.get(key);
     if (!run) {
-      run = dispatchYear(dispatchInputs);
+      run = dispatchYear(dispatchInputs, { startSocHintKWh });
       if (dispatchCache.size >= 16) dispatchCache.delete(dispatchCache.keys().next().value);
       dispatchCache.set(key, run);
     }
   } else {
-    run = dispatchYear(dispatchInputs, { capture: true });
+    run = dispatchYear(dispatchInputs, { capture: true, startSocHintKWh });
   }
+  if (socHints.size >= 64) socHints.delete(socHints.keys().next().value);
+  socHints.set(designKey, run.battery.startSocKWh);
   // Backup diesel (backup.js): sized on the run without it, then dispatched
   // last; the run without it is kept for meetsTargetWithoutBackup.
   const runWithoutBackup = run;
@@ -238,12 +246,12 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
         const key = JSON.stringify([...SUPPLY_KEYS.map(k => state[k]), firm.units, order, 'backup', units]);
         run = dispatchCache.get(key);
         if (!run) {
-          run = dispatchYear(backupInputs);
+          run = dispatchYear(backupInputs, { startSocHintKWh: runWithoutBackup.battery.startSocKWh });
           if (dispatchCache.size >= 16) dispatchCache.delete(dispatchCache.keys().next().value);
           dispatchCache.set(key, run);
         }
       } else {
-        run = dispatchYear(backupInputs, { capture: true });
+        run = dispatchYear(backupInputs, { capture: true, startSocHintKWh: runWithoutBackup.battery.startSocKWh });
       }
     }
     backup = { mode: state.backupDieselMode, units, firm: backupFirm, sizingBasis, dieselState: getBackupDieselState(state, units) };
@@ -449,7 +457,7 @@ export function calculateDatacenterScenario(rawState, { fastMode = false } = {})
       } : null,
       requiredMW: sizing ? sizing.requiredMW : null,
       sizingBasis: sizing ? {
-        ...sizing,
+        ...Object.fromEntries(Object.entries(sizing).filter(([key]) => key !== 'startSocKWh')),
         spareUnits: autoGas ? firm.units - sizing.minUnits - state.firmExtraUnits : null,
         extraUnits: autoGas ? state.firmExtraUnits : 0,
       } : null,

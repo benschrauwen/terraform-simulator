@@ -93,6 +93,18 @@ function dischargeAbove(battery, wantedKWh, floorKWh, usedKWh) {
   return deliveredKWh;
 }
 
+/** Hours with a curtailment starting within the precharge window (header, 6). */
+function prechargeHours(grid) {
+  const precharge = new Uint8Array(HOURS_PER_YEAR);
+  if (grid.curtailment && A.flexibleEventPrechargeHours > 0) {
+    for (let h = 0; h < HOURS_PER_YEAR; h++) {
+      if (!grid.curtailment[h] || (h > 0 && grid.curtailment[h - 1])) continue;
+      for (let k = Math.max(0, h - A.flexibleEventPrechargeHours); k < h; k++) precharge[k] = 1;
+    }
+  }
+  return precharge;
+}
+
 function runPass(inputs, startSocKWh, capture) {
   const { loadKW, solarKW, firm, grid, batteryState, order, exportAllowed, role } = inputs;
   const battery = createAnnualBattery(batteryState, startSocKWh);
@@ -103,14 +115,9 @@ function runPass(inputs, startSocKWh, capture) {
   const gasKWAvailable = firm.family === 'gas' ? firm.availableKW : null;
   const gridAvailable = grid.connected ? grid.available : null;
   const backupKWAvailable = inputs.backup?.availableKW || null;
-  // Hours with a curtailment starting within the precharge window (header, 6).
-  const precharge = new Uint8Array(HOURS_PER_YEAR);
-  if (grid.curtailment && A.flexibleEventPrechargeHours > 0) {
-    for (let h = 0; h < HOURS_PER_YEAR; h++) {
-      if (!grid.curtailment[h] || (h > 0 && grid.curtailment[h - 1])) continue;
-      for (let k = Math.max(0, h - A.flexibleEventPrechargeHours); k < h; k++) precharge[k] = 1;
-    }
-  }
+  const precharge = inputs.precharge || prechargeHours(grid);
+  const firmFirst = order === 'firm-first';
+  const reserveRole = role === 'reserve';
   const series = capture ? Object.fromEntries(SERIES_KEYS.map(key => [key, new Float64Array(HOURS_PER_YEAR)])) : null;
   const unservedKW = new Float64Array(HOURS_PER_YEAR);
   const t = {
@@ -166,30 +173,22 @@ function runPass(inputs, startSocKWh, capture) {
         dischargeKW = floorKWh > 0 ? dischargeAbove(battery, deficit, floorKWh, 0) : dischargeBattery(battery, deficit);
         deficit -= dischargeKW;
       }
-      const takeGrid = () => {
-        const take = Math.min(deficit, gridCap);
-        gridKW += take;
-        deficit -= take;
-      };
-      const takeReserve = () => {
-        if (role !== 'reserve' || deficit <= 0) return;
+      // Gas, grid, reserve battery ('firm-first') or grid, reserve battery, gas
+      // (inline: this runs 8,760 times a pass, many passes an optimization).
+      if (firmFirst) {
+        gasKW = Math.min(deficit, gasCap);
+        deficit -= gasKW;
+      }
+      gridKW = Math.min(deficit, gridCap);
+      deficit -= gridKW;
+      if (reserveRole && deficit > 0) {
         const delivered = dischargeBattery(battery, deficit);
         dischargeKW += delivered;
         deficit -= delivered;
-      };
-      const takeGas = () => {
-        const take = Math.min(deficit, gasCap);
-        gasKW += take;
-        deficit -= take;
-      };
-      if (order === 'firm-first') {
-        takeGas();
-        takeGrid();
-        takeReserve();
-      } else {
-        takeGrid();
-        takeReserve();
-        takeGas();
+      }
+      if (!firmFirst) {
+        gasKW = Math.min(deficit, gasCap);
+        deficit -= gasKW;
       }
       // Last resort: the reserve floor, then the backup diesel.
       if (floorKWh > 0 && deficit > 1e-9) {
@@ -293,20 +292,24 @@ function runPass(inputs, startSocKWh, capture) {
 /**
  * Settled annual dispatch (periodic battery state of charge). `inputs`:
  * { loadKW, solarKW|null, firm, grid, batteryState, order, exportAllowed,
- * reserveFloorKWh? }.
+ * reserveFloorKWh? }; startSocHintKWh warm-starts the settle (a neighbouring
+ * design's settled state of charge: fewer passes, the same periodic year
+ * within the settle tolerance).
  * Returns { totals (kWh, MMBtu, hours), monthlyPeakGridKW, unservedKW
  * (8760), series (8760 per source when capture), battery, role, order,
  * settleIterations }.
  */
-export function dispatchYear(inputs, { capture = false } = {}) {
+export function dispatchYear(inputs, { capture = false, startSocHintKWh = null } = {}) {
   const role = getBatteryRole(inputs.batteryState, inputs.solar, inputs.firm);
-  const full = { ...inputs, role };
+  const full = { ...inputs, role, precharge: inputs.precharge || prechargeHours(inputs.grid) };
   const capacityKWh = role === 'none' ? 0 : inputs.batteryState.batteryCapacityMWh * 1000;
-  const { startSocKWh, settleIterations } = settleAnnualStartSoc(
+  const { startSocKWh, settleIterations, settledPreview } = settleAnnualStartSoc(
     capacityKWh,
     start => runPass(full, start, false),
-    { hasInput: role !== 'none' && inputs.batteryState.batteryEfficiency > 0 },
+    { hasInput: role !== 'none' && inputs.batteryState.batteryEfficiency > 0, startSocKWh: startSocHintKWh },
   );
-  const result = runPass(full, startSocKWh, capture);
+  // Without display series the settled preview is the periodic year (its
+  // start within the settle tolerance of its end); run it again only to capture.
+  const result = !capture && settledPreview ? settledPreview : runPass(full, startSocKWh, capture);
   return { ...result, role, order: inputs.order, settleIterations };
 }

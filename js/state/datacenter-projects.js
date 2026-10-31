@@ -31,6 +31,19 @@ function withoutProject(state) {
 }
 
 /**
+ * The state after leaving the current project for a custom design (another
+ * site picked): the project's design goes back to the defaults (the default
+ * architecture's starting design when the project set one), since it
+ * belongs to the project's own site; the user's settings and the new site stay.
+ */
+export function clearDatacenterProject(state) {
+  const previous = getDatacenterProject(state?.projectId);
+  let next = withoutProject(state);
+  if (previous?.design?.architecture) next = applyArchitectureDefaults(next, DATACENTER_DEFAULT_STATE.architecture);
+  return normalizeDatacenterState({ ...next, projectId: 'none' });
+}
+
+/**
  * The state after picking project `projectId`: its site (with the site's
  * prices and climate), IT size, GPU platform and cooling, then its
  * architecture's starting design, then the generator types and the design

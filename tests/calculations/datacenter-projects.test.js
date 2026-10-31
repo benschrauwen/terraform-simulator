@@ -8,8 +8,8 @@ import assert from 'node:assert/strict';
 import { DATACENTER_PROJECTS, getDatacenterProject } from '../../js/data/datacenter/projects.js';
 import { DATACENTER_SITES } from '../../js/data/datacenter/sites.js';
 import { calculateDatacenterScenario, DATACENTER_DEFAULT_STATE } from '../../js/model/datacenter/index.js';
-import { applyDatacenterProject } from '../../js/state/datacenter-projects.js';
-import { fitsArchitecture, normalizeDatacenterState } from '../../js/state/datacenter-schema.js';
+import { applyDatacenterProject, clearDatacenterProject } from '../../js/state/datacenter-projects.js';
+import { applyDatacenterPresetDefaults, fitsArchitecture, normalizeDatacenterState } from '../../js/state/datacenter-schema.js';
 import { projectInfo } from '../../js/ui/datacenter/project-info.js';
 
 const SITE_IDS = new Set(DATACENTER_SITES.map(site => site.id));
@@ -76,4 +76,27 @@ test('switching projects never keeps the previous project\'s design (grid cap, G
   const haskell = applyDatacenterProject(applyDatacenterProject(DATACENTER_DEFAULT_STATE, 'meta-prometheus'), 'google-haskell');
   assert.equal(haskell.gridImportCapMW, 0);
   assert.ok(calculateDatacenterScenario(haskell, { fastMode: true }).reliability.uptimePercent > 99.9);
+});
+
+test('picking another site leaves the project with its design back at the defaults', () => {
+  // The Site select's preset handler resets the site-driven inputs, then clears the project.
+  DATACENTER_PROJECTS.forEach(project => {
+    const picked = applyDatacenterProject(DATACENTER_DEFAULT_STATE, project.id);
+    const otherSite = project.siteId === 'haskell-tx' ? 'phoenix-az' : 'haskell-tx';
+    const moved = clearDatacenterProject(applyDatacenterPresetDefaults({ ...picked, siteId: otherSite }, 'siteId'));
+    const expected = applyDatacenterPresetDefaults({ ...DATACENTER_DEFAULT_STATE, siteId: otherSite }, 'siteId');
+    const differs = Object.keys(expected).filter(key => expected[key] !== moved[key]);
+    assert.deepEqual(differs, [], `${project.id} moved to ${otherSite}`);
+  });
+});
+
+test('the picker handler undoes the previous project although the binding stored the new id first', async () => {
+  const { getDatacenterControlSpecs } = await import('../../js/ui/datacenter/control-spec.js');
+  const spec = getDatacenterControlSpecs().find(entry => entry.id === 'projectId');
+  const app = { state: applyDatacenterProject(DATACENTER_DEFAULT_STATE, 'meta-prometheus'), syncStateToControls() {} };
+  // control-binding.js: state[key] = value, then onChange(app, value, previous).
+  app.state.projectId = 'google-haskell';
+  spec.onChange(app, 'google-haskell', 'meta-prometheus');
+  const direct = applyDatacenterProject(DATACENTER_DEFAULT_STATE, 'google-haskell');
+  assert.deepEqual(Object.keys(direct).filter(key => direct[key] !== app.state[key]), []);
 });

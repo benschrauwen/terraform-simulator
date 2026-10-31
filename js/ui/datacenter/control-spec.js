@@ -31,7 +31,7 @@ import { ARCHITECTURES, GAS_GENSET_TYPES, NUCLEAR_TYPES } from '../../data/datac
 import { DATACENTER_PROJECTS, getDatacenterProject } from '../../data/datacenter/projects.js';
 import { DATACENTER_SITES } from '../../data/datacenter/sites.js';
 import { MOUNTING_TYPES } from '../../data/reference-data.js';
-import { applyDatacenterProject } from '../../state/datacenter-projects.js';
+import { applyDatacenterProject, clearDatacenterProject } from '../../state/datacenter-projects.js';
 import { DATACENTER_DEFAULT_STATE, DATACENTER_STATE_FIELDS } from '../../state/datacenter-schema.js';
 import { getGpuPlatformOptions } from './gpu-platforms.js';
 import { fixed, formatMW, formatStorageMWh } from './format.js';
@@ -93,8 +93,10 @@ export const DATACENTER_SECTIONS = {
         { value: 'none', label: 'None (custom design)' },
         ...DATACENTER_PROJECTS.map(project => ({ value: project.id, label: `${project.name} (${project.status})` })),
       ],
-      onChange: (app, value) => {
-        app.state = applyDatacenterProject(app.state, value);
+      // The binding has already stored the new id: apply from the previous
+      // project, so its design is undone first (applyDatacenterProject).
+      onChange: (app, value, previous) => {
+        app.state = applyDatacenterProject({ ...app.state, projectId: previous }, value);
         app.syncStateToControls();
       },
     },
@@ -105,10 +107,11 @@ export const DATACENTER_SECTIONS = {
     {
       type: 'select', id: 'siteId', label: 'Site', preset: 'siteId',
       options: () => DATACENTER_SITES.map(site => ({ value: site.id, label: site.name })),
-      // A project belongs to its site: another site makes it a custom design.
+      // A project belongs to its site: another site leaves it for a custom
+      // design with the project's design back at the defaults.
       onChange: app => {
         if (app.state.projectId !== 'none' && getDatacenterProject(app.state.projectId)?.siteId !== app.state.siteId) {
-          app.state = { ...app.state, projectId: 'none' };
+          app.state = clearDatacenterProject(app.state);
           app.syncStateToControls();
         }
       },

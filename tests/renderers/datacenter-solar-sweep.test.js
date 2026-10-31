@@ -63,3 +63,31 @@ test('both sweeps cover every site at every price, with matching lines, and shar
   assert.equal(options[0].value, 307.75);
   assert.match(options[0].label, /your setting/);
 });
+
+test('the 2D grid covers every solar x battery price for one site, sharing the sweeps\' points', async () => {
+  const { listGridPoints } = await import('../../js/ui/datacenter/solar-sweep-page.js');
+  const grid = listGridPoints('phoenix-az');
+  assert.equal(grid.length, SOLAR_SWEEP_PRICES_PER_W.length * BATTERY_SWEEP_PRICES_PER_KWH.length);
+  assert.ok(grid.every(point => point.id === 'phoenix-az'));
+  // The solar sweep with the battery held at a grid price is one row of the grid.
+  const row = new Set(listSweepPoints('solar', 150).filter(point => point.id === 'phoenix-az').map(pointKey));
+  assert.equal(grid.filter(point => row.has(pointKey(point))).length, SOLAR_SWEEP_PRICES_PER_W.length);
+});
+
+test('the heatmap draws one cell per price pair, coloured on the scale, pending cells grey', async () => {
+  const { renderHeatmapSvg, scaleColor } = await import('../../js/ui/datacenter/sweep-heatmap.js');
+  const xs = [0.2, 0.5, 1.0];
+  const ys = [100, 300];
+  const value = result => result.v;
+  const html = renderHeatmapSvg({
+    xs, ys, value, format: v => String(v), xLabel: String, yLabel: String, xTitle: 'Solar', yTitle: 'Battery', better: 'low',
+    cell: (x, y) => (x === 1.0 && y === 300 ? null : { v: x * y }), describe: () => 'design',
+  });
+  assert.equal((html.match(/class="hm-cell"/g) || []).length, 5);
+  assert.equal((html.match(/class="hm-pending"/g) || []).length, 1);
+  // 'low' is better: the lowest value (0.2 x 100 = 20) gets the bright end of the scale.
+  const low = html.match(/data-x="0.2" data-y="100"><rect[^>]*fill="([^"]+)"/)[1];
+  assert.equal(low, scaleColor(1).fill);
+  assert.doesNotMatch(html, /NaN|undefined|\sstyle=/);
+  assert.equal(scaleColor(0).text, '#eef2f6');
+});

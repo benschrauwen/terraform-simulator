@@ -1396,3 +1396,38 @@ select.sites-sort {
     height: 520px;
   }
 }
+
+/* 2D price grid heatmaps (sweep-heatmap.js) */
+.sweep-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.sweep-heatmap-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: inherit;
+}
+
+.hm-pending {
+  fill: var(--bg-surface);
+  stroke: var(--border);
+}
+
+.hm-value {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.hm-axis {
+  font-size: 10px;
+  fill: var(--text-muted);
+}
+
+.hm-title {
+  font-size: 11px;
+  fill: var(--text-secondary);
+}

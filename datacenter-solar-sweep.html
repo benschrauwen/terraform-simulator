@@ -72,6 +72,25 @@
       <h2>Excess electricity per site <span class="chart-title-meta">curtailed + exported</span></h2>
       <div class="sweep-chart"><canvas id="sweepBatteryExcessChart" role="img" aria-label="Excess electricity per site against the battery price"></canvas></div>
     </section>
+
+    <h2 class="sweep-section-title">Solar × battery grid for one site</h2>
+    <div class="sites-toolbar">
+      <label class="sites-sort-label" for="sweepGridSite">Site</label>
+      <select id="sweepGridSite" class="sites-sort"></select>
+    </div>
+    <p class="sweep-note">Every solar price against every battery price (72 optimizations). Cheapest solar is on the left, cheapest battery at the bottom; brighter is better (lower CO₂e and excess, higher NPV). Hover a cell for its design.</p>
+    <section class="sweep-chart-card">
+      <h2>CO₂e (kt/yr)</h2>
+      <div class="sweep-heatmap" id="sweepGridCo2"></div>
+    </section>
+    <section class="sweep-chart-card">
+      <h2>NPV</h2>
+      <div class="sweep-heatmap" id="sweepGridNpv"></div>
+    </section>
+    <section class="sweep-chart-card">
+      <h2>Excess electricity (GWh/yr) <span class="chart-title-meta">curtailed + exported</span></h2>
+      <div class="sweep-heatmap" id="sweepGridExcess"></div>
+    </section>
   </main>
 
   <footer class="app-footer">

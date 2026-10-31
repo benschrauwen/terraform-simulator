@@ -9,7 +9,9 @@
    (site-survey.js priceSweepPoint), optimized in a pool of module workers (main thread as a
    fallback). Points are keyed by site and both prices, so the sweeps share any point they have in
    common, and kept in sessionStorage per settings hash; changing a held price only runs the
-   missing points. The settings come from the share hash, as on the sites page. */
+   missing points. The settings come from the share hash, as on the sites page.
+   A third section searches the full 2D grid (every solar price x every battery price) for one
+   selected site and shows CO2e, NPV and excess electricity as heatmaps (sweep-heatmap.js). */
 
 import { DATACENTER_SITES } from '../../data/datacenter/sites.js';
 import { BATTERY_SWEEP_PRICES_PER_KWH, priceSweepPoint, SOLAR_SWEEP_PRICES_PER_W } from '../../model/datacenter/index.js';
@@ -17,6 +19,7 @@ import { batteryPricePerKWh, solarPricePerW } from '../../model/datacenter/site-
 import { axisGrid, axisTicks, axisTitle, legendLabels } from '../charts/chart-utils.js';
 import { fixed, formatMW, formatStorageMWh } from './format.js';
 import { parseDatacenterHash, serializeDatacenterHash } from './share.js';
+import { renderHeatmapSvg } from './sweep-heatmap.js';
 import { settingsSummary } from './sites-page.js';
 
 // Bump the version when model or data changes alter results, so stale sessions rerun.
@@ -55,6 +58,11 @@ export const SWEEPS = Object.freeze({
 export function listSweepPoints(sweepKey, held) {
   const sweep = SWEEPS[sweepKey];
   return sweep.xs.flatMap(x => DATACENTER_SITES.map(site => sweep.point(site.id, x, held)));
+}
+
+/** Every point of the 2D grid for one site: each solar price x each battery price. */
+export function listGridPoints(siteId) {
+  return BATTERY_SWEEP_PRICES_PER_KWH.flatMap(battery => SOLAR_SWEEP_PRICES_PER_W.map(solar => ({ kind: 'site', id: siteId, solarPricePerW: solar, batteryPricePerKWh: battery })));
 }
 
 /** The held-price options: the settings' own price first, then the sweep list. */
@@ -133,6 +141,8 @@ export class SolarSweepPage {
     if (prices) prices.textContent = `solar at ${solarLabel(this.current.solar)} and the battery at ${batteryLabel(this.current.battery)}`;
     this.bindHeldSelect('solar', 'sweepSolarHeld', this.current.battery);
     this.bindHeldSelect('battery', 'sweepBatteryHeld', this.current.solar);
+    this.gridSite = this.baseState.siteId;
+    this.bindGridSiteSelect();
     document.getElementById('sweepRerun')?.addEventListener('click', () => this.rerun());
     this.render();
     this.ensureRunning();
@@ -150,10 +160,26 @@ export class SolarSweepPage {
     });
   }
 
-  /** Points the charts need now that are neither done nor running. */
+  bindGridSiteSelect() {
+    const select = document.getElementById('sweepGridSite');
+    if (!select) return;
+    select.replaceChildren(...DATACENTER_SITES.map(site => new Option(site.name, site.id)));
+    select.value = this.gridSite;
+    select.addEventListener('change', () => {
+      this.gridSite = select.value;
+      this.render();
+      this.ensureRunning();
+    });
+  }
+
+  /** Every point the page shows now: both sweeps at their held prices and the selected site's grid. */
+  neededPoints() {
+    return [...listSweepPoints('solar', this.held.solar), ...listSweepPoints('battery', this.held.battery), ...listGridPoints(this.gridSite)];
+  }
+
+  /** Points the page needs now that are neither done nor running. */
   missingPoints() {
-    return [...listSweepPoints('solar', this.held.solar), ...listSweepPoints('battery', this.held.battery)]
-      .filter(point => !this.results[pointKey(point)] && !this.inFlight.has(pointKey(point)));
+    return this.neededPoints().filter(point => !this.results[pointKey(point)] && !this.inFlight.has(pointKey(point)));
   }
 
   rerun() {
@@ -244,8 +270,7 @@ export class SolarSweepPage {
   }
 
   render() {
-    const needed = [...listSweepPoints('solar', this.held.solar), ...listSweepPoints('battery', this.held.battery)];
-    const keys = [...new Set(needed.map(pointKey))];
+    const keys = [...new Set(this.neededPoints().map(pointKey))];
     const done = keys.filter(key => this.results[key]).length;
     const progress = document.getElementById('sweepProgress');
     if (progress) {
@@ -269,6 +294,30 @@ export class SolarSweepPage {
     this.renderChart('batteryCo2', 'sweepBatteryCo2Chart', 'battery', co2, 'CO₂e (kt/yr)', co2Format);
     this.renderChart('batteryNpv', 'sweepBatteryNpvChart', 'battery', npv, 'NPV ($M)', npvFormat);
     this.renderChart('batteryExcess', 'sweepBatteryExcessChart', 'battery', excessGWh, 'Excess electricity (GWh/yr)', excessFormat);
+    this.renderGrid('sweepGridCo2', co2, value => `${fixed(value, 0)}`, 'low', 'CO2e (kt/yr)');
+    this.renderGrid('sweepGridNpv', npv, value => `$${fixed(value, 0)}M`, 'high', 'NPV');
+    this.renderGrid('sweepGridExcess', excessGWh, value => fixed(value, value < 10 ? 1 : 0), 'low', 'Excess electricity (GWh/yr)');
+  }
+
+  /** One heatmap of the selected site's grid; cells not run yet are left grey. */
+  renderGrid(id, value, format, better, title) {
+    const target = document.getElementById(id);
+    if (!target) return;
+    const site = DATACENTER_SITES.find(entry => entry.id === this.gridSite);
+    target.innerHTML = renderHeatmapSvg({
+      xs: SOLAR_SWEEP_PRICES_PER_W,
+      ys: BATTERY_SWEEP_PRICES_PER_KWH,
+      cell: (solar, battery) => this.results[pointKey({ id: this.gridSite, solarPricePerW: solar, batteryPricePerKWh: battery })] || null,
+      value,
+      format,
+      xLabel: solarLabel,
+      yLabel: batteryLabel,
+      xTitle: 'Installed solar price, panel + BOS ($/W DC)',
+      yTitle: 'Battery, 4-hour ($/kWh)',
+      better,
+      describe: describePoint,
+      title: `${title} at ${site?.name || this.gridSite} by solar and battery price`,
+    });
   }
 
   renderChart(key, canvasId, sweepKey, value, yTitle, formatValue) {

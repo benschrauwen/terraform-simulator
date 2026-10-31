@@ -22,15 +22,20 @@ export function projectInfo(state) {
   if (!project) {
     return note('Pick a real project to prefill its site, IT size, GPUs, cooling and power plant from public sources, then check its economics. Your prices, revenue and finance settings are kept.');
   }
+  const facts = project.facts || [];
+  const assumptions = project.assumptions || [];
   return [
-    `<p class="dc-info-lead"><strong>${esc(project.name)}</strong> · ${esc(project.operator)} · ${esc(project.status)}</p>`,
+    `<p class="dc-info-lead"><strong>${esc(project.name)}</strong> · ${esc(project.status)}</p>`,
     `<p class="dc-project-summary">${esc(project.summary)}</p>`,
-    project.location ? note(project.location) : '',
-    `<ul class="dc-project-facts">${(project.facts || []).map(factItem).join('')}</ul>`,
-    (project.assumptions || []).length
-      ? `<details class="dc-project-assumptions"><summary>What the design assumes</summary><ul>${project.assumptions.map(text => `<li>${esc(text)}</li>`).join('')}</ul></details>`
+    `<details class="dc-project-details"><summary>Public facts (${facts.length})</summary>
+      <p class="dc-project-meta">${esc(project.operator)}${project.location ? ` · ${esc(project.location)}` : ''}</p>
+      <ul class="dc-project-facts">${facts.map(factItem).join('')}</ul>
+    </details>`,
+    assumptions.length
+      ? `<details class="dc-project-details"><summary>What the design assumes (${assumptions.length})</summary><ul class="dc-project-assumptions">${assumptions.map(text => `<li>${esc(text)}</li>`).join('')}</ul>
+        <p class="dc-project-meta">The timeline and economics treat it as a new build starting now (not the project's real dates), at your prices. Edit anything to test alternatives; picking another site clears the project.</p>
+      </details>`
       : '',
-    note('The timeline and economics treat it as a new build starting now (not the project\'s real dates), at your prices. Edit anything to test alternatives; picking another site clears the project.'),
   ].join('');
 }
 

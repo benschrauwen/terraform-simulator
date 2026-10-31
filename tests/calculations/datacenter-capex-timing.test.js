@@ -119,23 +119,24 @@ test('project payback from start and from first power', () => {
 
 test('GPU payback golden value at the default (one GB300 GPU)', () => {
   const e = spread.economics;
-  // Per GPU: $75,000; revenue 8760 h x 85% x $5.00 (uptime 100%) = $37,230/yr at age 0, falling
-  // 15%/yr; cost = 3% IT O&M ($2,250) + energy and water opex / GPUs (~$981) per year.
+  // Per GPU: $76,000; revenue 8760 h x 85% x $5.00 (uptime 100%) = $37,230/yr at age 0, falling
+  // 15%/yr; cost = 3% IT O&M ($2,280) + energy and water opex / GPUs (~$981) per year.
   const fleet = e.gpuFleet;
-  assert.equal(fleet.capexPerGpu, 75000);
+  const capex = 76000;
+  assert.equal(fleet.capexPerGpu, capex);
   const revenue = 8760 * 0.85 * 5;
   assert.ok(close(e.revenue.gpuRental / fleet.count, revenue));
-  const cost = 75000 * 0.03 + e.opexLines.reduce((sum, line) => sum + line.annual, 0) / fleet.count;
+  const cost = capex * 0.03 + e.opexLines.reduce((sum, line) => sum + line.annual, 0) / fleet.count;
   assert.ok(cost > 3200 && cost < 3300, `${cost}`);
-  // margin(T) = R (1 - 0.85^T) / -ln 0.85 - c T reaches 75,000 at T:
+  // margin(T) = R (1 - 0.85^T) / -ln 0.85 - c T reaches the capex at T:
   const margin = years => revenue * (1 - 0.85 ** years) / -Math.log(0.85) - cost * years;
   const T = e.gpuPaybackYears;
-  assert.ok(Math.abs(T - 2.815) < 0.005, `${T}`);
-  assert.ok(Math.abs(margin(T) - 75000) < 0.01);
-  assert.ok(margin(T - 0.01) < 75000);
-  // Without decline it is the simple 75,000 / (37,230 - c).
+  assert.ok(Math.abs(T - 2.868) < 0.005, `${T}`);
+  assert.ok(Math.abs(margin(T) - capex) < 0.01);
+  assert.ok(margin(T - 0.01) < capex);
+  // Without decline it is the simple capex / (37,230 - c).
   const flat = calculateDatacenterScenario({ gpuPriceDeclinePercentPerYear: 0 }, { fastMode: true }).economics;
-  assert.ok(close(flat.gpuPaybackYears, 75000 / (revenue - cost), 1e-6));
+  assert.ok(close(flat.gpuPaybackYears, capex / (revenue - cost), 1e-6));
 });
 
 test('GPU payback is null when the GPU never repays itself within its life, or without GPU rental', () => {

@@ -15,22 +15,30 @@
    chip (allInKWSemiAnalysis: host CPU, NICs and a cooling share, at
    typical rather than maximum draw) is kept for reference only.
 
-   Capex per GPU (capexPerGpu) is all-in IT hardware: GPU server or rack
-   share, network and storage, excluding the facility (facility.js).
+   One basis for every platform (recalibrated 2026-10-31, so that platforms
+   a neocloud can buy new today pay back alike, as a competitive market
+   implies; before, mixed sources made GB200 look ~2x better than GB300 and a
+   new H100 never pay back):
 
-   Rental price (rentalPricePerGpuHour) defaults to the SemiAnalysis AI Cloud
-   TCO model "Retail" rate per chip-hour shown on each InferenceX chip page,
-   the one source that covers every platform consistently, including
-   GB200/GB300 NVL72. "Retail" is the TOP of SemiAnalysis's price tiers, so
-   read the default as a mid-market, uncontracted rate, not a conservative
-   one. Market indexes run higher in 2026 (marketIndex: Silicon Data's
-   neocloud rental indexes; median on-demand list prices for NVL72), while
-   large term contracts run lower: Silicon Data's B200 term-implied 12-month
-   forward rate (the market's price today for a B200-hour a year out, which
-   Silicon Data says is "not a forecast") sits 12% below spot, and a
-   hyperscaler take-or-pay deal such as IREN-Microsoft lands near ~$2.2 per
-   GB300-hour (gb300-nvl72 below). ownerTcoPerGpuHour is SemiAnalysis's
-   "Owning at Large Hyperscaler Volume" cost, for context.
+   Capex per GPU (capexPerGpu): the 2026 market cost to a neocloud buyer of
+   the server or rack share PLUS scale-out network, storage, install and
+   software, excluding the facility (facility.js) and the CDU. Network and
+   storage add ~$7.5k per GPU on an 8-GPU HGX server and ~$11k on an NVL72
+   (SemiAnalysis's server-to-all-in deltas, Aug 2025: H100 server ~$190k ->
+   ~$250k all-in; GB200 rack ~$3.1M -> ~$3.9M).
+   https://newsletter.semianalysis.com/p/h100-vs-gb200-nvl72-training-benchmarks
+
+   Rental price (rentalPricePerGpuHour): the mid-market list price of 1-3
+   year RESERVED capacity, from one source and date: American Compute's
+   reserved medians (updated 2026-10-25), cross-checked against Silicon Data,
+   SemiAnalysis and Savrn listings. Large negotiated reservations run below
+   list, and an investment-grade take-or-pay contract lower still
+   (IREN-Microsoft ~$2.91 per GB300-hour, below). GB200 and GB300 term quotes
+   are thin, so GB200 is set relative to GB300 and checked against them.
+   marketIndex: the ON-DEMAND median from the same source and date, for
+   context. ownerTcoPerGpuHour: SemiAnalysis's "Owning at Large Hyperscaler
+   Volume" cost (InferenceX chip pages), for context only.
+   https://www.amcompute.com/gpu-cloud-prices
    https://inferencex.semianalysis.com/chips/h100
    https://inferencex.semianalysis.com/chips/h200
    https://inferencex.semianalysis.com/chips/b200
@@ -132,15 +140,21 @@ export const GPU_PLATFORMS = {
     systemKW: 10.2,
     itKWPerGpu: withNetwork(10.2 / 8), // 1.40
     allInKWSemiAnalysis: 1.37,
-    // IntuitionLabs pricing index (updated 2026-10-11): 8-GPU DGX H100
-    // $300,000-460,000 (Q1-Q2 2026). Midpoint / 8 x 1.1 for network and
-    // storage = ~$52k (judgment on the share).
-    // https://intuitionlabs.ai/articles/data-center-gpu-pricing-2026
-    capexPerGpu: 52000,
-    rentalPricePerGpuHour: 2.0, // InferenceX/SemiAnalysis retail
+    // American Compute Rack Report (Oct 2026): HGX H100 node fair market
+    // value $195,000 ($24.4k per GPU; CPU, memory, storage and NICs, no
+    // fabric or install) + ~$7.5k network and storage = ~$32k; SemiAnalysis
+    // (Aug 2025) ~$250k all-in per server = ~$31k. New HGX H100 prices are
+    // thin in 2026 (new Hopper supply is mostly H200). DGX list prices
+    // ($300-460k, IntuitionLabs) carry a DGX premium and are not used.
+    // https://www.amcompute.com/gpu-server-values/h100
+    capexPerGpu: 33000,
+    // American Compute reserved medians: 1-yr $2.08 (7 providers), 2-yr
+    // $2.30, 3-yr $2.24 (5); SemiAnalysis 1-year contract index $2.35 (Mar
+    // 2026); Savrn term listings $2.30-3.32.
+    // https://www.amcompute.com/gpu-cloud-prices/h100
+    rentalPricePerGpuHour: 2.25,
     ownerTcoPerGpuHour: 1.17,
-    // Silicon Data B200 August 2026 post: "H100 at 2.63" on 2026-09-07.
-    marketIndex: { pricePerGpuHour: 2.63, date: '2026-09-07', source: 'Silicon Data H100 neocloud rental index (via its B200 Aug 2026 post)' },
+    marketIndex: { pricePerGpuHour: 3.49, date: '2026-10-25', source: 'On-demand list median (American Compute)' },
   },
   h200: {
     label: 'NVIDIA H200 SXM (HGX, 8 GPUs)',
@@ -149,11 +163,15 @@ export const GPU_PLATFORMS = {
     systemKW: 10.2, // DGX H100/H200 user guide (above)
     itKWPerGpu: withNetwork(10.2 / 8), // 1.40
     allInKWSemiAnalysis: 1.37,
-    // IntuitionLabs (above): 8-GPU DGX H200 ~$400,000-500,000; midpoint / 8 x 1.1.
-    capexPerGpu: 62000,
-    rentalPricePerGpuHour: 2.9, // InferenceX/SemiAnalysis retail
+    // American Compute Rack Report (Oct 2026): new HGX H200 ~$340k at volume
+    // + ~$60k network and storage = $400k / 8 (small sample; used value
+    // $348.5k). https://www.amcompute.com/gpu-server-values/h200
+    capexPerGpu: 50000,
+    // Reserved medians 1-yr $3.00, 3-yr $2.37 (American Compute); Savrn term
+    // listings $3.05-3.65; Rack Report 3-year assumption $3.25.
+    rentalPricePerGpuHour: 2.8,
     ownerTcoPerGpuHour: 1.22,
-    marketIndex: { pricePerGpuHour: 3.29, date: '2026-09-07', source: 'Silicon Data H200 neocloud rental index' },
+    marketIndex: { pricePerGpuHour: 4.44, date: '2026-10-25', source: 'On-demand list median (American Compute)' },
   },
   b200: {
     label: 'NVIDIA B200 (HGX, 8 GPUs)',
@@ -164,13 +182,17 @@ export const GPU_PLATFORMS = {
     systemKW: 14.3,
     itKWPerGpu: withNetwork(14.3 / 8), // 1.97
     allInKWSemiAnalysis: 1.71,
-    // judgment, derived: Epoch AI's 1 GW GB200 build carries servers $21,188
-    // + network $4,925 = $26,113 per IT kW (facility.js); x 1.79 kW per B200
-    // = ~$47k. IntuitionLabs lists the B200 card alone at $30-50k.
-    capexPerGpu: 47000,
-    rentalPricePerGpuHour: 3.7, // InferenceX/SemiAnalysis retail
+    // American Compute Rack Report (Oct 2026): new HGX B200 node $360-470k;
+    // ~$375k at volume + ~$60k network and storage = $435k / 8.
+    // https://www.amcompute.com/gpu-server-values/b200
+    capexPerGpu: 54000,
+    // Reserved medians 1-yr $4.36 (5 providers), 3-yr $4.08 (7) (American
+    // Compute); Rack Report 3-year assumption $4.00; Silicon Data 12-month
+    // term rate $5.39 and term-implied 12-month forward $5.03 (2026-09-07).
+    // https://www.silicondata.com/blog/b200-rental-price-august-2026-update
+    rentalPricePerGpuHour: 4.0,
     ownerTcoPerGpuHour: 1.73,
-    marketIndex: { pricePerGpuHour: 5.69, date: '2026-09-07', source: 'Silicon Data B200 neocloud rental index (term-implied 12-month forward 5.03)' },
+    marketIndex: { pricePerGpuHour: 6.82, date: '2026-10-25', source: 'On-demand list median (American Compute)' },
   },
   'gb200-nvl72': {
     label: 'NVIDIA GB200 NVL72 (rack, 72 GPUs)',
@@ -183,15 +205,20 @@ export const GPU_PLATFORMS = {
     systemKW: 123.6,
     itKWPerGpu: withNetwork(123.6 / 72), // 1.89
     allInKWSemiAnalysis: 1.87,
-    // Epoch AI servers + network $26,113 per IT kW x 1.717 kW per GPU =
-    // ~$45k; Wing VC: ~$3M per rack reported (~$42k per GPU before network).
-    // https://www.wing.vc/content/how-much-does-an-nvidia-nvl72-cost
-    capexPerGpu: 45000,
-    rentalPricePerGpuHour: 4.0, // InferenceX/SemiAnalysis retail
-    ownerTcoPerGpuHour: 1.86,
-    // AmCompute, Oct 2026: GB200 on-demand $6.50-10.50, median $8.00 (search index).
+    // judgment (thin): SemiAnalysis (Aug 2025) ~$3.1M rack, ~$3.9M all-in
+    // with network and storage = ~$54k per GPU at hyperscaler pricing; Wing VC
+    // (Aug 2026) says the cited ~$3M "answers the wrong question" as deployed
+    // cost runs well above it; +~5% for a non-hyperscaler buyer and 2026
+    // memory prices = $57k (range $54-62k). No 2026 GB200 purchase price is
+    // disclosed. https://www.wing.vc/content/how-much-does-an-nvidia-nvl72-cost
+    capexPerGpu: 57000,
+    // judgment: relative to GB300 (GB200/GB300 price ratios 0.69-0.86 across
+    // sources -> $4.00-4.40); the only direct term quotes are one provider's
+    // (Bitdeer 1-yr $6.04, 3-yr $5.00, American Compute).
     // https://www.amcompute.com/gpu-cloud-prices/gb200
-    marketIndex: { pricePerGpuHour: 8.0, date: '2026-10', source: 'On-demand list median across 6 providers (AmCompute)' },
+    rentalPricePerGpuHour: 4.2,
+    ownerTcoPerGpuHour: 1.86,
+    marketIndex: { pricePerGpuHour: 8.0, date: '2026-10-25', source: 'On-demand list median (American Compute)' },
   },
   'gb300-nvl72': {
     label: 'NVIDIA GB300 NVL72 (rack, 72 GPUs)',
@@ -203,25 +230,22 @@ export const GPU_PLATFORMS = {
     systemKW: 132,
     itKWPerGpu: withNetwork(132 / 72), // 2.02
     allInKWSemiAnalysis: 2.12,
-    // Wing VC (Aug 2026): recent GB300 NVL72 purchase orders "just under
-    // $5.0M" per rack (~$69K per GPU slot) plus "several hundred thousand
-    // dollars of network attach"; judgment ~$0.4M -> $5.4M / 72 = $75k.
-    // Context: Wing VC's deployed total is "closer to $5.7 million" per rack
-    // (~$79k per GPU), incl. CDU and other deployment items; the default
-    // keeps $75k (the network attach share is a judgment either way).
-    capexPerGpu: 75000,
-    // InferenceX/SemiAnalysis "Retail" (its top tier): a mid-market,
-    // uncontracted rate. Brackets: Silicon Data B300 rental index $7.56 on
-    // 2026-10-30 (above); IREN-Microsoft ($9.7B over 5 years for GB300s on
-    // 200 MW of IT, Nov 2025) ~$2.2 per GPU-hour take-or-pay if 200 MW holds
-    // ~100k GPUs at ~2 kW each (derived; GPU count not disclosed) (below).
-    // https://www.silicondata.com/products/silicon-index/b300
+    // IREN bought "GPUs and ancillary equipment" (servers, InfiniBand,
+    // cabling, deployment, software) from Dell for ~$5.8B (8-K, 2025-11-03)
+    // for 76,000 GB300 (third-party call summary) = $76.3k per GPU. Wing VC
+    // (Aug 2026): purchase orders "just under $5.0M" per rack plus network
+    // attach, deployed ~$5.68M incl. CDU.
+    // https://www.sec.gov/Archives/edgar/data/1878848/000114036125040072/ef20058139_ex99-1.htm
+    // https://ziven.io/earnings/calls/IREN/q1-fy2026
+    capexPerGpu: 76000,
+    // Reserved medians 1-yr $5.61, 2-yr $6.09, 3-yr $5.10 (American Compute;
+    // 1-3 providers); B300 reserved 1-yr $6.49, 3-yr $4.74 (6). Floor: the
+    // IREN-Microsoft investment-grade take-or-pay ($9.7B over 5 years for
+    // ~76k GPUs) = ~$2.91 per GPU-hour billed at 100%.
+    // https://www.amcompute.com/gpu-cloud-prices/gb300
     // https://iren.gcs-web.com/news-releases/news-release-details/iren-secures-97bn-ai-cloud-contract-microsoft (search index)
     rentalPricePerGpuHour: 5.0,
     ownerTcoPerGpuHour: 2.31,
-    // AmCompute (updated 2026-10-25): GB300 on-demand $6.50-20.00, median
-    // $11.59 across 3 providers. The median, as for GB200.
-    // https://www.amcompute.com/gpu-cloud-prices/gb300
-    marketIndex: { pricePerGpuHour: 11.59, date: '2026-10-25', source: 'On-demand list median across 3 providers (AmCompute)' },
+    marketIndex: { pricePerGpuHour: 11.59, date: '2026-10-25', source: 'On-demand list median (American Compute)' },
   },
 };

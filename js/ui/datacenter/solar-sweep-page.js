@@ -14,7 +14,8 @@ import { fixed, formatMW, formatStorageMWh } from './format.js';
 import { parseDatacenterHash, serializeDatacenterHash } from './share.js';
 import { settingsSummary } from './sites-page.js';
 
-const CACHE_PREFIX = 'abundance-solar-sweep:v1:';
+// Bump the version when model or data changes alter results, so stale sessions rerun.
+const CACHE_PREFIX = 'abundance-solar-sweep:v2:';
 const MAX_WORKERS = 4;
 
 /** Every sweep point: projects first, then sites, each across the prices (cheapest first). */

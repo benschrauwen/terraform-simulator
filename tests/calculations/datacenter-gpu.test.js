@@ -26,16 +26,16 @@ test('defaults: GPU rental on GB300 NVL72', () => {
   // Rated 132 kW per 72-GPU rack x 1.1 for scale-out network and storage.
   assert.equal(gb300.itKWPerGpu, Math.round((132 / 72) * 1.1 * 100) / 100);
   const b200 = applyDatacenterPresetDefaults({ ...DATACENTER_DEFAULT_STATE, gpuPlatform: 'b200' }, 'gpuPlatform');
-  assert.equal(b200.gpuRentalPricePerHour, 3.7);
+  assert.equal(b200.gpuRentalPricePerHour, 4.0);
   assert.equal(b200.gpuItKWPerGpu, 1.97); // DGX B200 14.3 kW / 8 x 1.1
-  assert.equal(b200.gpuCapexPerGpu, 47000);
+  assert.equal(b200.gpuCapexPerGpu, 54000);
 });
 
 test('GPU count, IT capex and occupancy-driven IT draw', () => {
   const r = calculateDatacenterScenario({}, { fastMode: true });
   const count = 100000 / 2.02;
   assert.ok(close(r.gpu.count, count));
-  assert.ok(close(r.economics.capex.it, count * 75000));
+  assert.ok(close(r.economics.capex.it, count * 76000));
   // 85% rented at 80% of rated power + 15% idle at 20% (LBNL) = 71% of nameplate.
   assert.ok(close(r.load.itLoadFraction, 0.85 * 0.8 + 0.15 * 0.2));
   assert.ok(close(r.load.itLoadMW, 71));

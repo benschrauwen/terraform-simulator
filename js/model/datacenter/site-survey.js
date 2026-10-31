@@ -10,8 +10,10 @@
    simulator with it. Everything else (IT size, GPUs, cooling, prices, finance)
    stays the user's. Pure. */
 
+import { applyDatacenterProject } from '../../state/datacenter-projects.js';
 import { applyDatacenterPresetDefaults, normalizeDatacenterState } from '../../state/datacenter-schema.js';
 import { compareArchitectures, isBetterCandidate } from './optimizer.js';
+import { calculateDatacenterScenario } from './scenario.js';
 
 /** Per-architecture summary fields the sites page shows. */
 const ROW_FIELDS = ['npv', 'irr', 'feasible', 'uptimePercent', 'firstPower', 'firstPowerMonths', 'solarMWdc', 'batteryMWh', 'units', 'unitSizeMW', 'firmLabel', 'gridConnection'];
@@ -41,5 +43,54 @@ export function optimizeForSite(baseState, siteId, options = {}) {
     })),
     candidatesEvaluated: comparison.candidatesEvaluated,
     elapsedMs: Date.now() - t0,
+  };
+}
+
+/* ---------- Solar price sweep (the hidden datacenter-solar-sweep.html page) ---------- */
+
+// Installed solar prices swept ($/W DC, panel + BOS); the default east-west build is ~$0.69/W.
+export const SOLAR_SWEEP_PRICES_PER_W = Object.freeze([0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0, 1.2]);
+
+/** `state` with installed solar (panel + BOS) at `totalPerW` $/W, keeping its panel / BOS split. */
+export function withSolarPrice(state, totalPerW) {
+  const normalized = normalizeDatacenterState(state);
+  const current = normalized.panelCostPerW + normalized.bosCostPerW;
+  const panelShare = current > 0 ? normalized.panelCostPerW / current : 0.42;
+  return normalizeDatacenterState({ ...normalized, panelCostPerW: totalPerW * panelShare, bosCostPerW: totalPerW * (1 - panelShare) });
+}
+
+/**
+ * One point of the sweep: the user's settings moved to a site ({ kind:
+ * 'site', id: siteId }) or prefilled with a real project ({ kind:
+ * 'project', id: projectId }), solar at `pricePerW`, then the best design
+ * across grid, hybrid and islanded (compareArchitectures from each
+ * architecture's starting design; a project keeps its site, IT size, GPUs,
+ * cooling, grid cap and backup diesel). Returns { kind, id, pricePerW,
+ * architecture, npv, irr, co2eT, solarMWdc, batteryMWh, firmLabel, units,
+ * feasible }.
+ */
+export function solarSweepPoint(baseState, { kind, id, pricePerW }, options = {}) {
+  const start = kind === 'project'
+    ? applyDatacenterProject(baseState, id)
+    : applyDatacenterPresetDefaults({ ...normalizeDatacenterState(baseState), siteId: id, projectId: 'none' }, 'siteId');
+  const priced = withSolarPrice(start, pricePerW);
+  const comparison = compareArchitectures(priced, options);
+  let bestRow = null;
+  comparison.rows.forEach(row => {
+    if (row.result.best && (!bestRow || isBetterCandidate(row.result.best, bestRow.result.best))) bestRow = row;
+  });
+  const state = bestRow ? normalizeDatacenterState({ ...priced, ...bestRow.result.best.patch }) : priced;
+  const r = calculateDatacenterScenario(state, { fastMode: true });
+  return {
+    kind, id, pricePerW,
+    architecture: state.architecture,
+    npv: r.economics.npv,
+    irr: r.economics.projectIrr,
+    co2eT: r.emissions.totalCo2eT,
+    solarMWdc: state.solarSizeMWdc,
+    batteryMWh: state.batteryCapacityMWh,
+    firmLabel: r.firm.units > 0 ? r.firm.label : null,
+    units: r.firm.units,
+    feasible: r.reliability.meetsTargetWithoutBackup,
   };
 }

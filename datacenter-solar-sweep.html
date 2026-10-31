@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Solar price sweep — Abundance Stack datacenter simulator</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="datacenter.css">
+  <script src="node_modules/chart.js/dist/chart.umd.js"></script>
+</head>
+<body class="doc-page sites-page">
+  <!--
+    Hidden analysis page (linked from nowhere): how the optimal designs respond to the price of
+    installed solar. Open it with a simulator share hash to use those settings. Filled by
+    js/ui/datacenter/solar-sweep-page.js.
+  -->
+  <header class="doc-header sites-header">
+    <a class="doc-back" href="datacenter.html">← Back to the datacenter simulator</a>
+    <h1>Solar price sweep</h1>
+    <p>
+      At each installed solar price (panel + BOS, the panel / BOS split kept) the best design across a
+      grid-connected, a hybrid and an islanded architecture is optimized for every real project and every
+      site, as on the sites page: the highest NPV that meets the uptime target without the backup diesel.
+      A project keeps its site, IT size, GPUs, cooling, grid cap and backup diesel; its generators are
+      re-optimized. Your settings now put solar at <span id="sweepCurrentPrice"></span>.
+    </p>
+    <p class="sites-settings">Settings: <span id="sweepSettings"></span></p>
+    <div class="sites-toolbar">
+      <button type="button" class="sites-rerun" id="sweepRerun">Run again</button>
+      <progress id="sweepProgress" class="sites-progress" max="1" value="0"></progress>
+      <span class="sites-status" id="sweepStatus" aria-live="polite"></span>
+    </div>
+  </header>
+
+  <main class="doc-main sites-main">
+    <section class="sweep-chart-card">
+      <h2>CO₂e per real project</h2>
+      <div class="sweep-chart"><canvas id="sweepCo2Chart" role="img" aria-label="CO2e per project against the solar price"></canvas></div>
+    </section>
+    <section class="sweep-chart-card">
+      <h2>NPV per site</h2>
+      <div class="sweep-chart"><canvas id="sweepNpvChart" role="img" aria-label="NPV per site against the solar price"></canvas></div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>Abundance Stack — an independent educational tool for sizing datacenter power and cooling. Data from public sources; not investment advice.
+    · <a href="datacenter-sources.html">Sources</a>.
+    <span class="app-version" id="appVersion">Development build</span></p>
+  </footer>
+
+  <script src="node_modules/lz-string/libs/lz-string.min.js"></script>
+  <script type="module" src="js/datacenter-solar-sweep-main.js"></script>
+</body>
+</html>

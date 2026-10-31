@@ -1362,3 +1362,30 @@ select.sites-sort {
   margin: 4px 0 0;
   padding-left: 16px;
 }
+
+/* Hidden solar price sweep page (datacenter-solar-sweep.html) */
+.sweep-chart-card {
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.sweep-chart-card h2 {
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+  font-size: 15px;
+}
+
+.sweep-chart {
+  position: relative;
+  height: 460px;
+}
+
+@media (max-width: 700px) {
+  .sweep-chart {
+    height: 520px;
+  }
+}

@@ -7,7 +7,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
-const PAGES = ['index.html', 'sources.html', 'datacenter.html', 'datacenter-sources.html', 'datacenter-sites.html'];
+const PAGES = ['index.html', 'sources.html', 'datacenter.html', 'datacenter-sources.html', 'datacenter-sites.html', 'datacenter-solar-sweep.html'];
 
 // Every build goes to a fresh temp directory so tests never touch (or race) the real dist/.
 function build(t, env = {}) {
@@ -44,6 +44,7 @@ test('production build ships an allowlisted, versioned asset tree', t => {
     'datacenter.html',
     'datacenter-sources.html',
     'datacenter-sites.html',
+    'datacenter-solar-sweep.html',
     'README.md',
     'LICENSE',
     `${ASSET_DIR}/style.css`,

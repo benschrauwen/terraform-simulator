@@ -63,3 +63,17 @@ test('none clears the project; the info block lists the facts with links', () =>
   assert.doesNotMatch(html, /undefined|NaN/);
   assert.match(projectInfo(DATACENTER_DEFAULT_STATE), /Pick a real project/);
 });
+
+test('switching projects never keeps the previous project\'s design (grid cap, GPUs, unit size)', () => {
+  // Meta Prometheus caps the grid at 250 MW and sets GB200 and 20 MW turbines; Google Haskell
+  // states none of those, so after Prometheus it must match Haskell applied to the defaults.
+  DATACENTER_PROJECTS.forEach(first => DATACENTER_PROJECTS.forEach(second => {
+    const direct = applyDatacenterProject(DATACENTER_DEFAULT_STATE, second.id);
+    const switched = applyDatacenterProject(applyDatacenterProject(DATACENTER_DEFAULT_STATE, first.id), second.id);
+    const differs = Object.keys(direct).filter(key => direct[key] !== switched[key]);
+    assert.deepEqual(differs, [], `${first.id} -> ${second.id}`);
+  }));
+  const haskell = applyDatacenterProject(applyDatacenterProject(DATACENTER_DEFAULT_STATE, 'meta-prometheus'), 'google-haskell');
+  assert.equal(haskell.gridImportCapMW, 0);
+  assert.ok(calculateDatacenterScenario(haskell, { fastMode: true }).reliability.uptimePercent > 99.9);
+});

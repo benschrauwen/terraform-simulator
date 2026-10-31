@@ -1,7 +1,7 @@
 /* Real-project presets (data/datacenter/projects.js) applied to a datacenter state. Pure. */
 
 import { getDatacenterProject } from '../data/datacenter/projects.js';
-import { applyArchitectureDefaults, applyDatacenterPresetDefaults, normalizeDatacenterState } from './datacenter-schema.js';
+import { applyArchitectureDefaults, applyDatacenterPresetDefaults, DATACENTER_DEFAULT_STATE, normalizeDatacenterState } from './datacenter-schema.js';
 
 // Design fields a project may set directly, after its selections.
 const DESIGN_FIELDS = [
@@ -11,6 +11,24 @@ const DESIGN_FIELDS = [
 // Selections whose preset values reset when the project changes them (in this order).
 const SELECTIONS = ['gpuPlatform', 'coolingTechnology'];
 const TYPE_SELECTIONS = ['gasType', 'nuclearType'];
+
+/**
+ * `state` with the fields the current project set (its design) back at their
+ * defaults, so switching from one project to another never keeps the first
+ * one's grid cap, GPUs or unit size; the user's own settings stay.
+ */
+function withoutProject(state) {
+  const previous = getDatacenterProject(state?.projectId);
+  if (!previous) return state;
+  let next = { ...state };
+  Object.keys(previous.design || {}).forEach(key => {
+    if (key in DATACENTER_DEFAULT_STATE) next[key] = DATACENTER_DEFAULT_STATE[key];
+  });
+  [...SELECTIONS, ...TYPE_SELECTIONS].forEach(key => {
+    if (key in (previous.design || {})) next = applyDatacenterPresetDefaults(next, key);
+  });
+  return next;
+}
 
 /**
  * The state after picking project `projectId`: its site (with the site's
@@ -23,7 +41,7 @@ export function applyDatacenterProject(state, projectId) {
   const project = getDatacenterProject(projectId);
   if (!project) return normalizeDatacenterState({ ...state, projectId: 'none' });
   const design = project.design || {};
-  let next = applyDatacenterPresetDefaults({ ...state, siteId: project.siteId }, 'siteId');
+  let next = applyDatacenterPresetDefaults({ ...withoutProject(state), siteId: project.siteId }, 'siteId');
   if (design.itCapacityMW) next = { ...next, itCapacityMW: design.itCapacityMW };
   SELECTIONS.forEach(key => {
     if (design[key] && design[key] !== next[key]) next = applyDatacenterPresetDefaults({ ...next, [key]: design[key] }, key);

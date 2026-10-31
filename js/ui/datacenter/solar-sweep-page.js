@@ -11,7 +11,8 @@
    common, and kept in sessionStorage per settings hash; changing a held price only runs the
    missing points. The settings come from the share hash, as on the sites page.
    A third section searches the full 2D grid (every solar price x every battery price) for one
-   selected site and shows CO2e, NPV and excess electricity as heatmaps (sweep-heatmap.js); a
+   selected site with the optimizer's wider (thorough) search, since the default search can stall
+   on the flat solar + battery ridge these cheap prices create, and shows CO2e, NPV and excess electricity as heatmaps (sweep-heatmap.js); a
    cell links to the simulator with that site, those prices and the cell's optimized design. */
 
 import { DATACENTER_SITES } from '../../data/datacenter/sites.js';
@@ -32,8 +33,8 @@ const roundBattery = value => Math.round(value * 100) / 100;
 const solarLabel = value => `$${fixed(value, 2)}/W`;
 const batteryLabel = value => `$${fixed(value, 0)}/kWh`;
 
-/** Cache key of a point: the site and both prices (rounded so equal prices match). */
-export const pointKey = ({ id, solarPricePerW: solar, batteryPricePerKWh: battery }) => `${id}|${roundSolar(solar)}|${roundBattery(battery)}`;
+/** Cache key of a point: the site, both prices (rounded so equal prices match) and the search. */
+export const pointKey = ({ id, solarPricePerW: solar, batteryPricePerKWh: battery, search = 'default' }) => `${id}|${roundSolar(solar)}|${roundBattery(battery)}${search === 'default' ? '' : `|${search}`}`;
 
 /** The two sweeps: which price runs along x and which one is held. */
 export const SWEEPS = Object.freeze({
@@ -61,10 +62,13 @@ export function listSweepPoints(sweepKey, held) {
   return sweep.xs.flatMap(x => DATACENTER_SITES.map(site => sweep.point(site.id, x, held)));
 }
 
-/** Every point of the 2D grid for one site: each solar price x each battery price. */
+/** Every point of the 2D grid for one site: each solar price x each battery price, thorough search. */
 export function listGridPoints(siteId) {
-  return BATTERY_SWEEP_PRICES_PER_KWH.flatMap(battery => SOLAR_SWEEP_PRICES_PER_W.map(solar => ({ kind: 'site', id: siteId, solarPricePerW: solar, batteryPricePerKWh: battery })));
+  return BATTERY_SWEEP_PRICES_PER_KWH.flatMap(battery => SOLAR_SWEEP_PRICES_PER_W.map(solar => ({ kind: 'site', id: siteId, solarPricePerW: solar, batteryPricePerKWh: battery, search: 'thorough' })));
 }
+
+/** Optimizer options of a point (the thorough search for grid points). */
+export const pointOptions = point => (point.search === 'thorough' ? { thorough: true } : {});
 
 /** The held-price options: the settings' own price first, then the sweep list. */
 export function heldPriceOptions(sweepKey, current) {
@@ -259,7 +263,7 @@ export class SolarSweepPage {
       };
       worker.addEventListener('message', onMessage);
       worker.addEventListener('error', onError);
-      worker.postMessage({ requestId, type: 'priceSweepPoint', state: { ...this.baseState }, options: { point } });
+      worker.postMessage({ requestId, type: 'priceSweepPoint', state: { ...this.baseState }, options: { point, ...pointOptions(point) } });
     });
   }
 
@@ -267,7 +271,7 @@ export class SolarSweepPage {
     return new Promise((resolve, reject) => {
       window.setTimeout(() => {
         try {
-          resolve(priceSweepPoint(this.baseState, point));
+          resolve(priceSweepPoint(this.baseState, point, pointOptions(point)));
         } catch (error) {
           reject(error);
         }
@@ -307,7 +311,7 @@ export class SolarSweepPage {
 
   /** The simulator link of a grid cell: the site, both prices and the cell's design (cached per point). */
   cellHref(result, solar, battery) {
-    const key = pointKey({ id: this.gridSite, solarPricePerW: solar, batteryPricePerKWh: battery });
+    const key = pointKey({ id: this.gridSite, solarPricePerW: solar, batteryPricePerKWh: battery, search: 'thorough' });
     this.cellHrefs ||= new Map();
     if (!this.cellHrefs.has(key)) {
       const state = sweepPointState(this.baseState, { kind: 'site', id: this.gridSite, solarPricePerW: solar, batteryPricePerKWh: battery, patch: result.patch });
@@ -324,7 +328,7 @@ export class SolarSweepPage {
     target.innerHTML = renderHeatmapSvg({
       xs: SOLAR_SWEEP_PRICES_PER_W,
       ys: BATTERY_SWEEP_PRICES_PER_KWH,
-      cell: (solar, battery) => this.results[pointKey({ id: this.gridSite, solarPricePerW: solar, batteryPricePerKWh: battery })] || null,
+      cell: (solar, battery) => this.results[pointKey({ id: this.gridSite, solarPricePerW: solar, batteryPricePerKWh: battery, search: 'thorough' })] || null,
       value,
       format,
       xLabel: solarLabel,

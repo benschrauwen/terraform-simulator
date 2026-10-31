@@ -64,14 +64,18 @@ test('both sweeps cover every site at every price, with matching lines, and shar
   assert.match(options[0].label, /your setting/);
 });
 
-test('the 2D grid covers every solar x battery price for one site, sharing the sweeps\' points', async () => {
+test('the 2D grid covers every solar x battery price for one site with the thorough search', async () => {
   const { listGridPoints } = await import('../../js/ui/datacenter/solar-sweep-page.js');
   const grid = listGridPoints('phoenix-az');
   assert.equal(grid.length, SOLAR_SWEEP_PRICES_PER_W.length * BATTERY_SWEEP_PRICES_PER_KWH.length);
-  assert.ok(grid.every(point => point.id === 'phoenix-az'));
-  // The solar sweep with the battery held at a grid price is one row of the grid.
+  assert.ok(grid.every(point => point.id === 'phoenix-az' && point.search === 'thorough'));
+  // Grid points use the thorough search, so they are cached apart from the sweeps' default-search points.
   const row = new Set(listSweepPoints('solar', 150).filter(point => point.id === 'phoenix-az').map(pointKey));
-  assert.equal(grid.filter(point => row.has(pointKey(point))).length, SOLAR_SWEEP_PRICES_PER_W.length);
+  assert.equal(grid.filter(point => row.has(pointKey(point))).length, 0);
+  assert.equal(new Set(grid.map(pointKey)).size, grid.length);
+  const { pointOptions } = await import('../../js/ui/datacenter/solar-sweep-page.js');
+  assert.deepEqual(pointOptions(grid[0]), { thorough: true });
+  assert.deepEqual(pointOptions(listSweepPoints('solar', 150)[0]), {});
 });
 
 test('the heatmap draws one cell per price pair, coloured on the scale, pending cells grey', async () => {

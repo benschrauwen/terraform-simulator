@@ -435,8 +435,8 @@ function optimizeFrom(startState, referenceState, options = {}) {
       const steps = [];
       if (durations.length > 1) steps.push({ key: 'duration', values: durations });
       if (unitSizes.length > 1) steps.push({ key: 'unitSize', values: unitSizes });
-      // Compass search: continuous steps on solar and battery, halved when no
-      // move improves; with `discrete`, also the next shorter / longer
+      // Compass search: continuous steps on solar and battery, then the four
+      // diagonals, halved when no move improves; with `discrete`, also the next shorter / longer
       // duration and unit size whenever no continuous move improved.
       const compass = discrete => {
         const axes = [];
@@ -452,6 +452,19 @@ function optimizeFrom(startState, referenceState, options = {}) {
               if (value === point[axis.key]) continue;
               const next = { ...point, [axis.key]: value };
               if (tryPoint(pointOf(next.solar, next.battery, next.duration, next.unitSize))) { improved = true; break; }
+            }
+          }
+          // Diagonal moves (solar and battery together) before halving: with
+          // cheap solar and batteries the optimum lies on a ridge along
+          // "less solar, more battery", where no single-axis step improves
+          // (Richland Parish at $0.40/W and $150/kWh stalled $7.5M short).
+          if (!improved && axes.length === 2 && axes.every(axis => axis.step >= axis.res)) {
+            for (const [solarSign, batterySign] of [[-1, 1], [1, -1], [1, 1], [-1, -1]]) {
+              if (evaluations + reserve > startShare) break;
+              const solar = Math.min(axes[0].max, Math.max(0, roundTo(point.solar + solarSign * axes[0].step, axes[0].res)));
+              const battery = Math.min(axes[1].max, Math.max(0, roundTo(point.battery + batterySign * axes[1].step, axes[1].res)));
+              if (solar === point.solar || battery === point.battery) continue;
+              if (tryPoint(pointOf(solar, battery, point.duration, point.unitSize))) { improved = true; break; }
             }
           }
           for (const step of improved || !discrete ? [] : steps) {

@@ -615,7 +615,7 @@ function optimizeFrom(startState, referenceState, options = {}) {
   }
   report('done');
 
-  return {
+  const result = {
     architecture: start.architecture,
     best,
     baseline: summarize(calculateDatacenterScenario(reference, { fastMode: true })),
@@ -640,6 +640,23 @@ function optimizeFrom(startState, referenceState, options = {}) {
     notes,
     elapsedMs: Date.now() - t0,
   };
+  // A best design at an upper bound of solar or battery (bounds not given
+  // explicitly) may want more: search once more with the bounds doubled and
+  // keep the better design. With cheap solar the 4 x peak solar bound binds
+  // (Ashburn at $0.20/W and $75/kWh: 494 MWdc at the bound, $11.7M short of
+  // the 670 MWdc optimum).
+  const binding = corners.filter(corner => (corner === 'solar' && bounds.solarMaxMWdc === undefined) || (corner === 'battery' && bounds.batteryMaxMWh === undefined));
+  // An explicit budget covers both searches (the second gets what is left).
+  const widerBudget = budgetOption === null ? null : budgetOption - evaluations;
+  if (binding.length && !options.widened && (widerBudget === null || widerBudget >= 40)) {
+    const wider = optimizeFrom(startState, referenceState, { ...options, boundsScale: scale * 2, widened: true, onProgress: null, ...(widerBudget === null ? {} : { budget: widerBudget }) });
+    const evaluated = evaluations + wider.candidatesEvaluated;
+    if (isBetterCandidate(wider.best, best)) {
+      return { ...wider, candidatesEvaluated: evaluated, notes: [`The best design sat at the upper bound (${binding.join(', ')}); the search was repeated with the bounds doubled.`, ...wider.notes], elapsedMs: Date.now() - t0 };
+    }
+    return { ...result, candidatesEvaluated: evaluated, elapsedMs: Date.now() - t0 };
+  }
+  return result;
 }
 
 /**

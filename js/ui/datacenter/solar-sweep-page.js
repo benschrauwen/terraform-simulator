@@ -17,7 +17,7 @@ import { settingsSummary } from './sites-page.js';
 import { bindHeatmapLinks, renderHeatmapSvg } from './sweep-heatmap.js';
 
 // Bump the version when model or data changes alter results, so stale sessions rerun.
-const CACHE_PREFIX = 'abundance-price-grid:v2:';
+const CACHE_PREFIX = 'abundance-price-grid:v3:';
 const MAX_WORKERS = 4;
 const HEATMAPS = ['sweepGridCo2', 'sweepGridNpv', 'sweepGridExcess'];
 

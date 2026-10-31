@@ -50,3 +50,16 @@ test('the global run finds the solar + battery basin the pattern search alone mi
   // Deterministic: the same design on a second run.
   assert.equal(optimizeDatacenterDesign(start).best.npv, global.best.npv);
 });
+
+test('a best design at the solar bound is searched again with the bounds doubled', () => {
+  // Ashburn with solar at $0.20/W and a $75/kWh battery: within 4 x peak the best design sits at
+  // the solar bound (~494 MWdc); the repeated search goes past it and finds a better design.
+  const site = applyDatacenterPresetDefaults({ ...DATACENTER_DEFAULT_STATE, siteId: 'ashburn-va' }, 'siteId');
+  const start = getArchitectureStartState(withBatteryPrice(withSolarPrice(site, 0.2), 75), 'hybrid');
+  const result = optimizeDatacenterDesign(start);
+  assert.equal(result.bounds.boundsScale, 2);
+  // Past the original bound of 4 x the design peak.
+  assert.ok(result.best.solarMWdc > 4 * result.bounds.peakMW, `${result.best.solarMWdc} MWdc`);
+  assert.match(result.notes.join(' '), /bounds doubled/);
+  assert.ok(result.best.feasible);
+});

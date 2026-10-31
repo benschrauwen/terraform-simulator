@@ -1,12 +1,11 @@
 /* Hidden solar price sweep page (datacenter-solar-sweep.html, linked from nowhere): for each
    installed solar price (panel + BOS, SOLAR_SWEEP_PRICES_PER_W) the best design across grid,
-   hybrid and islanded is optimized for every real project and every site (site-survey.js
-   solarSweepPoint), in a pool of module workers (main thread as a fallback). Two Chart.js line
-   charts fill in as points finish: CO2e per project and NPV per site against the solar price.
+   hybrid and islanded is optimized for every site (site-survey.js solarSweepPoint), in a pool of
+   module workers (main thread as a fallback). Two Chart.js line charts fill in as points finish:
+   CO2e and NPV per site against the solar price.
    The user's settings come from the share hash, as on the sites page; finished points are kept in
    sessionStorage per settings hash. */
 
-import { DATACENTER_PROJECTS } from '../../data/datacenter/projects.js';
 import { DATACENTER_SITES } from '../../data/datacenter/sites.js';
 import { SOLAR_SWEEP_PRICES_PER_W, solarSweepPoint } from '../../model/datacenter/index.js';
 import { axisGrid, axisTicks, axisTitle, legendLabels } from '../charts/chart-utils.js';
@@ -18,13 +17,9 @@ import { settingsSummary } from './sites-page.js';
 const CACHE_PREFIX = 'abundance-solar-sweep:v2:';
 const MAX_WORKERS = 4;
 
-/** Every sweep point: projects first, then sites, each across the prices (cheapest first). */
+/** Every sweep point: each site at each price (cheapest first). */
 export function listSweepPoints(prices = SOLAR_SWEEP_PRICES_PER_W) {
-  const series = [
-    ...DATACENTER_PROJECTS.map(project => ({ kind: 'project', id: project.id })),
-    ...DATACENTER_SITES.map(site => ({ kind: 'site', id: site.id })),
-  ];
-  return prices.flatMap(pricePerW => series.map(entry => ({ ...entry, pricePerW })));
+  return prices.flatMap(pricePerW => DATACENTER_SITES.map(site => ({ kind: 'site', id: site.id, pricePerW })));
 }
 
 export const pointKey = point => `${point.kind}|${point.id}|${point.pricePerW}`;
@@ -35,15 +30,13 @@ export function seriesColor(index, count) {
   return `hsl(${hue}, 65%, ${index % 2 ? 62 : 52}%)`;
 }
 
-/** Chart.js datasets for one kind: one line per project or site, points sorted by price. */
-export function buildSweepDatasets(results, kind, value) {
-  const entries = kind === 'project'
-    ? DATACENTER_PROJECTS.map(project => ({ id: project.id, label: project.name }))
-    : DATACENTER_SITES.map(site => ({ id: site.id, label: site.name }));
+/** Chart.js datasets: one line per site (same colour in both charts), points sorted by price. */
+export function buildSweepDatasets(results, value) {
+  const entries = DATACENTER_SITES.map(site => ({ id: site.id, label: site.name }));
   return entries.map(({ id, label }, index) => ({
     label,
     data: results
-      .filter(result => result.kind === kind && result.id === id)
+      .filter(result => result.kind === 'site' && result.id === id)
       .sort((a, b) => a.pricePerW - b.pricePerW)
       .map(result => ({ x: result.pricePerW, y: value(result), result })),
     borderColor: seriesColor(index, entries.length),
@@ -177,7 +170,7 @@ export class SolarSweepPage {
   }
 
   render() {
-    const results = Object.values(this.results);
+    const results = Object.values(this.results).filter(result => result.kind === 'site');
     const total = this.points.length;
     const progress = document.getElementById('sweepProgress');
     if (progress) {
@@ -192,8 +185,8 @@ export class SolarSweepPage {
         ? `Optimized ${results.length} of ${total} points${elapsed}…`
         : `All ${total} points optimized.`;
     }
-    this.renderChart('co2', 'sweepCo2Chart', buildSweepDatasets(results, 'project', result => result.co2eT / 1000), 'CO₂e (kt/yr)', value => `${fixed(value, 0)} kt/yr`);
-    this.renderChart('npv', 'sweepNpvChart', buildSweepDatasets(results, 'site', result => result.npv / 1e6), 'NPV ($M)', value => `$${fixed(value, 0)}M`);
+    this.renderChart('co2', 'sweepCo2Chart', buildSweepDatasets(results, result => result.co2eT / 1000), 'CO₂e (kt/yr)', value => `${fixed(value, 0)} kt/yr`);
+    this.renderChart('npv', 'sweepNpvChart', buildSweepDatasets(results, result => result.npv / 1e6), 'NPV ($M)', value => `$${fixed(value, 0)}M`);
   }
 
   renderChart(key, canvasId, datasets, yTitle, formatValue) {

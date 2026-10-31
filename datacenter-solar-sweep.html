@@ -20,10 +20,9 @@
     <h1>Solar price sweep</h1>
     <p>
       At each installed solar price (panel + BOS, the panel / BOS split kept) the best design across a
-      grid-connected, a hybrid and an islanded architecture is optimized for every real project and every
-      site, as on the sites page: the highest NPV that meets the uptime target without the backup diesel.
-      A project keeps its site, IT size, GPUs, cooling, grid cap and backup diesel; its generators are
-      re-optimized. Your settings now put solar at <span id="sweepCurrentPrice"></span>.
+      grid-connected, a hybrid and an islanded architecture is optimized for every site, as on the sites
+      page: the highest NPV that meets the uptime target without the backup diesel. Both charts show the
+      same designs, one line per site. Your settings now put solar at <span id="sweepCurrentPrice"></span>.
     </p>
     <p class="sites-settings">Settings: <span id="sweepSettings"></span></p>
     <div class="sites-toolbar">
@@ -35,8 +34,8 @@
 
   <main class="doc-main sites-main">
     <section class="sweep-chart-card">
-      <h2>CO₂e per real project</h2>
-      <div class="sweep-chart"><canvas id="sweepCo2Chart" role="img" aria-label="CO2e per project against the solar price"></canvas></div>
+      <h2>CO₂e per site</h2>
+      <div class="sweep-chart"><canvas id="sweepCo2Chart" role="img" aria-label="CO2e per site against the solar price"></canvas></div>
     </section>
     <section class="sweep-chart-card">
       <h2>NPV per site</h2>

@@ -1,11 +1,10 @@
 /*
  * Hidden solar price sweep: the price is set as panel + BOS with the split kept, each point is
- * the best design across architectures at that price, and the page's datasets have one line per
- * project (CO2e) or per site (NPV), sorted by price.
+ * the best design across architectures at that price, and both of the page's charts have one line
+ * per site (CO2e and NPV), sorted by price, in matching colours.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DATACENTER_PROJECTS } from '../../js/data/datacenter/projects.js';
 import { DATACENTER_SITES } from '../../js/data/datacenter/sites.js';
 import { DATACENTER_DEFAULT_STATE, SOLAR_SWEEP_PRICES_PER_W, solarSweepPoint } from '../../js/model/datacenter/index.js';
 import { withSolarPrice } from '../../js/model/datacenter/site-survey.js';
@@ -31,16 +30,18 @@ test('cheaper solar never lowers the best NPV, and the point reports its design'
   assert.match(describePoint(project), /solar/);
 });
 
-test('the sweep covers every project and site at every price, one dataset each, sorted by price', () => {
+test('the sweep covers every site at every price; both charts have one matching line per site', () => {
   const points = listSweepPoints();
-  assert.equal(points.length, (DATACENTER_PROJECTS.length + DATACENTER_SITES.length) * SOLAR_SWEEP_PRICES_PER_W.length);
+  assert.equal(points.length, DATACENTER_SITES.length * SOLAR_SWEEP_PRICES_PER_W.length);
+  assert.ok(points.every(point => point.kind === 'site'));
   assert.equal(new Set(points.map(pointKey)).size, points.length);
   const fake = points.map(point => ({ ...point, npv: point.pricePerW, co2eT: 1000 * point.pricePerW }));
   const shuffled = [...fake].reverse();
-  const co2 = buildSweepDatasets(shuffled, 'project', result => result.co2eT / 1000);
-  const npv = buildSweepDatasets(shuffled, 'site', result => result.npv);
-  assert.equal(co2.length, DATACENTER_PROJECTS.length);
-  assert.equal(npv.length, DATACENTER_SITES.length);
+  const co2 = buildSweepDatasets(shuffled, result => result.co2eT / 1000);
+  const npv = buildSweepDatasets(shuffled, result => result.npv);
+  assert.equal(co2.length, DATACENTER_SITES.length);
+  assert.deepEqual(co2.map(dataset => dataset.label), npv.map(dataset => dataset.label));
+  assert.deepEqual(co2.map(dataset => dataset.borderColor), npv.map(dataset => dataset.borderColor));
   co2.forEach(dataset => {
     assert.equal(dataset.data.length, SOLAR_SWEEP_PRICES_PER_W.length);
     assert.deepEqual(dataset.data.map(point => point.x), [...SOLAR_SWEEP_PRICES_PER_W]);

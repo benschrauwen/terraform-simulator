@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { DATACENTER_SITES } from '../../js/data/datacenter/sites.js';
 import { BATTERY_SWEEP_PRICES_PER_KWH, DATACENTER_DEFAULT_STATE, priceSweepPoint, SOLAR_SWEEP_PRICES_PER_W } from '../../js/model/datacenter/index.js';
 import { batteryPricePerKWh, withBatteryPrice, withSolarPrice } from '../../js/model/datacenter/site-survey.js';
-import { buildSweepDatasets, describePoint, heldPriceOptions, listSweepPoints, pointKey } from '../../js/ui/datacenter/solar-sweep-page.js';
+import { buildSweepDatasets, describePoint, excessGWh, heldPriceOptions, listSweepPoints, pointKey } from '../../js/ui/datacenter/solar-sweep-page.js';
 
 test('solar and battery prices are set as totals, keeping their splits', () => {
   const base = DATACENTER_DEFAULT_STATE;
@@ -35,6 +35,10 @@ test('cheaper solar or batteries never lower the best NPV; the point reports its
   assert.ok(cheapBattery.batteryMWh >= dearBattery.batteryMWh);
   assert.ok(Math.abs(cheapBattery.batteryPricePerKWh - 75) < 1e-9 && Math.abs(cheapBattery.solarPricePerW - 0.7) < 1e-9);
   assert.ok(cheapSolar.co2eT > 0 && cheapSolar.feasible);
+  // Excess electricity = curtailed + exported, from the point's dispatch; more solar never leaves less.
+  assert.ok(cheapSolar.curtailedMWh >= 0 && cheapSolar.exportMWh >= 0);
+  assert.ok(excessGWh(cheapSolar) >= excessGWh(dearSolar) - 1e-9);
+  assert.equal(excessGWh({ curtailedMWh: 1500, exportMWh: 500 }), 2);
   assert.match(describePoint(cheapSolar), /solar/);
 });
 

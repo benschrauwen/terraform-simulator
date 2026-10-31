@@ -90,7 +90,8 @@ export function withBatteryPrice(state, perKWh) {
  * (compareArchitectures from each architecture's starting design; a project
  * keeps its site, IT size, GPUs, cooling, grid cap and backup diesel).
  * Returns { kind, id, solarPricePerW, batteryPricePerKWh, architecture, npv,
- * irr, co2eT, solarMWdc, batteryMWh, firmLabel, units, feasible }.
+ * irr, co2eT, curtailedMWh, exportMWh, solarMWdc, batteryMWh, firmLabel,
+ * units, feasible }.
  */
 export function priceSweepPoint(baseState, { kind, id, solarPricePerW: solarPrice = null, batteryPricePerKWh: batteryPrice = null }, options = {}) {
   const start = kind === 'project'
@@ -113,6 +114,9 @@ export function priceSweepPoint(baseState, { kind, id, solarPricePerW: solarPric
     npv: r.economics.npv,
     irr: r.economics.projectIrr,
     co2eT: r.emissions.totalCo2eT,
+    // Excess electricity: on-site generation the site neither used nor stored (curtailed) or sold (exported).
+    curtailedMWh: r.dispatch.annual.curtailedMWh,
+    exportMWh: r.dispatch.annual.exportMWh,
     solarMWdc: state.solarSizeMWdc,
     batteryMWh: state.batteryCapacityMWh,
     firmLabel: r.firm.units > 0 ? r.firm.label : null,

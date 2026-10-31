@@ -1,5 +1,6 @@
 /* Hidden price sweep page (datacenter-solar-sweep.html, linked from nowhere). Two sweeps, each
-   with a CO2e and an NPV chart (one line per site, matching colours across all four charts):
+   with a CO2e, an NPV and an excess electricity chart (curtailed + exported energy; one line per
+   site, matching colours across all six charts):
    - solar: installed solar price (panel + BOS, SOLAR_SWEEP_PRICES_PER_W) on x, the battery held
      at a selectable price;
    - battery: installed battery price ($/kWh of a 4-hour battery, energy + power,
@@ -19,7 +20,7 @@ import { parseDatacenterHash, serializeDatacenterHash } from './share.js';
 import { settingsSummary } from './sites-page.js';
 
 // Bump the version when model or data changes alter results, so stale sessions rerun.
-const CACHE_PREFIX = 'abundance-price-sweep:v1:';
+const CACHE_PREFIX = 'abundance-price-sweep:v2:';
 const MAX_WORKERS = 4;
 
 const roundSolar = value => Math.round(value * 1000) / 1000;
@@ -85,6 +86,9 @@ export function buildSweepDatasets(results, sweepKey, held, value) {
     tension: 0.15,
   }));
 }
+
+/** Excess electricity of a point in GWh/yr: curtailed + exported. */
+export const excessGWh = result => ((result.curtailedMWh || 0) + (result.exportMWh || 0)) / 1000;
 
 /** Tooltip line: the design behind a point. */
 export function describePoint(result) {
@@ -258,10 +262,13 @@ export class SolarSweepPage {
     const npv = result => result.npv / 1e6;
     const co2Format = value => `${fixed(value, 0)} kt/yr`;
     const npvFormat = value => `$${fixed(value, 0)}M`;
+    const excessFormat = value => `${fixed(value, value < 10 ? 1 : 0)} GWh/yr`;
     this.renderChart('solarCo2', 'sweepSolarCo2Chart', 'solar', co2, 'CO₂e (kt/yr)', co2Format);
     this.renderChart('solarNpv', 'sweepSolarNpvChart', 'solar', npv, 'NPV ($M)', npvFormat);
+    this.renderChart('solarExcess', 'sweepSolarExcessChart', 'solar', excessGWh, 'Excess electricity (GWh/yr)', excessFormat);
     this.renderChart('batteryCo2', 'sweepBatteryCo2Chart', 'battery', co2, 'CO₂e (kt/yr)', co2Format);
     this.renderChart('batteryNpv', 'sweepBatteryNpvChart', 'battery', npv, 'NPV ($M)', npvFormat);
+    this.renderChart('batteryExcess', 'sweepBatteryExcessChart', 'battery', excessGWh, 'Excess electricity (GWh/yr)', excessFormat);
   }
 
   renderChart(key, canvasId, sweepKey, value, yTitle, formatValue) {
@@ -293,7 +300,13 @@ export class SolarSweepPage {
             callbacks: {
               title: items => (items.length ? `At ${sweep.xLabel(items[0].parsed.x)}` : ''),
               label: item => `${item.dataset.label}: ${formatValue(item.parsed.y)}`,
-              afterLabel: item => describePoint(item.raw.result),
+              afterLabel: item => {
+                const result = item.raw.result;
+                const excess = (result.curtailedMWh || 0) + (result.exportMWh || 0) > 0
+                  ? ` · excess: ${fixed((result.curtailedMWh || 0) / 1000, 1)} GWh curtailed, ${fixed((result.exportMWh || 0) / 1000, 1)} GWh exported`
+                  : '';
+                return `${describePoint(result)}${excess}`;
+              },
             },
           },
         },

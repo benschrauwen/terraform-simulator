@@ -23,8 +23,10 @@
       optimized for every site, as on the sites page: the highest NPV that meets the uptime target
       without the backup diesel. The solar sweep moves installed solar (panel + BOS, their split kept)
       with the battery held at a price you choose; the battery sweep moves the installed battery
-      ($/kWh of a 4-hour battery: energy + power, their split kept) with solar held. Every chart has
-      one line per site, in the same colours. Your settings put <span id="sweepCurrentPrices"></span>.
+      ($/kWh of a 4-hour battery: energy + power, their split kept) with solar held. Each sweep shows
+      CO₂e, NPV and excess electricity: on-site generation the site can neither use nor store,
+      curtailed or (when export is on) sold to the grid. Every chart has one line per site, in the
+      same colours. Your settings put <span id="sweepCurrentPrices"></span>.
     </p>
     <p class="sites-settings">Settings: <span id="sweepSettings"></span></p>
     <div class="sites-toolbar">
@@ -48,6 +50,10 @@
       <h2>NPV per site</h2>
       <div class="sweep-chart"><canvas id="sweepSolarNpvChart" role="img" aria-label="NPV per site against the solar price"></canvas></div>
     </section>
+    <section class="sweep-chart-card">
+      <h2>Excess electricity per site <span class="chart-title-meta">curtailed + exported</span></h2>
+      <div class="sweep-chart"><canvas id="sweepSolarExcessChart" role="img" aria-label="Excess electricity per site against the solar price"></canvas></div>
+    </section>
 
     <h2 class="sweep-section-title">Battery price sweep</h2>
     <div class="sites-toolbar">
@@ -61,6 +67,10 @@
     <section class="sweep-chart-card">
       <h2>NPV per site</h2>
       <div class="sweep-chart"><canvas id="sweepBatteryNpvChart" role="img" aria-label="NPV per site against the battery price"></canvas></div>
+    </section>
+    <section class="sweep-chart-card">
+      <h2>Excess electricity per site <span class="chart-title-meta">curtailed + exported</span></h2>
+      <div class="sweep-chart"><canvas id="sweepBatteryExcessChart" role="img" aria-label="Excess electricity per site against the battery price"></canvas></div>
     </section>
   </main>
 

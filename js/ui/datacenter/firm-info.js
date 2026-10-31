@@ -4,6 +4,7 @@
    Pure HTML builders over js/data/datacenter/power.js; every value is escaped. */
 
 import { ARCHITECTURES, GAS_GENSET_TYPES, NUCLEAR_TYPES, POWER_LEAD_TIMES } from '../../data/datacenter/power.js';
+import { gasSizeFactors } from '../../model/datacenter/supply.js';
 import { escapeAttribute as attr, escapeHtml as esc } from '../renderers/markup.js';
 import { fixed, formatMW, formatMWh } from './format.js';
 import { infoRow, note, typicalLeadMonths } from './info-panels.js';
@@ -28,6 +29,16 @@ export function gasTradeOffLine(type, scheduleCase = 'typical') {
   ].join(' · ');
 }
 
+/** What the chosen unit size does to the type's heat rate, $/kW and O&M (supply.js gasSizeFactors). */
+function unitSizeEffect(state) {
+  const type = GAS_GENSET_TYPES[state.gasType];
+  const f = gasSizeFactors(type, state.gasUnitSizeMW);
+  if ([f.heatRate, f.capex, f.fixedOm, f.variableOm].every(value => Math.abs(value - 1) < 0.001)) return '';
+  const pct = value => `${value >= 1 ? '+' : '−'}${fixed(Math.abs(value - 1) * 100, 0)}%`;
+  return infoRow(`At ${formatMW(state.gasUnitSizeMW)} units`, `heat rate ${fixed(state.gasHeatRateMMBtuPerMWh * f.heatRate, 2)} (${pct(f.heatRate)}), $${fixed(state.gasCapexPerKW * f.capex, 0)}/kW (${pct(f.capex)}), O&M ${pct(f.fixedOm)}`,
+    `Smaller units of a type burn more fuel per MWh and cost more per kW (sources on the sources page); the sliders below hold the values at the type's ${formatMW(type.unitSizeMW.default)} default size.`);
+}
+
 function gasInfo(state) {
   const type = GAS_GENSET_TYPES[state.gasType];
   if (!type) return '';
@@ -35,6 +46,7 @@ function gasInfo(state) {
     `<p class="dc-tradeoff">${esc(gasTradeOffLine(type, state.scheduleCase))}</p>`,
     `<p class="dc-info-lead">${esc(type.tradeOff)}</p>`,
     infoRow('Unit sizes', type.unitSizeMW.max > type.unitSizeMW.min ? `${formatMW(type.unitSizeMW.min)} – ${formatMW(type.unitSizeMW.max)}` : formatMW(type.unitSizeMW.min)),
+    unitSizeEffect(state),
     type.emergencyEngine ? note(`Standby only: never run on cost while the grid is up. EPA emergency engines: unlimited in utility outages, at most ${type.emergencyEngine.maxHoursPerYear} h/yr of testing and non-emergency use (${type.emergencyEngine.maxNonEmergencyHoursPerYear} h non-emergency). ${type.emissionsNote || ''}`) : '',
     type.fuelStorageHours ? note(`On-site fuel: ${type.fuelStorageHours.typical} h at full load typical (Uptime Institute minimum ${type.fuelStorageHours.minimum} h); included in the installed cost.`) : '',
     note(`Examples: ${type.examples}`),

@@ -267,6 +267,13 @@ function optimizeFrom(startState, referenceState, options = {}) {
     // one global CMA-ES run; 'pattern': the pattern search alone (the former
     // default, kept for comparison).
     refine = 'global',
+    // Battery duration (1/2/4/8 h and the state's) as discrete steps at each
+    // refinement start; the thorough search always does.
+    searchDurations = true,
+    // Gas unit size (the type's min, default and max, and the state's) the
+    // same way; the size curves (power.js sizeCurve) charge small units their
+    // heat rate, $/kW and O&M penalty.
+    searchUnitSizes = true,
     onProgress = null,
   } = options;
   const start = normalizeDatacenterState(startState);
@@ -290,10 +297,10 @@ function optimizeFrom(startState, referenceState, options = {}) {
   // Thorough mode also searches battery duration and (gas types with a size
   // range) the unit size: discrete values tried at each refinement start and
   // as +/-1 steps of the pattern search.
-  const durations = thorough && sizeBattery
+  const durations = (thorough || searchDurations) && sizeBattery
     ? [...new Set([...THOROUGH_SEARCH.durationsHours, start.batteryDurationHours])].sort((x, y) => x - y)
     : [start.batteryDurationHours];
-  const unitSizes = thorough && sizeFirm && gasRange && gasRange.max > gasRange.min
+  const unitSizes = (thorough || searchUnitSizes) && sizeFirm && gasRange && gasRange.max > gasRange.min
     ? [...new Set([gasRange.min, gasRange.default, gasRange.max, start.gasUnitSizeMW])].sort((x, y) => x - y)
     : [unitSizeMW];
   // Gas: auto sizing (the units the target needs + the spare policy, which

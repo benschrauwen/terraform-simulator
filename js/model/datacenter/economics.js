@@ -137,7 +137,9 @@ export function buildDatacenterAssets(state, { solar, battery, firm, backup = nu
     });
   }
   if (firm.family === 'gas') {
-    assets.push({ key: 'gas', label: firm.label, group: 'power', capex: state.gasCapexPerKW * firmKW, lifeYears: A.assetLifeYears.gas, annualFixedOm: state.gasFixedOmPerKWYear * firmKW, ...build(firm.typeData?.leadTimeKey) });
+    // At the unit size's own $/kW and fixed O&M (supply.js gasSizeFactors).
+    const size = firm.sizeFactors || { capex: 1, fixedOm: 1 };
+    assets.push({ key: 'gas', label: firm.label, group: 'power', capex: state.gasCapexPerKW * size.capex * firmKW, lifeYears: A.assetLifeYears.gas, annualFixedOm: state.gasFixedOmPerKWYear * size.fixedOm * firmKW, ...build(firm.typeData?.leadTimeKey) });
   }
   if (firm.family === 'nuclear') {
     assets.push({ key: 'nuclear', label: firm.label, group: 'power', capex: state.nuclearCapexPerKW * firmKW, lifeYears: A.assetLifeYears.nuclear, annualFixedOm: state.nuclearFixedOmPerKWYear * firmKW, ...build(firm.typeData?.leadTimeKey) });
@@ -167,7 +169,7 @@ export function buildOpexLines(state, { totals, monthlyPeakGridKW, water, firm, 
     { key: 'gridEnergy', label: 'Grid energy', energy: true, annual: (totals.gridKWh / 1000) * state.gridEnergyPricePerMWh },
     { key: 'gridDemand', label: 'Grid demand charges', energy: true, annual: monthlyPeakGridKW.reduce((sum, kW) => sum + kW, 0) * state.gridDemandChargePerKWMonth },
     { key: 'gasFuel', label: diesel ? 'Diesel fuel' : 'Gas fuel', energy: true, annual: totals.fuelMMBtu * state.gasFuelPricePerMMBtu },
-    { key: 'gasVariableOm', label: diesel ? 'Diesel generator variable O&M' : 'Gas variable O&M', energy: true, annual: firm.family === 'gas' ? gasMWh * state.gasVariableOmPerMWh : 0 },
+    { key: 'gasVariableOm', label: diesel ? 'Diesel generator variable O&M' : 'Gas variable O&M', energy: true, annual: firm.family === 'gas' ? gasMWh * (firm.variableOmPerMWh ?? state.gasVariableOmPerMWh) : 0 },
     { key: 'nuclearVariable', label: 'Nuclear fuel + variable O&M', energy: true, annual: firm.family === 'nuclear' && !contracted ? nuclearMWh * (state.nuclearFuelPerMWh + state.nuclearVariableOmPerMWh) : 0 },
     { key: 'nuclearPpa', label: 'Nuclear PPA', energy: true, annual: contracted ? nuclearMWh * state.nuclearPpaPricePerMWh : 0 },
     // On-site combustion CO2 (and, with priceMethaneSlip, methane slip as CO2e) x carbon

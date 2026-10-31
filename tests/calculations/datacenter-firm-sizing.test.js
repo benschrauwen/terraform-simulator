@@ -161,7 +161,7 @@ test('the minimum-units bisection equals the auto count before spares; the optim
     assert.equal(bisected, auto.firm.sizingBasis.minUnits, `design ${index}`);
     // The optimizer's design at the same solar and battery is the auto design with its spares
     // (battery-as-reserve as the state sets it), plus any extra units that pay.
-    const result = optimizeDatacenterDesign(rawState, { sizeSolar: false, sizeBattery: false, budget: 60 });
+    const result = optimizeDatacenterDesign(rawState, { sizeSolar: false, sizeBattery: false, searchUnitSizes: false, searchDurations: false, budget: 60 });
     const autoRaw = run({ ...rawState, firmFamily: 'gas', firmSizingMode: 'auto', firmExtraUnits: 0 });
     assert.equal(result.best.units, autoRaw.firm.units + result.best.extraUnits, `design ${index}: optimizer`);
   });

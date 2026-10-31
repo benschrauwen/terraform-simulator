@@ -113,7 +113,8 @@ test('hybrid (gas cheaper than grid power): extra units beyond the target and sp
   const hybrid = { ...RECIP, gasFuelPricePerMMBtu: 1, gridEnergyPricePerMWh: 150, firmGridOutageHoursPerYear: 0 };
   const bounds = { solarMaxMWdc: 0, batteryMaxMWh: 0, unitsMax: 17 };
   const brute = bruteForce(hybrid, [0], [0], 17);
-  const result = optimizeDatacenterDesign(hybrid, { bounds, sizeSolar: false, sizeBattery: false });
+  // At the state's own unit size (the brute force does not vary it).
+  const result = optimizeDatacenterDesign(hybrid, { bounds, sizeSolar: false, sizeBattery: false, searchUnitSizes: false });
   assert.ok(brute.extra > 0);
   assert.equal(result.best.extraUnits, brute.extra);
   assert.equal(result.best.units, brute.units);

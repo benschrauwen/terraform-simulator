@@ -50,7 +50,7 @@ import {
   DEFAULT_GAS_GENSET_TYPE,
   DEFAULT_NUCLEAR_TYPE,
   GAS_GENSET_TYPES,
-  getGensetFuel,
+  getSiteFuelPricePerMMBtu,
   GRID_DEFAULTS,
   NUCLEAR_TYPES,
   ONSITE_SUBSTATION,
@@ -204,7 +204,7 @@ export const DATACENTER_STATE_FIELDS = [
   { key: 'batteryCapacityMWh', type: 'number', min: 0, max: 1e7, defaultValue: 0 },
   { key: 'batteryDurationHours', type: 'number', min: 0.25, max: 24, defaultValue: DEFAULT_STATE.batteryDurationHours },
   // Battery capex = MWh x energy $/kWh + MW x power $/kW (power.js
-  // BATTERY_COSTS: NREL 2026 mid case split, $308/kWh at 4 h). The plant
+  // BATTERY_COSTS: US today, $250/kWh at 4 h in NREL's split). The plant
   // builder's single $/kWh (150) is a global-market all-in figure.
   { key: 'batteryCostPerKWh', type: 'number', min: 0, max: 5000, defaultValue: BATTERY_COSTS.energyPerKWh },
   { key: 'batteryPowerCostPerKW', type: 'number', min: 0, max: 5000, defaultValue: BATTERY_COSTS.powerPerKW },
@@ -265,8 +265,9 @@ export const DATACENTER_STATE_FIELDS = [
   { key: 'gasHeatRateMMBtuPerMWh', type: 'number', min: 3.412, max: 20, derive: state => gasType(state).heatRateMMBtuPerMWh.default },
   { key: 'gasAvailabilityPercent', type: 'number', min: 50, max: 100, derive: state => gasType(state).availabilityPercent },
   // Delivered fuel price ($/MMBtu HHV) of the selected type's fuel: natural
-  // gas (GAS_DEFAULTS) or, for standby diesel, diesel (DIESEL_DEFAULTS).
-  { key: 'gasFuelPricePerMMBtu', type: 'number', min: 0, max: 100, derive: state => getGensetFuel(gasType(state)).fuelPricePerMMBtu },
+  // gas at the site's market (GAS_DEFAULTS, EUROPE_GAS) or, for standby
+  // diesel, diesel (DIESEL_DEFAULTS).
+  { key: 'gasFuelPricePerMMBtu', type: 'number', min: 0, max: 100, derive: state => getSiteFuelPricePerMMBtu(gasType(state), getDatacenterSite(state.siteId)) },
 
   { key: 'nuclearType', type: 'enum', getOptions: () => Object.keys(NUCLEAR_TYPES), defaultValue: DEFAULT_NUCLEAR_TYPE },
   { key: 'nuclearUnitSizeMW', type: 'number', min: 1, max: 2500, derive: state => nuclearType(state).unitSizeMWe.default },
@@ -312,7 +313,7 @@ export const DATACENTER_DERIVED_KEYS = Object.freeze(DERIVED_FIELDS.map(field =>
 
 // Which derived fields each selection drives.
 const DERIVED_BY_SELECTION = {
-  siteId: ['siteYieldMwhPerMwdcYear', 'gridEnergyPricePerMWh', 'gridCo2KgPerMWh', 'carbonPricePerTonne'],
+  siteId: ['siteYieldMwhPerMwdcYear', 'gridEnergyPricePerMWh', 'gridCo2KgPerMWh', 'carbonPricePerTonne', 'gasFuelPricePerMMBtu'],
   coolingTechnology: ['coolingCapexPerKWIT', 'coolingOmPercent'],
   gpuPlatform: ['gpuRentalPricePerHour', 'gpuItKWPerGpu', 'gpuCapexPerGpu'],
   mountingType: ['panelCostPerW', 'bosCostPerW'],

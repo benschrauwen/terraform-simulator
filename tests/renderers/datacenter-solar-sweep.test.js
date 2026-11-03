@@ -16,8 +16,8 @@ test('solar and battery prices are set as totals, keeping their splits', () => {
   const solar = withSolarPrice(base, 0.4);
   assert.ok(Math.abs(solar.panelCostPerW + solar.bosCostPerW - 0.4) < 1e-12);
   assert.ok(Math.abs(solar.panelCostPerW / 0.4 - solarShare) < 1e-12);
-  // US 2026 default: $222/kWh + $343/kW / 4 h = ~$308/kWh.
-  assert.ok(Math.abs(batteryPricePerKWh(base) - (222 + 343 / 4)) < 1e-9);
+  // US default: $180/kWh + $280/kW / 4 h = $250/kWh.
+  assert.ok(Math.abs(batteryPricePerKWh(base) - (180 + 280 / 4)) < 1e-9);
   const battery = withBatteryPrice(base, 150);
   assert.ok(Math.abs(batteryPricePerKWh(battery) - 150) < 1e-9);
   assert.ok(Math.abs(battery.batteryCostPerKWh / battery.batteryPowerCostPerKW - base.batteryCostPerKWh / base.batteryPowerCostPerKW) < 1e-12);
@@ -25,8 +25,8 @@ test('solar and battery prices are set as totals, keeping their splits', () => {
 
 test('cheaper solar or batteries never lower the best NPV; the point reports its prices and design', () => {
   const at = (solar, battery) => priceSweepPoint(DATACENTER_DEFAULT_STATE, { kind: 'site', id: 'abilene-tx', solarPricePerW: solar, batteryPricePerKWh: battery }, { budget: 300 });
-  const cheapSolar = at(0.2, 308);
-  const dearSolar = at(1.2, 308);
+  const cheapSolar = at(0.2, 250);
+  const dearSolar = at(1.0, 250);
   assert.ok(cheapSolar.npv >= dearSolar.npv - 1e-6 * Math.abs(dearSolar.npv));
   assert.ok(cheapSolar.solarMWdc >= dearSolar.solarMWdc);
   const cheapBattery = at(0.7, 75);

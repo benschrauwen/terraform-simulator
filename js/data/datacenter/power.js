@@ -244,6 +244,37 @@ export const GAS_DEFAULTS = {
   generationLabel: 'Gas generation',
 };
 
+/* European sites: the US price above does not apply (a separate market; the
+   TTF hub sat at EUR 85.92/MWh, ~$28/MMBtu, on average in October 2026, with
+   the Gulf conflict and low storage). The default follows the years the plant
+   runs (hybrid and islanded first power 2030), not today's spike: ICE Endex TTF
+   forwards on 2026-11-02 (Elexys' table; undated there, its Dec-26 EUR 94.86
+   matches that day's reported front month): Cal-27 75.31, Cal-28 46.69, Cal-29
+   33.73, Cal-30 28.22, Cal-31 24.74, Cal-32 25.55 EUR/MWh. Cal-30 to Cal-32
+   average EUR 26.17/MWh x 1.1202 USD/EUR (carbon.js USD_PER_EUR) / 3.412
+   MMBtu/MWh (TTF is quoted on gross calorific value, as heat rates here are HHV)
+   = $8.59/MMBtu, plus the US delivery adder ($0.50; judgment, no European
+   source) = ~$9. Contracts this far out trade thinly. Context: the World Bank's
+   Oct 2026 outlook has European gas at $12 in 2025 and $19 in 2026 (press
+   coverage, the report's table not opened). Luleå has no pipeline gas (Sweden's
+   grid is in the south and west; supply in the north is trucked), so $9 is a
+   floor there.
+   https://www.elexys.be/en/insights/ice-endex-dutch-natural-gas-forward
+   https://cbonds.com/indexes/71489/
+   https://aa.com.tr/en/economy/global-commodity-prices-projected-to-surge-23-in-2026-on-middle-east-conflict-world-bank/4104085
+   https://www.entsog.eu/sites/default/files/entsog-migration/publications/GRIPs/2012/GRIP_CEE_AnnexC_highres_L.pdf
+   (all retrieved 2026-11) */
+export const EUROPE_GAS = {
+  ttfForwardEurPerMWh: { cal27: 75.31, cal28: 46.69, cal29: 33.73, cal30: 28.22, cal31: 24.74, cal32: 25.55 },
+  ttfOctober2026EurPerMWh: 85.92,
+  usdPerEur: 1.1202,
+  deliveredAdderPerMMBtu: GAS_DEFAULTS.deliveredAdderPerMMBtu,
+  fuelPricePerMMBtu: 9.0,
+};
+
+/** $/MMBtu of a TTF price in EUR/MWh (markers and the source check). */
+export const ttfPerMMBtu = eurPerMWh => (eurPerMWh * EUROPE_GAS.usdPerEur) / 3.412;
+
 /* ---------- Diesel (standby generators) ----------
    Fuel of the 'standby-diesel' genset type below. Prices are $/MMBtu HHV
    like natural gas so the same state field (gasFuelPricePerMMBtu, the
@@ -287,6 +318,13 @@ export const GENSET_FUELS = { 'natural-gas': GAS_DEFAULTS, diesel: DIESEL_DEFAUL
 /** The fuel defaults ({ label, fuelPricePerMMBtu, co2KgPerMMBtu, ... }) of a genset type entry. */
 export function getGensetFuel(type) {
   return GENSET_FUELS[type?.fuel] || GAS_DEFAULTS;
+}
+
+/** Default delivered fuel price of a genset type at a site: natural gas follows the site's market. */
+export function getSiteFuelPricePerMMBtu(type, site) {
+  const fuel = getGensetFuel(type);
+  if (fuel !== GAS_DEFAULTS || !site || site.country === 'US') return fuel.fuelPricePerMMBtu;
+  return EUROPE_GAS.fuelPricePerMMBtu;
 }
 
 /* Methane slip: unburned CH4 in the exhaust, kg per MMBtu of fuel (HHV).
@@ -809,18 +847,24 @@ export const STANDBY_GAS_GENSET_TYPES = Object.freeze(Object.keys(GAS_GENSET_TYP
      https://about.bnef.com/insights/clean-energy/battery-storage-costs-hit-record-lows
      https://www.energy-storage.news/behind-the-numbers-bnef-finds-40-year-on-year-drop-in-bess-costs/
      (all retrieved 2026-10)
-   Default: the US 2026 basis, because the default site is in Texas and the
-   US sources all sit well above the former $150/kWh (a global-market
-   figure): NREL's 2024 split scaled to its 2026 mid case (x 308 / 334),
-   energy $222/kWh + power $343/kW = $308/kWh at 4 h (2024$), inside Lazard's
-   $270-365. A behind-the-meter battery shares the site substation, so the
-   power part is slightly conservative (judgment). Effective $/kWh = energy +
-   power / duration: 1 h $565, 2 h $394, 4 h $308, 8 h $265. */
+   Default: a US battery bought today (judgment, Oct 2026), $250/kWh at 4 h
+   all-in: BNEF's 2025 US turnkey average ($219/kWh) plus ~$30/kWh for the
+   grid connection and owner's costs a turnkey price leaves out; just below
+   NREL's 2026 low case ($255) and Lazard's US low end ($270). NREL's mid case
+   ($308) and Lazard's range rest on 2024-2025 costs and lag the 31% fall in
+   turnkey prices during 2025 (BNEF). The split keeps NREL's 2024 energy /
+   power ratio (x ~250 / 334): energy $180/kWh + power $280/kW. The US basis
+   applies at every site, also outside the US (where the global basis below
+   would be lower). A behind-the-meter battery shares the site substation, so
+   the power part is slightly conservative (judgment). Effective $/kWh =
+   energy + power / duration: 1 h $460, 2 h $320, 4 h $250, 8 h $215. */
 export const BATTERY_COSTS = {
-  energyPerKWh: 222,
-  powerPerKW: 343,
+  energyPerKWh: 180,
+  powerPerKW: 280,
   nrel2024: { energyPerKWh: 241, powerPerKW: 372, fourHourPerKWh: 334 },
   nrel2026MidFourHourPerKWh: 308,
+  nrel2026LowFourHourPerKWh: 255,
+  bnef2025UsTurnkeyPerKWh: 219,
   lazard2026FourHourPerKWh: { low: 270, high: 365 },
   pnnl2023FourHourPerKWh: 372.72,
   // Global (ex-US/China) basis: Ember's ~$125/kWh at 4 h with a ~20% power
@@ -1574,6 +1618,13 @@ export const DATACENTER_POWER_CONTEXT = [
     text: 'Henry Hub averages $3.48/MMBtu in 2026 and is forecast at $3.16 in 2027; January 2026 hit $7.72 after winter storm Fern.',
     source: 'EIA Short-Term Energy Outlook (Oct 2026)',
     url: 'https://www.eia.gov/outlooks/steo/report/natgas.php',
+    checked: 'opened',
+  },
+  {
+    id: 'ttf-forward',
+    text: 'European gas trades far above US gas and the curve falls steeply: TTF Cal-27 EUR 75/MWh, Cal-28 EUR 47, Cal-30 to Cal-32 about EUR 26 (~$8.60/MMBtu); October 2026 averaged EUR 86 (~$28/MMBtu).',
+    source: 'ICE Endex forwards via Elexys (2026-11-02); Cbonds TTF index',
+    url: 'https://www.elexys.be/en/insights/ice-endex-dutch-natural-gas-forward',
     checked: 'opened',
   },
   {

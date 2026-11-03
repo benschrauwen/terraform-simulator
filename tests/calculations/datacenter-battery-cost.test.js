@@ -10,36 +10,37 @@ import { calculateDatacenterScenario, DATACENTER_DEFAULT_STATE } from '../../js/
 const run = state => calculateDatacenterScenario(state, { fastMode: true });
 const batteryItem = r => r.economics.capexItems.find(item => item.key === 'battery');
 
-test('defaults: NREL 2024 energy/power split scaled to the 2026 mid case ($308/kWh at 4 h)', () => {
-  const scale = BATTERY_COSTS.nrel2026MidFourHourPerKWh / BATTERY_COSTS.nrel2024.fourHourPerKWh;
-  assert.ok(Math.abs(BATTERY_COSTS.energyPerKWh - BATTERY_COSTS.nrel2024.energyPerKWh * scale) < 0.5);
-  assert.ok(Math.abs(BATTERY_COSTS.powerPerKW - BATTERY_COSTS.nrel2024.powerPerKW * scale) < 0.5);
+test('defaults: $250/kWh at 4 h in NREL\'s 2024 energy/power split', () => {
+  const scale = 250 / BATTERY_COSTS.nrel2024.fourHourPerKWh;
+  assert.ok(Math.abs(BATTERY_COSTS.energyPerKWh - BATTERY_COSTS.nrel2024.energyPerKWh * scale) < 2);
+  assert.ok(Math.abs(BATTERY_COSTS.powerPerKW - BATTERY_COSTS.nrel2024.powerPerKW * scale) < 2);
   // NREL's own check: 241 + 372 / 4 = 334 $/kWh at 4 h.
   assert.equal(BATTERY_COSTS.nrel2024.energyPerKWh + BATTERY_COSTS.nrel2024.powerPerKW / 4, 334);
   const fourHour = BATTERY_COSTS.energyPerKWh + BATTERY_COSTS.powerPerKW / 4;
-  assert.ok(Math.abs(fourHour - 308) < 1);
-  assert.ok(fourHour >= BATTERY_COSTS.lazard2026FourHourPerKWh.low && fourHour <= BATTERY_COSTS.lazard2026FourHourPerKWh.high);
+  assert.equal(fourHour, 250);
+  // Above the US turnkey price (which leaves out the grid connection), below NREL's 2026 low case.
+  assert.ok(fourHour > BATTERY_COSTS.bnef2025UsTurnkeyPerKWh && fourHour < BATTERY_COSTS.nrel2026LowFourHourPerKWh);
   // The global basis keeps the former $150/kWh at 4 h.
   assert.equal(BATTERY_COSTS.globalBasis.energyPerKWh + BATTERY_COSTS.globalBasis.powerPerKW / 4, 150);
-  assert.equal(DATACENTER_DEFAULT_STATE.batteryCostPerKWh, 222);
-  assert.equal(DATACENTER_DEFAULT_STATE.batteryPowerCostPerKW, 343);
+  assert.equal(DATACENTER_DEFAULT_STATE.batteryCostPerKWh, 180);
+  assert.equal(DATACENTER_DEFAULT_STATE.batteryPowerCostPerKW, 280);
 });
 
-test('battery capex golden: 400 MWh / 4 h = 400,000 kWh x $222 + 100,000 kW x $343 = $123.1M', () => {
+test('battery capex golden: 400 MWh / 4 h = 400,000 kWh x $180 + 100,000 kW x $280 = $100M', () => {
   const r = run({ batteryCapacityMWh: 400, batteryDurationHours: 4 });
   const item = batteryItem(r);
-  assert.ok(Math.abs(item.capex - 123.1e6) < 1);
-  assert.deepEqual(item.parts.map(part => Math.round(part.capex)), [88.8e6, 34.3e6]);
-  assert.ok(Math.abs(r.dispatch.battery.costPerKWh - 307.75) < 1e-9);
+  assert.ok(Math.abs(item.capex - 100e6) < 1);
+  assert.deepEqual(item.parts.map(part => Math.round(part.capex)), [72e6, 28e6]);
+  assert.ok(Math.abs(r.dispatch.battery.costPerKWh - 250) < 1e-9);
   // Fixed O&M is a share of the total.
   const om = r.economics.assets.find(asset => asset.key === 'battery').annualFixedOm;
-  assert.ok(Math.abs(om - 123.1e6 * r.state.batteryOmPercent / 100) < 1e-6);
+  assert.ok(Math.abs(om - 100e6 * r.state.batteryOmPercent / 100) < 1e-6);
 });
 
 test('a 1-hour battery costs more per kWh than a 4-hour one of the same MWh', () => {
   const perKWh = hours => run({ batteryCapacityMWh: 100, batteryDurationHours: hours }).dispatch.battery.costPerKWh;
-  // 222 + 343 / h: 1 h 565, 2 h 393.5, 4 h 307.75, 8 h 264.875.
-  [[1, 565], [2, 393.5], [4, 307.75], [8, 264.875]].forEach(([hours, expected]) => {
+  // 180 + 280 / h: 1 h 460, 2 h 320, 4 h 250, 8 h 215.
+  [[1, 460], [2, 320], [4, 250], [8, 215]].forEach(([hours, expected]) => {
     assert.ok(Math.abs(perKWh(hours) - expected) < 1e-9, `${hours} h`);
   });
   assert.ok(perKWh(1) > perKWh(4));

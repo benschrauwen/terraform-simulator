@@ -4,7 +4,7 @@
 
 import { FACILITY_DEFAULTS } from '../../data/datacenter/facility.js';
 import { CARBON_PRICE_SCHEMES } from '../../data/datacenter/carbon.js';
-import { BATTERY_COSTS, GAS_DEFAULTS, GRID_DEFAULTS } from '../../data/datacenter/power.js';
+import { BATTERY_COSTS, EUROPE_GAS, GAS_DEFAULTS, GRID_DEFAULTS, ttfPerMMBtu } from '../../data/datacenter/power.js';
 import { SLIDER_MARKERS } from '../slider-markers.js';
 
 export const DATACENTER_SLIDER_MARKERS = {
@@ -28,6 +28,8 @@ export const DATACENTER_SLIDER_MARKERS = {
   gasFuelPricePerMMBtu: [
     { value: GAS_DEFAULTS.henryHub2027PerMMBtu, label: 'Henry Hub 2027 forecast (EIA STEO Oct 2026)' },
     { value: GAS_DEFAULTS.henryHubPerMMBtu, label: 'Henry Hub 2026 average (EIA STEO Oct 2026)' },
+    { value: EUROPE_GAS.fuelPricePerMMBtu, label: 'European sites: TTF Cal-30 to Cal-32 plus delivery (ICE Endex, Nov 2026)' },
+    { value: ttfPerMMBtu(EUROPE_GAS.ttfForwardEurPerMWh.cal27), label: 'TTF Cal-27 (ICE Endex, Nov 2026)' },
   ],
   // Statutory prices of the sites' schemes (data/datacenter/carbon.js).
   carbonPricePerTonne: ['ca-cap-and-invest', 'wa-cca', 'eu-ets'].map(key => ({

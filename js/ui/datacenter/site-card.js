@@ -6,7 +6,7 @@
    scale (plant-layout.js at card size). `result` is the full scenario of the
    winning design; `survey` is optimizeForSite's output. */
 
-import { ARCHITECTURES } from '../../data/datacenter/power.js';
+import { ARCHITECTURES, getSiteFuelPricePerMMBtu } from '../../data/datacenter/power.js';
 import { escapeAttribute as attr, escapeHtml as esc } from '../renderers/markup.js';
 import { DISPATCH_SERIES } from './dispatch-chart.js';
 import { fixed, formatArea, formatMW, formatPercent, formatStorageMWh, formatTonnes, formatUptime, formatYearMonth, money } from './format.js';
@@ -114,12 +114,13 @@ export function designSummary(r) {
   return parts.join(' · ');
 }
 
-/** Site inputs that drive the choice: solar yield, grid price and CO₂, carbon price, hot-day temperature. */
+/** Site inputs that drive the choice: solar yield, grid price and CO₂, gas price, carbon price, hot-day temperature. */
 export function siteDriversText(site, state) {
   return [
     `Solar ${fixed(state.siteYieldMwhPerMwdcYear, 0)} kWh/kWp`,
     `grid ${fixed(state.gridEnergyPricePerMWh, 0)} $/MWh`,
     `${fixed(state.gridCo2KgPerMWh, 0)} kg CO₂/MWh`,
+    `gas ${fixed(getSiteFuelPricePerMMBtu(null, site), 0)} $/MMBtu`,
     state.carbonPricePerTonne > 0 ? `carbon ${fixed(state.carbonPricePerTonne, 0)} $/t` : 'no carbon price',
     `hot day ${fixed(site.coolingDesignDryBulb04C, 0)} °C`,
   ].join(' · ');

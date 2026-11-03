@@ -337,9 +337,9 @@ export const DATACENTER_SECTIONS = {
     { block: 'firmSizing', visible: state => state.firmFamily !== 'none' },
     {
       type: 'range', id: 'gasFuelPricePerMMBtu', label: 'Delivered fuel price', format: per(2, 'MMBtu'), visible: state => state.firmFamily === 'gas',
-      // Natural gas $0-15; diesel (standby type) up to $60/MMBtu (~$8.30/gal).
-      range: state => (gasType(state).fuel === 'diesel' ? { min: 0, max: 60, step: 0.5 } : { min: 0, max: 15, step: 0.05 }),
-      tooltip: 'HHV basis. Natural gas: Henry Hub plus delivery. Diesel: untaxed (dyed, off-road) price per gallon / 0.138 MMBtu.',
+      // Natural gas $0-40 (European spot ~$28 in Oct 2026); diesel (standby type) up to $60/MMBtu (~$8.30/gal).
+      range: state => (gasType(state).fuel === 'diesel' ? { min: 0, max: 60, step: 0.5 } : { min: 0, max: 40, step: 0.05 }),
+      tooltip: 'HHV basis. Natural gas: Henry Hub plus delivery at US sites; at European sites the TTF forward price for the years the plant runs, plus delivery. Diesel: untaxed (dyed, off-road) price per gallon / 0.138 MMBtu. Resets when the site changes.',
     },
     {
       type: 'range', id: 'carbonPricePerTonne', label: 'Carbon price (on-site CO₂)', min: 0, max: 300, step: 1, format: per(0, 't CO₂'), visible: state => state.firmFamily === 'gas',
